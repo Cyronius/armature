@@ -69,6 +69,7 @@ impl InternalObserver {
 ///
 /// [`ObserverUnion`]: crate::dom::bindings::codegen::Bindings::ObservableBinding::ObserverUnion
 #[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 pub(crate) struct ScriptObserver {
     pub(crate) next: Option<TracedCallback<ObservableSubscriptionCallback>>,
     pub(crate) error: Option<TracedCallback<ObservableSubscriptionCallback>>,
@@ -259,6 +260,7 @@ impl Subscriber {
     }
 
     /// <https://wicg.github.io/observable/#close-a-subscription>
+    #[cfg_attr(crown, expect(crown::unrooted_must_root))]
     pub(crate) fn close(&self, cx: &mut CurrentRealm, reason: HandleValue) {
         // Step 1. If subscriber is not active, then return.
         // Note: This also guards against re-entrancy.

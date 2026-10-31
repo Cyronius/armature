@@ -385,6 +385,7 @@ impl SubscribeSteps for FinallySteps {
 /// The state of the abort algorithm that `inspect()` adds to the signal of a subscriber.
 #[derive(JSTraceable, MallocSizeOf)]
 #[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::allow_unrooted_in_rc)]
 pub(crate) struct InspectAbortState {
     callback: TracedCallback<ObservableInspectorAbortHandler>,
     /// Set instead of removing the algorithm from the signal, as that is not possible while the
@@ -403,6 +404,7 @@ impl InspectAbortState {
 }
 
 /// <https://wicg.github.io/observable/#dom-observable-inspect>
+#[cfg_attr(crown, expect(crown::unrooted_must_root))]
 pub(crate) fn inspect(
     cx: &mut JSContext,
     source: &Observable,

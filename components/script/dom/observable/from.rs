@@ -31,6 +31,7 @@ use crate::dom::promisenativehandler::{Callback, PromiseNativeHandler};
 /// To [convert to an Observable] an any value.
 ///
 /// [convert to an Observable]: https://wicg.github.io/observable/#observable-convert-to-an-observable
+#[cfg_attr(crown, expect(crown::unrooted_must_root))]
 pub(crate) fn convert_to_observable(
     cx: &mut JSContext,
     global: &GlobalScope,
@@ -115,6 +116,7 @@ fn reject_without_handler(cx: &mut CurrentRealm, reason: HandleValue) {
 
 /// <https://wicg.github.io/observable/#from-iterable-conversion>
 #[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 struct FromIterableSteps {
     #[ignore_malloc_size_of = "mozjs"]
     value: Box<Heap<JSVal>>,
@@ -182,6 +184,7 @@ impl SubscribeSteps for FromIterableSteps {
 
 /// <https://wicg.github.io/observable/#from-async-iterable-conversion>
 #[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 struct FromAsyncIterableSteps {
     #[ignore_malloc_size_of = "mozjs"]
     value: Box<Heap<JSVal>>,
@@ -398,6 +401,7 @@ impl Callback for NextRejected {
 
 /// <https://wicg.github.io/observable/#from-promise-conversion>
 #[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 struct FromPromiseSteps {
     #[ignore_malloc_size_of = "mozjs"]
     value: Box<Heap<JSVal>>,

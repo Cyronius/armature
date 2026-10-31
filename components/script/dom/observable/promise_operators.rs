@@ -113,6 +113,7 @@ fn reject_and_abort_controller(
 }
 
 /// <https://wicg.github.io/observable/#dom-observable-toarray>
+#[cfg_attr(crown, expect(crown::unrooted_must_root))]
 pub(crate) fn to_array(
     cx: &mut CurrentRealm,
     source: &Observable,
@@ -170,6 +171,7 @@ impl InternalObserverSteps for ToArrayObserver {
 }
 
 /// <https://wicg.github.io/observable/#dom-observable-foreach>
+#[cfg_attr(crown, expect(crown::unrooted_must_root))]
 pub(crate) fn for_each(
     cx: &mut CurrentRealm,
     source: &Observable,
@@ -231,6 +233,7 @@ pub(crate) enum PredicateOperator {
 }
 
 /// `every()`, `find()` and `some()`, that differ only in when and with what they resolve.
+#[cfg_attr(crown, expect(crown::unrooted_must_root))]
 pub(crate) fn with_predicate(
     cx: &mut CurrentRealm,
     source: &Observable,
@@ -312,6 +315,7 @@ impl InternalObserverSteps for PredicateObserver {
 }
 
 /// <https://wicg.github.io/observable/#dom-observable-first>
+#[cfg_attr(crown, expect(crown::unrooted_must_root))]
 pub(crate) fn first(
     cx: &mut CurrentRealm,
     source: &Observable,
@@ -353,6 +357,7 @@ impl InternalObserverSteps for FirstObserver {
 }
 
 /// <https://wicg.github.io/observable/#dom-observable-last>
+#[cfg_attr(crown, expect(crown::unrooted_must_root))]
 pub(crate) fn last(
     cx: &mut CurrentRealm,
     source: &Observable,
@@ -402,6 +407,7 @@ impl InternalObserverSteps for LastObserver {
 }
 
 /// <https://wicg.github.io/observable/#dom-observable-reduce>
+#[cfg_attr(crown, expect(crown::unrooted_must_root))]
 pub(crate) fn reduce(
     cx: &mut CurrentRealm,
     source: &Observable,

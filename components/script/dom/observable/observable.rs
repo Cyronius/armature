@@ -55,6 +55,7 @@ pub(crate) trait SubscribeSteps: JSTraceable + MallocSizeOf {
 
 /// <https://wicg.github.io/observable/#observable-subscribe-callback>
 #[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 enum SubscribeCallbackKind {
     /// A callback given to the constructor.
     Script(TracedCallback<SubscribeCallback>),
@@ -125,6 +126,7 @@ impl ObservableAbortAlgorithm {
 }
 
 impl Observable {
+    #[cfg_attr(crown, expect(crown::unrooted_must_root))]
     fn new_inherited(subscribe_callback: SubscribeCallbackKind) -> Observable {
         Observable {
             reflector_: Reflector::new(),
@@ -277,6 +279,7 @@ impl ObservableMethods<crate::DomTypeHolder> for Observable {
     }
 
     /// <https://wicg.github.io/observable/#dom-observable-subscribe>
+    #[cfg_attr(crown, expect(crown::unrooted_must_root))]
     fn Subscribe(
         &self,
         cx: &mut CurrentRealm,

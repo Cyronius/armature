@@ -32,6 +32,8 @@ pub(crate) enum IteratorKind {
 
 /// <https://tc39.es/ecma262/#sec-iterator-records>
 #[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::allow_unrooted_in_rc)]
 pub(crate) struct IteratorRecord {
     #[ignore_malloc_size_of = "mozjs"]
     iterator: Heap<*mut JSObject>,

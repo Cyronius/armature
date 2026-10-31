@@ -234,6 +234,7 @@ impl SubscribeSteps for FlatMapSteps {
 /// The variables that the steps of `flatMap()` share, which are references in the spec.
 #[derive(JSTraceable, MallocSizeOf)]
 #[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::allow_unrooted_in_rc)]
 struct FlatMapState {
     subscriber: Dom<Subscriber>,
     mapper: TracedCallback<Mapper>,
@@ -343,6 +344,7 @@ impl InternalObserverSteps for FlatMapInnerObserver {
         self.state.subscriber.error(cx, error);
     }
 
+    #[cfg_attr(crown, expect(crown::unrooted_must_root))]
     fn complete(&self, cx: &mut CurrentRealm) {
         let state = &self.state;
         let next_value = state.queue.borrow_mut().pop_front();
@@ -406,6 +408,7 @@ impl SubscribeSteps for SwitchMapSteps {
 /// The variables that the steps of `switchMap()` share, which are references in the spec.
 #[derive(JSTraceable, MallocSizeOf)]
 #[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::allow_unrooted_in_rc)]
 struct SwitchMapState {
     subscriber: Dom<Subscriber>,
     mapper: TracedCallback<Mapper>,
