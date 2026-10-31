@@ -13,16 +13,39 @@ dictionary SubscriptionObserver {
   VoidFunction complete;
 };
 
+callback ObservableInspectorAbortHandler = undefined (any value);
+
+dictionary ObservableInspector {
+  ObservableSubscriptionCallback next;
+  ObservableSubscriptionCallback error;
+  VoidFunction complete;
+
+  VoidFunction subscribe;
+  ObservableInspectorAbortHandler abort;
+};
+
 typedef (ObservableSubscriptionCallback or SubscriptionObserver) ObserverUnion;
+typedef (ObservableSubscriptionCallback or ObservableInspector) ObservableInspectorUnion;
 
 dictionary SubscribeOptions {
   AbortSignal signal;
 };
 
+callback Predicate = boolean (any value, unsigned long long index);
+callback Mapper = any (any value, unsigned long long index);
+
 [Exposed=*, Pref="dom_observable_enabled"]
 interface Observable {
   constructor(SubscribeCallback callback);
   undefined subscribe(optional ObserverUnion observer = {}, optional SubscribeOptions options = {});
+
+  // Observable-returning operators. See https://wicg.github.io/observable/#observable-api.
+  Observable map(Mapper mapper);
+  Observable filter(Predicate predicate);
+  Observable take(unsigned long long amount);
+  Observable drop(unsigned long long amount);
+  Observable inspect(optional ObservableInspectorUnion inspectorUnion = {});
+  Observable finally(VoidFunction callback);
 };
 
 // https://wicg.github.io/observable/#event-target-integration

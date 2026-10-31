@@ -18,13 +18,16 @@ use script_bindings::weakref::WeakRef;
 use crate::dom::abortsignal::{AbortAlgorithm, AbortSignal};
 use crate::dom::bindings::codegen::Bindings::AbortSignalBinding::AbortSignalMethods;
 use crate::dom::bindings::codegen::Bindings::ObservableBinding::{
-    ObservableMethods, ObserverUnion, SubscribeCallback, SubscribeOptions,
+    Mapper, ObservableInspectorUnion, ObservableMethods, ObserverUnion, Predicate,
+    SubscribeCallback, SubscribeOptions,
 };
+use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::trace::JSTraceable;
 use crate::dom::globalscope::GlobalScope;
+use crate::dom::observable::operators::{self, InspectAbortState};
 use crate::dom::observable::subscriber::{
     InternalObserver, ScriptObserver, Subscriber, error_subscriber_with,
 };
@@ -77,6 +80,8 @@ pub(crate) enum ObservableAbortAlgorithm {
         #[conditional_malloc_size_of]
         observer: Rc<InternalObserver>,
     },
+    /// <https://wicg.github.io/observable/#dom-observable-inspect>
+    InspectAbort(#[conditional_malloc_size_of] Rc<InspectAbortState>),
 }
 
 impl ObservableAbortAlgorithm {
@@ -100,6 +105,7 @@ impl ObservableAbortAlgorithm {
                     subscriber.close(cx, reason);
                 }
             },
+            ObservableAbortAlgorithm::InspectAbort(state) => state.run(cx, reason),
         }
     }
 }
@@ -274,5 +280,47 @@ impl ObservableMethods<crate::DomTypeHolder> for Observable {
             InternalObserver::new(script_observer),
             options.signal.as_deref(),
         );
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-map>
+    fn Map(&self, cx: &mut CurrentRealm, mapper: RootedCallback<Mapper>) -> DomRoot<Observable> {
+        operators::map(cx, self, mapper)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-filter>
+    fn Filter(
+        &self,
+        cx: &mut CurrentRealm,
+        predicate: RootedCallback<Predicate>,
+    ) -> DomRoot<Observable> {
+        operators::filter(cx, self, predicate)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-take>
+    fn Take(&self, cx: &mut CurrentRealm, amount: u64) -> DomRoot<Observable> {
+        operators::take(cx, self, amount)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-drop>
+    fn Drop(&self, cx: &mut CurrentRealm, amount: u64) -> DomRoot<Observable> {
+        operators::drop_values(cx, self, amount)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-inspect>
+    fn Inspect(
+        &self,
+        cx: &mut CurrentRealm,
+        inspector_union: ObservableInspectorUnion,
+    ) -> DomRoot<Observable> {
+        operators::inspect(cx, self, inspector_union)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-finally>
+    fn Finally(
+        &self,
+        cx: &mut CurrentRealm,
+        callback: RootedCallback<VoidFunction>,
+    ) -> DomRoot<Observable> {
+        operators::finally(cx, self, callback)
     }
 }
