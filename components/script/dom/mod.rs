@@ -293,6 +293,8 @@ pub(crate) mod navigator;
 pub(crate) use self::navigator::*;
 pub(crate) mod node;
 pub(crate) use self::node::*;
+pub(crate) mod observable;
+pub(crate) use self::observable::*;
 pub(crate) mod performance;
 pub(crate) use self::performance::*;
 pub(crate) mod permission;
