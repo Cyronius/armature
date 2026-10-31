@@ -23,10 +23,13 @@ use crate::dom::bindings::codegen::Bindings::ObservableBinding::{
 };
 use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
+use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::trace::JSTraceable;
 use crate::dom::globalscope::GlobalScope;
+use crate::dom::observable::from::{close_iterator, convert_to_observable};
+use crate::dom::observable::iteration::IteratorRecord;
 use crate::dom::observable::operators::{self, InspectAbortState};
 use crate::dom::observable::promise_operators::{self, PredicateOperator};
 use crate::dom::observable::subscriber::{
@@ -87,6 +90,9 @@ pub(crate) enum ObservableAbortAlgorithm {
     /// Rejects the promise of a promise-returning operator with the abort reason.
     /// <https://wicg.github.io/observable/#promise-returning-operators>
     RejectPromise(TracedPromise),
+    /// Closes the iterator of an `Observable.from()` subscription.
+    /// <https://wicg.github.io/observable/#dom-observable-from>
+    CloseIterator(#[conditional_malloc_size_of] Rc<IteratorRecord>),
 }
 
 impl ObservableAbortAlgorithm {
@@ -112,6 +118,7 @@ impl ObservableAbortAlgorithm {
             },
             ObservableAbortAlgorithm::InspectAbort(state) => state.run(cx, reason),
             ObservableAbortAlgorithm::RejectPromise(promise) => promise.reject(cx, reason),
+            ObservableAbortAlgorithm::CloseIterator(record) => close_iterator(cx, record, reason),
         }
     }
 }
@@ -256,6 +263,16 @@ impl ObservableMethods<crate::DomTypeHolder> for Observable {
     ) -> DomRoot<Observable> {
         // Step 1. Set this's subscribe callback to callback.
         Observable::new_with_proto(cx, global, proto, callback)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-from>
+    fn From(
+        cx: &mut JSContext,
+        global: &GlobalScope,
+        value: HandleValue,
+    ) -> Fallible<DomRoot<Observable>> {
+        // Return the result of converting value to an Observable. Rethrow any exceptions.
+        convert_to_observable(cx, global, value)
     }
 
     /// <https://wicg.github.io/observable/#dom-observable-subscribe>

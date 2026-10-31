@@ -41,6 +41,8 @@ interface Observable {
   constructor(SubscribeCallback callback);
   undefined subscribe(optional ObserverUnion observer = {}, optional SubscribeOptions options = {});
 
+  [Throws] static Observable from(any value);
+
   // Observable-returning operators. See https://wicg.github.io/observable/#observable-api.
   Observable map(Mapper mapper);
   Observable filter(Predicate predicate);

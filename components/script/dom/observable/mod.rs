@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 pub(crate) use self::observable::*;
+pub(crate) mod from;
+pub(crate) mod iteration;
 #[allow(clippy::module_inception, reason = "The interface name is Observable")]
 pub(crate) mod observable;
 pub(crate) mod operators;
