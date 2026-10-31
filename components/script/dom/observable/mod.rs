@@ -6,3 +6,4 @@ pub(crate) use self::observable::*;
 #[allow(clippy::module_inception, reason = "The interface name is Observable")]
 pub(crate) mod observable;
 pub(crate) mod subscriber;
+pub(crate) mod when;

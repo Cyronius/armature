@@ -8,6 +8,7 @@ use dom_struct::dom_struct;
 use js::context::JSContext;
 use js::realm::CurrentRealm;
 use js::rust::{HandleObject, HandleValue};
+use malloc_size_of::MallocSizeOf;
 use script_bindings::callback::{ExceptionHandling, RootedCallback, TracedCallback};
 use script_bindings::cell::DomRefCell;
 use script_bindings::inheritance::Castable;
@@ -22,6 +23,7 @@ use crate::dom::bindings::codegen::Bindings::ObservableBinding::{
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
+use crate::dom::bindings::trace::JSTraceable;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::observable::subscriber::{
     InternalObserver, ScriptObserver, Subscriber, error_subscriber_with,
@@ -37,13 +39,28 @@ pub(crate) fn is_inactive_document(global: &GlobalScope) -> bool {
         .is_some_and(|window| !window.Document().is_fully_active())
 }
 
+/// A subscribe callback that is implemented natively.
+pub(crate) trait SubscribeSteps: JSTraceable + MallocSizeOf {
+    fn subscribe(&self, cx: &mut CurrentRealm, subscriber: &Subscriber);
+}
+
+/// <https://wicg.github.io/observable/#observable-subscribe-callback>
+#[derive(JSTraceable, MallocSizeOf)]
+enum SubscribeCallbackKind {
+    /// A callback given to the constructor.
+    Script(TracedCallback<SubscribeCallback>),
+    /// The subscribe callback of an Observable that the UA creates, such as the result of
+    /// `EventTarget.when()` or of an operator.
+    Native(Box<dyn SubscribeSteps>),
+}
+
 /// <https://wicg.github.io/observable/#observable>
 #[dom_struct]
 pub(crate) struct Observable {
     reflector_: Reflector,
 
     /// <https://wicg.github.io/observable/#observable-subscribe-callback>
-    subscribe_callback: TracedCallback<SubscribeCallback>,
+    subscribe_callback: SubscribeCallbackKind,
 
     /// <https://wicg.github.io/observable/#observable-weak-subscriber>
     #[ignore_malloc_size_of = "WeakRef"]
@@ -88,12 +105,28 @@ impl ObservableAbortAlgorithm {
 }
 
 impl Observable {
-    fn new_inherited(callback: RootedCallback<SubscribeCallback>) -> Observable {
+    fn new_inherited(subscribe_callback: SubscribeCallbackKind) -> Observable {
         Observable {
             reflector_: Reflector::new(),
-            subscribe_callback: callback.to_traced(),
+            subscribe_callback,
             weak_subscriber: Default::default(),
         }
+    }
+
+    /// Creates an Observable whose subscribe callback is implemented natively.
+    pub(crate) fn new_native(
+        cx: &mut JSContext,
+        global: &GlobalScope,
+        steps: Box<dyn SubscribeSteps>,
+    ) -> DomRoot<Observable> {
+        reflect_dom_object_with_proto(
+            cx,
+            Box::new(Observable::new_inherited(SubscribeCallbackKind::Native(
+                steps,
+            ))),
+            global,
+            None,
+        )
     }
 
     fn new_with_proto(
@@ -104,7 +137,9 @@ impl Observable {
     ) -> DomRoot<Observable> {
         reflect_dom_object_with_proto(
             cx,
-            Box::new(Observable::new_inherited(callback)),
+            Box::new(Observable::new_inherited(SubscribeCallbackKind::Script(
+                callback.to_traced(),
+            ))),
             global,
             proto,
         )
@@ -187,9 +222,14 @@ impl Observable {
 
         // Step 5. Invoke this's subscribe callback with subscriber, and "rethrow".
         // If an exception E was thrown, then run subscriber's error() with E.
-        let callback = self.subscribe_callback.root(cx);
-        if let Err(error) = callback.Call__(cx, &subscriber, ExceptionHandling::Rethrow) {
-            error_subscriber_with(cx, &subscriber, error);
+        match &self.subscribe_callback {
+            SubscribeCallbackKind::Script(callback) => {
+                let callback = callback.root(cx);
+                if let Err(error) = callback.Call__(cx, &subscriber, ExceptionHandling::Rethrow) {
+                    error_subscriber_with(cx, &subscriber, error);
+                }
+            },
+            SubscribeCallbackKind::Native(steps) => steps.subscribe(cx, &subscriber),
         }
     }
 }

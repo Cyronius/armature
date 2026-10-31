@@ -16,6 +16,7 @@ use dom_struct::dom_struct;
 use js::context::JSContext;
 use js::jsapi::{JS_GetFunctionObject, SupportUnscopables};
 use js::jsval::JSVal;
+use js::realm::CurrentRealm;
 use js::rust::wrappers2::CompileFunction;
 use js::rust::{CompileOptionsWrapper, HandleObject, transform_u16_to_source_text};
 use libc::c_char;
@@ -40,6 +41,7 @@ use crate::dom::bindings::codegen::Bindings::EventHandlerBinding::{
     EventHandlerNonNull, OnBeforeUnloadEventHandlerNonNull, OnErrorEventHandlerNonNull,
 };
 use crate::dom::bindings::codegen::Bindings::EventListenerBinding::EventListener;
+use crate::dom::bindings::codegen::Bindings::ObservableBinding::ObservableEventListenerOptions;
 use crate::dom::bindings::codegen::Bindings::EventTargetBinding::{
     AddEventListenerOptions, EventListenerOptions, EventTargetMethods,
 };
@@ -69,6 +71,7 @@ use crate::dom::indexeddb::idbrequest::IDBRequest;
 use crate::dom::indexeddb::idbtransaction::IDBTransaction;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{Node, NodeTraits};
+use crate::dom::observable::Observable;
 use crate::dom::shadowroot::shadowroot::ShadowRoot;
 use crate::dom::window::Window;
 use crate::dom::workerglobalscope::WorkerGlobalScope;
@@ -1161,6 +1164,16 @@ impl EventTargetMethods<crate::DomTypeHolder> for EventTarget {
         options: EventListenerOptionsOrBoolean,
     ) {
         self.remove_event_listener(ty, listener.as_deref(), &options.convert())
+    }
+
+    /// <https://wicg.github.io/observable/#dom-eventtarget-when>
+    fn When(
+        &self,
+        cx: &mut CurrentRealm,
+        type_: DOMString,
+        options: &ObservableEventListenerOptions,
+    ) -> DomRoot<Observable> {
+        crate::dom::observable::when::when(cx, self, type_, options)
     }
 
     /// <https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent>

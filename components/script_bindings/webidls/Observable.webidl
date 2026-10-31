@@ -24,3 +24,14 @@ interface Observable {
   constructor(SubscribeCallback callback);
   undefined subscribe(optional ObserverUnion observer = {}, optional SubscribeOptions options = {});
 };
+
+// https://wicg.github.io/observable/#event-target-integration
+dictionary ObservableEventListenerOptions {
+  boolean capture = false;
+  boolean passive;
+};
+
+partial interface EventTarget {
+  [Pref="dom_observable_enabled"]
+  Observable when(DOMString type, optional ObservableEventListenerOptions options = {});
+};
