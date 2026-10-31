@@ -18,8 +18,8 @@ use script_bindings::weakref::WeakRef;
 use crate::dom::abortsignal::{AbortAlgorithm, AbortSignal};
 use crate::dom::bindings::codegen::Bindings::AbortSignalBinding::AbortSignalMethods;
 use crate::dom::bindings::codegen::Bindings::ObservableBinding::{
-    Mapper, ObservableInspectorUnion, ObservableMethods, ObserverUnion, Predicate,
-    SubscribeCallback, SubscribeOptions,
+    Mapper, ObservableInspectorUnion, ObservableMethods, ObserverUnion, Predicate, Reducer,
+    SubscribeCallback, SubscribeOptions, Visitor,
 };
 use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
@@ -28,9 +28,11 @@ use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::trace::JSTraceable;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::observable::operators::{self, InspectAbortState};
+use crate::dom::observable::promise_operators::{self, PredicateOperator};
 use crate::dom::observable::subscriber::{
     InternalObserver, ScriptObserver, Subscriber, error_subscriber_with,
 };
+use crate::dom::promise::{RootedPromise, TracedPromise};
 use crate::dom::window::Window;
 
 /// Whether the global is a Window whose document is not fully active.
@@ -82,6 +84,9 @@ pub(crate) enum ObservableAbortAlgorithm {
     },
     /// <https://wicg.github.io/observable/#dom-observable-inspect>
     InspectAbort(#[conditional_malloc_size_of] Rc<InspectAbortState>),
+    /// Rejects the promise of a promise-returning operator with the abort reason.
+    /// <https://wicg.github.io/observable/#promise-returning-operators>
+    RejectPromise(TracedPromise),
 }
 
 impl ObservableAbortAlgorithm {
@@ -106,6 +111,7 @@ impl ObservableAbortAlgorithm {
                 }
             },
             ObservableAbortAlgorithm::InspectAbort(state) => state.run(cx, reason),
+            ObservableAbortAlgorithm::RejectPromise(promise) => promise.reject(cx, reason),
         }
     }
 }
@@ -322,5 +328,71 @@ impl ObservableMethods<crate::DomTypeHolder> for Observable {
         callback: RootedCallback<VoidFunction>,
     ) -> DomRoot<Observable> {
         operators::finally(cx, self, callback)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-toarray>
+    fn ToArray(&self, cx: &mut CurrentRealm, options: &SubscribeOptions) -> RootedPromise {
+        promise_operators::to_array(cx, self, options)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-foreach>
+    fn ForEach(
+        &self,
+        cx: &mut CurrentRealm,
+        callback: RootedCallback<Visitor>,
+        options: &SubscribeOptions,
+    ) -> RootedPromise {
+        promise_operators::for_each(cx, self, callback, options)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-every>
+    fn Every(
+        &self,
+        cx: &mut CurrentRealm,
+        predicate: RootedCallback<Predicate>,
+        options: &SubscribeOptions,
+    ) -> RootedPromise {
+        promise_operators::with_predicate(cx, self, PredicateOperator::Every, predicate, options)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-first>
+    fn First(&self, cx: &mut CurrentRealm, options: &SubscribeOptions) -> RootedPromise {
+        promise_operators::first(cx, self, options)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-last>
+    fn Last(&self, cx: &mut CurrentRealm, options: &SubscribeOptions) -> RootedPromise {
+        promise_operators::last(cx, self, options)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-find>
+    fn Find(
+        &self,
+        cx: &mut CurrentRealm,
+        predicate: RootedCallback<Predicate>,
+        options: &SubscribeOptions,
+    ) -> RootedPromise {
+        promise_operators::with_predicate(cx, self, PredicateOperator::Find, predicate, options)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-some>
+    fn Some(
+        &self,
+        cx: &mut CurrentRealm,
+        predicate: RootedCallback<Predicate>,
+        options: &SubscribeOptions,
+    ) -> RootedPromise {
+        promise_operators::with_predicate(cx, self, PredicateOperator::Some, predicate, options)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-reduce>
+    fn Reduce(
+        &self,
+        cx: &mut CurrentRealm,
+        reducer: RootedCallback<Reducer>,
+        initial_value: HandleValue,
+        options: &SubscribeOptions,
+    ) -> RootedPromise {
+        promise_operators::reduce(cx, self, reducer, initial_value, options)
     }
 }

@@ -32,7 +32,9 @@ dictionary SubscribeOptions {
 };
 
 callback Predicate = boolean (any value, unsigned long long index);
+callback Reducer = any (any accumulator, any currentValue, unsigned long long index);
 callback Mapper = any (any value, unsigned long long index);
+callback Visitor = undefined (any value, unsigned long long index);
 
 [Exposed=*, Pref="dom_observable_enabled"]
 interface Observable {
@@ -46,6 +48,16 @@ interface Observable {
   Observable drop(unsigned long long amount);
   Observable inspect(optional ObservableInspectorUnion inspectorUnion = {});
   Observable finally(VoidFunction callback);
+
+  // Promise-returning operators.
+  Promise<sequence<any>> toArray(optional SubscribeOptions options = {});
+  Promise<undefined> forEach(Visitor callback, optional SubscribeOptions options = {});
+  Promise<boolean> every(Predicate predicate, optional SubscribeOptions options = {});
+  Promise<any> first(optional SubscribeOptions options = {});
+  Promise<any> last(optional SubscribeOptions options = {});
+  Promise<any> find(Predicate predicate, optional SubscribeOptions options = {});
+  Promise<boolean> some(Predicate predicate, optional SubscribeOptions options = {});
+  Promise<any> reduce(Reducer reducer, optional any initialValue, optional SubscribeOptions options = {});
 };
 
 // https://wicg.github.io/observable/#event-target-integration
