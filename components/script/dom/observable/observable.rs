@@ -18,8 +18,8 @@ use script_bindings::weakref::WeakRef;
 use crate::dom::abortsignal::{AbortAlgorithm, AbortSignal};
 use crate::dom::bindings::codegen::Bindings::AbortSignalBinding::AbortSignalMethods;
 use crate::dom::bindings::codegen::Bindings::ObservableBinding::{
-    Mapper, ObservableInspectorUnion, ObservableMethods, ObserverUnion, Predicate, Reducer,
-    SubscribeCallback, SubscribeOptions, Visitor,
+    CatchCallback, Mapper, ObservableInspectorUnion, ObservableMethods, ObserverUnion, Predicate,
+    Reducer, SubscribeCallback, SubscribeOptions, Visitor,
 };
 use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
@@ -29,6 +29,7 @@ use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::trace::JSTraceable;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::observable::from::{close_iterator, convert_to_observable};
+use crate::dom::observable::higher_order;
 use crate::dom::observable::iteration::IteratorRecord;
 use crate::dom::observable::operators::{self, InspectAbortState};
 use crate::dom::observable::promise_operators::{self, PredicateOperator};
@@ -411,5 +412,41 @@ impl ObservableMethods<crate::DomTypeHolder> for Observable {
         options: &SubscribeOptions,
     ) -> RootedPromise {
         promise_operators::reduce(cx, self, reducer, initial_value, options)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-takeuntil>
+    fn TakeUntil(
+        &self,
+        cx: &mut CurrentRealm,
+        value: HandleValue,
+    ) -> Fallible<DomRoot<Observable>> {
+        higher_order::take_until(cx, self, value)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-catch>
+    fn Catch(
+        &self,
+        cx: &mut CurrentRealm,
+        callback: RootedCallback<CatchCallback>,
+    ) -> DomRoot<Observable> {
+        higher_order::catch(cx, self, callback)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-flatmap>
+    fn FlatMap(
+        &self,
+        cx: &mut CurrentRealm,
+        mapper: RootedCallback<Mapper>,
+    ) -> DomRoot<Observable> {
+        higher_order::flat_map(cx, self, mapper)
+    }
+
+    /// <https://wicg.github.io/observable/#dom-observable-switchmap>
+    fn SwitchMap(
+        &self,
+        cx: &mut CurrentRealm,
+        mapper: RootedCallback<Mapper>,
+    ) -> DomRoot<Observable> {
+        higher_order::switch_map(cx, self, mapper)
     }
 }

@@ -33,6 +33,7 @@ dictionary SubscribeOptions {
 
 callback Predicate = boolean (any value, unsigned long long index);
 callback Reducer = any (any accumulator, any currentValue, unsigned long long index);
+callback CatchCallback = any (any value);
 callback Mapper = any (any value, unsigned long long index);
 callback Visitor = undefined (any value, unsigned long long index);
 
@@ -44,11 +45,15 @@ interface Observable {
   [Throws] static Observable from(any value);
 
   // Observable-returning operators. See https://wicg.github.io/observable/#observable-api.
+  [Throws] Observable takeUntil(any value);
   Observable map(Mapper mapper);
   Observable filter(Predicate predicate);
   Observable take(unsigned long long amount);
   Observable drop(unsigned long long amount);
+  Observable flatMap(Mapper mapper);
+  Observable switchMap(Mapper mapper);
   Observable inspect(optional ObservableInspectorUnion inspectorUnion = {});
+  Observable catch(CatchCallback callback);
   Observable finally(VoidFunction callback);
 
   // Promise-returning operators.

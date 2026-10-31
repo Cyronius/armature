@@ -40,7 +40,11 @@ fn new_operator(
 
 /// Subscribes to `source` for the sake of `subscriber`, with an observer that forwards everything
 /// to `subscriber`.
-fn subscribe_forwarding(cx: &mut CurrentRealm, source: &Observable, subscriber: &Subscriber) {
+pub(crate) fn subscribe_forwarding(
+    cx: &mut CurrentRealm,
+    source: &Observable,
+    subscriber: &Subscriber,
+) {
     let observer = InternalObserver::new(ForwardingObserver {
         subscriber: Dom::from_ref(subscriber),
     });
