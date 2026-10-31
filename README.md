@@ -1,3 +1,46 @@
+# Armature: an AI-assisted Servo fork
+
+Armature is an unofficial, AI-assisted fork of [Servo](https://github.com/servo/servo). Its aim is to raise web-platform
+conformance (as measured by [web-platform-tests](https://web-platform-tests.org/)) by implementing missing features
+with the help of an AI coding assistant (Claude Code). It is **not** affiliated with or endorsed by the Servo project.
+
+Servo's [AI usage policy](https://book.servo.org/policy/ai-usage.html) does not accept AI-generated contributions,
+so this work is not intended for, and has not been sent to, upstream Servo. The `Co-Authored-By` trailers on the
+commits are deliberate and make Servo's `./mach test-tidy` commit check fail. Everything else tidy checks passes.
+
+## What has been done
+
+- **WICG [Observable API](https://wicg.github.io/observable/)**, behind the `dom_observable_enabled` preference
+  (off by default; enabled for the tests by `tests/wpt/meta/dom/observable/__dir__.ini`):
+  - `Observable` and `Subscriber`, including `subscribe()` with observer callbacks, `SubscribeOptions.signal`,
+    teardowns and inspectors.
+  - `EventTarget.when()`.
+  - The synchronous operators `map`, `filter`, `take`, `drop`, `inspect` and `finally`.
+  - The promise-returning operators `toArray`, `forEach`, `every`, `find`, `some`, `first`, `last` and `reduce`.
+  - `Observable.from()` for Observables, iterables, async iterables and promises.
+  - `takeUntil`, `catch`, `flatMap` and `switchMap`.
+- **Results:** `tests/wpt/tests/dom/observable` went from 523 failing subtests to 7. The whole `dom` directory
+  (845 tests) runs with no unexpected results, and `dom/abort` and `dom/events` show no regressions. `./mach fmt`
+  and the crown GC-rooting lint pass.
+
+## What has not been done
+
+- 7 Observable subtests still fail, and are recorded as expected failures in `tests/wpt/meta/dom/observable/tentative/`:
+  - Four (two each in the window and worker variants of `observable-from`) concern errors from a synchronous
+    iterator's `return()`. They need an exception to propagate out of `AbortController.abort()`, which Servo's
+    `abort()` cannot do.
+  - Two (window and worker) report `colno` 1 instead of 0 for unhandled rejections, from `ErrorInfo::from_value`.
+  - One (`observable-constructor.window`) is `when()` in a detached document, because ordinary listeners still run
+    in detached documents.
+- The Observable API is a WICG proposal, not a finished standard, and is off by default.
+- Conformance outside `tests/wpt/tests/dom/observable` has not been measured or improved. No other missing features
+  have been implemented yet.
+- Nothing here has been reviewed by the upstream Servo maintainers.
+
+The rest of this file is Servo's own README.
+
+---
+
 # The Servo Parallel Browser Engine Project
 
 Servo is a prototype web browser engine written in the
