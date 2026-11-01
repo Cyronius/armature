@@ -1613,6 +1613,24 @@ impl<'dom> LayoutDom<'dom, HTMLImageElement> {
 }
 
 impl HTMLImageElementMethods<crate::DomTypeHolder> for HTMLImageElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-img-lowsrc>
+    make_url_getter!(Lowsrc, "lowsrc");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-img-lowsrc>
+    make_url_setter!(SetLowsrc, "lowsrc");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-img-decoding>
+    make_enumerated_getter!(
+        Decoding,
+        "decoding",
+        "async" | "sync" | "auto",
+        missing => "auto",
+        invalid => "auto"
+    );
+
+    // <https://html.spec.whatwg.org/multipage/#dom-img-decoding>
+    make_setter!(SetDecoding, "decoding");
+
     /// <https://html.spec.whatwg.org/multipage/#dom-image>
     fn Image(
         cx: &mut JSContext,
@@ -1665,9 +1683,9 @@ impl HTMLImageElementMethods<crate::DomTypeHolder> for HTMLImageElement {
     make_url_setter!(SetSrc, "src");
 
     // https://html.spec.whatwg.org/multipage/#dom-img-srcset
-    make_url_getter!(Srcset, "srcset");
+    make_usv_getter!(Srcset, "srcset");
     // https://html.spec.whatwg.org/multipage/#dom-img-src
-    make_url_setter!(SetSrcset, "srcset");
+    make_usv_setter!(SetSrcset, "srcset");
 
     // <https://html.spec.whatwg.org/multipage/#dom-img-sizes>
     make_getter!(Sizes, "sizes");

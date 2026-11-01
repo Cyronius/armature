@@ -301,6 +301,12 @@ impl HTMLMetaElementMethods<crate::DomTypeHolder> for HTMLMetaElement {
     // https://html.spec.whatwg.org/multipage/#dom-meta-content
     make_setter!(SetContent, "content");
 
+    // https://html.spec.whatwg.org/multipage/#dom-meta-media
+    make_getter!(Media, "media");
+
+    // https://html.spec.whatwg.org/multipage/#dom-meta-media
+    make_setter!(SetMedia, "media");
+
     // https://html.spec.whatwg.org/multipage/#dom-meta-httpequiv
     make_getter!(HttpEquiv, "http-equiv");
     // https://html.spec.whatwg.org/multipage/#dom-meta-httpequiv

@@ -15,14 +15,11 @@ HTMLBodyElement includes WindowEventHandlers;
 partial interface HTMLBodyElement {
   [CEReactions] attribute [LegacyNullToEmptyString] DOMString text;
 
-  // https://github.com/servo/servo/issues/8715
-  //[CEReactions, LegacyNullToEmptyString] attribute DOMString link;
+  [CEReactions] attribute [LegacyNullToEmptyString] DOMString link;
 
-  // https://github.com/servo/servo/issues/8716
-  //[CEReactions, LegacyNullToEmptyString] attribute DOMString vLink;
+  [CEReactions] attribute [LegacyNullToEmptyString] DOMString vLink;
 
-  // https://github.com/servo/servo/issues/8717
-  //[CEReactions, LegacyNullToEmptyString] attribute DOMString aLink;
+  [CEReactions] attribute [LegacyNullToEmptyString] DOMString aLink;
 
   [CEReactions] attribute [LegacyNullToEmptyString] DOMString bgColor;
   [CEReactions] attribute DOMString background;

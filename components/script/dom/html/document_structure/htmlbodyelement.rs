@@ -67,6 +67,24 @@ impl HTMLBodyElementMethods<crate::DomTypeHolder> for HTMLBodyElement {
     // https://html.spec.whatwg.org/multipage/#dom-body-text
     make_legacy_color_setter!(SetText, "text");
 
+    // https://html.spec.whatwg.org/multipage/#dom-body-link
+    make_getter!(Link, "link");
+
+    // https://html.spec.whatwg.org/multipage/#dom-body-link
+    make_legacy_color_setter!(SetLink, "link");
+
+    // https://html.spec.whatwg.org/multipage/#dom-body-vlink
+    make_getter!(VLink, "vlink");
+
+    // https://html.spec.whatwg.org/multipage/#dom-body-vlink
+    make_legacy_color_setter!(SetVLink, "vlink");
+
+    // https://html.spec.whatwg.org/multipage/#dom-body-alink
+    make_getter!(ALink, "alink");
+
+    // https://html.spec.whatwg.org/multipage/#dom-body-alink
+    make_legacy_color_setter!(SetALink, "alink");
+
     // https://html.spec.whatwg.org/multipage/#dom-body-background
     make_getter!(Background, "background");
 
@@ -137,9 +155,11 @@ impl VirtualMethods for HTMLBodyElement {
 
     fn parse_plain_attribute(&self, name: &LocalName, value: DOMString) -> AttrValue {
         match *name {
-            local_name!("bgcolor") | local_name!("text") => {
-                AttrValue::from_legacy_color(value.into())
-            },
+            local_name!("bgcolor") |
+            local_name!("text") |
+            local_name!("link") |
+            local_name!("vlink") |
+            local_name!("alink") => AttrValue::from_legacy_color(value.into()),
             _ => self
                 .super_type()
                 .unwrap()

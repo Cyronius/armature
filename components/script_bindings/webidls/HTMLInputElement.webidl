@@ -12,8 +12,8 @@ interface HTMLInputElement : HTMLElement {
   [CEReactions] attribute boolean alpha;
   [CEReactions]
            attribute DOMString alt;
-  // [CEReactions]
-  //         attribute DOMString autocomplete;
+  [CEReactions]
+          attribute DOMString autocomplete;
   [CEReactions]
            attribute boolean defaultChecked;
            attribute boolean checked;
@@ -115,7 +115,7 @@ interface HTMLInputElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLInputElement-partial
 partial interface HTMLInputElement {
-  //         attribute DOMString align;
+  [CEReactions] attribute DOMString align;
   [CEReactions] attribute DOMString useMap;
   [CEReactions] attribute unsigned long hspace;
   [CEReactions] attribute unsigned long vspace;

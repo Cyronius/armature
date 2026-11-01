@@ -64,6 +64,44 @@ impl HTMLTableCellElement {
 }
 
 impl HTMLTableCellElementMethods<crate::DomTypeHolder> for HTMLTableCellElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-headers>
+    make_getter!(Headers, "headers");
+    make_setter!(SetHeaders, "headers");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-abbr>
+    make_getter!(Abbr, "abbr");
+    make_setter!(SetAbbr, "abbr");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-align>
+    make_getter!(Align, "align");
+    make_setter!(SetAlign, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-axis>
+    make_getter!(Axis, "axis");
+    make_setter!(SetAxis, "axis");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-ch>
+    make_getter!(Ch, "char");
+    make_setter!(SetCh, "char");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-choff>
+    make_getter!(ChOff, "charoff");
+    make_setter!(SetChOff, "charoff");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-nowrap>
+    make_bool_getter!(NoWrap, "nowrap");
+    make_bool_setter!(SetNoWrap, "nowrap");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-valign>
+    make_getter!(VAlign, "valign");
+    make_setter!(SetVAlign, "valign");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-scope>
+    make_enumerated_getter!(Scope, "scope", "row" | "col" | "rowgroup" | "colgroup",);
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tdth-scope>
+    make_setter!(SetScope, "scope");
+
     // https://html.spec.whatwg.org/multipage/#dom-tdth-colspan
     make_uint_getter!(ColSpan, "colspan", DEFAULT_COLSPAN);
 

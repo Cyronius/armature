@@ -8,7 +8,7 @@ use js::rust::HandleObject;
 use script_bindings::codegen::GenericBindings::HTMLFrameElementBinding::HTMLFrameElement_Binding::HTMLFrameElementMethods;
 
 use crate::dom::bindings::root::DomRoot;
-use crate::dom::bindings::str::USVString;
+use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::document::Document;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::Node;
@@ -48,6 +48,48 @@ impl HTMLFrameElement {
 }
 
 impl HTMLFrameElementMethods<crate::DomTypeHolder> for HTMLFrameElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-name>
+    make_getter!(Name, "name");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-name>
+    make_atomic_setter!(SetName, "name");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-scrolling>
+    make_getter!(Scrolling, "scrolling");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-scrolling>
+    make_setter!(SetScrolling, "scrolling");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-src>
+    make_url_getter!(Src, "src");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-src>
+    make_url_setter!(SetSrc, "src");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-frameborder>
+    make_getter!(FrameBorder, "frameborder");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-frameborder>
+    make_setter!(SetFrameBorder, "frameborder");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-noresize>
+    make_bool_getter!(NoResize, "noresize");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-noresize>
+    make_bool_setter!(SetNoResize, "noresize");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-marginheight>
+    make_getter!(MarginHeight, "marginheight");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-marginheight>
+    make_setter!(SetMarginHeight, "marginheight");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-marginwidth>
+    make_getter!(MarginWidth, "marginwidth");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frame-marginwidth>
+    make_setter!(SetMarginWidth, "marginwidth");
+
     // https://html.spec.whatwg.org/multipage/#dom-frame-longdesc
     make_url_getter!(LongDesc, "longdesc");
 

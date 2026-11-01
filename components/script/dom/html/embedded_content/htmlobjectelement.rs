@@ -16,7 +16,7 @@ use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 use crate::dom::bindings::codegen::Bindings::HTMLObjectElementBinding::HTMLObjectElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{DomRoot, LayoutDom, MutNullableDom};
-use crate::dom::bindings::str::DOMString;
+use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::document::Document;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
@@ -90,6 +90,66 @@ impl ProcessDataURL for &HTMLObjectElement {
 }
 
 impl HTMLObjectElementMethods<crate::DomTypeHolder> for HTMLObjectElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-object-data>
+    make_url_getter!(Data, "data");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-data>
+    make_url_setter!(SetData, "data");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-name>
+    make_getter!(Name, "name");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-name>
+    make_atomic_setter!(SetName, "name");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-align>
+    make_getter!(Align, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-align>
+    make_setter!(SetAlign, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-archive>
+    make_getter!(Archive, "archive");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-archive>
+    make_setter!(SetArchive, "archive");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-code>
+    make_getter!(Code, "code");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-code>
+    make_setter!(SetCode, "code");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-declare>
+    make_bool_getter!(Declare, "declare");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-declare>
+    make_bool_setter!(SetDeclare, "declare");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-standby>
+    make_getter!(Standby, "standby");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-standby>
+    make_setter!(SetStandby, "standby");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-codebase>
+    make_url_getter!(CodeBase, "codebase");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-codebase>
+    make_url_setter!(SetCodeBase, "codebase");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-codetype>
+    make_getter!(CodeType, "codetype");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-codetype>
+    make_setter!(SetCodeType, "codetype");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-border>
+    make_getter!(Border, "border");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-object-border>
+    make_setter!(SetBorder, "border");
+
     // https://html.spec.whatwg.org/multipage/#dom-object-type
     make_getter!(Type, "type");
 

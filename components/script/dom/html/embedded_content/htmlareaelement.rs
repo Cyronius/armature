@@ -377,6 +377,48 @@ impl VirtualMethods for HTMLAreaElement {
 }
 
 impl HTMLAreaElementMethods<crate::DomTypeHolder> for HTMLAreaElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-area-alt>
+    make_getter!(Alt, "alt");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-alt>
+    make_setter!(SetAlt, "alt");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-coords>
+    make_getter!(Coords, "coords");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-coords>
+    make_setter!(SetCoords, "coords");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-shape>
+    make_getter!(Shape, "shape");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-shape>
+    make_setter!(SetShape, "shape");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-download>
+    make_getter!(Download, "download");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-download>
+    make_setter!(SetDownload, "download");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-ping>
+    make_usv_getter!(Ping, "ping");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-ping>
+    make_usv_setter!(SetPing, "ping");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-hreflang>
+    make_getter!(Hreflang, "hreflang");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-hreflang>
+    make_setter!(SetHreflang, "hreflang");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-type>
+    make_getter!(Type, "type");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-area-type>
+    make_setter!(SetType, "type");
+
     // https://html.spec.whatwg.org/multipage/#attr-hyperlink-target
     make_getter!(Target, "target");
 

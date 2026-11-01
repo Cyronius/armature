@@ -35,6 +35,7 @@ use crate::dom::bindings::error::ErrorResult;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
+use crate::dom::html::form_controls::autofill::idl_exposed_autofill_value;
 use crate::dom::bindings::str::DOMString;
 use crate::dom::characterdata::CharacterData;
 use crate::dom::document::Document;
@@ -661,6 +662,20 @@ impl HTMLSelectElement {
 }
 
 impl HTMLSelectElementMethods<crate::DomTypeHolder> for HTMLSelectElement {
+    /// <https://html.spec.whatwg.org/multipage/#dom-fe-autocomplete>
+    fn Autocomplete(&self) -> DOMString {
+        let element = self.upcast::<Element>();
+        idl_exposed_autofill_value(
+            element
+                .get_attribute_string_value(&local_name!("autocomplete"))
+                .as_deref(),
+            false,
+        )
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-fe-autocomplete>
+    make_setter!(SetAutocomplete, "autocomplete");
+
     /// <https://html.spec.whatwg.org/multipage/#dom-select-add>
     fn Add(
         &self,

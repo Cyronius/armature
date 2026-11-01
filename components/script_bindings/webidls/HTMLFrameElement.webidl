@@ -7,23 +7,23 @@
 interface HTMLFrameElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  // [CEReactions]
-  //          attribute DOMString name;
-  // [CEReactions]
-  //          attribute DOMString scrolling;
-  // [CEReactions]
-  //          attribute DOMString src;
-  // [CEReactions]
-  //          attribute DOMString frameBorder;
+  [CEReactions]
+           attribute DOMString name;
+  [CEReactions]
+           attribute DOMString scrolling;
+  [CEReactions]
+           attribute USVString src;
+  [CEReactions]
+           attribute DOMString frameBorder;
   [CEReactions]
   attribute USVString longDesc;
-  // [CEReactions]
-  //          attribute boolean noResize;
+  [CEReactions]
+           attribute boolean noResize;
   // readonly attribute Document? contentDocument;
   // readonly attribute WindowProxy? contentWindow;
 
-  // [CEReactions, LegacyNullToEmptyString]
-  // attribute DOMString marginHeight;
-  // [CEReactions, LegacyNullToEmptyString]
-  // attribute DOMString marginWidth;
+  [CEReactions]
+  attribute [LegacyNullToEmptyString] DOMString marginHeight;
+  [CEReactions]
+  attribute [LegacyNullToEmptyString] DOMString marginWidth;
 };

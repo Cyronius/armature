@@ -4384,7 +4384,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaAtomic(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-atomic"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-atomic"),
+            &["true", "false"],
+            None,
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaAtomic(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4392,7 +4398,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaAutoComplete(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-autocomplete"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-autocomplete"),
+            &["inline", "list", "both", "none"],
+            Some("none"),
+            Some("none"),
+            Some("none"),
+        )
     }
 
     fn SetAriaAutoComplete(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4416,7 +4428,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaBusy(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-busy"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-busy"),
+            &["true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaBusy(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4424,7 +4442,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaChecked(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-checked"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-checked"),
+            &["true", "false", "mixed"],
+            None,
+            None,
+            None,
+        )
     }
 
     fn SetAriaChecked(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4464,7 +4488,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaCurrent(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-current"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-current"),
+            &["page", "step", "location", "date", "time", "true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("true"),
+        )
     }
 
     fn SetAriaCurrent(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4480,7 +4510,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaDisabled(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-disabled"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-disabled"),
+            &["true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaDisabled(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4488,7 +4524,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaExpanded(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-expanded"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-expanded"),
+            &["true", "false"],
+            None,
+            None,
+            None,
+        )
     }
 
     fn SetAriaExpanded(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4496,7 +4538,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaHasPopup(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-haspopup"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-haspopup"),
+            &["true", "false", "menu", "dialog", "listbox", "tree", "grid"],
+            None,
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaHasPopup(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4504,7 +4552,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaHidden(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-hidden"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-hidden"),
+            &["true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaHidden(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4512,7 +4566,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaInvalid(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-invalid"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-invalid"),
+            &["true", "false", "spelling", "grammar"],
+            Some("false"),
+            Some("false"),
+            Some("true"),
+        )
     }
 
     fn SetAriaInvalid(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4544,7 +4604,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaLive(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-live"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-live"),
+            &["polite", "assertive", "off"],
+            Some("off"),
+            Some("off"),
+            Some("off"),
+        )
     }
 
     fn SetAriaLive(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4552,7 +4618,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaModal(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-modal"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-modal"),
+            &["true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaModal(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4560,7 +4632,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaMultiLine(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-multiline"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-multiline"),
+            &["true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaMultiLine(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4568,7 +4646,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaMultiSelectable(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-multiselectable"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-multiselectable"),
+            &["true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaMultiSelectable(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4576,7 +4660,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaOrientation(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-orientation"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-orientation"),
+            &["horizontal", "vertical"],
+            None,
+            None,
+            None,
+        )
     }
 
     fn SetAriaOrientation(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4600,7 +4690,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaPressed(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-pressed"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-pressed"),
+            &["true", "false", "mixed"],
+            None,
+            None,
+            None,
+        )
     }
 
     fn SetAriaPressed(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4608,7 +4704,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaReadOnly(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-readonly"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-readonly"),
+            &["true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaReadOnly(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4624,7 +4726,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaRequired(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-required"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-required"),
+            &["true", "false"],
+            Some("false"),
+            Some("false"),
+            Some("false"),
+        )
     }
 
     fn SetAriaRequired(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4672,7 +4780,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaSelected(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-selected"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-selected"),
+            &["true", "false"],
+            None,
+            None,
+            None,
+        )
     }
 
     fn SetAriaSelected(&self, cx: &mut JSContext, value: Option<DOMString>) {
@@ -4688,7 +4802,13 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     fn GetAriaSort(&self) -> Option<DOMString> {
-        self.get_nullable_string_attribute(&local_name!("aria-sort"))
+        self.get_enumerated_nullable_attribute(
+            &local_name!("aria-sort"),
+            &["ascending", "descending", "other", "none"],
+            Some("none"),
+            Some("none"),
+            Some("none"),
+        )
     }
 
     fn SetAriaSort(&self, cx: &mut JSContext, value: Option<DOMString>) {

@@ -30,6 +30,8 @@ interface HTMLImageElement : HTMLElement {
   readonly attribute USVString currentSrc;
   [CEReactions]
            attribute DOMString referrerPolicy;
+  [CEReactions]
+           attribute DOMString decoding;
 
   Promise<undefined> decode();
 
@@ -40,8 +42,8 @@ interface HTMLImageElement : HTMLElement {
 partial interface HTMLImageElement {
   [CEReactions]
            attribute DOMString name;
-  // [CEReactions]
-  //          attribute DOMString lowsrc;
+  [CEReactions]
+           attribute USVString lowsrc;
   [CEReactions]
            attribute DOMString align;
   [CEReactions]

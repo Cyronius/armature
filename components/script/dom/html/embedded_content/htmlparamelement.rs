@@ -6,7 +6,9 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use js::rust::HandleObject;
 
+use crate::dom::bindings::codegen::Bindings::HTMLParamElementBinding::HTMLParamElementMethods;
 use crate::dom::bindings::root::DomRoot;
+use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::Node;
@@ -43,4 +45,30 @@ impl HTMLParamElement {
             proto,
         )
     }
+}
+
+impl HTMLParamElementMethods<crate::DomTypeHolder> for HTMLParamElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-param-name>
+    make_getter!(Name, "name");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-param-name>
+    make_atomic_setter!(SetName, "name");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-param-value>
+    make_getter!(Value, "value");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-param-value>
+    make_setter!(SetValue, "value");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-param-type>
+    make_getter!(Type, "type");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-param-type>
+    make_setter!(SetType, "type");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-param-valuetype>
+    make_getter!(ValueType, "valuetype");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-param-valuetype>
+    make_setter!(SetValueType, "valuetype");
 }

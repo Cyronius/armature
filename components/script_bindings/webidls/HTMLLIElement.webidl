@@ -15,6 +15,6 @@ interface HTMLLIElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLLIElement-partial
 partial interface HTMLLIElement {
-  // [CEReactions]
-  //         attribute DOMString type;
+  [CEReactions]
+          attribute DOMString type;
 };

@@ -10,7 +10,7 @@ use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 use crate::dom::Element;
 use crate::dom::bindings::codegen::Bindings::HTMLEmbedElementBinding::HTMLEmbedElementMethods;
 use crate::dom::bindings::root::{DomRoot, LayoutDom};
-use crate::dom::bindings::str::DOMString;
+use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::document::Document;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::html::htmlelement::HTMLElement;
@@ -53,6 +53,30 @@ impl HTMLEmbedElement {
 }
 
 impl HTMLEmbedElementMethods<crate::DomTypeHolder> for HTMLEmbedElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-embed-src>
+    make_url_getter!(Src, "src");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-embed-src>
+    make_url_setter!(SetSrc, "src");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-embed-type>
+    make_getter!(Type, "type");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-embed-type>
+    make_setter!(SetType, "type");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-embed-align>
+    make_getter!(Align, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-embed-align>
+    make_setter!(SetAlign, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-embed-name>
+    make_getter!(Name, "name");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-embed-name>
+    make_atomic_setter!(SetName, "name");
+
     // <https://html.spec.whatwg.org/multipage/#dom-embed-width>
     make_getter!(Width, "width");
     // <https://html.spec.whatwg.org/multipage/#dom-embed-width>

@@ -388,6 +388,18 @@ impl HTMLVideoElement {
 }
 
 impl HTMLVideoElementMethods<crate::DomTypeHolder> for HTMLVideoElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-video-playsinline>
+    fn PlaysInline(&self) -> bool {
+        self.upcast::<Element>()
+            .has_attribute(&LocalName::from("playsinline"))
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-video-playsinline>
+    fn SetPlaysInline(&self, cx: &mut JSContext, value: bool) {
+        self.upcast::<Element>()
+            .set_bool_attribute(cx, &LocalName::from("playsinline"), value)
+    }
+
     // <https://html.spec.whatwg.org/multipage/#dom-video-width>
     make_dimension_uint_getter!(Width, "width");
 

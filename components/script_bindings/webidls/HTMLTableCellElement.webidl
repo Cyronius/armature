@@ -11,34 +11,35 @@ interface HTMLTableCellElement : HTMLElement {
            attribute unsigned long colSpan;
   [CEReactions]
            attribute unsigned long rowSpan;
-  // [CEReactions]
-  //          attribute DOMString headers;
+  [CEReactions]
+           attribute DOMString headers;
   readonly attribute long cellIndex;
 
-  // [CEReactions]
-  //          attribute DOMString scope; // only conforming for th elements
-  // [CEReactions]
-  //          attribute DOMString abbr;  // only conforming for th elements
+  [CEReactions]
+           attribute DOMString scope;
+  [CEReactions]
+           attribute DOMString abbr;
 
   // also has obsolete members
 };
 
 // https://html.spec.whatwg.org/multipage/#HTMLTableCellElement-partial
 partial interface HTMLTableCellElement {
-  // [CEReactions]
-  //          attribute DOMString align;
-  // [CEReactions]
-  //          attribute DOMString axis;
+  [CEReactions]
+           attribute DOMString align;
+  [CEReactions]
+           attribute DOMString axis;
   [CEReactions] attribute DOMString height;
   [CEReactions] attribute DOMString width;
 
-  //          attribute DOMString ch;
-  // [CEReactions]
-  //          attribute DOMString chOff;
-  // [CEReactions]
-  //          attribute boolean noWrap;
-  // [CEReactions]
-  //          attribute DOMString vAlign;
+  [CEReactions]
+           attribute DOMString ch;
+  [CEReactions]
+           attribute DOMString chOff;
+  [CEReactions]
+           attribute boolean noWrap;
+  [CEReactions]
+           attribute DOMString vAlign;
 
   [CEReactions]
   attribute [LegacyNullToEmptyString] DOMString bgColor;

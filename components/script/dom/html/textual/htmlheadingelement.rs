@@ -6,7 +6,9 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use js::rust::HandleObject;
 
+use crate::dom::bindings::codegen::Bindings::HTMLHeadingElementBinding::HTMLHeadingElementMethods;
 use crate::dom::bindings::root::DomRoot;
+use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::Node;
@@ -57,4 +59,12 @@ impl HTMLHeadingElement {
             proto,
         )
     }
+}
+
+impl HTMLHeadingElementMethods<crate::DomTypeHolder> for HTMLHeadingElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-hx-align>
+    make_getter!(Align, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-hx-align>
+    make_setter!(SetAlign, "align");
 }

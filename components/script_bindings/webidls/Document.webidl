@@ -168,17 +168,14 @@ partial interface Document {
   [CEReactions]
   attribute [LegacyNullToEmptyString] DOMString fgColor;
 
-  // https://github.com/servo/servo/issues/8715
-  // [CEReactions, LegacyNullToEmptyString]
-  // attribute DOMString linkColor;
+  [CEReactions]
+  attribute [LegacyNullToEmptyString] DOMString linkColor;
 
-  // https://github.com/servo/servo/issues/8716
-  // [CEReactions, LegacyNullToEmptyString]
-  // attribute DOMString vlinkColor;
+  [CEReactions]
+  attribute [LegacyNullToEmptyString] DOMString vlinkColor;
 
-  // https://github.com/servo/servo/issues/8717
-  // [CEReactions, LegacyNullToEmptyString]
-  // attribute DOMString alinkColor;
+  [CEReactions]
+  attribute [LegacyNullToEmptyString] DOMString alinkColor;
 
   [CEReactions]
   attribute [LegacyNullToEmptyString] DOMString bgColor;

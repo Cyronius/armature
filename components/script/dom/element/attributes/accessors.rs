@@ -7,6 +7,7 @@ use std::sync::LazyLock;
 use html5ever::{LocalName, Namespace, local_name, ns};
 use js::context::JSContext;
 use servo_arc::Arc as ServoArc;
+use servo_config::pref;
 use style::attr::AttrValue;
 use stylo_atoms::Atom;
 
@@ -238,6 +239,36 @@ impl Element {
         } else {
             None
         }
+    }
+
+    /// Used for the reflection of enumerated ARIA attributes, for which the getter returns one of
+    /// the `keywords` (matched ASCII case-insensitively), or else the state given for an absent
+    /// attribute (`missing`), an empty attribute value (`empty`) or any other value (`invalid`).
+    /// A state of `None` makes the IDL attribute return `null`.
+    /// <https://w3c.github.io/aria/#ARIAMixin>
+    pub(crate) fn get_enumerated_nullable_attribute(
+        &self,
+        local_name: &LocalName,
+        keywords: &[&'static str],
+        missing: Option<&'static str>,
+        empty: Option<&'static str>,
+        invalid: Option<&'static str>,
+    ) -> Option<DOMString> {
+        // The enumerated reflection is only specified by a pending change to ARIA. Until that lands,
+        // these attributes keep reflecting the raw content attribute.
+        if !pref!(dom_aria_enumerated_reflection_enabled) {
+            return self.get_nullable_string_attribute(local_name);
+        }
+
+        let state = match self.get_attribute_string_value(local_name) {
+            None => missing,
+            Some(value) => keywords
+                .iter()
+                .copied()
+                .find(|keyword| value.eq_ignore_ascii_case(keyword))
+                .or(if value.is_empty() { empty } else { invalid }),
+        };
+        state.map(DOMString::from_static)
     }
 
     /// Used for string attribute reflections where setting `null`/`undefined` removes the

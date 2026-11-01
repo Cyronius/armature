@@ -4,6 +4,7 @@
 
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix, local_name};
+use js::context::JSContext;
 use js::rust::HandleObject;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 
@@ -17,6 +18,10 @@ use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
+use crate::dom::values::UNSIGNED_LONG_MAX;
+
+const DEFAULT_SCROLLAMOUNT: u32 = 6;
+const DEFAULT_SCROLLDELAY: u32 = 85;
 
 #[dom_struct]
 pub(crate) struct HTMLMarqueeElement {
@@ -47,6 +52,76 @@ impl HTMLMarqueeElement {
 }
 
 impl HTMLMarqueeElementMethods<crate::DomTypeHolder> for HTMLMarqueeElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-behavior>
+    fn Behavior(&self) -> DOMString {
+        let value = self
+            .upcast::<Element>()
+            .get_string_attribute(&LocalName::from("behavior"));
+        match &*value.str().to_ascii_lowercase() {
+            keyword @ ("scroll" | "slide" | "alternate") => DOMString::from(keyword),
+            _ => DOMString::from_static("scroll"),
+        }
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-behavior>
+    fn SetBehavior(&self, cx: &mut JSContext, value: DOMString) {
+        self.upcast::<Element>()
+            .set_string_attribute(cx, &LocalName::from("behavior"), value)
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-bgcolor>
+    make_getter!(BgColor, "bgcolor");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-bgcolor>
+    make_setter!(SetBgColor, "bgcolor");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-direction>
+    make_enumerated_getter!(
+        Direction,
+        "direction",
+        "up" | "right" | "down" | "left",
+        missing => "left",
+        invalid => "left"
+    );
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-direction>
+    make_setter!(SetDirection, "direction");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-scrollamount>
+    fn ScrollAmount(&self) -> u32 {
+        self.upcast::<Element>()
+            .get_uint_attribute(&LocalName::from("scrollamount"), DEFAULT_SCROLLAMOUNT)
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-scrollamount>
+    fn SetScrollAmount(&self, cx: &mut JSContext, value: u32) {
+        let value = if value > UNSIGNED_LONG_MAX {
+            DEFAULT_SCROLLAMOUNT
+        } else {
+            value
+        };
+        self.upcast::<Element>()
+            .set_attribute(cx, &LocalName::from("scrollamount"), value.into())
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-scrolldelay>
+    make_uint_getter!(ScrollDelay, "scrolldelay", DEFAULT_SCROLLDELAY);
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-scrolldelay>
+    make_uint_setter!(SetScrollDelay, "scrolldelay", DEFAULT_SCROLLDELAY);
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-truespeed>
+    fn TrueSpeed(&self) -> bool {
+        self.upcast::<Element>()
+            .has_attribute(&LocalName::from("truespeed"))
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-marquee-truespeed>
+    fn SetTrueSpeed(&self, cx: &mut JSContext, value: bool) {
+        self.upcast::<Element>()
+            .set_bool_attribute(cx, &LocalName::from("truespeed"), value)
+    }
+
     // <https://html.spec.whatwg.org/multipage/#dom-marquee-width>
     make_getter!(Width, "width");
     // <https://html.spec.whatwg.org/multipage/#dom-marquee-width>
@@ -94,6 +169,10 @@ impl VirtualMethods for HTMLMarqueeElement {
             local_name!("height") |
             local_name!("hspace") |
             local_name!("vspace") => AttrValue::from_dimension(value.into()),
+            local_name!("scrolldelay") => AttrValue::from_u32(value.into(), DEFAULT_SCROLLDELAY),
+            _ if &**name == "scrollamount" => {
+                AttrValue::from_u32(value.into(), DEFAULT_SCROLLAMOUNT)
+            },
             _ => self
                 .super_type()
                 .unwrap()

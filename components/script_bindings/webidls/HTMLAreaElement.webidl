@@ -7,23 +7,26 @@
 interface HTMLAreaElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  // [CEReactions]
-  //         attribute DOMString alt;
-  // [CEReactions]
-  //         attribute DOMString coords;
-  // [CEReactions]
-  //         attribute DOMString shape;
+  [CEReactions]
+          attribute DOMString alt;
+  [CEReactions]
+          attribute DOMString coords;
+  [CEReactions]
+          attribute DOMString shape;
   [CEReactions]
              attribute DOMString target;
-  // [CEReactions]
-  //         attribute DOMString download;
-  // [CEReactions]
-  //         attribute USVString ping;
+  [CEReactions]
+          attribute DOMString download;
+  [CEReactions]
+          attribute USVString ping;
   [CEReactions]
              attribute DOMString rel;
   [SameObject, PutForwards=value] readonly attribute DOMTokenList relList;
   [CEReactions] attribute DOMString referrerPolicy;
-  // hreflang and type are not reflected
+  [CEReactions]
+          attribute DOMString hreflang;
+  [CEReactions]
+          attribute DOMString type;
 };
 HTMLAreaElement includes HTMLHyperlinkElementUtils;
 

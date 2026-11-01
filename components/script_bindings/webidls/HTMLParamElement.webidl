@@ -7,18 +7,18 @@
 interface HTMLParamElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  // [CEReactions]
-  //         attribute DOMString name;
-  // [CEReactions]
-  //         attribute DOMString value;
+  [CEReactions]
+          attribute DOMString name;
+  [CEReactions]
+          attribute DOMString value;
 
   // also has obsolete members
 };
 
 // https://html.spec.whatwg.org/multipage/#HTMLParamElement-partial
 partial interface HTMLParamElement {
-  // [CEReactions]
-  //         attribute DOMString type;
-  // [CEReactions]
-  //         attribute DOMString valueType;
+  [CEReactions]
+          attribute DOMString type;
+  [CEReactions]
+          attribute DOMString valueType;
 };

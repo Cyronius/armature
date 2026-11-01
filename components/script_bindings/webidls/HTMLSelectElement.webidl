@@ -11,6 +11,8 @@ interface HTMLSelectElement : HTMLElement {
            attribute boolean disabled;
   readonly attribute HTMLFormElement? form;
   [CEReactions]
+           attribute DOMString autocomplete;
+  [CEReactions]
            attribute boolean multiple;
   [CEReactions]
            attribute DOMString name;

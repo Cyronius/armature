@@ -236,10 +236,10 @@ impl HTMLSourceElementMethods<crate::DomTypeHolder> for HTMLSourceElement {
     make_setter!(SetType, "type");
 
     // https://html.spec.whatwg.org/multipage/#dom-source-srcset
-    make_url_getter!(Srcset, "srcset");
+    make_usv_getter!(Srcset, "srcset");
 
     // https://html.spec.whatwg.org/multipage/#dom-source-srcset
-    make_url_setter!(SetSrcset, "srcset");
+    make_usv_setter!(SetSrcset, "srcset");
 
     // https://html.spec.whatwg.org/multipage/#dom-source-sizes
     make_getter!(Sizes, "sizes");

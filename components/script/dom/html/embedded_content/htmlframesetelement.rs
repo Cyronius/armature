@@ -11,6 +11,7 @@ use crate::dom::bindings::codegen::Bindings::HTMLFrameSetElementBinding::HTMLFra
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::DomRoot;
+use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::element::AttributeMutation;
 use crate::dom::element::attributes::storage::AttrRef;
@@ -55,6 +56,18 @@ impl HTMLFrameSetElement {
 }
 
 impl HTMLFrameSetElementMethods<crate::DomTypeHolder> for HTMLFrameSetElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-frameset-cols>
+    make_getter!(Cols, "cols");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frameset-cols>
+    make_setter!(SetCols, "cols");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frameset-rows>
+    make_getter!(Rows, "rows");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-frameset-rows>
+    make_setter!(SetRows, "rows");
+
     // https://html.spec.whatwg.org/multipage/#windoweventhandlers
     window_event_handlers!(ForwardToWindow);
 }

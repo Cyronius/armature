@@ -23,6 +23,7 @@ interface HTMLMediaElement : HTMLElement {
   const unsigned short NETWORK_NO_SOURCE = 3;
   readonly attribute unsigned short networkState;
   [CEReactions] attribute DOMString preload;
+  [CEReactions] attribute DOMString loading;
   readonly attribute TimeRanges buffered;
   undefined load();
   CanPlayTypeResult canPlayType(DOMString type);

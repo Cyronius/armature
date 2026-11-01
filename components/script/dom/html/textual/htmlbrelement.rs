@@ -6,7 +6,9 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use js::rust::HandleObject;
 
+use crate::dom::bindings::codegen::Bindings::HTMLBRElementBinding::HTMLBRElementMethods;
 use crate::dom::bindings::root::DomRoot;
+use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::Node;
@@ -41,4 +43,12 @@ impl HTMLBRElement {
             proto,
         )
     }
+}
+
+impl HTMLBRElementMethods<crate::DomTypeHolder> for HTMLBRElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-br-clear>
+    make_getter!(Clear, "clear");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-br-clear>
+    make_setter!(SetClear, "clear");
 }
