@@ -7,14 +7,14 @@
 interface HTMLObjectElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  // [CEReactions]
-  //         attribute DOMString data;
+  [CEReactions]
+          attribute USVString data;
   [CEReactions]
            attribute DOMString type;
   // [CEReactions]
   //         attribute boolean typeMustMatch;
-  // [CEReactions]
-  //         attribute DOMString name;
+  [CEReactions]
+          attribute DOMString name;
   readonly attribute HTMLFormElement? form;
   [CEReactions]
           attribute DOMString width;
@@ -37,17 +37,17 @@ interface HTMLObjectElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLObjectElement-partial
 partial interface HTMLObjectElement {
-  //         attribute DOMString align;
-  //         attribute DOMString archive;
-  //         attribute DOMString code;
-  //         attribute boolean declare;
+  [CEReactions] attribute DOMString align;
+  [CEReactions] attribute DOMString archive;
+  [CEReactions] attribute DOMString code;
+  [CEReactions] attribute boolean declare;
   [CEReactions] attribute unsigned long hspace;
-  //         attribute DOMString standby;
+  [CEReactions] attribute DOMString standby;
   [CEReactions] attribute unsigned long vspace;
-  //         attribute DOMString codeBase;
-  //         attribute DOMString codeType;
+  [CEReactions] attribute USVString codeBase;
+  [CEReactions] attribute DOMString codeType;
   [CEReactions]
   attribute DOMString useMap;
 
-  //[LegacyNullToEmptyString] attribute DOMString border;
+  [CEReactions] attribute [LegacyNullToEmptyString] DOMString border;
 };

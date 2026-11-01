@@ -932,6 +932,30 @@ impl LayoutDom<'_, HTMLIFrameElement> {
 }
 
 impl HTMLIFrameElementMethods<crate::DomTypeHolder> for HTMLIFrameElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-iframe-align>
+    make_getter!(Align, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-iframe-align>
+    make_setter!(SetAlign, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-iframe-scrolling>
+    make_getter!(Scrolling, "scrolling");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-iframe-scrolling>
+    make_setter!(SetScrolling, "scrolling");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-iframe-marginheight>
+    make_getter!(MarginHeight, "marginheight");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-iframe-marginheight>
+    make_setter!(SetMarginHeight, "marginheight");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-iframe-marginwidth>
+    make_getter!(MarginWidth, "marginwidth");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-iframe-marginwidth>
+    make_setter!(SetMarginWidth, "marginwidth");
+
     // https://html.spec.whatwg.org/multipage/#dom-iframe-src
     make_url_getter!(Src, "src");
 

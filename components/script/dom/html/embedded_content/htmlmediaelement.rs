@@ -3279,6 +3279,18 @@ impl HTMLMediaElement {
 }
 
 impl HTMLMediaElementMethods<crate::DomTypeHolder> for HTMLMediaElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-media-loading>
+    make_enumerated_getter!(
+        Loading,
+        "loading",
+        "lazy" | "eager",
+        missing => "eager",
+        invalid => "eager"
+    );
+
+    // <https://html.spec.whatwg.org/multipage/#dom-media-loading>
+    make_setter!(SetLoading, "loading");
+
     /// <https://html.spec.whatwg.org/multipage/#dom-media-networkstate>
     fn NetworkState(&self) -> u16 {
         self.network_state.get() as u16

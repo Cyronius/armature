@@ -12,6 +12,7 @@ interface HTMLVideoElement : HTMLMediaElement {
   readonly attribute unsigned long videoWidth;
   readonly attribute unsigned long videoHeight;
   [CEReactions] attribute USVString poster;
+  [CEReactions] attribute boolean playsInline;
 };
 
 partial interface HTMLVideoElement {

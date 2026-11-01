@@ -7,10 +7,10 @@
 interface HTMLEmbedElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  // [CEReactions]
-  //         attribute DOMString src;
-  // [CEReactions]
-  //         attribute DOMString type;
+  [CEReactions]
+          attribute USVString src;
+  [CEReactions]
+          attribute DOMString type;
   [CEReactions]
           attribute DOMString width;
   [CEReactions]
@@ -22,10 +22,10 @@ interface HTMLEmbedElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLEmbedElement-partial
 partial interface HTMLEmbedElement {
-  // [CEReactions]
-  //         attribute DOMString align;
-  // [CEReactions]
-  //         attribute DOMString name;
+  [CEReactions]
+          attribute DOMString align;
+  [CEReactions]
+          attribute DOMString name;
   [CEReactions] attribute unsigned long hspace;
   [CEReactions] attribute unsigned long vspace;
 };

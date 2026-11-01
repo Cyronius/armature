@@ -26,17 +26,17 @@ interface HTMLIFrameElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLIFrameElement-partial
 partial interface HTMLIFrameElement {
-  // [CEReactions]
-  //         attribute DOMString align;
-  // [CEReactions]
-  //         attribute DOMString scrolling;
+  [CEReactions]
+           attribute DOMString align;
+  [CEReactions]
+           attribute DOMString scrolling;
   [CEReactions]
            attribute DOMString frameBorder;
   [CEReactions]
   attribute USVString longDesc;
 
-  // [CEReactions, LegacyNullToEmptyString]
-  // attribute DOMString marginHeight;
-  // [CEReactions, LegacyNullToEmptyString]
-  // attribute DOMString marginWidth;
+  [CEReactions]
+  attribute [LegacyNullToEmptyString] DOMString marginHeight;
+  [CEReactions]
+  attribute [LegacyNullToEmptyString] DOMString marginWidth;
 };
