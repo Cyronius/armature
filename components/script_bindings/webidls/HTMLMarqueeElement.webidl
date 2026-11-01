@@ -7,15 +7,15 @@
 interface HTMLMarqueeElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  // [CEReactions, Reflect] attribute DOMString behavior;
-  // [CEReactions, Reflect] attribute DOMString bgColor;
-  // [CEReactions, Reflect] attribute DOMString direction;
+  [CEReactions] attribute DOMString behavior;
+  [CEReactions] attribute DOMString bgColor;
+  [CEReactions] attribute DOMString direction;
   [CEReactions] attribute DOMString height;
   [CEReactions] attribute unsigned long hspace;
   // [CEReactions] attribute long loop;
-  // [CEReactions, Reflect, ReflectDefault=6] attribute unsigned long scrollAmount;
-  // [CEReactions, Reflect, ReflectDefault=85] attribute unsigned long scrollDelay;
-  // [CEReactions, Reflect] attribute boolean trueSpeed;
+  [CEReactions] attribute unsigned long scrollAmount;
+  [CEReactions] attribute unsigned long scrollDelay;
+  [CEReactions] attribute boolean trueSpeed;
   [CEReactions] attribute unsigned long vspace;
   [CEReactions] attribute DOMString width;
 

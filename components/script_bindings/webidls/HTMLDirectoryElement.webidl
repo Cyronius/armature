@@ -7,6 +7,6 @@
 interface HTMLDirectoryElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  // [CEReactions]
-  //         attribute boolean compact;
+  [CEReactions]
+          attribute boolean compact;
 };
