@@ -127,6 +127,8 @@ pub struct Preferences {
     pub dom_bluetooth_enabled: bool,
     pub dom_bluetooth_testing_enabled: bool,
     pub dom_allow_scripts_to_close_windows: bool,
+    // feature: Enumerated ARIA reflection | https://github.com/w3c/aria/pull/2484
+    pub dom_aria_enumerated_reflection_enabled: bool,
     // feature: Media Capture and Streams API | #26861 | Web/API/Media_Capture_and_Streams_API
     pub dom_canvas_capture_enabled: bool,
     pub dom_canvas_text_enabled: bool,
@@ -438,6 +440,7 @@ impl Preferences {
             dom_adoptedstylesheet_enabled: false,
             dom_allow_preloading_module_descendants: false,
             dom_allow_scripts_to_close_windows: false,
+            dom_aria_enumerated_reflection_enabled: false,
             dom_async_clipboard_enabled: false,
             dom_bluetooth_enabled: false,
             dom_bluetooth_testing_enabled: false,
