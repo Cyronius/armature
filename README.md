@@ -1,8 +1,9 @@
-# Armature: an AI-assisted Servo fork
+# Armature: Servo, accelerated with AI
 
-Armature is an unofficial, AI-assisted fork of [Servo](https://github.com/servo/servo). Its aim is to raise web-platform
-conformance (as measured by [web-platform-tests](https://web-platform-tests.org/)) by implementing missing features
-with the help of an AI coding assistant (Claude Code). It is **not** affiliated with or endorsed by the Servo project.
+Armature is an unofficial fork of [Servo](https://github.com/servo/servo) that uses AI to accelerate development of
+the engine. It is built with an AI coding assistant (Claude Code), and progress is measured by
+[web-platform-tests](https://web-platform-tests.org/) conformance. It is **not** affiliated with or endorsed by the
+Servo project.
 
 Servo's [AI usage policy](https://book.servo.org/policy/ai-usage.html) does not accept AI-generated contributions,
 so this work is not intended for, and has not been sent to, upstream Servo. The `Co-Authored-By` trailers on the
