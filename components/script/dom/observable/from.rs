@@ -15,7 +15,7 @@ use js::rust::{HandleValue, MutableHandleValue};
 
 use crate::dom::abortsignal::AbortAlgorithm;
 use crate::dom::bindings::conversions::root_from_handlevalue;
-use crate::dom::bindings::error::{Error, ErrorToJsval, Fallible};
+use crate::dom::bindings::error::{Error, ErrorResult, ErrorToJsval, Fallible};
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::globalscope::GlobalScope;
@@ -100,7 +100,7 @@ pub(crate) fn convert_to_observable(
 }
 
 /// Reports the exception that `error` stands for to the global of the current realm.
-fn report_error(cx: &mut CurrentRealm, error: Error) {
+pub(crate) fn report_error(cx: &mut CurrentRealm, error: Error) {
     let global = GlobalScope::from_current_realm(cx);
     rooted!(&in(cx) let mut exception = UndefinedValue());
     error.to_jsval(cx, &global, exception.handle_mut());
@@ -459,23 +459,24 @@ impl Callback for PromiseRejected {
 ///
 /// <https://wicg.github.io/observable/#from-iterable-conversion> step 6, and
 /// <https://wicg.github.io/observable/#from-async-iterable-conversion> step 5.
-pub(crate) fn close_iterator(cx: &mut CurrentRealm, record: &IteratorRecord, reason: HandleValue) {
+pub(crate) fn close_iterator(
+    cx: &mut CurrentRealm,
+    record: &IteratorRecord,
+    reason: HandleValue,
+) -> ErrorResult {
     // Note: There is nothing to close when the iterator is exhausted, or threw. The WPT test
     // "Abort after complete does NOT call IteratorRecord#return()" depends on this.
     if record.is_done() {
-        return;
+        return Ok(());
     }
     record.set_done();
 
     match record.kind() {
         IteratorKind::Sync => {
             // Run IteratorClose(iteratorRecord, NormalCompletion(UNUSED)).
-            // Note: The spec propagates an exception from the method out of the `abort()` call
-            // that this runs in. As signaling abort is not fallible here, the exception is
-            // reported.
-            if let Err(error) = iterator_close(cx, record) {
-                report_error(cx, error);
-            }
+            // Note: An exception from the method propagates out of the `abort()` call that this
+            // runs in.
+            iterator_close(cx, record)?;
         },
         IteratorKind::Async => {
             // Run AsyncIteratorClose(iteratorRecord, NormalCompletion(abort reason)).
@@ -503,6 +504,7 @@ pub(crate) fn close_iterator(cx: &mut CurrentRealm, record: &IteratorRecord, rea
             }
         },
     }
+    Ok(())
 }
 
 #[derive(JSTraceable, MallocSizeOf)]

@@ -19,11 +19,12 @@ use crate::dom::abortsignal::AbortSignal;
 use crate::dom::bindings::codegen::Bindings::ObservableBinding::ObservableSubscriptionCallback;
 use crate::dom::bindings::codegen::Bindings::SubscriberBinding::SubscriberMethods;
 use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
-use crate::dom::bindings::error::{Error, ErrorToJsval};
+use crate::dom::bindings::error::{Error, ErrorResult, ErrorToJsval};
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::trace::JSTraceable;
 use crate::dom::globalscope::GlobalScope;
+use crate::dom::observable::from::report_error;
 use crate::dom::observable::observable::is_inactive_document;
 
 /// The steps of an [internal observer].
@@ -208,7 +209,11 @@ impl Subscriber {
         // Step 3. Close this.
         // Note: The WPT test "Subscriber#error() value is stored as Subscriber's AbortSignal's
         // reason" expects the error to be the signal's reason, as in Chromium.
-        self.close(cx, error);
+        // Note: The exception of an abort algorithm cannot be rethrown to the caller of this,
+        // so it is reported.
+        if let Err(exception) = self.close(cx, error) {
+            report_error(cx, exception);
+        }
 
         // Step 4. Run error steps with error for each internal observer in a copy of this's
         // internal observers.
@@ -228,7 +233,11 @@ impl Subscriber {
         }
 
         // Step 3. Close this.
-        self.close(cx, HandleValue::undefined());
+        // Note: The exception of an abort algorithm cannot be rethrown to the caller of this,
+        // so it is reported.
+        if let Err(exception) = self.close(cx, HandleValue::undefined()) {
+            report_error(cx, exception);
+        }
 
         // Step 4. Run complete steps for each internal observer in a copy of this's internal
         // observers.
@@ -261,11 +270,14 @@ impl Subscriber {
 
     /// <https://wicg.github.io/observable/#close-a-subscription>
     #[cfg_attr(crown, expect(crown::unrooted_must_root))]
-    pub(crate) fn close(&self, cx: &mut CurrentRealm, reason: HandleValue) {
+    ///
+    /// Returns the exception that an abort algorithm of the subscription controller's signal
+    /// threw, if any. The teardowns do not run then, as the specification does not catch it.
+    pub(crate) fn close(&self, cx: &mut CurrentRealm, reason: HandleValue) -> ErrorResult {
         // Step 1. If subscriber is not active, then return.
         // Note: This also guards against re-entrancy.
         if !self.is_active() {
-            return;
+            return Ok(());
         }
 
         // Step 2. Set subscriber's active boolean to false.
@@ -273,7 +285,7 @@ impl Subscriber {
 
         // Step 3. Signal abort on subscriber's subscription controller with reason, if it is
         // given.
-        self.signal.signal_abort(cx, reason);
+        self.signal.try_signal_abort(cx, reason)?;
 
         // Step 4. For each teardown of subscriber's teardown callbacks sorted in reverse
         // insertion order:
@@ -285,12 +297,13 @@ impl Subscriber {
             // Step 4.1. If subscriber's relevant global object is a Window object, and its
             // associated Document is not fully active, then abort these steps.
             if is_inactive_document(&self.global()) {
-                return;
+                return Ok(());
             }
 
             // Step 4.2. Invoke teardown.
             let _ = teardown.Call__(cx, ExceptionHandling::Report);
         }
+        Ok(())
     }
 }
 

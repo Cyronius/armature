@@ -23,12 +23,12 @@ use crate::dom::bindings::codegen::Bindings::ObservableBinding::{
 };
 use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
-use crate::dom::bindings::error::Fallible;
+use crate::dom::bindings::error::{ErrorResult, Fallible};
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::trace::JSTraceable;
 use crate::dom::globalscope::GlobalScope;
-use crate::dom::observable::from::{close_iterator, convert_to_observable};
+use crate::dom::observable::from::{close_iterator, convert_to_observable, report_error};
 use crate::dom::observable::higher_order;
 use crate::dom::observable::iteration::IteratorRecord;
 use crate::dom::observable::operators::{self, InspectAbortState};
@@ -98,7 +98,7 @@ pub(crate) enum ObservableAbortAlgorithm {
 }
 
 impl ObservableAbortAlgorithm {
-    pub(crate) fn run(&self, cx: &mut CurrentRealm, reason: HandleValue) {
+    pub(crate) fn run(&self, cx: &mut CurrentRealm, reason: HandleValue) -> ErrorResult {
         match self {
             ObservableAbortAlgorithm::RemoveObserver {
                 subscriber,
@@ -106,7 +106,7 @@ impl ObservableAbortAlgorithm {
             } => {
                 // If subscriber is not active, then return.
                 if !subscriber.is_active() {
-                    return;
+                    return Ok(());
                 }
 
                 // Remove internal observer from subscriber's internal observers.
@@ -115,13 +115,16 @@ impl ObservableAbortAlgorithm {
                 // If subscriber's internal observers is empty, then close subscriber with the
                 // signal's abort reason.
                 if !subscriber.has_internal_observers() {
-                    subscriber.close(cx, reason);
+                    return subscriber.close(cx, reason);
                 }
             },
             ObservableAbortAlgorithm::InspectAbort(state) => state.run(cx, reason),
             ObservableAbortAlgorithm::RejectPromise(promise) => promise.reject(cx, reason),
-            ObservableAbortAlgorithm::CloseIterator(record) => close_iterator(cx, record, reason),
+            ObservableAbortAlgorithm::CloseIterator(record) => {
+                return close_iterator(cx, record, reason);
+            },
         }
+        Ok(())
     }
 }
 
@@ -230,7 +233,9 @@ impl Observable {
                 // Step 4.1. If it is aborted, then close subscriber with the signal's reason.
                 rooted!(&in(cx) let mut reason = js::jsval::UndefinedValue());
                 signal.Reason(reason.handle_mut());
-                subscriber.close(cx, reason.handle());
+                if let Err(error) = subscriber.close(cx, reason.handle()) {
+                    report_error(cx, error);
+                }
             } else {
                 // Step 4.2. Otherwise, add the algorithm that removes the observer.
                 signal.add(&AbortAlgorithm::Observable(

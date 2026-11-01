@@ -23,7 +23,7 @@ use script_bindings::weakref::WeakRef;
 use crate::dom::bindings::codegen::Bindings::AbortSignalBinding::AbortSignalMethods;
 use crate::dom::bindings::codegen::Bindings::EventListenerBinding::EventListener;
 use crate::dom::bindings::codegen::Bindings::EventTargetBinding::EventListenerOptions;
-use crate::dom::bindings::error::{Error, ErrorToJsval, Fallible};
+use crate::dom::bindings::error::{Error, ErrorResult, ErrorToJsval, Fallible};
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
@@ -32,6 +32,7 @@ use crate::dom::eventtarget::EventTarget;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::internalclosewatcher::InternalCloseWatcher;
 use crate::dom::observable::ObservableAbortAlgorithm;
+use crate::dom::observable::from::report_error;
 use crate::dom::readablestream::PipeTo;
 use crate::dom::request::Request;
 use crate::fetch::fetch::DeferredFetchRecordId;
@@ -120,12 +121,29 @@ impl AbortSignal {
     }
 
     /// <https://dom.spec.whatwg.org/#abortsignal-signal-abort>
+    ///
+    /// An exception that an abort algorithm throws is reported, as callers have no way to
+    /// rethrow it. Use [`Self::try_signal_abort`] where the caller can.
     pub(crate) fn signal_abort(&self, cx: &mut CurrentRealm, reason: HandleValue) {
+        if let Err(error) = self.try_signal_abort(cx, reason) {
+            report_error(cx, error);
+        }
+    }
+
+    /// <https://dom.spec.whatwg.org/#abortsignal-signal-abort>
+    ///
+    /// Returns the exception that an abort algorithm threw, if any. The algorithms and steps
+    /// after it do not run, as the specification does not catch it.
+    pub(crate) fn try_signal_abort(
+        &self,
+        cx: &mut CurrentRealm,
+        reason: HandleValue,
+    ) -> ErrorResult {
         let global = self.global();
 
         // Step 1. If signal is aborted, then return.
         if self.Aborted() {
-            return;
+            return Ok(());
         }
 
         // Step 2. Set signal’s abort reason to reason if it is given;
@@ -156,12 +174,13 @@ impl AbortSignal {
         }
 
         // Step 5. Run the abort steps for signal.
-        self.run_the_abort_steps(cx, &global);
+        self.run_the_abort_steps(cx, &global)?;
 
         // Step 6. For each dependentSignal of dependentSignalsToAbort, run the abort steps for dependentSignal.
         for dependent_signal in dependent_signals_to_abort.iter() {
-            dependent_signal.run_the_abort_steps(cx, &global);
+            dependent_signal.run_the_abort_steps(cx, &global)?;
         }
+        Ok(())
     }
 
     /// <https://dom.spec.whatwg.org/#abortsignal-add>
@@ -186,7 +205,7 @@ impl AbortSignal {
         cx: &mut CurrentRealm,
         global: &GlobalScope,
         algorithm: &AbortAlgorithm,
-    ) {
+    ) -> ErrorResult {
         match algorithm {
             AbortAlgorithm::StreamPiping(pipe) => {
                 rooted!(&in(cx) let mut reason = UndefinedValue());
@@ -217,22 +236,28 @@ impl AbortSignal {
             AbortAlgorithm::Observable(algorithm) => {
                 rooted!(&in(cx) let mut reason = UndefinedValue());
                 reason.set(self.abort_reason.get());
-                algorithm.run(cx, reason.handle());
+                return algorithm.run(cx, reason.handle());
             },
         }
+        Ok(())
     }
 
     /// <https://dom.spec.whatwg.org/#run-the-abort-steps>
-    fn run_the_abort_steps(&self, cx: &mut CurrentRealm, global: &GlobalScope) {
+    fn run_the_abort_steps(&self, cx: &mut CurrentRealm, global: &GlobalScope) -> ErrorResult {
         // Step 1. For each algorithm of signal’s abort algorithms: run algorithm.
-        for algo in self.abort_algorithms.borrow().iter() {
-            self.run_abort_algorithm(cx, global, algo);
-        }
+        let result = self
+            .abort_algorithms
+            .borrow()
+            .iter()
+            .try_for_each(|algo| self.run_abort_algorithm(cx, global, algo));
         // Step 2. Empty signal’s abort algorithms.
+        // Note: This also happens when an algorithm threw, as none of them can run again.
         self.abort_algorithms.borrow_mut().clear();
+        result?;
 
         // Step 3. Fire an event named abort at signal.
         self.upcast::<EventTarget>().fire_event(cx, atom!("abort"));
+        Ok(())
     }
 
     /// <https://dom.spec.whatwg.org/#abortsignal-aborted>

@@ -10,6 +10,7 @@ use script_bindings::reflector::{Reflector, reflect_dom_object_with_proto};
 
 use crate::dom::abortsignal::AbortSignal;
 use crate::dom::bindings::codegen::Bindings::AbortControllerBinding::AbortControllerMethods;
+use crate::dom::bindings::error::ErrorResult;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::globalscope::GlobalScope;
 
@@ -76,10 +77,10 @@ impl AbortControllerMethods<crate::DomTypeHolder> for AbortController {
     }
 
     /// <https://dom.spec.whatwg.org/#dom-abortcontroller-abort>
-    fn Abort(&self, cx: &mut CurrentRealm, reason: HandleValue) {
+    fn Abort(&self, cx: &mut CurrentRealm, reason: HandleValue) -> ErrorResult {
         // The abort(reason) method steps are
         // to signal abort on this with reason if it is given.
-        self.signal_abort(cx, reason);
+        self.signal.try_signal_abort(cx, reason)
     }
 
     /// <https://dom.spec.whatwg.org/#dom-abortcontroller-signal>

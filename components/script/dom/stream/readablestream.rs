@@ -1978,7 +1978,8 @@ impl ReadableStream {
 
             // If signal is aborted, perform abortAlgorithm and return promise.
             if signal.aborted() {
-                signal.run_abort_algorithm(cx, global, &abort_algorithm);
+                // Note: Only the abort algorithms of Observables can throw.
+                let _ = signal.run_abort_algorithm(cx, global, &abort_algorithm);
                 return promise;
             }
 
