@@ -11,51 +11,41 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 ## What has been done
 
 - **WICG [Observable API](https://wicg.github.io/observable/)**, behind the `dom_observable_enabled` preference
-  (off by default; enabled for the tests by `tests/wpt/meta/dom/observable/__dir__.ini`):
-  - `Observable` and `Subscriber`, including `subscribe()` with observer callbacks, `SubscribeOptions.signal`,
-    teardowns and inspectors.
-  - `EventTarget.when()`.
-  - The synchronous operators `map`, `filter`, `take`, `drop`, `inspect` and `finally`.
-  - The promise-returning operators `toArray`, `forEach`, `every`, `find`, `some`, `first`, `last` and `reduce`.
-  - `Observable.from()` for Observables, iterables, async iterables and promises.
-  - `takeUntil`, `catch`, `flatMap` and `switchMap`.
-- **Results:** `tests/wpt/tests/dom/observable` went from 523 failing subtests to 7. The whole `dom` directory
-  (845 tests) runs with no unexpected results, and `dom/abort` and `dom/events` show no regressions. `./mach fmt`
-  and the crown GC-rooting lint pass.
+  (off by default; enabled for the tests by `tests/wpt/meta/dom/observable/__dir__.ini`): `Observable`, `Subscriber`,
+  `EventTarget.when()`, every operator, and `Observable.from()` for Observables, iterables, async iterables and
+  promises. `tests/wpt/tests/dom/observable` went from 523 failing subtests to 1.
+- **HTML reflecting attributes**: about 130 missing IDL attributes (table, table cell, row and column, heading and
+  `body` colors, `ol`/`li`/`dl`, `embed`/`object`/`param`/`area`, frames, `marquee`, form controls, `meta.media`,
+  `a.download`/`ping`, `enterKeyHint`, `inputMode` and more). The `html/dom/reflection-*` tests went from about
+  5,300 failing subtests to about 85. The enumerated ARIA attributes (`ariaBusy`, `ariaLive`, ...) are behind the
+  `dom_aria_enumerated_reflection_enabled` preference.
+- **`ProcessingInstruction` attributes** (`getAttribute()`, `setAttribute()` and friends), behind the
+  `dom_processing_instruction_attributes_enabled` preference: 140 failing subtests down to 26.
+- **Events**: `DragEvent`, `DeviceMotionEvent` and `DeviceOrientationEvent` and their `createEvent()` aliases; the
+  `<body>`/`<frameset>` window event-handler attributes now forward `onblur` and the frameset handlers.
+- **MIME types**: Request and Response `blob()` keep non-ASCII MIME parameters, and navigation quotes parameters it
+  re-parses (so `charset` is no longer lost). `mimesniff/mime-types/parsing` went from 1,916 failing subtests to 1,402.
+- `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
+  the essence.
+- `./mach fmt` and the crown GC-rooting lint pass, and the tested `dom`, `html/dom`, `mimesniff`, `fetch` and
+  `FileAPI` directories have no unexpected results other than a few tests that also fail on the unmodified tree.
 
 ## What has not been done
 
-- 7 Observable subtests still fail, and are recorded as expected failures in `tests/wpt/meta/dom/observable/tentative/`:
-  - Four (two each in the window and worker variants of `observable-from`) concern errors from a synchronous
-    iterator's `return()`. They need an exception to propagate out of `AbortController.abort()`, which Servo's
-    `abort()` cannot do.
-  - Two (window and worker) report `colno` 1 instead of 0 for unhandled rejections, from `ErrorInfo::from_value`.
-  - One (`observable-constructor.window`) is `when()` in a detached document, because ordinary listeners still run
-    in detached documents.
-- The Observable API is a WICG proposal, not a finished standard, and is off by default.
-- Conformance outside `tests/wpt/tests/dom/observable` has not been measured or improved. No other missing features
-  have been implemented yet.
+- One Observable subtest still fails: `when()` in a detached document, because ordinary event listeners still run in
+  detached documents.
+- 26 `ProcessingInstruction` subtests need the HTML parser to produce processing instructions (html5ever) or
+  xml5ever's serializer to escape `>` in attribute values.
+- About 1,200 `mimesniff` Blob/File subtests expect `new Blob([], {type})` to parse and re-serialise the type, which
+  Servo does not do; about 190 more need header values with control characters, which Servo's header storage rejects.
+- Some reflection subtests still fail (`col.span`, `progress.max`, `meter`, `textarea.rows`/`cols`, `pre.width`), as
+  do 30 in the tentative ARIA test.
+- Conformance outside the directories above has not been measured or improved, and other missing features have not
+  been implemented.
 - Nothing here has been reviewed by the upstream Servo maintainers.
 
-The rest of this file is Servo's own README.
-
----
-
-# The Servo Parallel Browser Engine Project
-
-Servo is a prototype web browser engine written in the
-[Rust](https://github.com/rust-lang/rust) language. It is currently developed on
-64-bit macOS, 64-bit Linux, 64-bit Windows, 64-bit OpenHarmony, and Android.
-
-Servo welcomes contribution from everyone. Check out:
-
-- The [Servo Book](https://book.servo.org) for documentation
-- [servo.org](https://servo.org/) for news and guides
-
-Coordination of Servo development happens:
-- Here in the Github Issues
-- On the [Servo Zulip](https://servo.zulipchat.com/)
-- In video calls advertised in the [Servo Project](https://github.com/servo/project/issues) repo.
+For Servo's documentation, contribution guidelines and community channels, see the
+[Servo project](https://github.com/servo/servo). The build instructions below are Servo's own.
 
 ## Getting started
 
@@ -120,15 +110,3 @@ For more detailed build instructions, see the Servo Book under [Getting the Code
    "system-images;android-37;google_apis;x86_64"
   ```
 - Follow the instructions above for the platform you are building on
-
-### OpenHarmony
-
-- Follow the instructions above for the platform you are building on to prepare the environment.
-- Depending on the target distribution (e.g. `HarmonyOS NEXT` vs pure `OpenHarmony`) the build configuration will differ slightly.
-- Ensure that the following environment variables are set
-  - `DEVECO_SDK_HOME` (Required when targeting `HarmonyOS NEXT`)
-  - `OHOS_BASE_SDK_HOME` (Required when targeting `OpenHarmony`)
-  - `OHOS_SDK_NATIVE` (e.g. `${DEVECO_SDK_HOME}/default/openharmony/native` or `${OHOS_BASE_SDK_HOME}/${API_VERSION}/native`)
-  - `SERVO_OHOS_SIGNING_CONFIG`: Path to json file containing a valid signing configuration for the demo app.
-- Review the detailed instructions at [Building for OpenHarmony].
-- The target distribution can be modified by passing `--flavor=<default|harmonyos>` to `mach <build|package|install>`.
