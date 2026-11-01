@@ -11,6 +11,7 @@ use crate::dom::bindings::codegen::Bindings::HTMLLegendElementBinding::HTMLLegen
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
+use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::element::Element;
 use crate::dom::html::htmlelement::HTMLElement;
@@ -86,6 +87,12 @@ impl VirtualMethods for HTMLLegendElement {
 }
 
 impl HTMLLegendElementMethods<crate::DomTypeHolder> for HTMLLegendElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-legend-align>
+    make_getter!(Align, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-legend-align>
+    make_setter!(SetAlign, "align");
+
     /// <https://html.spec.whatwg.org/multipage/#dom-legend-form>
     fn GetForm(&self) -> Option<DomRoot<HTMLFormElement>> {
         let parent = self.upcast::<Node>().GetParentElement()?;

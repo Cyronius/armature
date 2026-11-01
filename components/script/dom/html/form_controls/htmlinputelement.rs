@@ -52,6 +52,7 @@ use crate::dom::event::Event;
 use crate::dom::event::event::{EventBubbles, EventCancelable, EventComposed};
 use crate::dom::eventtarget::EventTarget;
 use crate::dom::filelist::FileList;
+use crate::dom::html::form_controls::autofill::idl_exposed_autofill_value;
 use crate::dom::html::form_controls::input_type::radio_input_type::perform_radio_group_validation;
 use crate::dom::html::form_controls::input_type::{
     InputActivationType, InputType, ValueChangeEvents,
@@ -1098,6 +1099,26 @@ impl TextControlElement for HTMLInputElement {
 }
 
 impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-input-align>
+    make_getter!(Align, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-input-align>
+    make_setter!(SetAlign, "align");
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-fe-autocomplete>
+    fn Autocomplete(&self) -> DOMString {
+        let element = self.upcast::<Element>();
+        idl_exposed_autofill_value(
+            element
+                .get_attribute_string_value(&local_name!("autocomplete"))
+                .as_deref(),
+            matches!(*self.input_type(), InputType::Hidden(_)),
+        )
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-fe-autocomplete>
+    make_setter!(SetAutocomplete, "autocomplete");
+
     // https://html.spec.whatwg.org/multipage/#dom-input-accept
     make_getter!(Accept, "accept");
 

@@ -32,6 +32,7 @@ use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::event::Event;
 use crate::dom::event::event::{EventBubbles, EventCancelable, EventComposed};
 use crate::dom::eventtarget::EventTarget;
+use crate::dom::html::form_controls::autofill::idl_exposed_autofill_value;
 use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
 use crate::dom::html::form_controls::input_type::text_input_widget::TextInputWidget;
 use crate::dom::html::form_controls::text_control::TextControlElement;
@@ -349,6 +350,20 @@ impl TextControlElement for HTMLTextAreaElement {
 }
 
 impl HTMLTextAreaElementMethods<crate::DomTypeHolder> for HTMLTextAreaElement {
+    /// <https://html.spec.whatwg.org/multipage/#dom-fe-autocomplete>
+    fn Autocomplete(&self) -> DOMString {
+        let element = self.upcast::<Element>();
+        idl_exposed_autofill_value(
+            element
+                .get_attribute_string_value(&local_name!("autocomplete"))
+                .as_deref(),
+            false,
+        )
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-fe-autocomplete>
+    make_setter!(SetAutocomplete, "autocomplete");
+
     // TODO A few of these attributes have default values and additional
     // constraints
 
