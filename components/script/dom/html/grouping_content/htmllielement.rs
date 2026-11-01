@@ -49,6 +49,12 @@ impl HTMLLIElement {
 }
 
 impl HTMLLIElementMethods<crate::DomTypeHolder> for HTMLLIElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-li-type>
+    make_getter!(Type, "type");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-li-type>
+    make_setter!(SetType, "type");
+
     // https://html.spec.whatwg.org/multipage/#dom-li-value
     make_int_getter!(Value, "value");
 

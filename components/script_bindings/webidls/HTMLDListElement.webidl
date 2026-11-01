@@ -12,6 +12,6 @@ interface HTMLDListElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLDListElement-partial
 partial interface HTMLDListElement {
-  // [CEReactions]
-  //         attribute boolean compact;
+  [CEReactions]
+          attribute boolean compact;
 };

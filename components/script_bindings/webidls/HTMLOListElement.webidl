@@ -7,18 +7,18 @@
 interface HTMLOListElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  // [CEReactions]
-  //         attribute boolean reversed;
-  // [CEReactions]
-  //         attribute long start;
-  // [CEReactions]
-  //         attribute DOMString type;
+  [CEReactions]
+          attribute boolean reversed;
+  [CEReactions]
+          attribute long start;
+  [CEReactions]
+          attribute DOMString type;
 
   // also has obsolete members
 };
 
 // https://html.spec.whatwg.org/multipage/#HTMLOListElement-partial
 partial interface HTMLOListElement {
-  // [CEReactions]
-  //         attribute boolean compact;
+  [CEReactions]
+          attribute boolean compact;
 };

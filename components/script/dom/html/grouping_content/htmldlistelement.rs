@@ -6,6 +6,7 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use js::rust::HandleObject;
 
+use crate::dom::bindings::codegen::Bindings::HTMLDListElementBinding::HTMLDListElementMethods;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
 use crate::dom::html::htmlelement::HTMLElement;
@@ -43,4 +44,12 @@ impl HTMLDListElement {
             proto,
         )
     }
+}
+
+impl HTMLDListElementMethods<crate::DomTypeHolder> for HTMLDListElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-dl-compact>
+    make_bool_getter!(Compact, "compact");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-dl-compact>
+    make_bool_setter!(SetCompact, "compact");
 }

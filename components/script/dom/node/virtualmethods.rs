@@ -43,6 +43,7 @@ use crate::dom::html::htmlmediaelement::HTMLMediaElement;
 use crate::dom::html::htmlmetaelement::HTMLMetaElement;
 use crate::dom::html::htmlmeterelement::HTMLMeterElement;
 use crate::dom::html::htmlobjectelement::HTMLObjectElement;
+use crate::dom::html::htmlolistelement::HTMLOListElement;
 use crate::dom::html::htmloptgroupelement::HTMLOptGroupElement;
 use crate::dom::html::htmloptionelement::HTMLOptionElement;
 use crate::dom::html::htmloutputelement::HTMLOutputElement;
@@ -308,6 +309,9 @@ pub(crate) fn vtable_for(node: &Node) -> &dyn VirtualMethods {
         },
         NodeTypeId::Element(ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLObjectElement)) => {
             node.downcast::<HTMLObjectElement>().unwrap() as &dyn VirtualMethods
+        },
+        NodeTypeId::Element(ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLOListElement)) => {
+            node.downcast::<HTMLOListElement>().unwrap() as &dyn VirtualMethods
         },
         NodeTypeId::Element(ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLOptGroupElement)) => {
             node.downcast::<HTMLOptGroupElement>().unwrap() as &dyn VirtualMethods
