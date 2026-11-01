@@ -803,6 +803,37 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
         Ok(())
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-enterkeyhint>
+    fn EnterKeyHint(&self) -> DOMString {
+        // > The enterKeyHint IDL attribute, on getting, must return the keyword corresponding to
+        // > the enterkeyhint attribute's state, or the empty string if it is in the Default state.
+        let value = self
+            .upcast::<Element>()
+            .get_string_attribute(&LocalName::from("enterkeyhint"));
+        match &*value.str().to_ascii_lowercase() {
+            keyword @ ("enter" | "done" | "go" | "next" | "previous" | "search" | "send") => {
+                DOMString::from(keyword)
+            },
+            _ => DOMString::new(),
+        }
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-enterkeyhint>
+    fn SetEnterKeyHint(&self, cx: &mut JSContext, value: DOMString) {
+        self.upcast::<Element>()
+            .set_string_attribute(cx, &LocalName::from("enterkeyhint"), value)
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-inputmode>
+    make_enumerated_getter!(
+        InputMode,
+        "inputmode",
+        "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search",
+    );
+
+    // <https://html.spec.whatwg.org/multipage/#dom-inputmode>
+    make_setter!(SetInputMode, "inputmode");
+
     /// <https://html.spec.whatwg.org/multipage/#dom-iscontenteditable>
     fn IsContentEditable(&self) -> bool {
         // > The isContentEditable IDL attribute, on getting, must return true if the element is either an editing host or editable, and false otherwise.
