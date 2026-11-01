@@ -10,5 +10,6 @@ pub(crate) mod cdatasection;
 )]
 pub(crate) mod characterdata;
 pub(crate) mod comment;
+pub(crate) mod pi_attributes;
 pub(crate) mod processinginstruction;
 pub(crate) mod text;

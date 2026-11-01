@@ -189,6 +189,7 @@ pub struct Preferences {
     // feature: Notification API | #34841 | Web/API/Notifications_API
     pub dom_notification_enabled: bool,
     pub dom_observable_enabled: bool,
+    pub dom_processing_instruction_attributes_enabled: bool,
     // feature: OffscreenCanvas | #34111 | Web/API/OffscreenCanvas
     pub dom_offscreen_canvas_enabled: bool,
     pub dom_parallel_css_parsing_enabled: bool,
@@ -470,6 +471,7 @@ impl Preferences {
             dom_navigator_protocol_handlers_enabled: false,
             dom_notification_enabled: false,
             dom_observable_enabled: false,
+            dom_processing_instruction_attributes_enabled: false,
             dom_parallel_css_parsing_enabled: true,
             dom_offscreen_canvas_enabled: false,
             dom_permissions_enabled: false,

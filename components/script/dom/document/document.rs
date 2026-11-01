@@ -137,7 +137,6 @@ use crate::dom::bindings::root::{
 use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::bindings::trace::{HashMapTracedValues, NoTrace};
 use crate::dom::bindings::weakref::DOMTracker;
-use crate::dom::bindings::xmlname::matches_name_production;
 use crate::dom::cdatasection::CDATASection;
 use crate::dom::comment::Comment;
 use crate::dom::compositionevent::CompositionEvent;
@@ -6175,22 +6174,7 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
         target: DOMString,
         data: DOMString,
     ) -> Fallible<DomRoot<ProcessingInstruction>> {
-        // Step 1. If target does not match the Name production, then throw an "InvalidCharacterError" DOMException.
-        if !matches_name_production(&target.str()) {
-            return Err(Error::InvalidCharacter(Some(
-                "Target name provided is invalid".into(),
-            )));
-        }
-
-        // Step 2. If data contains the string "?>", then throw an "InvalidCharacterError" DOMException.
-        if data.contains("?>") {
-            return Err(Error::InvalidCharacter(Some(
-                "Processing instruction's data cannot contain `>?`".into(),
-            )));
-        }
-
-        // Step 3.
-        Ok(ProcessingInstruction::new(cx, target, data, self))
+        ProcessingInstruction::new_validated(cx, target, data, self, None)
     }
 
     /// <https://dom.spec.whatwg.org/#dom-document-importnode>
