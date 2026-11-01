@@ -12,6 +12,6 @@ interface HTMLTableCaptionElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLTableCaptionElement-partial
 partial interface HTMLTableCaptionElement {
-  // [CEReactions]
-  //          attribute DOMString align;
+  [CEReactions]
+           attribute DOMString align;
 };

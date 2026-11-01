@@ -18,12 +18,12 @@ interface HTMLTableSectionElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLTableSectionElement-partial
 partial interface HTMLTableSectionElement {
-  // [CEReactions]
-  //          attribute DOMString align;
-  // [CEReactions]
-  //          attribute DOMString ch;
-  // [CEReactions]
-  //          attribute DOMString chOff;
-  // [CEReactions]
-  //          attribute DOMString vAlign;
+  [CEReactions]
+           attribute DOMString align;
+  [CEReactions]
+           attribute DOMString ch;
+  [CEReactions]
+           attribute DOMString chOff;
+  [CEReactions]
+           attribute DOMString vAlign;
 };

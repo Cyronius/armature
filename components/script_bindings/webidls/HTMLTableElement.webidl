@@ -38,10 +38,10 @@ interface HTMLTableElement : HTMLElement {
 // https://html.spec.whatwg.org/multipage/#HTMLTableElement-partial
 partial interface HTMLTableElement {
   [CEReactions] attribute DOMString align;
-  // [CEReactions] attribute DOMString border;
-  // [CEReactions] attribute DOMString frame;
-  // [CEReactions] attribute DOMString rules;
-  // [CEReactions] attribute DOMString summary;
+  [CEReactions] attribute DOMString border;
+  [CEReactions] attribute DOMString frame;
+  [CEReactions] attribute DOMString rules;
+  [CEReactions] attribute DOMString summary;
   [CEReactions] attribute DOMString width;
 
   [CEReactions] attribute [LegacyNullToEmptyString] DOMString bgColor;

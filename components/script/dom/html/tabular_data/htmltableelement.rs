@@ -474,6 +474,22 @@ impl HTMLTableElementMethods<crate::DomTypeHolder> for HTMLTableElement {
     make_setter!(SetAlign, "align");
     make_getter!(Align, "align");
 
+    // <https://html.spec.whatwg.org/multipage/#dom-table-border>
+    make_getter!(Border, "border");
+    make_setter!(SetBorder, "border");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-table-frame>
+    make_getter!(Frame, "frame");
+    make_setter!(SetFrame, "frame");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-table-rules>
+    make_getter!(Rules, "rules");
+    make_setter!(SetRules, "rules");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-table-summary>
+    make_getter!(Summary, "summary");
+    make_setter!(SetSummary, "summary");
+
     // <https://html.spec.whatwg.org/multipage/#dom-table-cellpadding>
     make_setter!(SetCellPadding, "cellpadding");
     make_getter!(CellPadding, "cellpadding");

@@ -56,6 +56,22 @@ impl HTMLTableColElement {
 }
 
 impl HTMLTableColElementMethods<crate::DomTypeHolder> for HTMLTableColElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-col-align>
+    make_getter!(Align, "align");
+    make_setter!(SetAlign, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-col-ch>
+    make_getter!(Ch, "char");
+    make_setter!(SetCh, "char");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-col-choff>
+    make_getter!(ChOff, "charoff");
+    make_setter!(SetChOff, "charoff");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-col-valign>
+    make_getter!(VAlign, "valign");
+    make_setter!(SetVAlign, "valign");
+
     // <https://html.spec.whatwg.org/multipage/#attr-col-span>
     make_uint_getter!(Span, "span", 1);
     // <https://html.spec.whatwg.org/multipage/#attr-col-span>

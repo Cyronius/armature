@@ -77,6 +77,22 @@ impl HTMLTableRowElement {
 }
 
 impl HTMLTableRowElementMethods<crate::DomTypeHolder> for HTMLTableRowElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-tr-align>
+    make_getter!(Align, "align");
+    make_setter!(SetAlign, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tr-ch>
+    make_getter!(Ch, "char");
+    make_setter!(SetCh, "char");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tr-choff>
+    make_getter!(ChOff, "charoff");
+    make_setter!(SetChOff, "charoff");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tr-valign>
+    make_getter!(VAlign, "valign");
+    make_setter!(SetVAlign, "valign");
+
     // https://html.spec.whatwg.org/multipage/#dom-tr-bgcolor
     make_getter!(BgColor, "bgcolor");
 

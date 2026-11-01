@@ -62,6 +62,22 @@ impl HTMLTableSectionElement {
 }
 
 impl HTMLTableSectionElementMethods<crate::DomTypeHolder> for HTMLTableSectionElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-tbody-align>
+    make_getter!(Align, "align");
+    make_setter!(SetAlign, "align");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tbody-ch>
+    make_getter!(Ch, "char");
+    make_setter!(SetCh, "char");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tbody-choff>
+    make_getter!(ChOff, "charoff");
+    make_setter!(SetChOff, "charoff");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-tbody-valign>
+    make_getter!(VAlign, "valign");
+    make_setter!(SetVAlign, "valign");
+
     /// <https://html.spec.whatwg.org/multipage/#dom-tbody-rows>
     fn Rows(&self, cx: &mut JSContext) -> DomRoot<HTMLCollection> {
         HTMLCollection::new_with_filter_fn(
