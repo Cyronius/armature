@@ -240,6 +240,30 @@ impl Element {
         }
     }
 
+    /// Used for the reflection of enumerated ARIA attributes, for which the getter returns one of
+    /// the `keywords` (matched ASCII case-insensitively), or else the state given for an absent
+    /// attribute (`missing`), an empty attribute value (`empty`) or any other value (`invalid`).
+    /// A state of `None` makes the IDL attribute return `null`.
+    /// <https://w3c.github.io/aria/#ARIAMixin>
+    pub(crate) fn get_enumerated_nullable_attribute(
+        &self,
+        local_name: &LocalName,
+        keywords: &[&'static str],
+        missing: Option<&'static str>,
+        empty: Option<&'static str>,
+        invalid: Option<&'static str>,
+    ) -> Option<DOMString> {
+        let state = match self.get_attribute_string_value(local_name) {
+            None => missing,
+            Some(value) => keywords
+                .iter()
+                .copied()
+                .find(|keyword| value.eq_ignore_ascii_case(keyword))
+                .or(if value.is_empty() { empty } else { invalid }),
+        };
+        state.map(DOMString::from_static)
+    }
+
     /// Used for string attribute reflections where setting `null`/`undefined` removes the
     /// attribute, e.g. `element.ariaLabel = null` removing the `aria-label` attribute.
     pub(crate) fn set_nullable_string_attribute(
