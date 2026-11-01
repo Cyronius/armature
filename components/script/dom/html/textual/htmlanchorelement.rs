@@ -134,6 +134,18 @@ impl VirtualMethods for HTMLAnchorElement {
 }
 
 impl HTMLAnchorElementMethods<crate::DomTypeHolder> for HTMLAnchorElement {
+    // <https://html.spec.whatwg.org/multipage/#dom-a-download>
+    make_getter!(Download, "download");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-a-download>
+    make_setter!(SetDownload, "download");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-a-ping>
+    make_usv_getter!(Ping, "ping");
+
+    // <https://html.spec.whatwg.org/multipage/#dom-a-ping>
+    make_usv_setter!(SetPing, "ping");
+
     /// <https://html.spec.whatwg.org/multipage/#dom-a-text>
     fn Text(&self) -> DOMString {
         self.upcast::<Node>().GetTextContent().unwrap()

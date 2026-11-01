@@ -17,10 +17,10 @@ interface HTMLAnchorElement : HTMLElement {
 
   [CEReactions]
   attribute DOMString target;
-  // [CEReactions]
-  //       attribute DOMString download;
-  // [CEReactions]
-  //       attribute USVString ping;
+  [CEReactions]
+  attribute DOMString download;
+  [CEReactions]
+  attribute USVString ping;
   [CEReactions]
            attribute DOMString rel;
   [SameObject, PutForwards=value] readonly attribute DOMTokenList relList;

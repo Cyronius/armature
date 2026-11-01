@@ -12,5 +12,6 @@ interface HTMLBRElement : HTMLElement {
 
 // https://html.spec.whatwg.org/multipage/#HTMLBRElement-partial
 partial interface HTMLBRElement {
-  //         attribute DOMString clear;
+  [CEReactions]
+          attribute DOMString clear;
 };

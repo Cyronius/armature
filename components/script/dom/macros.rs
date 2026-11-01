@@ -114,6 +114,36 @@ macro_rules! make_url_setter(
     );
 );
 
+/// Reflects a content attribute as a `USVString`, without resolving it as a URL.
+#[macro_export]
+macro_rules! make_usv_getter(
+    ( $attr:ident, $htmlname:tt ) => (
+        fn $attr(&self) -> $crate::dom::bindings::str::USVString {
+            use $crate::dom::bindings::inheritance::Castable;
+            use $crate::dom::element::Element;
+            let element = self.upcast::<Element>();
+            $crate::dom::bindings::str::USVString(
+                element
+                    .get_attribute_string_value(&html5ever::local_name!($htmlname))
+                    .unwrap_or_default()
+            )
+        }
+    );
+);
+
+/// Reflects a content attribute as a `USVString`, without resolving it as a URL.
+#[macro_export]
+macro_rules! make_usv_setter(
+    ( $attr:ident, $htmlname:tt ) => (
+        fn $attr(&self, cx: &mut js::context::JSContext, value: $crate::dom::bindings::str::USVString) {
+            use $crate::dom::bindings::inheritance::Castable;
+            use $crate::dom::element::Element;
+            let element = self.upcast::<Element>();
+            element.set_string_attribute(cx, &html5ever::local_name!($htmlname), value.0.into())
+        }
+    );
+);
+
 #[macro_export]
 macro_rules! make_form_action_getter(
     ( $attr:ident, $htmlname:tt ) => (
