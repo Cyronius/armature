@@ -18,7 +18,6 @@ use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
-use crate::dom::eventtarget::EventTarget;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{BindContext, Node, NodeTraits};
@@ -154,59 +153,9 @@ impl VirtualMethods for HTMLBodyElement {
         attr: AttrRef<'_>,
         mutation: AttributeMutation,
     ) {
-        let do_super_mutate = match (attr.local_name(), mutation) {
-            (name, AttributeMutation::Set(_)) if name.starts_with("on") => {
-                let document = self.owner_document();
-                // https://html.spec.whatwg.org/multipage/
-                // #event-handlers-on-elements,-document-objects,-and-window-objects:event-handlers-6
-                match name {
-                    &local_name!("onafterprint") |
-                    &local_name!("onbeforeprint") |
-                    &local_name!("onbeforeunload") |
-                    &local_name!("onerror") |
-                    &local_name!("onfocus") |
-                    &local_name!("onhashchange") |
-                    &local_name!("onload") |
-                    &local_name!("onlanguagechange") |
-                    &local_name!("onmessage") |
-                    &local_name!("onmessageerror") |
-                    &local_name!("onoffline") |
-                    &local_name!("ononline") |
-                    &local_name!("onpagehide") |
-                    &local_name!("onpagereveal") |
-                    &local_name!("onpageshow") |
-                    &local_name!("onpageswap") |
-                    &local_name!("onpopstate") |
-                    &local_name!("onrejectionhandled") |
-                    &local_name!("onresize") |
-                    &local_name!("onscroll") |
-                    &local_name!("onstorage") |
-                    &local_name!("onunhandledrejection") |
-                    &local_name!("onunload") => {
-                        if document.has_browsing_context() {
-                            // https://html.spec.whatwg.org/multipage/webappapis.html
-                            // #event-handler-attributes%3Aevent-handler-content-attributes-3
-                            // This matches the `has_browsing_context()` check done by the
-                            // `window_event_handlers!(ForwardToWindow)` macro for WebIDL attributes.
-                            let window = document.window();
-                            let source = &**attr.value();
-                            let evtarget = window.upcast::<EventTarget>(); // forwarded event
-                            let source_line = 1; // TODO(#9604) obtain current JS execution line
-                            evtarget.set_event_handler_uncompiled(
-                                cx,
-                                window.get_url(),
-                                source_line,
-                                &name[2..],
-                                source,
-                            );
-                        }
-                        false
-                    },
-                    _ => true, // HTMLElement::attribute_mutated will take care of this.
-                }
-            },
-            _ => true,
-        };
+        let do_super_mutate = !self
+            .upcast::<HTMLElement>()
+            .forward_event_handler_attribute_to_window(cx, attr, mutation);
 
         if do_super_mutate {
             self.super_type()

@@ -4,6 +4,7 @@
 
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
+use js::context::JSContext;
 use js::rust::HandleObject;
 
 use crate::dom::bindings::codegen::Bindings::HTMLFrameSetElementBinding::HTMLFrameSetElementMethods;
@@ -11,7 +12,10 @@ use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
+use crate::dom::element::AttributeMutation;
+use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{Node, NodeTraits};
 
 #[dom_struct]
@@ -53,4 +57,26 @@ impl HTMLFrameSetElement {
 impl HTMLFrameSetElementMethods<crate::DomTypeHolder> for HTMLFrameSetElement {
     // https://html.spec.whatwg.org/multipage/#windoweventhandlers
     window_event_handlers!(ForwardToWindow);
+}
+
+impl VirtualMethods for HTMLFrameSetElement {
+    fn super_type(&self) -> Option<&dyn VirtualMethods> {
+        Some(self.upcast::<HTMLElement>() as &dyn VirtualMethods)
+    }
+
+    fn attribute_mutated(
+        &self,
+        cx: &mut JSContext,
+        attr: AttrRef<'_>,
+        mutation: AttributeMutation,
+    ) {
+        if !self
+            .upcast::<HTMLElement>()
+            .forward_event_handler_attribute_to_window(cx, attr, mutation)
+        {
+            self.super_type()
+                .unwrap()
+                .attribute_mutated(cx, attr, mutation);
+        }
+    }
 }

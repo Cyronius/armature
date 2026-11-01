@@ -126,6 +126,73 @@ impl HTMLElement {
         )
     }
 
+    /// Forwards a content attribute of a `<body>` or `<frameset>` element that names a window
+    /// event handler to the [`Window`](crate::dom::window::Window). Returns `true` if `attr`
+    /// was such an event handler attribute, in which case it must not also be handled as an
+    /// event handler of the element itself.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#event-handlers-on-elements,-document-objects,-and-window-objects:event-handlers-6>
+    pub(crate) fn forward_event_handler_attribute_to_window(
+        &self,
+        cx: &mut JSContext,
+        attr: AttrRef<'_>,
+        mutation: AttributeMutation,
+    ) -> bool {
+        let name = attr.local_name();
+        if !matches!(mutation, AttributeMutation::Set(_)) || !name.starts_with("on") {
+            return false;
+        }
+        if !matches!(
+            name,
+            &local_name!("onafterprint") |
+                &local_name!("onbeforeprint") |
+                &local_name!("onbeforeunload") |
+                &local_name!("onblur") |
+                &local_name!("onerror") |
+                &local_name!("onfocus") |
+                &local_name!("onhashchange") |
+                &local_name!("onload") |
+                &local_name!("onlanguagechange") |
+                &local_name!("onmessage") |
+                &local_name!("onmessageerror") |
+                &local_name!("onoffline") |
+                &local_name!("ononline") |
+                &local_name!("onpagehide") |
+                &local_name!("onpagereveal") |
+                &local_name!("onpageshow") |
+                &local_name!("onpageswap") |
+                &local_name!("onpopstate") |
+                &local_name!("onrejectionhandled") |
+                &local_name!("onresize") |
+                &local_name!("onscroll") |
+                &local_name!("onstorage") |
+                &local_name!("onunhandledrejection") |
+                &local_name!("onunload")
+        ) {
+            return false;
+        }
+
+        let document = self.owner_document();
+        if document.has_browsing_context() {
+            // https://html.spec.whatwg.org/multipage/webappapis.html
+            // #event-handler-attributes%3Aevent-handler-content-attributes-3
+            // This matches the `has_browsing_context()` check done by the
+            // `window_event_handlers!(ForwardToWindow)` macro for WebIDL attributes.
+            let window = document.window();
+            let source = &**attr.value();
+            let evtarget = window.upcast::<EventTarget>(); // forwarded event
+            let source_line = 1; // TODO(#9604) obtain current JS execution line
+            evtarget.set_event_handler_uncompiled(
+                cx,
+                window.get_url(),
+                source_line,
+                &name[2..],
+                source,
+            );
+        }
+        true
+    }
+
     fn is_body_or_frameset(&self) -> bool {
         let eventtarget = self.upcast::<EventTarget>();
         eventtarget.is::<HTMLBodyElement>() || eventtarget.is::<HTMLFrameSetElement>()
