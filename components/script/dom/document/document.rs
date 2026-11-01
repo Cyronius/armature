@@ -6801,6 +6801,36 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
         self.set_body_attribute(cx, &local_name!("text"), value)
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-document-linkcolor>
+    fn LinkColor(&self) -> DOMString {
+        self.get_body_attribute(&local_name!("link"))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-document-linkcolor>
+    fn SetLinkColor(&self, cx: &mut JSContext, value: DOMString) {
+        self.set_body_attribute(cx, &local_name!("link"), value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-document-vlinkcolor>
+    fn VlinkColor(&self) -> DOMString {
+        self.get_body_attribute(&local_name!("vlink"))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-document-vlinkcolor>
+    fn SetVlinkColor(&self, cx: &mut JSContext, value: DOMString) {
+        self.set_body_attribute(cx, &local_name!("vlink"), value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-document-alinkcolor>
+    fn AlinkColor(&self) -> DOMString {
+        self.get_body_attribute(&local_name!("alink"))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-document-alinkcolor>
+    fn SetAlinkColor(&self, cx: &mut JSContext, value: DOMString) {
+        self.set_body_attribute(cx, &local_name!("alink"), value)
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-tree-accessors:dom-document-nameditem-filter>
     fn NamedGetter(&self, cx: &mut JSContext, name: DOMString) -> Option<NamedPropertyValue> {
         if name.is_empty() {
