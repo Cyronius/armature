@@ -6,8 +6,7 @@ the engine. It is built with an AI coding assistant (Claude Code), and progress 
 Servo project.
 
 Servo's [AI usage policy](https://book.servo.org/policy/ai-usage.html) does not accept AI-generated contributions,
-so this work is not intended for, and has not been sent to, upstream Servo. The `Co-Authored-By` trailers on the
-commits are deliberate and make Servo's `./mach test-tidy` commit check fail. Everything else tidy checks passes.
+so this work is not intended for, and has not been sent to, upstream Servo.
 
 ## What has been done
 
