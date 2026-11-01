@@ -871,12 +871,15 @@ fn run_blob_data_algorithm(
     bytes: Vec<u8>,
     mime: &[u8],
 ) -> Fallible<FetchedData> {
-    let mime_string = String::from_utf8(mime.to_vec()).unwrap_or_default();
-    let blob = Blob::new(
-        cx,
-        root,
-        BlobImpl::new_from_bytes(bytes, normalize_type_string(&mime_string)),
-    );
+    // The type is the serialized MIME type extracted from the headers. Unlike the Blob constructor,
+    // there is no restriction to printable ASCII here: the type may contain code points up to U+00FF,
+    // which the constructor's normalization would turn into the empty string. It is still an
+    // "ASCII-encoded string in lower case" per <https://w3c.github.io/FileAPI/#dfn-type>.
+    // <https://fetch.spec.whatwg.org/#concept-body-package-data>
+    let mime_string = String::from_utf8(mime.to_vec())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let blob = Blob::new(cx, root, BlobImpl::new_from_bytes(bytes, mime_string));
     Ok(FetchedData::BlobData(blob))
 }
 
