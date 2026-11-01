@@ -146,6 +146,8 @@ use crate::dom::css::fontfaceset::FontFaceSet;
 use crate::dom::css::stylesheetlist::{StyleSheetList, StyleSheetListOwner};
 use crate::dom::customelementregistry::{CustomElementReactionStack, CustomElementRegistry};
 use crate::dom::customevent::CustomEvent;
+use crate::dom::devicemotionevent::DeviceMotionEvent;
+use crate::dom::deviceorientationevent::DeviceOrientationEvent;
 use crate::dom::document::accessibility_data::AccessibilityData;
 use crate::dom::document::animation_manager::AnimationManager;
 use crate::dom::document::focus::{DocumentFocusHandler, FocusableArea};
@@ -162,6 +164,7 @@ use crate::dom::documenttimeline::DocumentTimeline;
 use crate::dom::documenttype::DocumentType;
 use crate::dom::domimplementation::DOMImplementation;
 use crate::dom::domstringlist::DOMStringList;
+use crate::dom::dragevent::DragEvent;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{CustomElementCreationMode, Element, ElementCreator};
 use crate::dom::event::{Event, EventBubbles, EventCancelable};
@@ -6284,8 +6287,17 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
                 cx,
                 self.window.upcast(),
             ))),
-            // FIXME(#25136): devicemotionevent, deviceorientationevent
-            // FIXME(#7529): dragevent
+            "devicemotionevent" => Ok(DomRoot::upcast(DeviceMotionEvent::new_uninitialized(
+                cx,
+                &self.window,
+            ))),
+            "deviceorientationevent" => Ok(DomRoot::upcast(
+                DeviceOrientationEvent::new_uninitialized(cx, &self.window),
+            )),
+            "dragevent" => Ok(DomRoot::upcast(DragEvent::new_uninitialized(
+                cx,
+                &self.window,
+            ))),
             "events" | "event" | "htmlevents" | "svgevents" => {
                 Ok(Event::new_uninitialized(cx, self.window.upcast()))
             },
