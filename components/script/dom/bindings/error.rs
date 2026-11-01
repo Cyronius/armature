@@ -253,6 +253,15 @@ pub(crate) struct ErrorInfo {
     pub(crate) column: c_uint,
 }
 
+/// The filename, line and column of the script that is running, or an empty filename and zero
+/// for both if there is none, as when a promise job or a task calls into native code.
+fn scripted_caller_position(cx: &mut JSContext) -> (String, c_uint, c_uint) {
+    match describe_scripted_caller(cx) {
+        Ok(caller) => (caller.filename, caller.line, caller.col + 1),
+        Err(()) => (String::new(), 0, 0),
+    }
+}
+
 impl ErrorInfo {
     fn from_native_error(cx: &JSContext, object: HandleObject) -> Option<ErrorInfo> {
         js::rust::borrowed_error_report(cx, |cx, report| {
@@ -297,12 +306,12 @@ impl ErrorInfo {
 
     fn from_dom_exception(cx: &mut JSContext, object: HandleObject) -> Option<ErrorInfo> {
         let exception = root_from_handleobject::<DOMException>(cx, object).ok()?;
-        let scripted_caller = describe_scripted_caller(cx).unwrap_or_default();
+        let (filename, lineno, column) = scripted_caller_position(cx);
         Some(ErrorInfo {
             message: exception.stringifier().into(),
-            filename: scripted_caller.filename,
-            lineno: scripted_caller.line,
-            column: scripted_caller.col + 1,
+            filename,
+            lineno,
+            column,
         })
     }
 
@@ -327,12 +336,12 @@ impl ErrorInfo {
 
         match USVString::from_jsval(cx, value, ()) {
             Ok(ConversionResult::Success(USVString(string))) => {
-                let scripted_caller = describe_scripted_caller(cx).unwrap_or_default();
+                let (filename, lineno, column) = scripted_caller_position(cx);
                 ErrorInfo {
                     message: format!("uncaught exception: {}", string),
-                    filename: scripted_caller.filename,
-                    lineno: scripted_caller.line,
-                    column: scripted_caller.col + 1,
+                    filename,
+                    lineno,
+                    column,
                 }
             },
             _ => {
