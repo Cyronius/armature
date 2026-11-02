@@ -4,6 +4,7 @@
 
 use std::default::Default;
 
+use cssparser::match_ignore_ascii_case;
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix, QualName, local_name, ns};
 use js::context::{JSContext, NoGC};
@@ -831,6 +832,46 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
             match yesno {
                 true => DOMString::from_static("yes"),
                 false => DOMString::from_static("no"),
+            },
+        );
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-draggable>
+    fn Draggable(&self) -> bool {
+        let element = self.as_element();
+        let attribute = element.get_string_attribute(&local_name!("draggable"));
+        match_ignore_ascii_case! { &*attribute.str(),
+            // > If an element's draggable content attribute has the state True, the draggable IDL
+            // > attribute must return true.
+            "true" => true,
+            // > Otherwise, if the element's draggable content attribute has the state False, the
+            // > draggable IDL attribute must return false.
+            "false" => false,
+            // > Otherwise, the element's draggable content attribute has the state Auto. If the
+            // > element is an img element, an object element that represents an image, or an a
+            // > element with an href content attribute, the draggable IDL attribute must return
+            // > true; otherwise, the draggable IDL attribute must return false.
+            // TODO: object elements that represent an image.
+            _ => match element.local_name() {
+                &local_name!("img") => true,
+                &local_name!("a") => element.has_attribute(&local_name!("href")),
+                _ => false,
+            },
+        }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-draggable>
+    fn SetDraggable(&self, cx: &mut JSContext, draggable: bool) {
+        // > If the draggable IDL attribute is set to the value false, the draggable content
+        // > attribute must be set to the literal value "false". If the draggable IDL attribute is
+        // > set to the value true, the draggable content attribute must be set to the literal
+        // > value "true".
+        self.as_element().set_string_attribute(
+            cx,
+            &local_name!("draggable"),
+            match draggable {
+                true => DOMString::from_static("true"),
+                false => DOMString::from_static("false"),
             },
         );
     }
