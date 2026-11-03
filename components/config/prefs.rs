@@ -253,6 +253,10 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_scrollbar_styling_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.shapes.enabled",
+        preferences.layout_css_shapes_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.starting-style-at-rules.enabled",
         preferences.layout_css_starting_style_at_rules_enabled
     );
@@ -281,6 +285,10 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_text_decoration_inset_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.text-decoration-skip-ink.enabled",
+        preferences.layout_css_text_decoration_skip_ink_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.text-emphasis.enabled",
         preferences.layout_css_text_emphasis_enabled
     );
@@ -303,6 +311,10 @@ pub fn set(preferences: Preferences) {
     stylo_static_prefs::set_pref!(
         "layout.css.text-wrap-style.pretty.enabled",
         preferences.layout_css_text_wrap_style_pretty_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.transform-box.enabled",
+        preferences.layout_css_transform_box_enabled
     );
     stylo_static_prefs::set_pref!(
         "layout.css.tree-counting-functions.enabled",
@@ -633,6 +645,7 @@ pub struct Preferences {
     pub layout_css_scroll_driven_animations_enabled: bool,
     pub layout_css_scroll_state_enabled: bool,
     pub layout_css_scrollbar_styling_enabled: bool,
+    pub layout_css_shapes_enabled: bool,
     pub layout_css_starting_style_at_rules_enabled: bool,
     pub layout_css_style_queries_enabled: bool,
     pub layout_css_text_autospace_enabled: bool,
@@ -640,12 +653,14 @@ pub struct Preferences {
     pub layout_css_text_combine_upright_enabled: bool,
     pub layout_css_text_decoration_inset_percentage_enabled: bool,
     pub layout_css_text_decoration_inset_enabled: bool,
+    pub layout_css_text_decoration_skip_ink_enabled: bool,
     pub layout_css_text_emphasis_enabled: bool,
     pub layout_css_text_indent_keywords_enabled: bool,
     pub layout_css_text_overflow_enabled: bool,
     pub layout_css_text_underline_enabled: bool,
     pub layout_css_text_wrap_style_balance_enabled: bool,
     pub layout_css_text_wrap_style_pretty_enabled: bool,
+    pub layout_css_transform_box_enabled: bool,
     pub layout_css_tree_counting_functions_enabled: bool,
     pub layout_css_view_transitions_enabled: bool,
     pub layout_css_white_space_collapse_preserve_spaces_enabled: bool,
@@ -958,6 +973,7 @@ impl Preferences {
             layout_css_scroll_driven_animations_enabled: false,
             layout_css_scroll_state_enabled: false,
             layout_css_scrollbar_styling_enabled: false,
+            layout_css_shapes_enabled: false,
             layout_css_starting_style_at_rules_enabled: false,
             layout_css_style_queries_enabled: false,
             layout_css_text_autospace_enabled: false,
@@ -965,12 +981,14 @@ impl Preferences {
             layout_css_text_combine_upright_enabled: false,
             layout_css_text_decoration_inset_percentage_enabled: false,
             layout_css_text_decoration_inset_enabled: false,
+            layout_css_text_decoration_skip_ink_enabled: false,
             layout_css_text_emphasis_enabled: false,
             layout_css_text_indent_keywords_enabled: false,
             layout_css_text_overflow_enabled: false,
             layout_css_text_underline_enabled: false,
             layout_css_text_wrap_style_balance_enabled: false,
             layout_css_text_wrap_style_pretty_enabled: false,
+            layout_css_transform_box_enabled: false,
             layout_css_tree_counting_functions_enabled: false,
             layout_css_view_transitions_enabled: false,
             layout_css_white_space_collapse_preserve_spaces_enabled: false,
