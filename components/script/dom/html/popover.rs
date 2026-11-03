@@ -1380,3 +1380,180 @@ pub(crate) fn run_the_popover_target_attribute_activation_behavior(
         }
     }
 }
+
+/// <https://html.spec.whatwg.org/multipage/#popover-light-dismiss>
+///
+/// This is called with a trusted `pointerdown` or `pointerup` event and the target it is about
+/// to be dispatched to, before dispatching it.
+pub(crate) fn light_dismiss_open_popovers(cx: &mut JSContext, event: &Event, target: &EventTarget) {
+    // Step 1. Assert: event's isTrusted attribute is true.
+    // Step 2. Let target be event's target.
+    let Some(target) = target.downcast::<Node>() else {
+        return;
+    };
+
+    // Step 3. Let document be target's node document.
+    let document = target.owner_doc();
+
+    // Step 4. If the result of running topmost auto or hint popover given document is null, then
+    // return.
+    if document.topmost_auto_or_hint_popover().is_none() {
+        return;
+    }
+
+    let popovers = document.popover_data();
+    let event_type = event.type_();
+    // Step 5. If event's type is "pointerdown": set document's popover pointerdown target to the
+    // result of running topmost clicked popover given target.
+    if &*event_type == "pointerdown" {
+        let topmost_clicked_popover = topmost_clicked_popover(cx.no_gc(), target);
+        popovers
+            .pointerdown_target
+            .set(topmost_clicked_popover.as_deref());
+    }
+    // Step 6. If event's type is "pointerup":
+    else if &*event_type == "pointerup" {
+        // Step 6.1. Let ancestor be the result of running topmost clicked popover given target.
+        let ancestor = topmost_clicked_popover(cx.no_gc(), target);
+
+        // Step 6.2. Let sameTarget be true if ancestor is document's popover pointerdown target.
+        let same_target = ancestor == popovers.pointerdown_target.get();
+
+        // Step 6.3. Set document's popover pointerdown target to null.
+        popovers.pointerdown_target.set(None);
+
+        // Step 6.4. If sameTarget is false, then return.
+        if !same_target {
+            return;
+        }
+
+        // Step 6.5. Run hide popovers until given document, ancestor, false, and true.
+        document.hide_popovers_until(cx, ancestor.as_deref(), false, true);
+    }
+}
+
+/// <https://html.spec.whatwg.org/multipage/#topmost-clicked-popover>
+fn topmost_clicked_popover(no_gc: &NoGC, node: &Node) -> Option<DomRoot<HTMLElement>> {
+    // Step 1. Let clickedPopover be the result of running nearest inclusive open popover given
+    // node.
+    let clicked_popover = nearest_inclusive_open_popover(no_gc, node);
+
+    // Step 2. Let targetPopover be the result of running nearest inclusive target popover given
+    // node.
+    let target_popover = nearest_inclusive_target_popover(no_gc, node);
+
+    // Step 3. If the result of getting the popover stack position given clickedPopover is greater
+    // than the result of getting the popover stack position given targetPopover, then return
+    // clickedPopover.
+    if popover_stack_position(clicked_popover.as_deref()) >
+        popover_stack_position(target_popover.as_deref())
+    {
+        return clicked_popover;
+    }
+
+    // Step 4. Return targetPopover.
+    target_popover
+}
+
+/// <https://html.spec.whatwg.org/multipage/#popover-stack-position>
+fn popover_stack_position(popover: Option<&HTMLElement>) -> usize {
+    let Some(popover) = popover else {
+        return 0;
+    };
+    let document = popover.owner_document();
+
+    // Step 1. Let hintList be popover's node document's showing hint popover list.
+    let hint_list = document.showing_popover_list(PopoverMode::Hint);
+
+    // Step 2. Let autoList be popover's node document's showing auto popover list.
+    let auto_list = document.showing_popover_list(PopoverMode::Auto);
+
+    // Step 3. If popover is in hintList, then return the index of popover in hintList + the size
+    // of autoList + 1.
+    if let Some(index) = hint_list.iter().position(|element| &**element == popover) {
+        return index + auto_list.len() + 1;
+    }
+
+    // Step 4. If popover is in autoList, then return the index of popover in autoList + 1.
+    if let Some(index) = auto_list.iter().position(|element| &**element == popover) {
+        return index + 1;
+    }
+
+    // Step 5. Return 0.
+    0
+}
+
+/// <https://html.spec.whatwg.org/multipage/#nearest-inclusive-open-popover>
+fn nearest_inclusive_open_popover(no_gc: &NoGC, node: &Node) -> Option<DomRoot<HTMLElement>> {
+    // Step 1. Let currentNode be node.
+    // Step 2. While currentNode is not null:
+    // Step 2.1. If currentNode's opened in popover mode is "auto" or "hint", and currentNode's
+    // popover visibility state is showing, then return currentNode.
+    // Step 2.2. Set currentNode to currentNode's parent in the flat tree.
+    // Step 3. Return null.
+    node.inclusive_ancestors_in_flat_tree_unrooted(no_gc)
+        .filter_map(|ancestor| ancestor.downcast::<HTMLElement>().map(DomRoot::from_ref))
+        .find(|element| element.is_popover_showing() && element.opened_in_popover_mode().is_some())
+}
+
+/// <https://html.spec.whatwg.org/multipage/#nearest-inclusive-target-popover>
+fn nearest_inclusive_target_popover(no_gc: &NoGC, node: &Node) -> Option<DomRoot<HTMLElement>> {
+    // Step 1. Let currentNode be node.
+    // Step 2. While currentNode is not null:
+    // Step 2.1. Let targetPopover be currentNode's target popover.
+    // Step 2.2. If targetPopover is not null and targetPopover's popover attribute is in the Auto
+    // state or the Hint state, and targetPopover's popover visibility state is showing, then
+    // return targetPopover.
+    // Step 2.3. Set currentNode to currentNode's ancestor in the flat tree.
+    node.inclusive_ancestors_in_flat_tree_unrooted(no_gc)
+        .filter_map(|ancestor| target_popover(no_gc, &ancestor))
+        .find(|target_popover| {
+            matches!(
+                target_popover.popover_state(),
+                PopoverState::Auto | PopoverState::Hint
+            ) && target_popover.is_popover_showing()
+        })
+}
+
+/// <https://html.spec.whatwg.org/multipage/#target-popover>
+fn target_popover(no_gc: &NoGC, node: &Node) -> Option<DomRoot<HTMLElement>> {
+    // Step 1. If node is not a button element, then return node's popover target element.
+    let Some(button) = node.downcast::<HTMLButtonElement>() else {
+        return popover_target_element(no_gc, node);
+    };
+
+    // Step 2. If node is disabled, then return null.
+    let element = button.upcast::<Element>();
+    if element.disabled_state() {
+        return None;
+    }
+
+    // Step 3. Let target be the result of running node's get the commandfor-associated element.
+    // Step 4. If target is null, then return node's popover target element.
+    let Some(target) = element
+        .get_attribute_string_value(&local_name!("commandfor"))
+        .and_then(|value| element_with_id_in_same_tree(no_gc, element, &value))
+    else {
+        return popover_target_element(no_gc, node);
+    };
+
+    // Step 5. If node has a form owner:
+    // Step 5.1. If element is a submit button, then return null.
+    // Step 5.2. If element's type attribute is in the Reset Button state, then return null.
+    // Step 5.3. If element's type attribute is in the Auto state, then return null.
+    if button.form_owner().is_some() && !button.type_attribute_is_in_the_button_state() {
+        return None;
+    }
+
+    // Step 6. Let command be node's command attribute.
+    // Step 7. If command is not in the Toggle Popover, Hide Popover, or Show Popover states, then
+    // return null.
+    if !button.has_popover_command() {
+        return None;
+    }
+
+    // Step 8. If target's popover attribute is in the No Popover state, then return null.
+    // Step 9. Return target.
+    DomRoot::downcast::<HTMLElement>(target)
+        .filter(|target| target.popover_state() != PopoverState::NoPopover)
+}

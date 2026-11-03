@@ -110,6 +110,23 @@ impl HTMLButtonElement {
     pub(crate) fn explicitly_set_popover_target_element(&self) -> Option<DomRoot<Element>> {
         self.explicitly_set_popover_target_element.get()
     }
+
+    /// Returns whether this button's `type` attribute is in the Button state, rather than in the
+    /// Submit Button, Reset Button or Auto state.
+    pub(crate) fn type_attribute_is_in_the_button_state(&self) -> bool {
+        self.upcast::<Element>()
+            .get_string_attribute(&local_name!("type"))
+            .eq_ignore_ascii_case("button")
+    }
+
+    /// Returns whether this button's `command` attribute is in the Toggle Popover, Show Popover
+    /// or Hide Popover state.
+    pub(crate) fn has_popover_command(&self) -> bool {
+        matches!(
+            self.command_state(),
+            CommandState::TogglePopover | CommandState::ShowPopover | CommandState::HidePopover
+        )
+    }
 }
 
 impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {

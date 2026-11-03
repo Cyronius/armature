@@ -68,6 +68,7 @@ use crate::dom::gamepad::gamepad::{Gamepad, contains_user_gesture};
 #[cfg(feature = "gamepad")]
 use crate::dom::gamepad::gamepadevent::GamepadEventType;
 use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
+use crate::dom::html::popover::light_dismiss_open_popovers;
 use crate::dom::inputevent::HitTestResult;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::keyboardevent::KeyboardEvent;
@@ -1116,6 +1117,7 @@ impl DocumentEventHandler {
                     self.mouse_button_state
                         .set(input_event.pressed_mouse_buttons);
 
+                    light_dismiss_open_popovers(cx, pointer_event.upcast(), &pointer_target);
                     let pointer_event_result =
                         pointer_event.upcast::<Event>().fire(cx, &pointer_target);
 
@@ -1201,6 +1203,7 @@ impl DocumentEventHandler {
                         .map(DomRoot::upcast::<EventTarget>)
                         .unwrap_or_else(|| DomRoot::from_ref(node.upcast::<EventTarget>()));
 
+                    light_dismiss_open_popovers(cx, pointer_event.upcast(), &pointer_target);
                     pointer_event.upcast::<Event>().fire(cx, &pointer_target);
 
                     // Update button state after firing event, so setPointerCapture/releasePointerCapture
@@ -1514,6 +1517,7 @@ impl DocumentEventHandler {
             event.is_cancelable(),
             Some(hit_test_result.point_in_node),
         );
+        light_dismiss_open_popovers(cx, pointer_event.upcast(), &pointer_target);
         pointer_event.upcast::<Event>().fire(cx, &pointer_target);
 
         // Process pending pointer capture after firing event, but skip if we just
