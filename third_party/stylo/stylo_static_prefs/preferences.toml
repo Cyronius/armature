@@ -61,6 +61,8 @@
 # Armature (AS-101): Gates the scroll snap properties for Servo.
 "layout.css.scroll-snap.enabled" = false
 "layout.css.scroll-state.enabled" = false
+# Armature (AS-102): Gates scrollbar-gutter for Servo.
+"layout.css.scrollbar-gutter.enabled" = false
 "layout.css.scrollbar-styling.enabled" = false
 "layout.css.starting-style-at-rules.enabled" = false
 "layout.css.stretch-size-keyword.enabled" = true

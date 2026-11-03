@@ -88,3 +88,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `layout.css.scroll-snap.enabled` preference. Parsing, computed values, serialization and interpolation work as in
   Gecko; Servo does not snap yet. Affects css/css-scroll-snap/parsing, css/cssom-view/scrollIntoView-scroll*.
 - Upstream: Could go upstream as is (the value types already build for Servo).
+
+### AS-102: Enable `scrollbar-gutter` for Servo
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `scrollbar-gutter` for Servo behind the new `layout.css.scrollbar-gutter.enabled` preference, for
+  css/css-overflow/parsing/scrollbar-gutter-*.html and css/css-overflow/inheritance.html. Servo's scrollbars take no
+  space, so the gutter is always zero wide, which is what the property means for overlay scrollbars.
+- Upstream: Could go upstream as is.
