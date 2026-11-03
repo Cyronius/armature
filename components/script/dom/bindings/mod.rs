@@ -141,6 +141,7 @@ pub(crate) mod buffer_source {
         create_heap_buffer_source_with_length, get_buffer_source_copy, get_buffer_source_slice,
     };
 }
+pub(crate) mod asynciterable;
 pub(crate) mod cell;
 pub(crate) mod constructor;
 pub(crate) mod conversions;
@@ -150,6 +151,7 @@ pub(crate) mod frozenarray;
 pub(crate) mod function;
 pub(crate) mod import;
 pub(crate) mod inheritance;
+pub(crate) mod iteration;
 pub(crate) mod like;
 pub(crate) mod principals;
 pub(crate) mod refcounted;

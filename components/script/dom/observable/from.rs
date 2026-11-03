@@ -10,19 +10,20 @@ use js::context::JSContext;
 use js::jsapi::{Heap, SymbolCode};
 use js::jsval::{JSVal, ObjectValue, UndefinedValue};
 use js::realm::CurrentRealm;
+use js::rust::HandleValue;
 use js::rust::wrappers2::IsPromiseObject;
-use js::rust::{HandleValue, MutableHandleValue};
 
 use crate::dom::abortsignal::AbortAlgorithm;
 use crate::dom::bindings::conversions::root_from_handlevalue;
 use crate::dom::bindings::error::{Error, ErrorResult, ErrorToJsval, Fallible};
+use crate::dom::bindings::iteration::{
+    IteratorKind, IteratorRecord, async_from_sync_iterator_next, async_iterator_call_return,
+    get_iterator, get_method_of_symbol, iterator_close, iterator_complete, iterator_next,
+    iterator_step_value, iterator_value,
+};
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::globalscope::GlobalScope;
-use crate::dom::observable::iteration::{
-    IteratorKind, IteratorRecord, async_iterator_call_return, get_iterator, get_method_of_symbol,
-    iterator_close, iterator_complete, iterator_next, iterator_step_value, iterator_value,
-};
 use crate::dom::observable::observable::{Observable, ObservableAbortAlgorithm, SubscribeSteps};
 use crate::dom::observable::subscriber::{Subscriber, error_subscriber_with};
 use crate::dom::promise::Promise;
@@ -243,7 +244,7 @@ fn next_algorithm(cx: &mut CurrentRealm, subscriber: &Subscriber, record: &Rc<It
     let completion = if record.is_async_from_sync() {
         // The steps of %AsyncFromSyncIteratorPrototype%.next(): the result of the sync iterator
         // is looked at synchronously, and its value is awaited.
-        next_of_sync_iterator(cx, record, result.handle_mut(), &mut sync_result_done)
+        async_from_sync_iterator_next(cx, record, result.handle_mut(), &mut sync_result_done)
     } else {
         iterator_next(cx, record, result.handle_mut())
     };
@@ -275,40 +276,6 @@ fn next_algorithm(cx: &mut CurrentRealm, subscriber: &Subscriber, record: &Rc<It
         })),
     );
     next_promise.append_native_handler(cx, &handler);
-}
-
-/// The synchronous part of %AsyncFromSyncIteratorPrototype%.next(): calls `next()` of the sync
-/// iterator, and reads `done` and `value` of the result. On success, `value` is the value, and
-/// `done` is set.
-fn next_of_sync_iterator(
-    cx: &mut JSContext,
-    record: &IteratorRecord,
-    value: MutableHandleValue,
-    done: &mut Option<bool>,
-) -> Fallible<()> {
-    rooted!(&in(cx) let mut result = UndefinedValue());
-    iterator_next(cx, record, result.handle_mut())?;
-
-    let fail = |error: Error| {
-        record.set_done();
-        Err(error)
-    };
-    if !result.is_object() {
-        return fail(Error::Type(c"Iterator result is not an Object".to_owned()));
-    }
-    rooted!(&in(cx) let result = result.to_object());
-    let is_done = match iterator_complete(cx, result.handle()) {
-        Ok(is_done) => is_done,
-        Err(error) => return fail(error),
-    };
-    if let Err(error) = iterator_value(cx, result.handle(), value) {
-        return fail(error);
-    }
-    if is_done {
-        record.set_done();
-    }
-    *done = Some(is_done);
-    Ok(())
 }
 
 #[derive(JSTraceable, MallocSizeOf)]

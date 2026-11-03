@@ -27,8 +27,8 @@ use servo_constellation_traits::MessagePortImpl;
 
 use crate::dom::bindings::codegen::Bindings::QueuingStrategyBinding::QueuingStrategy;
 use crate::dom::bindings::codegen::Bindings::ReadableStreamBinding::{
-    ReadableStreamGetReaderOptions, ReadableStreamMethods, ReadableStreamReaderMode,
-    ReadableWritablePair, StreamPipeOptions,
+    ReadableStreamGetReaderOptions, ReadableStreamIteratorOptions, ReadableStreamMethods,
+    ReadableStreamReaderMode, ReadableWritablePair, StreamPipeOptions,
 };
 use script_bindings::str::DOMString;
 use crate::dom::domexception::{DOMErrorName, DOMException};
@@ -59,6 +59,10 @@ use crate::dom::stream::readablebytestreamcontroller::ReadableByteStreamControll
 use crate::dom::stream::readablestreambyobreader::ReadableStreamBYOBReader;
 use crate::dom::stream::readablestreamdefaultcontroller::ReadableStreamDefaultController;
 use crate::dom::stream::readablestreamdefaultreader::{ReadRequest, ReadableStreamDefaultReader};
+use crate::dom::stream::readablestreamasynciterator::ReadableStreamAsyncIteratorState;
+use crate::dom::stream::readablestreamfrom::readable_stream_from_iterable;
+use crate::dom::bindings::asynciterable::AsyncIterableIterator;
+use crate::dom::types::ReadableStreamAsyncIterator;
 use crate::dom::stream::defaultteeunderlyingsource::DefaultTeeCancelAlgorithm;
 use crate::dom::types::DefaultTeeUnderlyingSource;
 use crate::dom::stream::underlyingsourcecontainer::UnderlyingSourceType;
@@ -2194,6 +2198,16 @@ impl ReadableStreamMethods<crate::DomTypeHolder> for ReadableStream {
         Ok(stream)
     }
 
+    /// <https://streams.spec.whatwg.org/#rs-from>
+    fn From(
+        cx: &mut JSContext,
+        global: &GlobalScope,
+        async_iterable: SafeHandleValue,
+    ) -> Fallible<DomRoot<ReadableStream>> {
+        // Return ? ReadableStreamFromIterable(asyncIterable).
+        readable_stream_from_iterable(cx, global, async_iterable)
+    }
+
     /// <https://streams.spec.whatwg.org/#rs-locked>
     fn Locked(&self) -> bool {
         self.is_locked()
@@ -2233,6 +2247,23 @@ impl ReadableStreamMethods<crate::DomTypeHolder> for ReadableStream {
         Ok(ReadableStreamReader::ReadableStreamBYOBReader(
             self.acquire_byob_reader(cx)?,
         ))
+    }
+
+    /// The asynchronous iterator initialization steps of
+    /// <https://streams.spec.whatwg.org/#rs-asynciterator>.
+    fn Values(
+        &self,
+        cx: &mut CurrentRealm,
+        options: &ReadableStreamIteratorOptions,
+    ) -> Fallible<DomRoot<ReadableStreamAsyncIterator>> {
+        // Let reader be ? AcquireReadableStreamDefaultReader(stream).
+        let reader = self.acquire_default_reader(cx)?;
+
+        // Set iterator’s reader to reader.
+        // Let preventCancel be args[0]["preventCancel"].
+        // Set iterator’s prevent cancel to preventCancel.
+        let state = ReadableStreamAsyncIteratorState::new(&reader, options.preventCancel);
+        Ok(AsyncIterableIterator::new(cx, self, state))
     }
 
     /// <https://streams.spec.whatwg.org/#rs-tee>

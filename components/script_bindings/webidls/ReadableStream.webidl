@@ -9,8 +9,8 @@ interface _ReadableStream {
   [Throws]
   constructor(optional object underlyingSource, optional QueuingStrategy strategy = {});
 
-  // [Throws]
-  // static ReadableStream from(any asyncIterable);
+  [Throws]
+  static ReadableStream from(any asyncIterable);
 
   readonly attribute boolean locked;
 
@@ -29,8 +29,8 @@ interface _ReadableStream {
   [Throws]
   sequence<ReadableStream> tee();
 
-  // [GenerateReturnMethod]
-  // async iterable<any>(optional ReadableStreamIteratorOptions options = {});
+  [GenerateReturnMethod]
+  async_iterable<any>(optional ReadableStreamIteratorOptions options = {});
 };
 
 enum ReadableStreamType { "bytes" };
@@ -41,11 +41,9 @@ dictionary ReadableStreamGetReaderOptions {
   ReadableStreamReaderMode mode;
 };
 
-/*
 dictionary ReadableStreamIteratorOptions {
   boolean preventCancel = false;
 };
-*/
 
 dictionary ReadableWritablePair {
   required ReadableStream readable;

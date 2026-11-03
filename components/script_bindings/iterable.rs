@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! Implementation of `iterable<...>` and `iterable<..., ...>` WebIDL declarations.
+//! Implementation of `iterable<...>` and `iterable<..., ...>` WebIDL declarations, and the
+//! interface of the implementation of `async_iterable<...>` declarations.
 
 use std::cell::Cell;
 use std::marker::PhantomData;
@@ -20,7 +21,7 @@ use crate::codegen::GenericBindings::IterableIteratorBinding::{
 };
 use crate::conversions::IDLInterface;
 use crate::error::Fallible;
-use crate::interfaces::{DomHelpers, GlobalScopeHelpers};
+use crate::interfaces::{DomHelpers, GlobalScopeHelpers, PromiseHelpers};
 use crate::js::JS_NewObject;
 use crate::reflector::{DomGlobalGeneric, DomObjectIteratorWrap, DomObjectWrap, Reflector};
 use crate::root::{Dom, DomRoot, Root};
@@ -52,6 +53,24 @@ pub trait Iterable {
     fn get_value_at_index(&self, cx: &mut JSContext, index: u32) -> Self::Value;
     /// Return the key at the provided index.
     fn get_key_at_index(&self, cx: &mut JSContext, index: u32) -> Self::Key;
+}
+
+/// The native type of the default asynchronous iterator objects of an interface with an
+/// `async_iterable<...>` declaration, which implements the methods of the asynchronous iterator
+/// prototype object.
+///
+/// <https://webidl.spec.whatwg.org/#es-asynchronous-iterator-prototype-object>
+pub trait AsyncIterator<D: DomTypes> {
+    /// <https://webidl.spec.whatwg.org/#es-asynchronous-iterator-prototype-object>, `next()`.
+    fn next(&self, cx: &mut JSContext) -> <D::Promise as PromiseHelpers<D>>::StackRoot;
+    /// <https://webidl.spec.whatwg.org/#es-asynchronous-iterator-prototype-object>, `return()`.
+    ///
+    /// This is only called for interfaces with an asynchronous iterator return algorithm.
+    fn r#return(
+        &self,
+        cx: &mut JSContext,
+        value: HandleValue,
+    ) -> <D::Promise as PromiseHelpers<D>>::StackRoot;
 }
 
 /// A version of the [IDLInterface] trait that is specific to types that have

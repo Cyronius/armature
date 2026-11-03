@@ -1966,6 +1966,13 @@ pub(crate) fn init_{name}<D: DomTypes>() {{
 # The length of a method is the minimum of the lengths of the
 # argument lists of all its overloads.
 def methodLength(method: IDLMethod) -> int:
+    # The return() method of asynchronous iterators has a length of 1, even though its argument
+    # is optional.
+    # https://webidl.spec.whatwg.org/#es-asynchronous-iterator-prototype-object
+    if (isinstance(method.parentScope, IDLInterface)
+            and method.parentScope.isAsyncIteratorInterface()
+            and method.identifier.name == "return"):
+        return 1
     signatures = method.signatures()
     return min(
         len([arg for arg in arguments if not arg.optional and not arg.variadic])
@@ -3120,10 +3127,16 @@ def DomTypes(descriptors: list[Descriptor],
                 else:
                     traits += ["crate::reflector::DomObjectWrap<Self>"]
 
+        if descriptor.interface.isAsyncIteratorInterface():
+            traits += ["crate::iterable::AsyncIterator<Self>"]
+
         if not descriptor.interface.isCallback() and not descriptor.interface.isIteratorInterface():
             nonConstMembers = [m for m in descriptor.interface.members if not m.isConst()]
             ctor = descriptor.interface.ctor()
-            if (
+            if descriptor.interface.isAsyncIteratorInterface():
+                # The methods are implemented by the AsyncIterator trait instead.
+                pass
+            elif (
                     nonConstMembers
                     or (ctor and not ctor.isHTMLConstructor())
                     or descriptor.interface.legacyFactoryFunctions
@@ -3165,7 +3178,11 @@ def DomTypeHolder(descriptors: list[Descriptor],
         if descriptor.interface.isCallback() or descriptor.interface.isIteratorInterface():
             continue
         iface_name = descriptor.interface.identifier.name
-        path = f"crate::dom::{iface_name.lower()}::{firstCap(iface_name)}"
+        if descriptor.interface.isAsyncIteratorInterface():
+            # This is a type alias in InterfaceTypes.
+            path = f"crate::dom::types::{firstCap(iface_name)}"
+        else:
+            path = f"crate::dom::{iface_name.lower()}::{firstCap(iface_name)}"
         elements.append(CGGeneric(f"    type {firstCap(iface_name)} = {path};\n"))
     elements.append(CGGeneric("}\n"))
     return CGList(elements)
@@ -3927,6 +3944,8 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
                 protoGetter = "InitType::RealmErrorPrototype"
             elif self.descriptor.interface.isIteratorInterface():
                 protoGetter = "InitType::RealmIteratorPrototype"
+            elif self.descriptor.interface.isAsyncIteratorInterface():
+                protoGetter = "InitType::RealmAsyncIteratorPrototype"
             else:
                 protoGetter = "InitType::RealmObjectPrototype"
         else:
@@ -4028,15 +4047,16 @@ assert!((*cache)[PrototypeList::Constructor::{properties['id']} as usize].is_nul
         aliasedMembers = [m for m in self.descriptor.interface.members if m.isMethod() and m.aliases]
         if aliasedMembers:
             def defineAlias(alias: str) -> CGThing:
-                if alias == "@@iterator":
-                    symbolJSID = "RUST_SYMBOL_TO_JSID(GetWellKnownSymbol(cx, SymbolCode::iterator), iteratorId.handle_mut())"
+                if alias in ("@@iterator", "@@asyncIterator"):
+                    symbolJSID = (f"RUST_SYMBOL_TO_JSID(GetWellKnownSymbol(cx, SymbolCode::{alias[2:]}), "
+                                  "iteratorId.handle_mut())")
                     getSymbolJSID: CGThing | None = CGGeneric(fill("rooted!(&in(cx) let mut iteratorId: jsid);\n${symbolJSID};\n",
                                                    symbolJSID=symbolJSID))
                     defineFn = "JS_DefinePropertyById2"
                     prop = "iteratorId.handle()"
                     enumFlags = "0 as u32"  # Not enumerable, per spec.
                 elif alias.startswith("@@"):
-                    raise TypeError("Can't handle any well-known Symbol other than @@iterator")
+                    raise TypeError("Can't handle any well-known Symbol other than @@iterator and @@asyncIterator")
                 else:
                     getSymbolJSID = None
                     defineFn = "JS_DefineProperty"
@@ -4487,7 +4507,9 @@ class CGPerSignatureCall(CGThing):
         if self.isFallible():
             errorResult = " false"
 
-        if isinstance(idlNode, IDLMethod) and idlNode.isMethod() and idlNode.isMaplikeOrSetlikeOrIterableMethod():
+        if isinstance(idlNode, IDLMethod) and descriptor.interface.isAsyncIteratorInterface():
+            cgThings.append(CGAsyncIteratorMethodGenerator(idlNode.identifier.name))
+        elif isinstance(idlNode, IDLMethod) and isSyncMaplikeOrSetlikeOrIterableMethod(idlNode):
             assert idlNode.maplikeOrSetlikeOrIterable is not None
             if idlNode.maplikeOrSetlikeOrIterable.isMaplike() or \
                idlNode.maplikeOrSetlikeOrIterable.isSetlike():
@@ -4530,7 +4552,7 @@ class CGPerSignatureCall(CGThing):
         # use stronger types so we need to exclude them from being handled like other
         # generated code.
         if returnTypeNeedsOutparam(self.returnType) and (
-           not (isinstance(self.idlNode, IDLMethod) and self.idlNode.isMethod() and self.idlNode.isMaplikeOrSetlikeOrIterableMethod())):
+           not (isinstance(self.idlNode, IDLMethod) and isSyncMaplikeOrSetlikeOrIterableMethod(self.idlNode))):
             resultName = "retval"
         return wrapForType(
             'MutableHandleValue::from_raw(args.rval())',
@@ -4743,7 +4765,7 @@ class CGMethodPromiseWrapper(CGAbstractExternMethod):
             let cx = &mut cx;
             return exception_to_promise(cx, (*args).rval());
             """,
-            methodName=self.method.identifier.name,
+            methodName=CGDictionary.makeMemberName(self.method.identifier.name),
             args=", ".join(arg.name for arg in self.args),
         ))
 
@@ -7455,7 +7477,7 @@ class CGInterfaceTrait(CGThing):
 
             for m in descriptor.interface.members:
                 if (m.isMethod()
-                        and not m.isMaplikeOrSetlikeOrIterableMethod()
+                        and not isSyncMaplikeOrSetlikeOrIterableMethod(m)
                         and (not m.isIdentifierLess() or (m.isStringifier() and not m.underlyingAttr))
                         and not m.isDefaultToJSON()):
                     name = CGSpecializedMethod.makeNativeName(descriptor, m)
@@ -8557,8 +8579,11 @@ class CGConcreteBindingRoot(CGThing):
             if d.weakReferenceable:
                 cgthings.append(CGWeakReferenceableTrait(d, generic = generic))
 
+            # Note: The native type of asynchronous iterators is generic, so it can not have a
+            # Drop implementation for one interface.
             if (
                 not d.interface.isIteratorInterface() and
+                not d.interface.isAsyncIteratorInterface() and
                 not d.interface.isCallback() and
                 not d.allowDropImpl
             ):
@@ -9461,6 +9486,34 @@ class CGMaplikeOrSetlikeMethodGenerator(CGGeneric):
             raise TypeError(f"Do not know how to impl *like method: {methodName}")
 
 
+def isSyncMaplikeOrSetlikeOrIterableMethod(method: IDLMethod) -> bool:
+    """
+    Whether the method is one that a maplike, setlike or (sync) iterable declaration adds, all of
+    which are implemented by the bindings. The methods that an async iterable declaration adds
+    to the interface are implemented like regular methods, as the interface has to run the
+    asynchronous iterator initialization steps.
+    """
+    return (method.isMethod()
+            and method.isMaplikeOrSetlikeOrIterableMethod()
+            and not cast(IDLMaplikeOrSetlikeOrIterableBase, method.maplikeOrSetlikeOrIterable).isAsyncIterable())
+
+
+class CGAsyncIteratorMethodGenerator(CGGeneric):
+    """
+    Creates the next() and return() methods of an asynchronous iterator prototype object, which
+    the native type of the asynchronous iterator implements in the AsyncIterator trait.
+    https://webidl.spec.whatwg.org/#es-asynchronous-iterator-prototype-object
+    """
+    def __init__(self, methodName: str) -> None:
+        if methodName == "next":
+            call = "next(this, cx)"
+        elif methodName == "return":
+            call = "r#return(this, cx, arg0)"
+        else:
+            raise TypeError(f"Unexpected method {methodName} of an asynchronous iterator")
+        CGGeneric.__init__(self, f"let result = crate::iterable::AsyncIterator::{call};\n")
+
+
 class CGIterableMethodGenerator(CGGeneric):
     """
     Creates methods for iterable interfaces. Unwrapping/wrapping
@@ -9694,12 +9747,21 @@ class GlobalGenRoots():
 
     @staticmethod
     def InterfaceTypes(config: Configuration) -> CGThing:
-        descriptors = sorted([MakeNativeName(d.name)
-                              for d in config.getDescriptors(register=True,
-                                                             isCallback=False,
-                                                             isIteratorInterface=False)])
-        curr = CGList([CGGeneric(f"pub(crate) use crate::dom::{name.lower()}::{MakeNativeName(name)};\n")
-                       for name in descriptors])
+        def interfaceType(descriptor: Descriptor) -> str:
+            name = MakeNativeName(descriptor.name)
+            asyncIterableInterface = descriptor.interface.asyncIterableInterface
+            if asyncIterableInterface is not None:
+                # The asynchronous iterators of all interfaces share an implementation.
+                iterable = MakeNativeName(asyncIterableInterface.identifier.name)
+                return (f"pub(crate) type {name} = "
+                        f"crate::dom::bindings::asynciterable::AsyncIterableIterator<{iterable}>;\n")
+            return f"pub(crate) use crate::dom::{name.lower()}::{name};\n"
+
+        descriptors = sorted(config.getDescriptors(register=True,
+                                                   isCallback=False,
+                                                   isIteratorInterface=False),
+                             key=lambda d: MakeNativeName(d.name))
+        curr = CGList([CGGeneric(interfaceType(d)) for d in descriptors])
         curr = CGWrapper(curr, pre=AUTOGENERATED_WARNING_COMMENT)
         return curr
 

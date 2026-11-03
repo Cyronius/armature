@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! The ECMAScript iteration abstract operations that `Observable.from()` needs.
+//! The ECMAScript iteration abstract operations that `Observable.from()` and
+//! `ReadableStream.from()` need.
 //!
 //! <https://tc39.es/ecma262/#sec-operations-on-iterator-objects>
 //!
@@ -317,10 +318,44 @@ pub(crate) fn iterator_step_value(
     Ok(true)
 }
 
+/// The synchronous part of %AsyncFromSyncIteratorPrototype%.next(): calls `next()` of the sync
+/// iterator, and reads `done` and `value` of the result. On success, `value` is the value, and
+/// `done` is set.
+pub(crate) fn async_from_sync_iterator_next(
+    cx: &mut JSContext,
+    record: &IteratorRecord,
+    value: MutableHandleValue,
+    done: &mut Option<bool>,
+) -> Fallible<()> {
+    rooted!(&in(cx) let mut result = UndefinedValue());
+    iterator_next(cx, record, result.handle_mut())?;
+
+    let fail = |error: Error| {
+        record.set_done();
+        Err(error)
+    };
+    if !result.is_object() {
+        return fail(Error::Type(c"Iterator result is not an Object".to_owned()));
+    }
+    rooted!(&in(cx) let result = result.to_object());
+    let is_done = match iterator_complete(cx, result.handle()) {
+        Ok(is_done) => is_done,
+        Err(error) => return fail(error),
+    };
+    if let Err(error) = iterator_value(cx, result.handle(), value) {
+        return fail(error);
+    }
+    if is_done {
+        record.set_done();
+    }
+    *done = Some(is_done);
+    Ok(())
+}
+
 /// Calls the `return` method of the iterator of `record`, if there is one, with `arguments`.
 ///
 /// Returns the result of the call, which is `None` when there is no `return` method.
-fn call_return(
+pub(crate) fn call_return(
     cx: &mut JSContext,
     record: &IteratorRecord,
     argument: Option<HandleValue>,

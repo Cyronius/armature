@@ -5,7 +5,6 @@
 pub(crate) use self::observable::*;
 pub(crate) mod from;
 pub(crate) mod higher_order;
-pub(crate) mod iteration;
 #[allow(clippy::module_inception, reason = "The interface name is Observable")]
 pub(crate) mod observable;
 pub(crate) mod operators;

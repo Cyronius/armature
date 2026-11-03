@@ -11,7 +11,8 @@ use js::jsapi::{CallArgs, JSClass, JSFunctionSpec, JSObject, JSPropertySpec};
 use js::rooted;
 use js::rust::HandleObject;
 use js::rust::wrappers2::{
-    GetRealmErrorPrototype, GetRealmIteratorPrototype, GetRealmObjectPrototype, JS_NewPlainObject,
+    GetRealmAsyncIteratorPrototype, GetRealmErrorPrototype, GetRealmIteratorPrototype,
+    GetRealmObjectPrototype, JS_NewPlainObject,
 };
 
 use crate::DomTypes;
@@ -88,6 +89,7 @@ pub(crate) struct CallbackInit {
 }
 
 pub(crate) enum InitType {
+    RealmAsyncIteratorPrototype,
     RealmErrorPrototype,
     RealmIteratorPrototype,
     RealmObjectPrototype,
@@ -176,6 +178,9 @@ pub(crate) unsafe fn create_interface<D: DomTypes>(
 ) -> *mut JSObject {
     rooted!(&in(cx) let mut prototype_proto = ptr::null_mut::<JSObject>());
     match init.init_type {
+        InitType::RealmAsyncIteratorPrototype => unsafe {
+            prototype_proto.set(GetRealmAsyncIteratorPrototype(cx));
+        },
         InitType::RealmErrorPrototype => unsafe {
             prototype_proto.set(GetRealmErrorPrototype(cx));
         },
