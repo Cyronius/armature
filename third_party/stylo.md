@@ -96,3 +96,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Builds `accent-color` for Servo behind the new preference `layout.css.accent-color.enabled`, for the
   `css/css-ui` parsing, computed and animation tests. Servo's form controls do not use it yet.
 - Upstream: Could go upstream as is.
+
+### AS-203: Build print-color-adjust for Servo
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `print-color-adjust` (and its `color-adjust` alias) for Servo behind the new preference
+  `layout.css.print-color-adjust.enabled`, for the `css/css-color-adjust` parsing and inheritance tests. Servo does
+  not print, so the value has no effect.
+- Upstream: Could go upstream as is.

@@ -1771,7 +1771,8 @@ affects = "layout"
 type = "PrintColorAdjust"
 initial = "computed::PrintColorAdjust::Economy"
 struct = "inherited_box"
-engine = "gecko"
+# Armature (AS-203): Also build for Servo, behind a preference.
+servo_pref = "layout.css.print-color-adjust.enabled"
 aliases = ["color-adjust"]
 spec = "https://drafts.csswg.org/css-color-adjust/#print-color-adjust"
 animation_type = "discrete"
