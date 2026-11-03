@@ -18,6 +18,7 @@ mod ed25519_operation;
 mod ed448_operation;
 mod hkdf_operation;
 mod hmac_operation;
+pub(crate) mod hybrid_kem_cg;
 mod hybrid_kem_operation;
 mod kangarootwelve_operation;
 mod kmac_operation;
@@ -146,8 +147,12 @@ enum CryptoAlgorithm {
     MlKem768,
     #[strum(serialize = "ML-KEM-1024")]
     MlKem1024,
+    #[strum(serialize = "MLKEM768-P256")]
+    MlKem768P256,
     #[strum(serialize = "MLKEM768-X25519")]
     MlKem768X25519,
+    #[strum(serialize = "MLKEM1024-P384")]
+    MlKem1024P384,
     #[strum(serialize = "ML-DSA-44")]
     MlDsa44,
     #[strum(serialize = "ML-DSA-65")]
@@ -5784,7 +5789,9 @@ impl NormalizedAlgorithm for GenerateKeyAlgorithm {
                     object.try_into_with_cx_and_name(cx, algorithm_name)?,
                 ))
             },
-            CryptoAlgorithm::MlKem768X25519 => Ok(GenerateKeyAlgorithm::HybridKem(
+            CryptoAlgorithm::MlKem768P256 |
+            CryptoAlgorithm::MlKem768X25519 |
+            CryptoAlgorithm::MlKem1024P384 => Ok(GenerateKeyAlgorithm::HybridKem(
                 object.try_into_with_cx_and_name(cx, algorithm_name)?,
             )),
             CryptoAlgorithm::MlDsa44 | CryptoAlgorithm::MlDsa65 | CryptoAlgorithm::MlDsa87 => Ok(
@@ -6060,7 +6067,9 @@ impl NormalizedAlgorithm for ImportKeyAlgorithm {
                     object.try_into_with_cx_and_name(cx, algorithm_name)?,
                 ))
             },
-            CryptoAlgorithm::MlKem768X25519 => Ok(ImportKeyAlgorithm::HybridKem(
+            CryptoAlgorithm::MlKem768P256 |
+            CryptoAlgorithm::MlKem768X25519 |
+            CryptoAlgorithm::MlKem1024P384 => Ok(ImportKeyAlgorithm::HybridKem(
                 object.try_into_with_cx_and_name(cx, algorithm_name)?,
             )),
             CryptoAlgorithm::MlDsa44 | CryptoAlgorithm::MlDsa65 | CryptoAlgorithm::MlDsa87 => Ok(
@@ -6428,7 +6437,9 @@ impl NormalizedAlgorithm for ExportKeyAlgorithm {
                     object.try_into_with_cx_and_name(cx, algorithm_name)?,
                 ))
             },
-            CryptoAlgorithm::MlKem768X25519 => Ok(ExportKeyAlgorithm::HybridKem(
+            CryptoAlgorithm::MlKem768P256 |
+            CryptoAlgorithm::MlKem768X25519 |
+            CryptoAlgorithm::MlKem1024P384 => Ok(ExportKeyAlgorithm::HybridKem(
                 object.try_into_with_cx_and_name(cx, algorithm_name)?,
             )),
             CryptoAlgorithm::MlDsa44 | CryptoAlgorithm::MlDsa65 | CryptoAlgorithm::MlDsa87 => Ok(
@@ -6704,7 +6715,9 @@ impl NormalizedAlgorithm for EncapsulateAlgorithm {
                     object.try_into_with_cx_and_name(cx, algorithm_name)?,
                 ))
             },
-            CryptoAlgorithm::MlKem768X25519 => Ok(EncapsulateAlgorithm::HybridKem(
+            CryptoAlgorithm::MlKem768P256 |
+            CryptoAlgorithm::MlKem768X25519 |
+            CryptoAlgorithm::MlKem1024P384 => Ok(EncapsulateAlgorithm::HybridKem(
                 object.try_into_with_cx_and_name(cx, algorithm_name)?,
             )),
             _ => Err(Error::NotSupported(Some(format!(
@@ -6732,9 +6745,7 @@ impl EncapsulateAlgorithm {
     fn encapsulate<D: Equivalence>(&self, key: &CryptoKey<D>) -> Result<EncapsulatedBits, Error> {
         match self {
             EncapsulateAlgorithm::MlKem(algorithm) => ml_kem_operation::encapsulate(algorithm, key),
-            EncapsulateAlgorithm::HybridKem(algorithm) => {
-                hybrid_kem_operation::encapsulate(algorithm, key)
-            },
+            EncapsulateAlgorithm::HybridKem(_) => hybrid_kem_operation::encapsulate(key),
         }
     }
 }
@@ -6765,7 +6776,9 @@ impl NormalizedAlgorithm for DecapsulateAlgorithm {
                     object.try_into_with_cx_and_name(cx, algorithm_name)?,
                 ))
             },
-            CryptoAlgorithm::MlKem768X25519 => Ok(DecapsulateAlgorithm::HybridKem(
+            CryptoAlgorithm::MlKem768P256 |
+            CryptoAlgorithm::MlKem768X25519 |
+            CryptoAlgorithm::MlKem1024P384 => Ok(DecapsulateAlgorithm::HybridKem(
                 object.try_into_with_cx_and_name(cx, algorithm_name)?,
             )),
             _ => Err(Error::NotSupported(Some(format!(
@@ -6799,8 +6812,8 @@ impl DecapsulateAlgorithm {
             DecapsulateAlgorithm::MlKem(algorithm) => {
                 ml_kem_operation::decapsulate(algorithm, key, ciphertext)
             },
-            DecapsulateAlgorithm::HybridKem(algorithm) => {
-                hybrid_kem_operation::decapsulate(algorithm, key, ciphertext)
+            DecapsulateAlgorithm::HybridKem(_) => {
+                hybrid_kem_operation::decapsulate(key, ciphertext)
             },
         }
     }
@@ -6832,7 +6845,9 @@ impl NormalizedAlgorithm for GetSharedKeyLengthAlgorithm {
                     object.try_into_with_cx_and_name(cx, algorithm_name)?,
                 ))
             },
-            CryptoAlgorithm::MlKem768X25519 => Ok(GetSharedKeyLengthAlgorithm::HybridKem(
+            CryptoAlgorithm::MlKem768P256 |
+            CryptoAlgorithm::MlKem768X25519 |
+            CryptoAlgorithm::MlKem1024P384 => Ok(GetSharedKeyLengthAlgorithm::HybridKem(
                 object.try_into_with_cx_and_name(cx, algorithm_name)?,
             )),
             _ => Err(Error::NotSupported(Some(format!(
@@ -6926,7 +6941,9 @@ impl NormalizedAlgorithm for GetPublicKeyAlgorithm {
                     object.try_into_with_cx_and_name(cx, algorithm_name)?,
                 ))
             },
-            CryptoAlgorithm::MlKem768X25519 => Ok(GetPublicKeyAlgorithm::HybridKem(
+            CryptoAlgorithm::MlKem768P256 |
+            CryptoAlgorithm::MlKem768X25519 |
+            CryptoAlgorithm::MlKem1024P384 => Ok(GetPublicKeyAlgorithm::HybridKem(
                 object.try_into_with_cx_and_name(cx, algorithm_name)?,
             )),
             CryptoAlgorithm::MlDsa44 | CryptoAlgorithm::MlDsa65 | CryptoAlgorithm::MlDsa87 => Ok(

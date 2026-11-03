@@ -31,6 +31,9 @@ use strum::VariantArray;
 use zeroize::Zeroizing;
 
 use crate::subtlecrypto::KeyAlgorithmAndDerivatives;
+use crate::subtlecrypto::hybrid_kem_cg::{
+    CgDecapsulationKey, CgEncapsulationKey, MlKem768P256, MlKem1024P384,
+};
 use crate::traits::Equivalence;
 
 pub(crate) enum CryptoKeyOrCryptoKeyPair<D: DomTypes> {
@@ -72,8 +75,12 @@ pub(crate) enum Handle {
     MlKem512PublicKey(ml_kem::EncapsulationKey<ml_kem::MlKem512>),
     MlKem768PublicKey(ml_kem::EncapsulationKey<ml_kem::MlKem768>),
     MlKem1024PublicKey(ml_kem::EncapsulationKey<ml_kem::MlKem1024>),
+    MlKem768P256PrivateKey(CgDecapsulationKey<MlKem768P256>),
+    MlKem768P256PublicKey(CgEncapsulationKey<MlKem768P256>),
     MlKem768X25519PrivateKey(x_wing::DecapsulationKey),
     MlKem768X25519PublicKey(x_wing::EncapsulationKey),
+    MlKem1024P384PrivateKey(CgDecapsulationKey<MlKem1024P384>),
+    MlKem1024P384PublicKey(CgEncapsulationKey<MlKem1024P384>),
     MlDsa44PrivateKey(ml_dsa::SigningKey<ml_dsa::MlDsa44>),
     MlDsa65PrivateKey(ml_dsa::SigningKey<ml_dsa::MlDsa65>),
     MlDsa87PrivateKey(ml_dsa::SigningKey<ml_dsa::MlDsa87>),
@@ -354,8 +361,12 @@ impl MallocSizeOf for Handle {
             Handle::MlKem512PublicKey(public_key) => public_key.size_of(ops),
             Handle::MlKem768PublicKey(public_key) => public_key.size_of(ops),
             Handle::MlKem1024PublicKey(public_key) => public_key.size_of(ops),
+            Handle::MlKem768P256PrivateKey(private_key) => private_key.size_of(ops),
+            Handle::MlKem768P256PublicKey(public_key) => public_key.size_of(ops),
             Handle::MlKem768X25519PrivateKey(private_key) => private_key.size_of(ops),
             Handle::MlKem768X25519PublicKey(public_key) => public_key.size_of(ops),
+            Handle::MlKem1024P384PrivateKey(private_key) => private_key.size_of(ops),
+            Handle::MlKem1024P384PublicKey(public_key) => public_key.size_of(ops),
             Handle::MlDsa44PrivateKey(private_key) => private_key.size_of(ops),
             Handle::MlDsa65PrivateKey(private_key) => private_key.size_of(ops),
             Handle::MlDsa87PrivateKey(private_key) => private_key.size_of(ops),
@@ -476,6 +487,32 @@ impl TryFrom<SerializableCryptoKeyHandle> for Handle {
             SerializableCryptoKeyHandle::MlKem1024PublicKey(public_key) => {
                 Ok(Handle::MlKem1024PublicKey(
                     ml_kem::TryKeyInit::new_from_slice(public_key).map_err(|_| ())?,
+                ))
+            },
+            SerializableCryptoKeyHandle::MlKem768P256PrivateKey(private_key) => {
+                Ok(Handle::MlKem768P256PrivateKey(
+                    CgDecapsulationKey::from_seed(
+                        private_key.as_slice().try_into().map_err(|_| ())?,
+                    )
+                    .map_err(|_| ())?,
+                ))
+            },
+            SerializableCryptoKeyHandle::MlKem768P256PublicKey(public_key) => {
+                Ok(Handle::MlKem768P256PublicKey(
+                    CgEncapsulationKey::from_bytes(public_key).map_err(|_| ())?,
+                ))
+            },
+            SerializableCryptoKeyHandle::MlKem1024P384PrivateKey(private_key) => {
+                Ok(Handle::MlKem1024P384PrivateKey(
+                    CgDecapsulationKey::from_seed(
+                        private_key.as_slice().try_into().map_err(|_| ())?,
+                    )
+                    .map_err(|_| ())?,
+                ))
+            },
+            SerializableCryptoKeyHandle::MlKem1024P384PublicKey(public_key) => {
+                Ok(Handle::MlKem1024P384PublicKey(
+                    CgEncapsulationKey::from_bytes(public_key).map_err(|_| ())?,
                 ))
             },
             SerializableCryptoKeyHandle::MlKem768X25519PrivateKey(private_key) => {
@@ -644,6 +681,18 @@ impl TryFrom<&Handle> for SerializableCryptoKeyHandle {
                     ml_kem::KeyExport::to_bytes(public_key).as_slice().to_vec(),
                 ))
             },
+            Handle::MlKem768P256PrivateKey(private_key) => Ok(
+                SerializableCryptoKeyHandle::MlKem768P256PrivateKey(private_key.seed().to_vec()),
+            ),
+            Handle::MlKem768P256PublicKey(public_key) => Ok(
+                SerializableCryptoKeyHandle::MlKem768P256PublicKey(public_key.to_bytes()),
+            ),
+            Handle::MlKem1024P384PrivateKey(private_key) => Ok(
+                SerializableCryptoKeyHandle::MlKem1024P384PrivateKey(private_key.seed().to_vec()),
+            ),
+            Handle::MlKem1024P384PublicKey(public_key) => Ok(
+                SerializableCryptoKeyHandle::MlKem1024P384PublicKey(public_key.to_bytes()),
+            ),
             Handle::MlKem768X25519PrivateKey(private_key) => {
                 Ok(SerializableCryptoKeyHandle::MlKem768X25519PrivateKey(
                     private_key.as_bytes().to_vec(),
