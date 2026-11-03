@@ -13,6 +13,8 @@
 "layout.css.calc-typed-arithmetic.enabled" = true
 "layout.css.color-mix-multi-color.enabled" = true
 "layout.css.columns.enabled" = false
+# Armature (AS-301): Servo preference for the properties this change enables.
+"layout.css.contain-intrinsic-size.enabled" = false
 "layout.css.contain.enabled" = false
 "layout.css.container-queries.enabled" = false
 "layout.css.content.alt-text.enabled" = false

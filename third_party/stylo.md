@@ -80,4 +80,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Upstream: Whether the change could go upstream, or why it is Armature-only.
 ```
 
-No changes yet.
+### AS-301: Build contain-intrinsic-size for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `contain-intrinsic-width`, `-height`, `-block-size`, `-inline-size` and the `contain-intrinsic-size`
+  shorthand for Servo behind the new `layout.css.contain-intrinsic-size.enabled` preference, for parsing, computed
+  values and interpolation (css/css-sizing/contain-intrinsic-size/parsing and animation). Servo's layout does not
+  implement size containment, so the properties have no layout effect yet.
+- Upstream: Could go upstream as a Servo preference.
