@@ -7322,7 +7322,9 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
         _show_ui: bool,
         value: TrustedHTMLOrString,
     ) -> Fallible<bool> {
-        let value = if command_id == "insertHTML" {
+        // Note: Commands are matched ASCII case-insensitively, so this must be as well,
+        // or "inserthtml" would bypass the Trusted Types check of the insertHTML command.
+        let value = if command_id.str().eq_ignore_ascii_case("insertHTML") {
             TrustedHTML::get_trusted_type_compliant_string(
                 cx,
                 self.window.as_global_scope(),

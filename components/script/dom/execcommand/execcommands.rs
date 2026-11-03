@@ -165,6 +165,7 @@ impl Document {
             "hilitecolor" => CommandName::HiliteColor,
             "indent" => CommandName::Indent,
             "inserthorizontalrule" => CommandName::InsertHorizontalRule,
+            "inserthtml" => CommandName::InsertHtml,
             "insertimage" => CommandName::InsertImage,
             "insertlinebreak" => CommandName::InsertLineBreak,
             "insertparagraph" => CommandName::InsertParagraph,

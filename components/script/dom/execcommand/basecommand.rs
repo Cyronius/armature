@@ -35,6 +35,7 @@ use crate::dom::execcommand::commands::forwarddelete::execute_forward_delete_com
 use crate::dom::execcommand::commands::hilitecolor::execute_hilitecolor_command;
 use crate::dom::execcommand::commands::indent::execute_indent_command;
 use crate::dom::execcommand::commands::inserthorizontalrule::execute_insert_horizontal_rule_command;
+use crate::dom::execcommand::commands::inserthtml::execute_insert_html_command;
 use crate::dom::execcommand::commands::insertimage::execute_insert_image_command;
 use crate::dom::execcommand::commands::insertlinebreak::execute_insert_line_break_command;
 use crate::dom::execcommand::commands::insertparagraph::execute_insert_paragraph_command;
@@ -760,6 +761,7 @@ impl CommandName {
             CommandName::InsertHorizontalRule => {
                 execute_insert_horizontal_rule_command(cx, document, selection)
             },
+            CommandName::InsertHtml => execute_insert_html_command(cx, document, selection, value),
             CommandName::InsertImage => {
                 execute_insert_image_command(cx, document, selection, value)
             },

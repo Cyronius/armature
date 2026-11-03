@@ -15,6 +15,7 @@ pub(crate) mod forwarddelete;
 pub(crate) mod hilitecolor;
 pub(crate) mod indent;
 pub(crate) mod inserthorizontalrule;
+pub(crate) mod inserthtml;
 pub(crate) mod insertimage;
 pub(crate) mod insertlinebreak;
 pub(crate) mod insertparagraph;

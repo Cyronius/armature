@@ -510,6 +510,51 @@ impl Range {
         self.start_container().is_in_a_document_tree() &&
             self.end_container().is_in_a_document_tree()
     }
+
+    /// Steps 2 to 9 of <https://html.spec.whatwg.org/multipage/#dom-range-createcontextualfragment>,
+    /// for a string that is already Trusted Types compliant.
+    pub(crate) fn create_contextual_fragment(
+        &self,
+        cx: &mut JSContext,
+        fragment: DOMString,
+    ) -> Fallible<DomRoot<DocumentFragment>> {
+        // Step 2. Let node be this's start node.
+        let node = self.start_container();
+
+        let owner_doc = node.owner_doc();
+
+        // Step 3. Let element be null.
+        // Step 4. If node implements Element, set element to node.
+        // Step 5. Otherwise, if node implements Text or Comment, set element to node's parent element.
+        let element = match node.type_id() {
+            NodeTypeId::Element(_) => Some(DomRoot::downcast::<Element>(node).unwrap()),
+            NodeTypeId::CharacterData(CharacterDataTypeId::Comment) |
+            NodeTypeId::CharacterData(CharacterDataTypeId::Text(_)) => node.GetParentElement(),
+            _ => None,
+        };
+
+        // Step 6. If element is null or all of the following are true:
+        let element = Element::fragment_parsing_context(cx, &owner_doc, element.as_deref());
+
+        // Step 7. Let fragment node be the result of invoking the fragment parsing algorithm steps with element and compliantString.
+        let fragment_node = element.parse_fragment(fragment, cx)?;
+
+        // Step 8. For each script of fragment node's script element descendants:
+        for node in fragment_node
+            .upcast::<Node>()
+            .traverse_preorder(ShadowIncluding::No)
+        {
+            if let Some(script) = node.downcast::<HTMLScriptElement>() {
+                // Step 8.1. Set script's already started to false.
+                script.set_already_started(false);
+                // Step 8.2. Set script's parser document to null.
+                script.set_parser_inserted(false);
+            }
+        }
+
+        // Step 9. Return fragment node.
+        Ok(fragment_node)
+    }
 }
 
 impl std::fmt::Debug for Range {
@@ -1331,39 +1376,7 @@ impl RangeMethods<crate::DomTypeHolder> for Range {
             "Range createContextualFragment",
         )?;
 
-        let owner_doc = node.owner_doc();
-
-        // Step 3. Let element be null.
-        // Step 4. If node implements Element, set element to node.
-        // Step 5. Otherwise, if node implements Text or Comment, set element to node's parent element.
-        let element = match node.type_id() {
-            NodeTypeId::Element(_) => Some(DomRoot::downcast::<Element>(node).unwrap()),
-            NodeTypeId::CharacterData(CharacterDataTypeId::Comment) |
-            NodeTypeId::CharacterData(CharacterDataTypeId::Text(_)) => node.GetParentElement(),
-            _ => None,
-        };
-
-        // Step 6. If element is null or all of the following are true:
-        let element = Element::fragment_parsing_context(cx, &owner_doc, element.as_deref());
-
-        // Step 7. Let fragment node be the result of invoking the fragment parsing algorithm steps with element and compliantString.
-        let fragment_node = element.parse_fragment(fragment, cx)?;
-
-        // Step 8. For each script of fragment node's script element descendants:
-        for node in fragment_node
-            .upcast::<Node>()
-            .traverse_preorder(ShadowIncluding::No)
-        {
-            if let Some(script) = node.downcast::<HTMLScriptElement>() {
-                // Step 8.1. Set script's already started to false.
-                script.set_already_started(false);
-                // Step 8.2. Set script's parser document to null.
-                script.set_parser_inserted(false);
-            }
-        }
-
-        // Step 9. Return fragment node.
-        Ok(fragment_node)
+        self.create_contextual_fragment(cx, fragment)
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-range-getclientrects>
