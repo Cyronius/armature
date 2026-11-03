@@ -924,8 +924,82 @@ impl HTMLBRElement {
         {
             return false;
         }
-        // TODO: Figure out what this actually makes it have no visual effect
-        !node.is_block_node()
+        // Instead of measuring layout, we approximate this structurally: a br has no visual effect
+        // if it ends a line that already has visible inline content, and the line would end there
+        // anyway because nothing but a block boundary follows it.
+        LineNeighbour::of(node, Direction::Backward) == LineNeighbour::Content &&
+            LineNeighbour::of(node, Direction::Forward) == LineNeighbour::BlockBoundary
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Direction {
+    Backward,
+    Forward,
+}
+
+/// What is next to a node on its line, used to approximate whether a br is an
+/// [extraneous line break](https://w3c.github.io/editing/docs/execCommand/#extraneous-line-break).
+#[derive(PartialEq)]
+enum LineNeighbour {
+    BlockBoundary,
+    LineBreak,
+    Content,
+}
+
+impl LineNeighbour {
+    /// Returns the first thing that affects the line next to node in direction,
+    /// skipping invisible nodes and stepping out of inline ancestors.
+    fn of(node: &Node, direction: Direction) -> LineNeighbour {
+        let mut current = DomRoot::from_ref(node);
+        loop {
+            let sibling = match direction {
+                Direction::Backward => current.GetPreviousSibling(),
+                Direction::Forward => current.GetNextSibling(),
+            };
+            match sibling {
+                Some(sibling) => {
+                    if let Some(neighbour) = Self::within(&sibling, direction) {
+                        return neighbour;
+                    }
+                    current = sibling;
+                },
+                None => match current.GetParentNode() {
+                    Some(parent) if parent.is_inline_node() => current = parent,
+                    _ => return LineNeighbour::BlockBoundary,
+                },
+            }
+        }
+    }
+
+    fn within(node: &Node, direction: Direction) -> Option<LineNeighbour> {
+        if let Some(element) = node.downcast::<Element>() &&
+            element.is_display_none()
+        {
+            return None;
+        }
+        if node.is_block_node() {
+            return Some(LineNeighbour::BlockBoundary);
+        }
+        if node.is::<HTMLBRElement>() {
+            return Some(LineNeighbour::LineBreak);
+        }
+        if node.is::<HTMLImageElement>() {
+            return Some(LineNeighbour::Content);
+        }
+        if let Some(text) = node.downcast::<Text>() {
+            return (!text.is_whitespace_node()).then_some(LineNeighbour::Content);
+        }
+        let children: Box<dyn Iterator<Item = DomRoot<Node>>> = match direction {
+            Direction::Backward => Box::new(node.rev_children()),
+            Direction::Forward => Box::new(node.children()),
+        };
+        for child in children {
+            if let Some(neighbour) = Self::within(&child, direction) {
+                return Some(neighbour);
+            }
+        }
+        None
     }
 }
 
