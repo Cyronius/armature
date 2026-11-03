@@ -751,10 +751,11 @@ impl ReplacedContents {
     /// <https://drafts.csswg.org/css-images-3/#default-object-size>
     /// <https://drafts.csswg.org/css-images-3/#specified-size>
     pub(crate) fn fallback_inline_size(&self, writing_mode: WritingMode) -> Au {
+        let size = self.natural_size_with_default_object_size();
         if writing_mode.is_horizontal() {
-            self.natural_size.width.unwrap_or_else(|| Au::from_px(300))
+            size.width
         } else {
-            self.natural_size.height.unwrap_or_else(|| Au::from_px(150))
+            size.height
         }
     }
 
@@ -764,10 +765,45 @@ impl ReplacedContents {
     /// <https://drafts.csswg.org/css-images-3/#default-object-size>
     /// <https://drafts.csswg.org/css-images-3/#specified-size>
     pub(crate) fn fallback_block_size(&self, writing_mode: WritingMode) -> Au {
+        let size = self.natural_size_with_default_object_size();
         if writing_mode.is_horizontal() {
-            self.natural_size.height.unwrap_or_else(|| Au::from_px(150))
+            size.height
         } else {
-            self.natural_size.width.unwrap_or_else(|| Au::from_px(300))
+            size.width
+        }
+    }
+
+    /// The concrete object size of the default sizing algorithm with no specified size and a
+    /// default object size of 300x150. Raster images always have both natural dimensions, but
+    /// SVG images can have one, none, and an optional natural aspect ratio.
+    /// <https://drafts.csswg.org/css-images-3/#default-sizing>
+    fn natural_size_with_default_object_size(&self) -> PhysicalSize<Au> {
+        let default_width = Au::from_px(300);
+        let default_height = Au::from_px(150);
+        let ratio = self.natural_size.ratio;
+        match (self.natural_size.width, self.natural_size.height) {
+            (Some(width), Some(height)) => PhysicalSize::new(width, height),
+            // > If the object has only a natural width or height, the other dimension is
+            // > calculated from the natural aspect ratio if it has one, and otherwise comes from
+            // > the default object size.
+            (Some(width), None) => PhysicalSize::new(
+                width,
+                ratio.map_or(default_height, |ratio| width.scale_by(1. / ratio)),
+            ),
+            (None, Some(height)) => PhysicalSize::new(
+                ratio.map_or(default_width, |ratio| height.scale_by(ratio)),
+                height,
+            ),
+            // > If the object has no natural dimensions but has a natural aspect ratio, the
+            // > concrete object size is the largest rectangle with that ratio that fits in the
+            // > default object size.
+            (None, None) => match ratio {
+                Some(ratio) if default_height.scale_by(ratio) <= default_width => {
+                    PhysicalSize::new(default_height.scale_by(ratio), default_height)
+                },
+                Some(ratio) => PhysicalSize::new(default_width, default_width.scale_by(1. / ratio)),
+                None => PhysicalSize::new(default_width, default_height),
+            },
         }
     }
 
