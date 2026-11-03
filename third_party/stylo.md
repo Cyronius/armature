@@ -80,4 +80,13 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Upstream: Whether the change could go upstream, or why it is Armature-only.
 ```
 
-No changes yet.
+### AS-201: Build the SVG painting properties for Servo
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `style/properties/shorthands.rs`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `clip-rule`, `marker-start`, `marker-mid`, `marker-end`, the `marker` shorthand, `paint-order`,
+  `text-anchor`, `color-interpolation`, `color-interpolation-filters`, `shape-rendering`, `flood-color`,
+  `flood-opacity`, `lighting-color`, `stop-color`, `stop-opacity` and `vector-effect` for Servo behind the new
+  preference `layout.css.svg-properties.enabled`, so that they parse, compute, serialize, inherit and interpolate, and
+  so that Servo can map their SVG presentation attributes. Affects the parsing, computed and inheritance tests in
+  `svg/painting`, `svg/pservers`, `svg/text`, `svg/coordinate-systems`, `svg/styling`, `css/css-masking` and
+  `css/filter-effects`.
+- Upstream: Could go upstream as is; the properties need no Gecko-only code.

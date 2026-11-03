@@ -67,6 +67,8 @@
 "layout.css.stylo-local-work-queue.in-worker" = 0
 "layout.css.stylo-work-unit-size" = 16
 "layout.css.supports.at-rule.enabled" = true
+# Armature (AS-201): Gates the SVG properties for Servo.
+"layout.css.svg-properties.enabled" = false
 "layout.css.system-ui.enabled" = true
 "layout.css.text-autospace.enabled" = false
 "layout.css.text-box.enabled" = false
