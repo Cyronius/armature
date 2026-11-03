@@ -237,6 +237,10 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_ruby_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.scroll-anchoring.enabled",
+        preferences.layout_css_scroll_anchoring_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.scroll-behavior.enabled",
         preferences.layout_css_scroll_behavior_enabled
     );
@@ -245,8 +249,16 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_scroll_driven_animations_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.scroll-snap.enabled",
+        preferences.layout_css_scroll_snap_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.scroll-state.enabled",
         preferences.layout_css_scroll_state_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.scrollbar-gutter.enabled",
+        preferences.layout_css_scrollbar_gutter_enabled
     );
     stylo_static_prefs::set_pref!(
         "layout.css.scrollbar-styling.enabled",
@@ -629,9 +641,12 @@ pub struct Preferences {
     pub layout_css_overscroll_behavior_enabled: bool,
     pub layout_css_random_enabled: bool,
     pub layout_css_ruby_enabled: bool,
+    pub layout_css_scroll_anchoring_enabled: bool,
     pub layout_css_scroll_behavior_enabled: bool,
     pub layout_css_scroll_driven_animations_enabled: bool,
+    pub layout_css_scroll_snap_enabled: bool,
     pub layout_css_scroll_state_enabled: bool,
+    pub layout_css_scrollbar_gutter_enabled: bool,
     pub layout_css_scrollbar_styling_enabled: bool,
     pub layout_css_starting_style_at_rules_enabled: bool,
     pub layout_css_style_queries_enabled: bool,
@@ -954,9 +969,12 @@ impl Preferences {
             layout_css_overscroll_behavior_enabled: false,
             layout_css_random_enabled: false,
             layout_css_ruby_enabled: false,
+            layout_css_scroll_anchoring_enabled: false,
             layout_css_scroll_behavior_enabled: false,
             layout_css_scroll_driven_animations_enabled: false,
+            layout_css_scroll_snap_enabled: false,
             layout_css_scroll_state_enabled: false,
+            layout_css_scrollbar_gutter_enabled: false,
             layout_css_scrollbar_styling_enabled: false,
             layout_css_starting_style_at_rules_enabled: false,
             layout_css_style_queries_enabled: false,
