@@ -1124,7 +1124,15 @@ impl ParserContext {
         // Step 2. If the user agent has been configured to process resources of the given type using
         // some mechanism other than rendering the content in a navigable, then skip this step.
         // Otherwise, if the type is one of the following types:
-        let Some(media_type) = MimeClassifier::get_media_type(&mime_type) else {
+        // An XML MIME type is loaded as an XML document, even when it is also an image type:
+        // image/svg+xml documents are SVG documents with a DOM, not image documents.
+        // <https://mimesniff.spec.whatwg.org/#xml-mime-type>
+        let media_type = if mime_type.suffix() == Some(mime::XML) {
+            Some(MediaType::Xml)
+        } else {
+            MimeClassifier::get_media_type(&mime_type)
+        };
+        let Some(media_type) = media_type else {
             let page = format!(
                 "<html><body><p>Unknown content type ({}).</p></body></html>",
                 mime_type,

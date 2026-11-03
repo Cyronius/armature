@@ -3651,9 +3651,9 @@ impl ScriptThread {
             .and_then(|charset| Encoding::for_label(charset.as_bytes()));
 
         let is_html_document = match content_type {
-            Some(ref mime) if mime.type_ == APPLICATION && mime.has_suffix("xml") => {
-                IsHTMLDocument::NonHTMLDocument
-            },
+            // Any XML MIME type, including image/svg+xml, creates an XML document.
+            // <https://mimesniff.spec.whatwg.org/#xml-mime-type>
+            Some(ref mime) if mime.has_suffix("xml") => IsHTMLDocument::NonHTMLDocument,
 
             Some(ref mime) if mime.matches(TEXT, XML) || mime.matches(APPLICATION, XML) => {
                 IsHTMLDocument::NonHTMLDocument
