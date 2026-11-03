@@ -587,7 +587,7 @@ fn test_svg_rasterization() {
     };
 
     let size = webrender_api::units::DeviceIntSize::new(100, 100);
-    cache.rasterize_vector_image(vec_img.id, size, None);
+    cache.rasterize_vector_image(vec_img.id, size, 1., None);
 }
 
 #[test]
@@ -648,7 +648,7 @@ fn test_rasterization_listener() {
         }
     });
 
-    cache.rasterize_vector_image(vec_img.id, size, None);
+    cache.rasterize_vector_image(vec_img.id, size, 1., None);
 
     cache.add_rasterization_complete_listener(TEST_PIPELINE_ID, vec_img.id, size, callback);
 
@@ -711,12 +711,12 @@ fn test_svg_rasterization_do_not_double_rasterize() {
     // Because we do not set image keys yet, the rasterization task will never finish, so we know the added tasks will stay in the queue.
     assert!(
         cache
-            .rasterize_vector_image(vec_img.id, size, None)
+            .rasterize_vector_image(vec_img.id, size, 1., None)
             .is_none()
     );
     assert!(
         cache
-            .rasterize_vector_image(vec_img.id, size, None)
+            .rasterize_vector_image(vec_img.id, size, 1., None)
             .is_none()
     );
     assert_eq!(cache.number_of_rasterize_tasks(), 1);
@@ -771,19 +771,19 @@ fn test_svg_not_rasterize_zero_size() {
     let size = webrender_api::units::DeviceIntSize::new(0, 100);
     assert!(
         cache
-            .rasterize_vector_image(vec_img.id, size, None)
+            .rasterize_vector_image(vec_img.id, size, 1., None)
             .is_none()
     );
     let size = webrender_api::units::DeviceIntSize::new(100, 0);
     assert!(
         cache
-            .rasterize_vector_image(vec_img.id, size, None)
+            .rasterize_vector_image(vec_img.id, size, 1., None)
             .is_none()
     );
     let size = webrender_api::units::DeviceIntSize::new(0, 0);
     assert!(
         cache
-            .rasterize_vector_image(vec_img.id, size, None)
+            .rasterize_vector_image(vec_img.id, size, 1., None)
             .is_none()
     );
 }

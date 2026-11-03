@@ -139,6 +139,9 @@ pub(crate) struct ImageResolver {
 
     /// The current animation timeline value used to properly initialize animating images.
     pub animation_timeline_value: f64,
+
+    /// The number of device pixels per CSS pixel, which vector images are rasterized with.
+    pub device_pixel_ratio: f32,
 }
 
 impl Drop for ImageResolver {
@@ -259,9 +262,12 @@ impl ImageResolver {
         node: OpaqueNode,
         svg_id: Option<Uuid>,
     ) -> Option<RasterImage> {
-        let result = self
-            .image_cache
-            .rasterize_vector_image(image_id, size, svg_id);
+        let result = self.image_cache.rasterize_vector_image(
+            image_id,
+            size,
+            self.device_pixel_ratio,
+            svg_id,
+        );
         if result.is_none() {
             self.pending_rasterization_images
                 .lock()

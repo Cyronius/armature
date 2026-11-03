@@ -13,6 +13,7 @@ use euclid::{Box2D, Point2D, Rect, Scale, SideOffsets2D, Size2D, UnknownUnit, Ve
 use fonts::{FontMetrics, ShapedTextSlice};
 use gradient::WebRenderGradient;
 use layout_api::ReflowStatistics;
+use net_traits::image_cache::Image;
 use paint_api::display_list::{PaintDisplayListInfo, SpatialTreeNodeInfo};
 use servo_arc::Arc as ServoArc;
 use servo_base::cross_process_instant::CrossProcessInstant;
@@ -2040,20 +2041,28 @@ impl<'a> BuilderForBoxFragment<'a> {
                 ResolvedImage::Image { image, size, url } => {
                     // FIXME: https://drafts.csswg.org/css-images-4/#the-image-resolution
                     let dppx = 1.0;
-                    let intrinsic =
-                        NaturalSizes::from_width_and_height(size.width / dppx, size.height / dppx);
+                    let intrinsic = match &image {
+                        Image::Vector(vector_image) => {
+                            NaturalSizes::from_vector_image(vector_image, 1.)
+                        },
+                        Image::Raster(_) => NaturalSizes::from_width_and_height(
+                            size.width / dppx,
+                            size.height / dppx,
+                        ),
+                    };
                     let layer =
                         background::layout_layer(self, painter, builder, state, index, intrinsic);
 
                     let scale = builder.device_pixel_ratio.get();
                     let default_size: DeviceIntSize =
                         Size2D::new(size.width * scale, size.height * scale).to_i32();
+                    // The tile of an SVG image can be arbitrarily large, so saturate rather
+                    // than panic when converting it to device pixels.
                     let preferred_size = layer.as_ref().map(|layer| {
                         Size2D::new(
-                            layer.tile_size.width * scale,
-                            layer.tile_size.height * scale,
+                            (layer.tile_size.width * scale) as i32,
+                            (layer.tile_size.height * scale) as i32,
                         )
-                        .to_i32()
                     });
 
                     let Some(image_key) = builder.image_resolver.image_key_from_cached_image(

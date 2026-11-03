@@ -118,6 +118,20 @@ impl NaturalSizes {
         Self::from_width_and_height(width, height)
     }
 
+    /// The natural sizes of an SVG image, where `density` is the pixel density chosen for the
+    /// image, for instance by `srcset`. The density only scales the natural dimensions that the
+    /// image actually has; see
+    /// <https://html.spec.whatwg.org/multipage/#density-corrected-natural-width-and-height>.
+    pub(crate) fn from_vector_image(vector_image: &VectorImage, density: f64) -> Self {
+        let natural_dimensions = vector_image.natural_dimensions;
+        let to_au = |length: f32| Au::from_f64_px(length as f64 / density);
+        Self {
+            width: natural_dimensions.width.map(to_au),
+            height: natural_dimensions.height.map(to_au),
+            ratio: natural_dimensions.ratio,
+        }
+    }
+
     pub(crate) fn empty() -> Self {
         Self {
             width: None,
@@ -174,14 +188,11 @@ impl ReplacedContents {
         }
 
         let (kind, natural_size) = {
-            if let Some((image_info, natural_size_in_dots)) = node.as_image() {
+            if let Some((image_info, natural_size)) = node.as_image() {
                 if let Some(content_image) = Self::from_content_property(node, context) {
                     return Some(content_image);
                 }
-                (
-                    ReplacedContentKind::Image(image_info),
-                    NaturalSizes::from_natural_size_in_dots(natural_size_in_dots),
-                )
+                (ReplacedContentKind::Image(image_info), natural_size)
             } else if let Some((canvas_info, natural_size_in_dots)) = node.as_canvas() {
                 (
                     ReplacedContentKind::Canvas(canvas_info),
@@ -364,7 +375,7 @@ impl ReplacedContents {
         let ComputedUrl::Valid(image_url) = image_url else {
             return None;
         };
-        let (image, width, height) = match context.image_resolver.get_or_request_image_or_meta(
+        let (image, natural_size) = match context.image_resolver.get_or_request_image_or_meta(
             node.opaque(),
             image_url.clone().into(),
             LayoutImageDestination::BoxTreeConstruction,
@@ -372,17 +383,29 @@ impl ReplacedContents {
         ) {
             LayoutImageCacheResult::DataAvailable(img_or_meta) => match img_or_meta {
                 ImageOrMetadataAvailable::ImageAvailable { image, .. } => {
-                    if let Image::Raster(image) = &image {
-                        context
-                            .image_resolver
-                            .handle_animated_image(node.opaque(), image.clone());
-                    }
-                    let metadata = image.metadata();
-                    (Some(image), metadata.width as f32, metadata.height as f32)
+                    let natural_size = match &image {
+                        Image::Raster(raster_image) => {
+                            context
+                                .image_resolver
+                                .handle_animated_image(node.opaque(), raster_image.clone());
+                            NaturalSizes::from_width_and_height(
+                                raster_image.metadata.width as f32,
+                                raster_image.metadata.height as f32,
+                            )
+                        },
+                        Image::Vector(vector_image) => {
+                            NaturalSizes::from_vector_image(vector_image, 1.)
+                        },
+                    };
+                    (Some(image), natural_size)
                 },
-                ImageOrMetadataAvailable::MetadataAvailable(metadata, _id) => {
-                    (None, metadata.width as f32, metadata.height as f32)
-                },
+                ImageOrMetadataAvailable::MetadataAvailable(metadata, _id) => (
+                    None,
+                    NaturalSizes::from_width_and_height(
+                        metadata.width as f32,
+                        metadata.height as f32,
+                    ),
+                ),
             },
             LayoutImageCacheResult::Pending | LayoutImageCacheResult::LoadError => return None,
         };
@@ -397,7 +420,7 @@ impl ReplacedContents {
             is_content_replacement: false,
             selected: Arc::new(AtomicBool::new(node.replaced_is_selected())),
             selected_style: SharedStyle::new(node.selected_style(&context.style_context)),
-            natural_size: NaturalSizes::from_width_and_height(width, height),
+            natural_size,
         })
     }
 
@@ -474,11 +497,6 @@ impl ReplacedContents {
             return (PhysicalSize::zero(), size.into());
         }
 
-        let natural_size = PhysicalSize::new(
-            self.natural_size.width.unwrap_or(size.width),
-            self.natural_size.height.unwrap_or(size.height),
-        );
-
         let object_fit_size = self.natural_size.ratio.map_or(size, |width_over_height| {
             let preserve_aspect_ratio_with_comparison =
                 |size: PhysicalSize<Au>, comparison: fn(&Au, &Au) -> bool| {
@@ -491,6 +509,20 @@ impl ReplacedContents {
                     debug_assert!(comparison(&candidate_height, &size.height));
                     PhysicalSize::new(size.width, candidate_height)
                 };
+
+            // For `none` and `scale-down`, the size of the object is determined with the default
+            // sizing algorithm, with no specified size and the box as the default object size.
+            // See <https://drafts.csswg.org/css-images/#default-sizing>.
+            let natural_size = match (self.natural_size.width, self.natural_size.height) {
+                (Some(width), Some(height)) => PhysicalSize::new(width, height),
+                (Some(width), None) => {
+                    PhysicalSize::new(width, width.scale_by(1. / width_over_height))
+                },
+                (None, Some(height)) => {
+                    PhysicalSize::new(height.scale_by(width_over_height), height)
+                },
+                (None, None) => preserve_aspect_ratio_with_comparison(size, PartialOrd::le),
+            };
 
             match style.get_object_fit() {
                 ObjectFit::Fill => size,
@@ -631,7 +663,10 @@ impl ReplacedContents {
                     return vec![];
                 };
 
-                if !has_viewbox {
+                // Without a `viewBox`, the content isn't scaled to the box. An image that lacks
+                // a natural aspect ratio is laid out in the box by rasterizing it at that size,
+                // but one with both a width and a height is drawn at its own size.
+                if !has_viewbox && vector_image.natural_dimensions.ratio.is_some() {
                     base.set_rect(
                         PhysicalSize::new(
                             vector_image

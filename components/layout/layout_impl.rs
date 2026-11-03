@@ -1130,6 +1130,7 @@ impl LayoutThread {
             pending_svg_elements_for_serialization: Mutex::default(),
             animating_images: reflow_request.animating_images.clone(),
             animation_timeline_value: reflow_request.animation_timeline_value,
+            device_pixel_ratio: self.device().device_pixel_ratio().get(),
         });
         let mut reflow_statistics = Default::default();
 

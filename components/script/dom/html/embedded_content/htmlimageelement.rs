@@ -1483,19 +1483,52 @@ impl HTMLImageElement {
 
         // Step 4. Let intrinsicWidth, intrinsicHeight, and intrinsicRatio be img's intrinsic width,
         // intrinsic height, and intrinsic aspect ratio, if any, respectively.
+        let (intrinsic_width, intrinsic_height, intrinsic_ratio) = match &current_request.image {
+            Some(Image::Vector(vector_image)) => {
+                let natural_dimensions = vector_image.natural_dimensions;
+                (
+                    natural_dimensions.width.map(f64::from),
+                    natural_dimensions.height.map(f64::from),
+                    natural_dimensions.ratio.map(f64::from),
+                )
+            },
+            _ => match current_request.metadata {
+                Some(metadata) => (
+                    Some(metadata.width as f64),
+                    Some(metadata.height as f64),
+                    None,
+                ),
+                None => (None, None, None),
+            },
+        };
+
         // Step 5. If intrinsicWidth is not absent, then set intrinsicWidth to intrinsicWidth divided by density.
+        let intrinsic_width = intrinsic_width.map(|width| width / density);
         // Step 6. If intrinsicHeight is not absent, then set intrinsicHeight to intrinsicHeight divided by density.
+        let intrinsic_height = intrinsic_height.map(|height| height / density);
+
         // Step 7. Return the result of applying the default sizing algorithm with intrinsicWidth,
         // intrinsicHeight, and intrinsicRatio, using a default object size of 300 by 150.
-        let intrinsic_width = current_request
-            .metadata
-            .map(|metadata| (metadata.width as f64 / density) as u32)
-            .unwrap_or(300);
-        let intrinsic_height = current_request
-            .metadata
-            .map(|metadata| (metadata.height as f64 / density) as u32)
-            .unwrap_or(150);
-        (intrinsic_width, intrinsic_height)
+        // There is no specified size, so per <https://drafts.csswg.org/css-images/#default-sizing>
+        // the natural dimensions are used where present, a missing one is computed from the
+        // other and the natural aspect ratio, and failing that it comes from the default object
+        // size. Without any natural dimension, the size is the default object size, or a
+        // contain fit of the natural aspect ratio into it.
+        const DEFAULT_WIDTH: f64 = 300.;
+        const DEFAULT_HEIGHT: f64 = 150.;
+        let (width, height) = match (intrinsic_width, intrinsic_height, intrinsic_ratio) {
+            (Some(width), Some(height), _) => (width, height),
+            (Some(width), None, Some(ratio)) => (width, width / ratio),
+            (None, Some(height), Some(ratio)) => (height * ratio, height),
+            (Some(width), None, None) => (width, DEFAULT_HEIGHT),
+            (None, Some(height), None) => (DEFAULT_WIDTH, height),
+            (None, None, Some(ratio)) if ratio > DEFAULT_WIDTH / DEFAULT_HEIGHT => {
+                (DEFAULT_WIDTH, DEFAULT_WIDTH / ratio)
+            },
+            (None, None, Some(ratio)) => (DEFAULT_HEIGHT * ratio, DEFAULT_HEIGHT),
+            (None, None, None) => (DEFAULT_WIDTH, DEFAULT_HEIGHT),
+        };
+        (width as u32, height as u32)
     }
 }
 
