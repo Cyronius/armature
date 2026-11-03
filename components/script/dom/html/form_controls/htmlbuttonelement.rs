@@ -6,12 +6,13 @@ use std::cell::Cell;
 use std::default::Default;
 
 use dom_struct::dom_struct;
-use html5ever::{LocalName, Prefix, local_name};
+use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
 use script_bindings::codegen::GenericBindings::DocumentBinding::DocumentMethods;
 use script_bindings::codegen::GenericBindings::DocumentFragmentBinding::DocumentFragmentMethods;
 use script_bindings::codegen::GenericBindings::NodeBinding::NodeMethods;
+use servo_config::pref;
 use style::selector_parser::PseudoElement;
 use stylo_dom::ElementState;
 
@@ -33,6 +34,10 @@ use crate::dom::html::htmlformelement::{
     FormControl, FormDatum, FormDatumValue, FormSubmitterElement, HTMLFormElement, ResetFrom,
     SubmittedFrom,
 };
+use crate::dom::html::popover::{
+    get_the_popovertarget_associated_element, run_the_popover_target_attribute_activation_behavior,
+    set_popover_target_element,
+};
 use crate::dom::node::virtualmethods::{VirtualMethods, vtable_for};
 use crate::dom::node::{Node, NodeTraits};
 use crate::dom::nodelist::NodeList;
@@ -53,6 +58,10 @@ pub(crate) struct HTMLButtonElement {
     form_owner: MutNullableDom<HTMLFormElement>,
     labels_node_list: MutNullableDom<NodeList>,
     validity_state: MutNullableDom<ValidityState>,
+    /// The explicitly set attr-element of `popoverTargetElement`.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#explicitly-set-attr-element>
+    explicitly_set_popover_target_element: MutNullableDom<Element>,
 }
 
 impl HTMLButtonElement {
@@ -72,6 +81,7 @@ impl HTMLButtonElement {
             form_owner: Default::default(),
             labels_node_list: Default::default(),
             validity_state: Default::default(),
+            explicitly_set_popover_target_element: Default::default(),
         }
     }
 
@@ -96,6 +106,10 @@ impl HTMLButtonElement {
     pub(crate) fn is_submit_button(&self) -> bool {
         self.button_type.get() == ButtonType::Submit
     }
+
+    pub(crate) fn explicitly_set_popover_target_element(&self) -> Option<DomRoot<Element>> {
+        self.explicitly_set_popover_target_element.get()
+    }
 }
 
 impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
@@ -113,6 +127,9 @@ impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
             CommandState::Close => DOMString::from_static("close"),
             CommandState::ShowModal => DOMString::from_static("show-modal"),
             CommandState::RequestClose => DOMString::from_static("request-close"),
+            CommandState::TogglePopover => DOMString::from_static("toggle-popover"),
+            CommandState::ShowPopover => DOMString::from_static("show-popover"),
+            CommandState::HidePopover => DOMString::from_static("hide-popover"),
         }
     }
 
@@ -226,6 +243,37 @@ impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
     fn SetCustomValidity(&self, cx: &mut JSContext, error: DOMString) {
         self.validity_state(cx).set_custom_error_message(cx, error);
     }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-popovertargetelement>
+    fn GetPopoverTargetElement(&self, no_gc: &NoGC) -> Option<DomRoot<Element>> {
+        get_the_popovertarget_associated_element(
+            no_gc,
+            self.upcast(),
+            self.explicitly_set_popover_target_element.get(),
+        )
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-popovertargetelement>
+    fn SetPopoverTargetElement(&self, cx: &mut JSContext, value: Option<&Element>) {
+        set_popover_target_element(
+            cx,
+            self.upcast(),
+            &self.explicitly_set_popover_target_element,
+            value,
+        );
+    }
+
+    // https://html.spec.whatwg.org/multipage/#dom-popovertargetaction
+    make_enumerated_getter!(
+        PopoverTargetAction,
+        "popovertargetaction",
+        "toggle" | "show" | "hide",
+        missing => "toggle",
+        invalid => "toggle"
+    );
+
+    // https://html.spec.whatwg.org/multipage/#dom-popovertargetaction
+    make_setter!(SetPopoverTargetAction, "popovertargetaction");
 }
 
 impl HTMLButtonElement {
@@ -316,6 +364,17 @@ impl HTMLButtonElement {
         if command.eq_ignore_ascii_case("show-modal") {
             return CommandState::ShowModal;
         }
+        if pref!(dom_popover_enabled) {
+            if command.eq_ignore_ascii_case("toggle-popover") {
+                return CommandState::TogglePopover;
+            }
+            if command.eq_ignore_ascii_case("show-popover") {
+                return CommandState::ShowPopover;
+            }
+            if command.eq_ignore_ascii_case("hide-popover") {
+                return CommandState::HidePopover;
+            }
+        }
 
         CommandState::Unknown
     }
@@ -334,11 +393,17 @@ impl HTMLButtonElement {
         if !target.is_html_element() {
             return false;
         }
-        // TODO Step 4. If command is in any of the following states:
+        // Step 4. If command is in any of the following states:
         // - Toggle Popover
         // - Show Popover
         // - Hide Popover
         // then return true.
+        if matches!(
+            command,
+            CommandState::TogglePopover | CommandState::ShowPopover | CommandState::HidePopover
+        ) {
+            return true;
+        }
         // Step 5. If this standard does not define is valid command steps for target's local name, then return false.
         // Step 6. Otherwise, return the result of running target's corresponding is valid command steps given command.
         vtable_for(target.upcast::<Node>()).is_valid_command_steps(command)
@@ -388,6 +453,10 @@ impl VirtualMethods for HTMLButtonElement {
                 self.form_attribute_mutated(cx, mutation);
                 self.validity_state(cx)
                     .perform_validation_and_update(cx, ValidationFlags::empty());
+            },
+            // https://html.spec.whatwg.org/multipage/#reflecting-content-attributes-in-idl-attributes:concept-element-attributes-change-ext
+            local_name!("popovertarget") if *attr.namespace() == ns!() => {
+                self.explicitly_set_popover_target_element.set(None);
             },
             _ => {},
         }
@@ -530,13 +599,72 @@ impl Activatable for HTMLButtonElement {
             if command == CommandState::Custom {
                 return;
             }
-            // TODO Steps 5.7, 5.8, 5.9
-            // Step 5.10 Otherwise, if this standard defines command steps for target's local name,
-            // then run the corresponding command steps given target, element, and command.
-            let _ = vtable_for(target_node).command_steps(cx, DomRoot::from_ref(self), command);
+            // Steps 5.7 to 5.9 handle the popover commands. Popover commands are only valid for
+            // HTML elements.
+            let popover = target.downcast::<HTMLElement>();
+            match (command, popover) {
+                // Step 5.7 If command is in the Hide Popover state:
+                (CommandState::HidePopover, Some(popover)) => {
+                    // Step 5.7.1 Let validity be the result of running check popover validity
+                    // given target, true, and null. If this throws an exception, catch it, and
+                    // let validity be false.
+                    // Step 5.7.2 If validity is true, then run the hide popover algorithm given
+                    // target, true, true, false, and element.
+                    if matches!(popover.check_popover_validity(true, None), Ok(true)) {
+                        let _ = popover.hide_popover(cx, true, true, false, Some(self.upcast()));
+                    }
+                },
+                // Step 5.8 Otherwise, if command is in the Toggle Popover state:
+                (CommandState::TogglePopover, Some(popover)) => {
+                    // Step 5.8.1 Let validity be the result of running check popover validity
+                    // given target, false, and null. If this throws an exception, catch it, and
+                    // let validity be false.
+                    // Step 5.8.2 If validity is true, then run the show popover algorithm given
+                    // target, false, and element.
+                    if matches!(popover.check_popover_validity(false, None), Ok(true)) {
+                        let _ = popover.show_popover(cx, false, Some(self.upcast()));
+                    }
+                    // Step 5.8.3 Otherwise:
+                    // Step 5.8.3.1 Let validity be the result of running check popover validity
+                    // given target, true, and null. If this throws an exception, catch it, and
+                    // let validity be false.
+                    // Step 5.8.3.2 If validity is true, then run the hide popover algorithm given
+                    // target, true, true, false, and element.
+                    else if matches!(popover.check_popover_validity(true, None), Ok(true)) {
+                        let _ = popover.hide_popover(cx, true, true, false, Some(self.upcast()));
+                    }
+                },
+                // Step 5.9 Otherwise, if command is in the Show Popover state:
+                (CommandState::ShowPopover, Some(popover)) => {
+                    // Step 5.9.1 Let validity be the result of running check popover validity
+                    // given target, false, and null. If this throws an exception, catch it, and
+                    // let validity be false.
+                    // Step 5.9.2 If validity is true, then run the show popover algorithm given
+                    // target, false, and element.
+                    if matches!(popover.check_popover_validity(false, None), Ok(true)) {
+                        let _ = popover.show_popover(cx, false, Some(self.upcast()));
+                    }
+                },
+                (
+                    CommandState::HidePopover |
+                    CommandState::TogglePopover |
+                    CommandState::ShowPopover,
+                    None,
+                ) => {},
+                // Step 5.10 Otherwise, if this standard defines command steps for target's local
+                // name, then run the corresponding command steps given target, element, and
+                // command.
+                _ => {
+                    let _ =
+                        vtable_for(target_node).command_steps(cx, DomRoot::from_ref(self), command);
+                },
+            }
         }
-        // TODO Step 6 Otherwise, run the popover target attribute activation behavior given element
+        // Step 6 Otherwise, run the popover target attribute activation behavior given element
         // and event's target.
+        else {
+            run_the_popover_target_attribute_activation_behavior(cx, self.upcast(), target);
+        }
     }
 }
 
@@ -547,4 +675,7 @@ pub(crate) enum CommandState {
     ShowModal,
     RequestClose,
     Close,
+    TogglePopover,
+    ShowPopover,
+    HidePopover,
 }

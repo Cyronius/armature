@@ -7,13 +7,15 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use html5ever::local_name;
+use html5ever::{local_name, ns};
 use js::context::{JSContext, NoGC};
 use script_bindings::root::Dom;
 use servo_config::pref;
+use stylo_atoms::Atom;
 use stylo_dom::ElementState;
 
 use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::ShowPopoverOptions;
+use crate::dom::bindings::codegen::Bindings::NodeBinding::{GetRootNodeOptions, NodeMethods};
 use crate::dom::bindings::codegen::UnionTypes::TogglePopoverOptionsOrBoolean;
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::inheritance::Castable;
@@ -24,14 +26,20 @@ use crate::dom::closewatcher::internalclosewatcher::{
     InternalCloseWatcher, InternalCloseWatcherOwner,
 };
 use crate::dom::document::Document;
+use crate::dom::documentfragment::DocumentFragment;
 use crate::dom::element::Element;
 use crate::dom::event::{Event, EventBubbles, EventCancelable};
 use crate::dom::eventtarget::EventTarget;
+use crate::dom::html::form_controls::htmlbuttonelement::HTMLButtonElement;
+use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
+use crate::dom::html::form_controls::input_type::InputType;
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::htmlformelement::FormControl;
 use crate::dom::html::interactive::htmldialogelement::HTMLDialogElement;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::focus::FocusTrigger;
 use crate::dom::node::{Node, NodeTraits};
+use crate::dom::shadowroot::shadowroot::ShadowRoot;
 use crate::dom::toggleevent::ToggleEvent;
 
 /// The states of the `popover` content attribute.
@@ -1156,4 +1164,219 @@ pub(crate) fn topmost_popover_ancestor(
 
     // Step 10. Return combinedPopovers[ancestorIndex].
     Some(combined_popovers.swap_remove(ancestor_index))
+}
+
+/// The states of the `popovertargetaction` attribute.
+///
+/// <https://html.spec.whatwg.org/multipage/#attr-popovertargetaction>
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PopoverTargetAction {
+    Toggle,
+    Show,
+    Hide,
+}
+
+impl PopoverTargetAction {
+    fn from_attribute(element: &Element) -> PopoverTargetAction {
+        // > The attribute's missing value default and invalid value default are both the Toggle
+        // > state.
+        match element.get_attribute_string_ref(&local_name!("popovertargetaction")) {
+            Some(value) if value.eq_ignore_ascii_case("show") => PopoverTargetAction::Show,
+            Some(value) if value.eq_ignore_ascii_case("hide") => PopoverTargetAction::Hide,
+            _ => PopoverTargetAction::Toggle,
+        }
+    }
+}
+
+/// Returns the first element in tree order whose root is the root of `element` and whose ID is
+/// `id`.
+fn element_with_id_in_same_tree(
+    no_gc: &NoGC,
+    element: &Element,
+    id: &str,
+) -> Option<DomRoot<Element>> {
+    if id.is_empty() {
+        return None;
+    }
+    let id = Atom::from(id);
+    let root = element
+        .upcast::<Node>()
+        .GetRootNode(&GetRootNodeOptions::empty());
+    if let Some(document) = root.downcast::<Document>() {
+        return document.get_element_by_id(no_gc, &id);
+    }
+    if let Some(shadow_root) = root.downcast::<ShadowRoot>() {
+        return shadow_root
+            .upcast::<DocumentFragment>()
+            .id_map()
+            .get(no_gc, &root, &id);
+    }
+    root.traverse_preorder(ShadowIncluding::No)
+        .filter_map(DomRoot::downcast::<Element>)
+        .find(|candidate| candidate.get_id().as_ref() == Some(&id))
+}
+
+/// The getter steps of `popoverTargetElement`, which reflects the `popovertarget` attribute.
+///
+/// <https://html.spec.whatwg.org/multipage/#attr-associated-element>
+pub(crate) fn get_the_popovertarget_associated_element(
+    no_gc: &NoGC,
+    element: &Element,
+    explicitly_set_attr_element: Option<DomRoot<Element>>,
+) -> Option<DomRoot<Element>> {
+    // Step 1. Let element be the result of running reflectedTarget's get the element.
+    // Step 2. Let contentAttributeValue be the result of running reflectedTarget's get the
+    // content attribute.
+    // Step 3. If reflectedTarget's explicitly set attr-element is not null:
+    if let Some(explicitly_set_attr_element) = explicitly_set_attr_element {
+        // Step 3.1. If reflectedTarget's explicitly set attr-element is a descendant of any of
+        // element's shadow-including ancestors, then return reflectedTarget's explicitly set
+        // attr-element.
+        // Step 3.2. Return null.
+        let is_in_scope = element
+            .upcast::<Node>()
+            .inclusive_ancestors(ShadowIncluding::Yes)
+            .skip(1)
+            .any(|ancestor| ancestor.is_ancestor_of(explicitly_set_attr_element.upcast()));
+        return is_in_scope.then_some(explicitly_set_attr_element);
+    }
+
+    // Step 4. Otherwise, if contentAttributeValue is not null, return the first element candidate,
+    // in tree order, that meets the following criteria:
+    // - candidate's root is the same as element's root;
+    // - candidate's ID is contentAttributeValue; and
+    // - candidate implements T.
+    // If no such element exists, then return null.
+    // Step 5. Return null.
+    let value = element.get_attribute_string_value(&local_name!("popovertarget"))?;
+    element_with_id_in_same_tree(no_gc, element, &value)
+}
+
+/// The setter steps of `popoverTargetElement`, which reflects the `popovertarget` attribute.
+///
+/// <https://html.spec.whatwg.org/multipage/#reflecting-content-attributes-in-idl-attributes:element>
+pub(crate) fn set_popover_target_element(
+    cx: &mut JSContext,
+    element: &Element,
+    explicitly_set_attr_element: &MutNullableDom<Element>,
+    value: Option<&Element>,
+) {
+    // Step 1. If the given value is null:
+    let Some(value) = value else {
+        // Step 1.1. Set this's explicitly set attr-element to null.
+        explicitly_set_attr_element.set(None);
+        // Step 1.2. Run this's delete the content attribute.
+        element.remove_attribute(cx, &ns!(), &local_name!("popovertarget"));
+        // Step 1.3. Return.
+        return;
+    };
+
+    // Step 2. Run this's set the content attribute with the empty string.
+    element.set_string_attribute(cx, &local_name!("popovertarget"), DOMString::new());
+
+    // Step 3. Set this's explicitly set attr-element to a weak reference to the given value.
+    explicitly_set_attr_element.set(Some(value));
+}
+
+/// Returns whether `node` is a button, and if so whether it is a submit button.
+///
+/// <https://html.spec.whatwg.org/multipage/#concept-button>
+/// <https://html.spec.whatwg.org/multipage/#concept-submit-button>
+fn button_kind(node: &Node) -> Option<(&HTMLElement, bool)> {
+    if let Some(button) = node.downcast::<HTMLButtonElement>() {
+        return Some((button.upcast(), button.is_submit_button()));
+    }
+    let input = node.downcast::<HTMLInputElement>()?;
+    let is_submit_button = match *input.input_type() {
+        InputType::Submit(_) | InputType::Image(_) => true,
+        InputType::Reset(_) | InputType::Button(_) => false,
+        _ => return None,
+    };
+    Some((input.upcast(), is_submit_button))
+}
+
+/// <https://html.spec.whatwg.org/multipage/#popover-target-element>
+pub(crate) fn popover_target_element(no_gc: &NoGC, node: &Node) -> Option<DomRoot<HTMLElement>> {
+    // Step 1. If node is not a button, then return null.
+    let (button, is_submit_button) = button_kind(node)?;
+
+    // Step 2. If node is disabled, then return null.
+    let element = button.upcast::<Element>();
+    if element.disabled_state() {
+        return None;
+    }
+
+    // Step 3. If node has a form owner and node is a submit button, then return null.
+    if is_submit_button && button.form_owner().is_some() {
+        return None;
+    }
+
+    // Step 4. Let popoverElement be the result of running node's get the
+    // popovertarget-associated element.
+    let explicitly_set_attr_element = if let Some(button) = node.downcast::<HTMLButtonElement>() {
+        button.explicitly_set_popover_target_element()
+    } else {
+        node.downcast::<HTMLInputElement>()
+            .and_then(HTMLInputElement::explicitly_set_popover_target_element)
+    };
+    let popover_element =
+        get_the_popovertarget_associated_element(no_gc, element, explicitly_set_attr_element)?;
+
+    // Step 5. If popoverElement is null, then return null.
+    // Step 6. If popoverElement's popover attribute is in the No Popover state, then return null.
+    // Step 7. Return popoverElement.
+    DomRoot::downcast::<HTMLElement>(popover_element)
+        .filter(|popover| popover.popover_state() != PopoverState::NoPopover)
+}
+
+/// <https://html.spec.whatwg.org/multipage/#popover-target-attribute-activation-behavior>
+pub(crate) fn run_the_popover_target_attribute_activation_behavior(
+    cx: &mut JSContext,
+    node: &HTMLElement,
+    event_target: &EventTarget,
+) {
+    // Step 1. Let popover be node's popover target element.
+    // Step 2. If popover is null, then return.
+    let Some(popover) = popover_target_element(cx.no_gc(), node.upcast()) else {
+        return;
+    };
+
+    // Step 3. If eventTarget is a shadow-including inclusive descendant of popover and popover is
+    // a shadow-including descendant of node, then return.
+    if event_target.downcast::<Node>().is_some_and(|event_target| {
+        popover
+            .upcast::<Node>()
+            .is_shadow_including_inclusive_ancestor_of(event_target)
+    }) && popover.upcast::<Node>() != node.upcast::<Node>() &&
+        node.upcast::<Node>()
+            .is_shadow_including_inclusive_ancestor_of(popover.upcast())
+    {
+        return;
+    }
+
+    // Step 4. If node's popovertargetaction attribute is in the show state and popover's popover
+    // visibility state is showing, then return.
+    // Step 5. If node's popovertargetaction attribute is in the hide state and popover's popover
+    // visibility state is hidden, then return.
+    let action = PopoverTargetAction::from_attribute(node.upcast());
+    if (action == PopoverTargetAction::Show && popover.is_popover_showing()) ||
+        (action == PopoverTargetAction::Hide && !popover.is_popover_showing())
+    {
+        return;
+    }
+
+    // Step 6. If popover's popover visibility state is showing, then run the hide popover
+    // algorithm given popover, true, true, false, and node.
+    if popover.is_popover_showing() {
+        let _ = popover.hide_popover(cx, true, true, false, Some(node));
+    }
+    // Step 7. Otherwise:
+    else {
+        // Step 7.1. Let validity be the result of running check popover validity given popover,
+        // false, and null. If this throws an exception, catch it, and let validity be false.
+        // Step 7.2. If validity is true, then run show popover given popover, false, and node.
+        if matches!(popover.check_popover_validity(false, None), Ok(true)) {
+            let _ = popover.show_popover(cx, false, Some(node));
+        }
+    }
 }
