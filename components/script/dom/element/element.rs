@@ -18,7 +18,7 @@ use app_units::Au;
 use atomic_refcell::{AtomicRef, AtomicRefCell};
 use cssparser::match_ignore_ascii_case;
 use dom_struct::dom_struct;
-use euclid::Rect;
+use euclid::{Rect, SideOffsets2D};
 use hashlink::LruCache;
 use html5ever::serialize::TraversalScope;
 use html5ever::serialize::TraversalScope::{ChildrenOnly, IncludeNode};
@@ -917,7 +917,23 @@ impl Element {
         inner_target_rect: Option<Rect<Au, CSSPixel>>,
     ) {
         let get_target_rect = |cx: &mut JSContext| match inner_target_rect {
-            None => self.upcast::<Node>().border_box(cx).unwrap_or_default(),
+            None => {
+                let border_box = self.upcast::<Node>().border_box(cx).unwrap_or_default();
+                // The box to scroll into view is the border box outset by `scroll-margin`.
+                // <https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin>
+                match self.style_without_reflow() {
+                    Some(style) => {
+                        let margin = style.get_margin();
+                        border_box.outer_rect(SideOffsets2D::new(
+                            Au::from(margin.scroll_margin_top),
+                            Au::from(margin.scroll_margin_right),
+                            Au::from(margin.scroll_margin_bottom),
+                            Au::from(margin.scroll_margin_left),
+                        ))
+                    },
+                    None => border_box,
+                }
+            },
             Some(inner_target_rect) => inner_target_rect.translate(
                 self.upcast::<Node>()
                     .content_box(cx)

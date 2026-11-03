@@ -5,16 +5,18 @@
 use std::cell::Cell;
 
 use app_units::Au;
-use euclid::{Rect, Vector2D};
+use euclid::{Rect, SideOffsets2D, Vector2D};
 use js::context::{JSContext, NoGC};
 use layout_api::{AxesOverflow, ScrollContainerQueryFlags};
 use script_bindings::codegen::GenericBindings::WindowBinding::ScrollBehavior;
 use script_bindings::inheritance::Castable;
 use script_bindings::root::DomRoot;
-use style::values::computed::Overflow;
+use style::values::computed::{NonNegativeLengthPercentageOrAuto, Overflow};
+use style::values::generics::length::LengthPercentageOrAuto;
 use style_traits::CSSPixel;
 use webrender_api::units::{LayoutSize, LayoutVector2D};
 
+use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::ElementBinding::ScrollLogicalPosition;
 use crate::dom::node::{Node, NodeTraits};
 use crate::dom::types::{Document, Element};
@@ -233,23 +235,52 @@ impl ScrollingBox {
             },
         };
 
+        // Align with the scrollport reduced by `scroll-padding`, rather than with the scrollport.
         let size = self.size(cx.no_gc());
+        let padding = self.scroll_padding(size);
         let current_scroll_position = self.scroll_position();
         Vector2D::new(
             Self::calculate_scroll_position_one_axis(
                 inline,
-                adjusted_element_top_left.x,
-                adjusted_element_bottom_right.x,
-                size.width,
+                adjusted_element_top_left.x - padding.left,
+                adjusted_element_bottom_right.x - padding.left,
+                size.width - padding.horizontal(),
                 current_scroll_position.x,
             ),
             Self::calculate_scroll_position_one_axis(
                 block,
-                adjusted_element_top_left.y,
-                adjusted_element_bottom_right.y,
-                size.height,
+                adjusted_element_top_left.y - padding.top,
+                adjusted_element_bottom_right.y - padding.top,
+                size.height - padding.vertical(),
                 current_scroll_position.y,
             ),
+        )
+    }
+
+    /// The `scroll-padding` of this scrolling box, in CSS pixels. The viewport uses the value
+    /// of the root element. Percentages refer to the size of the scrollport.
+    /// <https://drafts.csswg.org/css-scroll-snap-1/#scroll-padding>
+    fn scroll_padding(&self, size: LayoutSize) -> SideOffsets2D<f32, CSSPixel> {
+        let element = match &self.target {
+            ScrollingBoxSource::Element(element) => Some(element.clone()),
+            ScrollingBoxSource::Viewport(document) => document.GetDocumentElement(),
+        };
+        let Some(style) = element.and_then(|element| element.style_without_reflow()) else {
+            return SideOffsets2D::zero();
+        };
+        let padding = style.get_padding();
+        let resolve = |value: &NonNegativeLengthPercentageOrAuto, basis: f32| match value {
+            LengthPercentageOrAuto::Auto => 0.,
+            LengthPercentageOrAuto::LengthPercentage(length_percentage) => length_percentage
+                .0
+                .to_used_value(Au::from_f32_px(basis))
+                .to_f32_px(),
+        };
+        SideOffsets2D::new(
+            resolve(&padding.scroll_padding_top, size.height),
+            resolve(&padding.scroll_padding_right, size.width),
+            resolve(&padding.scroll_padding_bottom, size.height),
+            resolve(&padding.scroll_padding_left, size.width),
         )
     }
 
