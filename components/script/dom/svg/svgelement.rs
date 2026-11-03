@@ -11,7 +11,7 @@ use script_bindings::codegen::GenericBindings::WindowBinding::ScrollBehavior;
 use script_bindings::str::DOMString;
 use style::attr::AttrValue;
 use style::parser::ParserContext;
-use style::properties::{PropertyDeclaration, longhands};
+use style::properties::{PropertyDeclaration, PropertyId, longhands};
 use style::stylesheets::{CssRuleType, Origin, UrlExtraData};
 use style::values::generics::NonNegative;
 use style::values::specified;
@@ -129,6 +129,21 @@ impl VirtualMethods for SVGElement {
                 &local_name!("stroke-dashoffset") |
                 &local_name!("stroke-miterlimit") |
                 &local_name!("stroke-opacity") |
+                &local_name!("clip-rule") |
+                &local_name!("color-interpolation") |
+                &local_name!("color-interpolation-filters") |
+                &local_name!("flood-color") |
+                &local_name!("flood-opacity") |
+                &local_name!("lighting-color") |
+                &local_name!("marker-start") |
+                &local_name!("marker-mid") |
+                &local_name!("marker-end") |
+                &local_name!("paint-order") |
+                &local_name!("shape-rendering") |
+                &local_name!("stop-color") |
+                &local_name!("stop-opacity") |
+                &local_name!("text-anchor") |
+                &local_name!("vector-effect") |
                 &local_name!("display") |
                 &local_name!("visibility") |
                 &local_name!("opacity") |
@@ -365,6 +380,96 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         );
         self.parse_svg_attribute(
             &parser_context,
+            "clip-rule",
+            longhands::clip_rule::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "color-interpolation",
+            longhands::color_interpolation::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "color-interpolation-filters",
+            longhands::color_interpolation_filters::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "flood-color",
+            longhands::flood_color::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "flood-opacity",
+            longhands::flood_opacity::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "lighting-color",
+            longhands::lighting_color::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "marker-start",
+            longhands::marker_start::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "marker-mid",
+            longhands::marker_mid::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "marker-end",
+            longhands::marker_end::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "paint-order",
+            longhands::paint_order::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "shape-rendering",
+            longhands::shape_rendering::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "stop-color",
+            longhands::stop_color::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "stop-opacity",
+            longhands::stop_opacity::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "text-anchor",
+            longhands::text_anchor::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
+            "vector-effect",
+            longhands::vector_effect::parse_declared,
+            push,
+        );
+        self.parse_svg_attribute(
+            &parser_context,
             "display",
             longhands::display::parse_declared,
             push,
@@ -472,6 +577,10 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
     {
         let element = self.upcast::<Element>();
         if let Some(value) = element.get_attr_val_for_layout(&ns!(), &LocalName::from(attr_name)) {
+            // A presentation attribute does nothing when its property is disabled by a preference.
+            if PropertyId::parse_enabled_for_all_content(attr_name).is_err() {
+                return;
+            }
             let mut parser = cssparser::Parser::new(value);
             if let Ok(property) =
                 parser.parse_entirely(|parse_input| parse(parser_context, parse_input))
