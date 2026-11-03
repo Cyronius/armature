@@ -758,14 +758,16 @@ impl CommandName {
     }
 
     pub(crate) fn is_enabled_in_plaintext_only_state(&self) -> bool {
+        // Note: formatBlock is a styling command, so like the other styling commands it is not
+        // enabled in a plaintext-only editing host, as in other browsers.
+        // TODO: insertHTML should insert the text of the HTML in a plaintext-only editing host.
+        // Until it does, it is not enabled there, so that it does not insert markup or scripts.
         matches!(
             self,
             CommandName::Copy |
                 CommandName::Cut |
                 CommandName::DefaultParagraphSeparator |
-                CommandName::FormatBlock |
                 CommandName::ForwardDelete |
-                CommandName::InsertHtml |
                 CommandName::InsertLineBreak |
                 CommandName::InsertParagraph |
                 CommandName::InsertText |
