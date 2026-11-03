@@ -109,3 +109,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   shorthand for Servo behind the existing `layout.css.columns.enabled` preference, like the other multicol
   properties (css/css-multicol/parsing, css/css-gaps/parsing). Servo does not paint column rules yet.
 - Upstream: Could go upstream as a Servo preference.
+
+### AS-305: Build counter-set for Servo behind the counters pref
+- Files: `style/properties/longhands.toml`
+- Why: Enables `counter-set` for Servo behind the existing `layout.css.counters.enabled` preference, next to
+  `counter-reset` and `counter-increment` (css/css-lists/parsing/counter-set-*, and the `li value` presentational
+  hint in html/rendering/non-replaced-elements/lists).
+- Upstream: Could go upstream as a Servo preference.
