@@ -1931,7 +1931,8 @@ affects = "layout"
 type = "Opacity"
 initial = "0.0"
 struct = "box"
-engine = "gecko"
+# Armature (AS-401): Enabled for Servo behind a preference; floats do not wrap around shapes yet.
+servo_pref = "layout.css.shapes.enabled"
 spec = "https://drafts.csswg.org/css-shapes/#shape-image-threshold-property"
 affects = "layout"
 
@@ -1939,7 +1940,8 @@ affects = "layout"
 type = "NonNegativeLengthPercentage"
 initial = "computed::NonNegativeLengthPercentage::zero()"
 struct = "box"
-engine = "gecko"
+# Armature (AS-401): Enabled for Servo behind a preference; floats do not wrap around shapes yet.
+servo_pref = "layout.css.shapes.enabled"
 spec = "https://drafts.csswg.org/css-shapes/#shape-margin-property"
 affects = "layout"
 
@@ -1947,7 +1949,8 @@ affects = "layout"
 type = "basic_shape::ShapeOutside"
 initial = "generics::basic_shape::ShapeOutside::None"
 struct = "box"
-engine = "gecko"
+# Armature (AS-401): Enabled for Servo behind a preference; floats do not wrap around shapes yet.
+servo_pref = "layout.css.shapes.enabled"
 spec = "https://drafts.csswg.org/css-shapes/#shape-outside-property"
 affects = "layout"
 

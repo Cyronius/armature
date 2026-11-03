@@ -60,6 +60,8 @@
 "layout.css.scroll-driven-animations.enabled" = false
 "layout.css.scroll-state.enabled" = false
 "layout.css.scrollbar-styling.enabled" = false
+# Armature (AS-401): Gates shape-outside, shape-margin and shape-image-threshold for Servo.
+"layout.css.shapes.enabled" = false
 "layout.css.starting-style-at-rules.enabled" = false
 "layout.css.stretch-size-keyword.enabled" = true
 "layout.css.style-queries.enabled" = false

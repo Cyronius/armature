@@ -80,4 +80,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Upstream: Whether the change could go upstream, or why it is Armature-only.
 ```
 
-No changes yet.
+### AS-401: Enable the CSS Shapes properties for Servo behind a preference
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `shape-outside`, `shape-margin` and `shape-image-threshold` for Servo behind the new preference
+  `layout.css.shapes.enabled`, so they parse, compute, serialize and interpolate. Servo's float layout does not wrap
+  content around the shapes yet and ignores the values. Affects `css/css-shapes/parsing`, `css/css-shapes/animation`
+  and `css/css-shapes/inheritance.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
