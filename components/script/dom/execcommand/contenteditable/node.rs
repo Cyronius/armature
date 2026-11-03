@@ -443,10 +443,13 @@ pub(crate) fn split_the_parent<'a>(cx: &mut JSContext, node_list: &'a [&'a Node]
     if !first_child_is_in_node_list && last_child_is_in_node_list {
         // Step 6.1. For each node in node list, in reverse order,
         // insert node into the parent of original parent immediately after original parent, preserving ranges.
-        let next_of_original_parent = original_parent.GetNextSibling();
         for node in node_list.iter().rev() {
             move_preserving_ranges(cx, node, |cx| {
-                parent_of_original_parent.InsertBefore(cx, node, next_of_original_parent.as_deref())
+                parent_of_original_parent.InsertBefore(
+                    cx,
+                    node,
+                    original_parent.GetNextSibling().as_deref(),
+                )
             });
         }
         // Step 6.2. If precedes line break is true, and the last member of node list does not precede a line break,
