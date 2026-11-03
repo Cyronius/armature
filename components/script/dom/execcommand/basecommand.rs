@@ -34,9 +34,12 @@ use crate::dom::execcommand::commands::indent::execute_indent_command;
 use crate::dom::execcommand::commands::inserthorizontalrule::execute_insert_horizontal_rule_command;
 use crate::dom::execcommand::commands::insertimage::execute_insert_image_command;
 use crate::dom::execcommand::commands::insertlinebreak::execute_insert_line_break_command;
+use crate::dom::execcommand::commands::insertorderedlist::execute_insert_ordered_list_command;
 use crate::dom::execcommand::commands::insertparagraph::execute_insert_paragraph_command;
 use crate::dom::execcommand::commands::inserttext::execute_insert_text_command;
+use crate::dom::execcommand::commands::insertunorderedlist::execute_insert_unordered_list_command;
 use crate::dom::execcommand::commands::italic::execute_italic_command;
+use crate::dom::execcommand::commands::outdent::execute_outdent_command;
 use crate::dom::execcommand::commands::removeformat::execute_removeformat_command;
 use crate::dom::execcommand::commands::strikethrough::execute_strikethrough_command;
 use crate::dom::execcommand::commands::stylewithcss::execute_style_with_css_command;
@@ -44,6 +47,7 @@ use crate::dom::execcommand::commands::subscript::execute_subscript_command;
 use crate::dom::execcommand::commands::superscript::execute_superscript_command;
 use crate::dom::execcommand::commands::underline::execute_underline_command;
 use crate::dom::execcommand::commands::unlink::execute_unlink_command;
+use crate::dom::execcommand::contenteditable::selection::ListState;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::htmlfontelement::HTMLFontElement;
 use crate::dom::iterators::ShadowIncluding;
@@ -364,6 +368,29 @@ pub(crate) enum CommandName {
 impl CommandName {
     /// <https://w3c.github.io/editing/docs/execCommand/#indeterminate>
     pub(crate) fn is_indeterminate(&self, cx: &mut JSContext, document: &Document) -> bool {
+        match self {
+            // https://w3c.github.io/editing/docs/execCommand/#the-insertorderedlist-command
+            // > True if the selection's list state is "mixed" or "mixed ol", false otherwise.
+            CommandName::InsertOrderedList => {
+                return document.GetSelection(cx).is_some_and(|selection| {
+                    matches!(
+                        selection.list_state(cx, document),
+                        ListState::Mixed | ListState::MixedOl
+                    )
+                });
+            },
+            // https://w3c.github.io/editing/docs/execCommand/#the-insertunorderedlist-command
+            // > True if the selection's list state is "mixed" or "mixed ul", false otherwise.
+            CommandName::InsertUnorderedList => {
+                return document.GetSelection(cx).is_some_and(|selection| {
+                    matches!(
+                        selection.list_state(cx, document),
+                        ListState::Mixed | ListState::MixedUl
+                    )
+                });
+            },
+            _ => {},
+        }
         if !self.is_standard_inline_value_command() {
             return false;
         }
@@ -411,6 +438,16 @@ impl CommandName {
                 // https://w3c.github.io/editing/docs/execCommand/#the-stylewithcss-command
                 // > True if the CSS styling flag is true, otherwise false.
                 document.css_styling_flag()
+            },
+            CommandName::InsertOrderedList => {
+                // https://w3c.github.io/editing/docs/execCommand/#the-insertorderedlist-command
+                // > True if the selection's list state is "ol", false otherwise.
+                document.GetSelection(cx)?.list_state(cx, document) == ListState::Ol
+            },
+            CommandName::InsertUnorderedList => {
+                // https://w3c.github.io/editing/docs/execCommand/#the-insertunorderedlist-command
+                // > True if the selection's list state is "ul", false otherwise.
+                document.GetSelection(cx)?.list_state(cx, document) == ListState::Ul
             },
             _ => {
                 // https://w3c.github.io/editing/docs/execCommand/#inline-formatting-command-definitions
@@ -758,11 +795,18 @@ impl CommandName {
             CommandName::InsertLineBreak => {
                 execute_insert_line_break_command(cx, document, selection)
             },
+            CommandName::InsertOrderedList => {
+                execute_insert_ordered_list_command(cx, document, selection)
+            },
             CommandName::InsertParagraph => {
                 execute_insert_paragraph_command(cx, document, selection)
             },
             CommandName::InsertText => execute_insert_text_command(cx, document, selection, value),
+            CommandName::InsertUnorderedList => {
+                execute_insert_unordered_list_command(cx, document, selection)
+            },
             CommandName::Italic => execute_italic_command(cx, document, selection),
+            CommandName::Outdent => execute_outdent_command(cx, document, selection),
             CommandName::RemoveFormat => execute_removeformat_command(cx, document, selection),
             CommandName::Strikethrough => execute_strikethrough_command(cx, document, selection),
             CommandName::StyleWithCss => execute_style_with_css_command(document, value),

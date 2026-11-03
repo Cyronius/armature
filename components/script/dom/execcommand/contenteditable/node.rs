@@ -15,9 +15,11 @@ use style::values::specified::box_::DisplayOutside;
 
 use crate::dom::Document;
 use crate::dom::abstractrange::bp_position;
+use crate::dom::bindings::codegen::Bindings::CSSStyleDeclarationBinding::CSSStyleDeclarationMethods;
 use crate::dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterDataMethods;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLAnchorElementBinding::HTMLAnchorElementMethods;
+use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::HTMLElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::inheritance::NodeTypeId;
@@ -27,11 +29,14 @@ use crate::dom::characterdata::CharacterData;
 use crate::dom::element::Element;
 use crate::dom::execcommand::basecommand::{CommandName, CssPropertyName};
 use crate::dom::execcommand::commands::forecolor::serialize_to_simple_color;
+use crate::dom::execcommand::commands::indent::indent;
 use crate::dom::html::htmlanchorelement::HTMLAnchorElement;
 use crate::dom::html::htmlbrelement::HTMLBRElement;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmllielement::HTMLLIElement;
+use crate::dom::html::htmlolistelement::HTMLOListElement;
+use crate::dom::html::htmlulistelement::HTMLUListElement;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::{Node, NodeTraits};
 use crate::dom::text::Text;
@@ -2313,6 +2318,164 @@ impl Node {
             rooted_vec!(let children <- self.children().map(|child| DomRoot::as_traced(&child)));
             split_the_parent(cx, children.r());
         }
+    }
+
+    /// <https://w3c.github.io/editing/docs/execCommand/#outdent>
+    pub(crate) fn outdent(&self, cx: &mut JSContext, context_object: &Document) {
+        // Step 1. If node is not editable, abort these steps.
+        if !self.is_editable() {
+            return;
+        }
+        // Step 2. If node is a simple indentation element, remove node, preserving its descendants.
+        // Then abort these steps.
+        if self
+            .downcast::<Element>()
+            .is_some_and(|element| element.is_simple_indentation_element())
+        {
+            self.remove_preserving_its_descendants(cx);
+            return;
+        }
+        // Step 3. If node is an indentation element:
+        if let Some(html_element) = self.downcast::<HTMLElement>() &&
+            html_element.upcast::<Element>().is_indentation_element()
+        {
+            let element = html_element.upcast::<Element>();
+            // Step 3.1. Unset the dir attribute of node, if any.
+            element.remove_attribute_by_name(cx, &local_name!("dir"));
+            // Step 3.2. Unset the margin, padding, and border CSS properties of node.
+            let style = html_element.Style(cx);
+            for property in ["margin", "padding", "border"] {
+                let _ = style.RemoveProperty(cx, property.into());
+            }
+            if element.has_empty_style_attribute() {
+                element.remove_attribute_by_name(cx, &local_name!("style"));
+            }
+            // Step 3.3. Set the tag name of node to "div".
+            element.set_the_tag_name(cx, "div");
+            // Step 3.4. Abort these steps.
+            return;
+        }
+        let is_list = |node: &Node| node.is::<HTMLOListElement>() || node.is::<HTMLUListElement>();
+        // Step 4. Let current ancestor be node's parent.
+        let mut current_ancestor = self.GetParentNode();
+        // Step 5. Let ancestor list be a list of nodes, initially empty.
+        let mut ancestor_list = vec![];
+        // Step 6. While current ancestor is an editable Element that is neither a simple indentation element
+        // nor an ol nor a ul, append current ancestor to ancestor list and then set current ancestor to its parent.
+        while let Some(ancestor) = current_ancestor.clone() &&
+            ancestor.is_editable() &&
+            ancestor
+                .downcast::<Element>()
+                .is_some_and(|element| !element.is_simple_indentation_element()) &&
+            !is_list(&ancestor)
+        {
+            current_ancestor = ancestor.GetParentNode();
+            ancestor_list.push(ancestor);
+        }
+        // Step 7. If current ancestor is not an editable simple indentation element:
+        if !current_ancestor.as_ref().is_some_and(|ancestor| {
+            ancestor.is_editable() &&
+                ancestor
+                    .downcast::<Element>()
+                    .is_some_and(|element| element.is_simple_indentation_element())
+        }) {
+            // Step 7.1. Let current ancestor be node's parent.
+            current_ancestor = self.GetParentNode();
+            // Step 7.2. Let ancestor list be the empty list.
+            ancestor_list.clear();
+            // Step 7.3. While current ancestor is an editable Element that is neither an indentation element
+            // nor an ol nor a ul, append current ancestor to ancestor list and then set current ancestor to its parent.
+            while let Some(ancestor) = current_ancestor.clone() &&
+                ancestor.is_editable() &&
+                ancestor
+                    .downcast::<Element>()
+                    .is_some_and(|element| !element.is_indentation_element()) &&
+                !is_list(&ancestor)
+            {
+                current_ancestor = ancestor.GetParentNode();
+                ancestor_list.push(ancestor);
+            }
+        }
+        let current_ancestor = current_ancestor.filter(|ancestor| {
+            ancestor.is_editable() &&
+                ancestor
+                    .downcast::<Element>()
+                    .is_some_and(|element| element.is_indentation_element())
+        });
+        // Step 8. If node is an ol or ul and current ancestor is not an editable indentation element:
+        if is_list(self) && current_ancestor.is_none() {
+            let element = self.downcast::<Element>().expect("Lists are elements");
+            // Step 8.1. Unset the reversed, start, and type attributes of node, if any are set.
+            for attribute in [
+                local_name!("reversed"),
+                local_name!("start"),
+                local_name!("type"),
+            ] {
+                element.remove_attribute_by_name(cx, &attribute);
+            }
+            // Step 8.2. Let children be the children of node.
+            let children = self.children().collect::<Vec<DomRoot<Node>>>();
+            // Step 8.3. If node has attributes, and its parent is not an ol or ul,
+            // set the tag name of node to "div".
+            if !element.attrs().borrow().is_empty() &&
+                !self.GetParentNode().is_some_and(|parent| is_list(&parent))
+            {
+                element.set_the_tag_name(cx, "div");
+            } else {
+                // Step 8.4. Otherwise:
+                // Step 8.4.1. Record the values of node's children, and let values be the result.
+                let values = record_the_values(children.clone());
+                // Step 8.4.2. Remove node, preserving its descendants.
+                self.remove_preserving_its_descendants(cx);
+                // Step 8.4.3. Restore the values from values.
+                restore_the_values(cx, values);
+            }
+            // Step 8.5. Fix disallowed ancestors of each member of children.
+            for child in children {
+                child.fix_disallowed_ancestors(cx, context_object);
+            }
+            // Step 8.6. Abort these steps.
+            return;
+        }
+        // Step 9. If current ancestor is not an editable indentation element, abort these steps.
+        let Some(current_ancestor) = current_ancestor else {
+            return;
+        };
+        // Step 10. Append current ancestor to ancestor list.
+        ancestor_list.push(current_ancestor.clone());
+        // Step 11. Let original ancestor be current ancestor.
+        let original_ancestor = current_ancestor;
+        // Step 12. While ancestor list is not empty:
+        // Step 12.1. Let current ancestor be the last member of ancestor list.
+        // Step 12.2. Remove the last member from ancestor list.
+        while ancestor_list.pop().is_some() {
+            // Step 12.3. Let target be the child of current ancestor that is equal to either node
+            // or the last member of ancestor list.
+            let target = ancestor_list
+                .last()
+                .cloned()
+                .unwrap_or_else(|| DomRoot::from_ref(self));
+            // Step 12.4. If target is an inline node that is not a br, and its nextSibling is a br,
+            // remove target's nextSibling from its parent.
+            if target.is_inline_node() &&
+                !target.is::<HTMLBRElement>() &&
+                let Some(next_sibling) = target.GetNextSibling() &&
+                next_sibling.is::<HTMLBRElement>()
+            {
+                next_sibling.remove_self(cx);
+            }
+            // Step 12.5. Let preceding siblings be the preceding siblings of target,
+            // and let following siblings be the following siblings of target.
+            let mut preceding_siblings = target.preceding_siblings().collect::<Vec<_>>();
+            preceding_siblings.reverse();
+            let following_siblings = target.following_siblings().collect();
+            // Step 12.6. Indent preceding siblings.
+            indent(cx, context_object, preceding_siblings);
+            // Step 12.7. Indent following siblings.
+            indent(cx, context_object, following_siblings);
+        }
+        // Step 13. Outdent original ancestor.
+        original_ancestor.outdent(cx, context_object);
     }
 
     /// <https://w3c.github.io/editing/docs/execCommand/#effective-command-value>

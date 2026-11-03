@@ -13,20 +13,27 @@ use crate::dom::abstractrange::bp_position;
 use crate::dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterDataMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::codegen::Bindings::TextBinding::TextMethods;
+use crate::dom::bindings::conversions::DerivedFrom;
 use crate::dom::bindings::root::{DomRoot, DomSlice};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::characterdata::CharacterData;
 use crate::dom::document::Document;
+use crate::dom::element::Element;
 use crate::dom::execcommand::basecommand::CommandName;
+use crate::dom::execcommand::commands::indent::normalize_sublists;
 use crate::dom::execcommand::contenteditable::node::{
     NodeOrString, is_allowed_child, move_preserving_ranges, record_the_values, restore_the_values,
-    split_the_parent,
+    split_the_parent, wrap_node_list,
 };
 use crate::dom::html::htmlbrelement::HTMLBRElement;
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::htmllielement::HTMLLIElement;
+use crate::dom::html::htmlolistelement::HTMLOListElement;
 use crate::dom::html::htmltablecellelement::HTMLTableCellElement;
 use crate::dom::html::htmltablerowelement::HTMLTableRowElement;
 use crate::dom::html::htmltablesectionelement::HTMLTableSectionElement;
+use crate::dom::html::htmlulistelement::HTMLUListElement;
+use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::Node;
 use crate::dom::selection::Selection;
 use crate::dom::text::Text;
@@ -867,4 +874,410 @@ impl Selection {
                 }
             });
     }
+
+    /// <https://w3c.github.io/editing/docs/execCommand/#selection's-list-state>
+    pub(crate) fn list_state(&self, cx: &mut JSContext, document: &Document) -> ListState {
+        // Step 1. If the active range is null, return "none".
+        let Some(active_range) = self.active_range(cx) else {
+            return ListState::None;
+        };
+        // Step 2. Block-extend the active range, and let new range be the result.
+        let new_range = active_range.block_extend(cx, document);
+        // Step 3. Let node list be a list of nodes, initially empty.
+        let mut node_list: Vec<DomRoot<Node>> = vec![];
+        // Step 4. For each node contained in new range, append node to node list if the last member of node list
+        // (if any) is not an ancestor of node; node is editable; node is not an indentation element;
+        // and node is either an ol or ul, or the child of an ol or ul, or an allowed child of "li".
+        for node in new_range.contained_nodes(cx.no_gc()) {
+            if node_list
+                .last()
+                .is_none_or(|last| !last.is_ancestor_of(&node)) &&
+                node.is_editable() &&
+                !node
+                    .downcast::<Element>()
+                    .is_some_and(|element| element.is_indentation_element()) &&
+                (is_list(&node) ||
+                    is_child_of_list(&node) ||
+                    is_allowed_child(
+                        NodeOrString::Node(node.clone()),
+                        NodeOrString::String("li".to_owned()),
+                    ))
+            {
+                node_list.push(node.as_rooted());
+            }
+        }
+        // Step 5. If node list is empty, return "none".
+        if node_list.is_empty() {
+            return ListState::None;
+        }
+        // > either an ol or the child of an ol or the child of an li child of an ol
+        fn is_in_list<List: DerivedFrom<Node>>(node: &Node) -> bool {
+            node.is::<List>() ||
+                node.GetParentNode().is_some_and(|parent| {
+                    parent.is::<List>() ||
+                        (parent.is::<HTMLLIElement>() &&
+                            parent
+                                .GetParentNode()
+                                .is_some_and(|grandparent| grandparent.is::<List>()))
+                })
+        }
+        fn is_ancestor_of_list<List: DerivedFrom<Node>>(node: &Node) -> bool {
+            node.traverse_preorder(ShadowIncluding::No)
+                .skip(1)
+                .any(|descendant| descendant.is::<List>())
+        }
+        // Step 6. If every member of node list is either an ol or the child of an ol or the child of an li child of an ol,
+        // and none is a ul or an ancestor of a ul, return "ol".
+        if node_list.iter().all(|node| {
+            is_in_list::<HTMLOListElement>(node) &&
+                !node.is::<HTMLUListElement>() &&
+                !is_ancestor_of_list::<HTMLUListElement>(node)
+        }) {
+            return ListState::Ol;
+        }
+        // Step 7. If every member of node list is either a ul or the child of a ul or the child of an li child of a ul,
+        // and none is an ol or an ancestor of an ol, return "ul".
+        if node_list.iter().all(|node| {
+            is_in_list::<HTMLUListElement>(node) &&
+                !node.is::<HTMLOListElement>() &&
+                !is_ancestor_of_list::<HTMLOListElement>(node)
+        }) {
+            return ListState::Ul;
+        }
+        // > either an ol or the child or ancestor of an ol or the child of an li child of an ol
+        let some_ol = node_list.iter().any(|node| {
+            is_in_list::<HTMLOListElement>(node) || is_ancestor_of_list::<HTMLOListElement>(node)
+        });
+        let some_ul = node_list.iter().any(|node| {
+            is_in_list::<HTMLUListElement>(node) || is_ancestor_of_list::<HTMLUListElement>(node)
+        });
+        match (some_ol, some_ul) {
+            // Step 8. If some member of node list is ol-like and some member of node list is ul-like, return "mixed".
+            (true, true) => ListState::Mixed,
+            // Step 9. If some member of node list is ol-like, return "mixed ol".
+            (true, false) => ListState::MixedOl,
+            // Step 10. If some member of node list is ul-like, return "mixed ul".
+            (false, true) => ListState::MixedUl,
+            // Step 11. Return "none".
+            (false, false) => ListState::None,
+        }
+    }
+
+    /// <https://w3c.github.io/editing/docs/execCommand/#toggle-lists>
+    pub(crate) fn toggle_lists(
+        &self,
+        cx: &mut JSContext,
+        context_object: &Document,
+        tag_name: &str,
+    ) {
+        // Step 1. Let mode be "disable" if the selection's list state is tag name, and "enable" otherwise.
+        let enable = match self.list_state(cx, context_object) {
+            ListState::Ol => tag_name != "ol",
+            ListState::Ul => tag_name != "ul",
+            _ => true,
+        };
+        // Step 2. Let other tag name be "ol" if tag name is "ul", and "ul" if tag name is "ol".
+        let other_tag_name = if tag_name == "ul" { "ol" } else { "ul" };
+        let is_html_element_named = |node: &Node, name: &str| {
+            node.downcast::<HTMLElement>()
+                .is_some_and(|element| element.local_name() == name)
+        };
+        // Step 3. Let items be a list of all lis that are inclusive ancestors of the active range's start and/or end node.
+        let active_range = self.expect_active_range(cx);
+        let mut items: Vec<DomRoot<Node>> = vec![];
+        for item in active_range
+            .start_container()
+            .inclusive_ancestors(ShadowIncluding::No)
+            .chain(
+                active_range
+                    .end_container()
+                    .inclusive_ancestors(ShadowIncluding::No),
+            )
+            .filter(|ancestor| ancestor.is::<HTMLLIElement>())
+        {
+            if !items.contains(&item) {
+                items.push(item);
+            }
+        }
+        // Step 4. For each item in items, normalize sublists of item.
+        for item in items {
+            normalize_sublists(cx, item);
+        }
+        // Step 5. Block-extend the active range, and let new range be the result.
+        let new_range = self
+            .expect_active_range(cx)
+            .block_extend(cx, context_object);
+        // Step 6. If mode is "enable", then let lists to convert consist of every editable HTML element
+        // with local name other tag name that is contained in new range, and for every list in lists to convert:
+        if enable {
+            let lists_to_convert: Vec<DomRoot<Node>> = new_range
+                .contained_nodes(cx.no_gc())
+                .filter(|node| node.is_editable() && is_html_element_named(node, other_tag_name))
+                .map(|node| node.as_rooted())
+                .collect();
+            for list in lists_to_convert {
+                // Step 6.1. If list's previousSibling or nextSibling is an editable HTML element with local name tag name:
+                if list
+                    .GetPreviousSibling()
+                    .into_iter()
+                    .chain(list.GetNextSibling())
+                    .any(|sibling| {
+                        sibling.is_editable() && is_html_element_named(&sibling, tag_name)
+                    })
+                {
+                    // Step 6.1.1. Let children be list's children.
+                    let children: Vec<DomRoot<Node>> = list.children().collect();
+                    // Step 6.1.2. Record the values of children, and let values be the result.
+                    let values = record_the_values(children.clone());
+                    // Step 6.1.3. Split the parent of children.
+                    if !children.is_empty() {
+                        rooted_vec!(let children_refs <- children.iter().map(|node| DomRoot::as_traced(node)));
+                        split_the_parent(cx, children_refs.r());
+                    }
+                    // Step 6.1.4. Wrap children, with sibling criteria returning true for an HTML element
+                    // with local name tag name and false otherwise.
+                    wrap_node_list(
+                        cx,
+                        children,
+                        |sibling| is_html_element_named(sibling, tag_name),
+                        |_| None,
+                    );
+                    // Step 6.1.5. Restore the values from values.
+                    restore_the_values(cx, values);
+                } else {
+                    // Step 6.2. Otherwise, set the tag name of list to tag name.
+                    list.downcast::<Element>()
+                        .expect("Lists are elements")
+                        .set_the_tag_name(cx, tag_name);
+                }
+            }
+        }
+        // Step 7. Let node list be a list of nodes, initially empty.
+        let mut node_list: Vec<DomRoot<Node>> = vec![];
+        // Step 8. For each node node contained in new range, if node is editable; the last member of node list
+        // (if any) is not an ancestor of node; node is not an indentation element; and either node is an ol or ul,
+        // or its parent is an ol or ul, or it is an allowed child of "li"; then append node to node list.
+        for node in new_range.contained_nodes(cx.no_gc()) {
+            if node.is_editable() &&
+                node_list
+                    .last()
+                    .is_none_or(|last| !last.is_ancestor_of(&node)) &&
+                !node
+                    .downcast::<Element>()
+                    .is_some_and(|element| element.is_indentation_element()) &&
+                (is_list(&node) ||
+                    is_child_of_list(&node) ||
+                    is_allowed_child(
+                        NodeOrString::Node(node.clone()),
+                        NodeOrString::String("li".to_owned()),
+                    ))
+            {
+                node_list.push(node.as_rooted());
+            }
+        }
+        // Step 9. If mode is "enable", remove from node list any ol or ul whose parent is not also an ol or ul.
+        if enable {
+            node_list.retain(|node| !is_list(node) || is_child_of_list(node));
+        }
+        let mut node_list = node_list.into_iter().peekable();
+        // Step 10. If mode is "disable", then while node list is not empty:
+        if !enable {
+            // Step 10.1. Let sublist be an empty list of nodes.
+            // Step 10.2. Remove the first member from node list and append it to sublist.
+            while let Some(first) = node_list.next() {
+                // Step 10.3. If the first member of sublist is an HTML element with local name tag name,
+                // outdent it and continue this loop from the beginning.
+                if is_html_element_named(&first, tag_name) {
+                    first.outdent(cx, context_object);
+                    continue;
+                }
+                let mut sublist = vec![first];
+                // Step 10.4. While node list is not empty, and the first member of node list is the nextSibling
+                // of the last member of sublist and is not an HTML element with local name tag name,
+                // remove the first member from node list and append it to sublist.
+                while let Some(next) = node_list.next_if(|node| {
+                    !is_html_element_named(node, tag_name) &&
+                        sublist
+                            .last()
+                            .expect("Must always have last element here.")
+                            .GetNextSibling()
+                            .is_some_and(|next_sibling| next_sibling == *node)
+                }) {
+                    sublist.push(next);
+                }
+                // Step 10.5. Record the values of sublist, and let values be the result.
+                let values = record_the_values(sublist.clone());
+                // Step 10.6. Split the parent of sublist.
+                rooted_vec!(let sublist_refs <- sublist.iter().map(|node| DomRoot::as_traced(node)));
+                split_the_parent(cx, sublist_refs.r());
+                // Step 10.7. Fix disallowed ancestors of each member of sublist.
+                for node in &sublist {
+                    node.fix_disallowed_ancestors(cx, context_object);
+                }
+                // Step 10.8. Restore the values from values.
+                restore_the_values(cx, values);
+            }
+            return;
+        }
+        // Step 11. Otherwise, while node list is not empty:
+        while node_list.peek().is_some() {
+            // Step 11.1. Let sublist be an empty list of nodes.
+            let mut sublist: Vec<DomRoot<Node>> = vec![];
+            // Step 11.2. While either sublist is empty, or node list is not empty and its first member is
+            // the nextSibling of sublist's last member:
+            loop {
+                let Some(first) = node_list.peek().cloned() else {
+                    break;
+                };
+                if let Some(last) = sublist.last() &&
+                    last.GetNextSibling()
+                        .is_none_or(|next_sibling| next_sibling != first)
+                {
+                    break;
+                }
+                // Step 11.2.1. If node list's first member is a p or div, set the tag name of node list's
+                // first member to "li", and append the result to sublist. Remove the first member from node list.
+                if is_html_element_named(&first, "p") || is_html_element_named(&first, "div") {
+                    node_list.next();
+                    sublist.push(
+                        first
+                            .downcast::<Element>()
+                            .expect("Must be an element")
+                            .set_the_tag_name(cx, "li"),
+                    );
+                } else if first.is::<HTMLLIElement>() || is_list(&first) {
+                    // Step 11.2.2. Otherwise, if the first member of node list is an li or ol or ul,
+                    // remove it from node list and append it to sublist.
+                    node_list.next();
+                    sublist.push(first);
+                } else {
+                    // Step 11.2.3. Otherwise:
+                    // Step 11.2.3.1. Let nodes to wrap be a list of nodes, initially empty.
+                    let mut nodes_to_wrap: Vec<DomRoot<Node>> = vec![];
+                    // Step 11.2.3.2. While nodes to wrap is empty, or node list is not empty and its first member is
+                    // the nextSibling of nodes to wrap's last member and the first member of node list is an inline node
+                    // and the last member of nodes to wrap is an inline node other than a br,
+                    // remove the first member from node list and append it to nodes to wrap.
+                    while let Some(next) = node_list.next_if(|node| {
+                        nodes_to_wrap.last().is_none_or(|last| {
+                            last.GetNextSibling()
+                                .is_some_and(|next_sibling| next_sibling == *node) &&
+                                node.is_inline_node() &&
+                                last.is_inline_node() &&
+                                !last.is::<HTMLBRElement>()
+                        })
+                    }) {
+                        nodes_to_wrap.push(next);
+                    }
+                    // Step 11.2.3.3. Wrap nodes to wrap, with new parent instructions returning the result of
+                    // calling createElement("li") on the context object. Append the result to sublist.
+                    if let Some(new_parent) = wrap_node_list(
+                        cx,
+                        nodes_to_wrap,
+                        |_| false,
+                        |cx| Some(DomRoot::upcast(context_object.create_element(cx, "li"))),
+                    ) {
+                        sublist.push(new_parent);
+                    }
+                }
+            }
+            let Some(first_of_sublist) = sublist.first() else {
+                continue;
+            };
+            let Some(parent_of_first) = first_of_sublist.GetParentNode() else {
+                continue;
+            };
+            // Step 11.3. If sublist's first member's parent is an HTML element with local name tag name,
+            // or if every member of sublist is an ol or ul, continue this loop from the beginning.
+            if is_html_element_named(&parent_of_first, tag_name) ||
+                sublist.iter().all(|node| is_list(node))
+            {
+                continue;
+            }
+            // Step 11.4. If sublist's first member's parent is an HTML element with local name other tag name:
+            if is_html_element_named(&parent_of_first, other_tag_name) {
+                // Step 11.4.1. Record the values of sublist, and let values be the result.
+                let values = record_the_values(sublist.clone());
+                // Step 11.4.2. Split the parent of sublist.
+                rooted_vec!(let sublist_refs <- sublist.iter().map(|node| DomRoot::as_traced(node)));
+                split_the_parent(cx, sublist_refs.r());
+                // Step 11.4.3. Wrap sublist, with sibling criteria returning true for an HTML element with
+                // local name tag name and false otherwise, and new parent instructions returning the result of
+                // calling createElement(tag name) on the context object.
+                wrap_node_list(
+                    cx,
+                    sublist,
+                    |sibling| is_html_element_named(sibling, tag_name),
+                    |cx| Some(DomRoot::upcast(context_object.create_element(cx, tag_name))),
+                );
+                // Step 11.4.4. Restore the values from values.
+                restore_the_values(cx, values);
+                // Step 11.4.5. Continue this loop from the beginning.
+                continue;
+            }
+            // Step 11.5. Wrap sublist, with sibling criteria returning true for an HTML element with local name
+            // tag name and false otherwise, and new parent instructions being the following:
+            let new_parent = wrap_node_list(
+                cx,
+                sublist,
+                |sibling| is_html_element_named(sibling, tag_name),
+                |cx| {
+                    // Step 11.5.1. If sublist's first member's parent is not an editable simple indentation element,
+                    // or sublist's first member's parent's previousSibling is not an editable HTML element with
+                    // local name tag name, call createElement(tag name) on the context object and return the result.
+                    let list = parent_of_first.GetPreviousSibling().filter(|previous| {
+                        parent_of_first.is_editable() &&
+                            parent_of_first
+                                .downcast::<Element>()
+                                .is_some_and(|element| element.is_simple_indentation_element()) &&
+                            previous.is_editable() &&
+                            is_html_element_named(previous, tag_name)
+                    });
+                    // Step 11.5.2. Let list be sublist's first member's parent's previousSibling.
+                    let Some(list) = list else {
+                        return Some(DomRoot::upcast(context_object.create_element(cx, tag_name)));
+                    };
+                    // Step 11.5.3. Normalize sublists of list's lastChild.
+                    if let Some(last_child) = list.GetLastChild() {
+                        normalize_sublists(cx, last_child);
+                    }
+                    // Step 11.5.4. If list's lastChild is not an editable HTML element with local name tag name,
+                    // call createElement(tag name) on the context object, and append the result as the last child of list.
+                    if !list.GetLastChild().is_some_and(|last_child| {
+                        last_child.is_editable() && is_html_element_named(&last_child, tag_name)
+                    }) {
+                        let new_list = context_object.create_element(cx, tag_name);
+                        if list.AppendChild(cx, new_list.upcast()).is_err() {
+                            unreachable!("Must always be able to append");
+                        }
+                    }
+                    // Step 11.5.5. Return the last child of list.
+                    list.GetLastChild()
+                },
+            );
+            // Step 11.6. Fix disallowed ancestors of the previous step's result.
+            if let Some(new_parent) = new_parent {
+                new_parent.fix_disallowed_ancestors(cx, context_object);
+            }
+        }
+    }
+}
+
+/// <https://w3c.github.io/editing/docs/execCommand/#selection's-list-state>
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum ListState {
+    Ol,
+    Ul,
+    Mixed,
+    MixedOl,
+    MixedUl,
+    None,
+}
+
+fn is_list(node: &Node) -> bool {
+    node.is::<HTMLOListElement>() || node.is::<HTMLUListElement>()
+}
+
+fn is_child_of_list(node: &Node) -> bool {
+    node.GetParentNode().is_some_and(|parent| is_list(&parent))
 }
