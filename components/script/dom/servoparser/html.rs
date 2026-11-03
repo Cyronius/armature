@@ -32,7 +32,6 @@ use crate::dom::document::Document;
 use crate::dom::documentfragment::DocumentFragment;
 use crate::dom::documenttype::DocumentType;
 use crate::dom::element::Element;
-use crate::dom::html::htmlscriptelement::HTMLScriptElement;
 use crate::dom::html::htmltemplateelement::HTMLTemplateElement;
 use crate::dom::node::Node;
 use crate::dom::processinginstruction::ProcessingInstruction;
@@ -61,6 +60,7 @@ impl Tokenizer {
             script: Default::default(),
             parsing_algorithm,
             custom_element_reaction_stack,
+            is_html_parser: true,
         };
 
         let quirks_mode = match document.quirks_mode() {
@@ -99,7 +99,7 @@ impl Tokenizer {
         Tokenizer { inner }
     }
 
-    pub(crate) fn feed(&self, input: &BufferQueue) -> TokenizerResult<DomRoot<HTMLScriptElement>> {
+    pub(crate) fn feed(&self, input: &BufferQueue) -> TokenizerResult<DomRoot<Element>> {
         match self.inner.feed(input) {
             TokenizerResult::Done => TokenizerResult::Done,
             TokenizerResult::Script(script) => {

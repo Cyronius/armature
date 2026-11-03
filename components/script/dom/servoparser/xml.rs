@@ -16,7 +16,7 @@ use xml5ever::tree_builder::XmlTreeBuilder;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::document::Document;
-use crate::dom::html::htmlscriptelement::HTMLScriptElement;
+use crate::dom::element::Element;
 use crate::dom::node::Node;
 use crate::dom::servoparser::{ParsingAlgorithm, Sink};
 
@@ -36,6 +36,7 @@ impl Tokenizer {
             script: Default::default(),
             parsing_algorithm: ParsingAlgorithm::Normal,
             custom_element_reaction_stack: document.custom_element_reaction_stack(),
+            is_html_parser: false,
         };
 
         let tb = XmlTreeBuilder::new(sink, Default::default());
@@ -44,14 +45,16 @@ impl Tokenizer {
         Tokenizer { inner: tok }
     }
 
-    pub(crate) fn feed(&self, input: &BufferQueue) -> TokenizerResult<DomRoot<HTMLScriptElement>> {
+    pub(crate) fn feed(&self, input: &BufferQueue) -> TokenizerResult<DomRoot<Element>> {
         loop {
             match self.inner.run(input) {
                 TokenizerResult::Done => return TokenizerResult::Done,
                 TokenizerResult::Script(handle) => {
-                    // Apparently the parser can sometimes create <script> elements without a namespace, resulting
-                    // in them not being HTMLScriptElements.
-                    if let Some(script) = handle.downcast::<HTMLScriptElement>() {
+                    // The parser reports every element named `script`, but only those in the HTML
+                    // and SVG namespaces are script elements.
+                    if let Some(script) = handle.downcast::<Element>() &&
+                        script.as_maybe_script_element().is_some()
+                    {
                         return TokenizerResult::Script(DomRoot::from_ref(script));
                     }
                 },

@@ -40,7 +40,6 @@ use crate::dom::documentfragment::DocumentFragment;
 use crate::dom::domrect::DOMRect;
 use crate::dom::domrectlist::DOMRectList;
 use crate::dom::element::Element;
-use crate::dom::html::htmlscriptelement::HTMLScriptElement;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::{Node, NodeTraits};
 use crate::dom::selection::{Selection, SelectionLiveRangeNotification};
@@ -544,7 +543,10 @@ impl Range {
             .upcast::<Node>()
             .traverse_preorder(ShadowIncluding::No)
         {
-            if let Some(script) = node.downcast::<HTMLScriptElement>() {
+            if let Some(script) = node
+                .downcast::<Element>()
+                .and_then(Element::as_maybe_script_element)
+            {
                 // Step 8.1. Set script's already started to false.
                 script.set_already_started(false);
                 // Step 8.2. Set script's parser document to null.

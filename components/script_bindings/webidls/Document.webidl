@@ -127,7 +127,7 @@ partial /*sealed*/ interface Document {
   [SameObject]
   readonly attribute HTMLCollection scripts;
   NodeList getElementsByName(DOMString elementName);
-  readonly attribute HTMLScriptElement? currentScript;
+  readonly attribute HTMLOrSVGScriptElement? currentScript;
 
   // dynamic markup insertion
   [CEReactions, Throws]
@@ -235,6 +235,9 @@ partial interface Document {
 
 // https://html.spec.whatwg.org/multipage/#dom-document-nameditem-filter
 typedef (WindowProxy or Element or HTMLCollection) NamedPropertyValue;
+
+// https://html.spec.whatwg.org/multipage/#htmlorsvgscriptelement
+typedef (HTMLScriptElement or SVGScriptElement) HTMLOrSVGScriptElement;
 
 // https://wicg.github.io/sanitizer-api/#sanitizer-api
 partial interface Document {

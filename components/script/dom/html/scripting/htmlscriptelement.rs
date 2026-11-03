@@ -13,7 +13,7 @@ use std::sync::Arc;
 use bytes::{Bytes, BytesMut};
 use dom_struct::dom_struct;
 use encoding_rs::Encoding;
-use html5ever::{LocalName, Prefix, local_name};
+use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::JSContext;
 use js::offthread::compile_to_stencil_offthread;
 use js::rust::HandleObject;
@@ -35,7 +35,6 @@ use style::str::{HTML_SPACE_CHARACTERS, StaticStringVec};
 use stylo_atoms::Atom;
 
 use crate::dom::bindings::codegen::Bindings::DOMTokenListBinding::DOMTokenListMethods;
-use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLScriptElementBinding::HTMLScriptElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::codegen::UnionTypes::{
@@ -61,6 +60,7 @@ use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{ChildrenMutation, CloneChildrenFlag, Node, NodeTraits, UnbindContext};
 use crate::dom::performance::performanceresourcetiming::InitiatorType;
+use crate::dom::svg::svgscriptelement::SVGScriptElement;
 use crate::dom::trustedtypes::trustedscript::TrustedScript;
 use crate::dom::trustedtypes::trustedscripturl::TrustedScriptURL;
 use crate::dom::window::Window;
@@ -82,6 +82,51 @@ use crate::url::ensure_blob_referenced_by_url_is_kept_alive;
 pub(crate) struct HTMLScriptElement {
     htmlelement: HTMLElement,
 
+    /// The state of the script processing model for this element.
+    script_state: ScriptElementState,
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-script-blocking>
+    blocking: MutNullableDom<DOMTokenList>,
+}
+
+impl HTMLScriptElement {
+    fn new_inherited(
+        local_name: LocalName,
+        prefix: Option<Prefix>,
+        document: &Document,
+        creator: ElementCreator,
+    ) -> HTMLScriptElement {
+        HTMLScriptElement {
+            htmlelement: HTMLElement::new_inherited(local_name, prefix, document),
+            script_state: ScriptElementState::new(document, creator),
+            blocking: Default::default(),
+        }
+    }
+
+    pub(crate) fn new(
+        cx: &mut JSContext,
+        local_name: LocalName,
+        prefix: Option<Prefix>,
+        document: &Document,
+        proto: Option<HandleObject>,
+        creator: ElementCreator,
+    ) -> DomRoot<HTMLScriptElement> {
+        Node::reflect_node_with_proto(
+            cx,
+            Box::new(HTMLScriptElement::new_inherited(
+                local_name, prefix, document, creator,
+            )),
+            document,
+            proto,
+        )
+    }
+}
+
+/// The state that the script processing model keeps for a `script` element. HTML and SVG
+/// `script` elements both embed it.
+#[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+pub(crate) struct ScriptElementState {
     /// <https://html.spec.whatwg.org/multipage/#concept-script-delay-load>
     delaying_the_load_event: DomRefCell<Option<LoadBlocker>>,
 
@@ -113,9 +158,6 @@ pub(crate) struct HTMLScriptElement {
     /// <https://html.spec.whatwg.org/multipage/#concept-script-external>
     from_an_external_file: Cell<bool>,
 
-    /// <https://html.spec.whatwg.org/multipage/#dom-script-blocking>
-    blocking: MutNullableDom<DOMTokenList>,
-
     /// Used to keep track whether we consider this script element render blocking during
     /// `prepare`
     marked_as_render_blocking: Cell<bool>,
@@ -124,17 +166,11 @@ pub(crate) struct HTMLScriptElement {
     result: DomRefCell<Option<TracedScriptResult>>,
 }
 
-impl HTMLScriptElement {
-    fn new_inherited(
-        local_name: LocalName,
-        prefix: Option<Prefix>,
-        document: &Document,
-        creator: ElementCreator,
-    ) -> HTMLScriptElement {
-        HTMLScriptElement {
-            htmlelement: HTMLElement::new_inherited(local_name, prefix, document),
-            already_started: Cell::new(false),
+impl ScriptElementState {
+    pub(crate) fn new(document: &Document, creator: ElementCreator) -> ScriptElementState {
+        ScriptElementState {
             delaying_the_load_event: Default::default(),
+            already_started: Cell::new(false),
             parser_inserted: Cell::new(creator.is_parser_created()),
             non_blocking: Cell::new(!creator.is_parser_created()),
             parser_document: Dom::from_ref(document),
@@ -142,102 +178,9 @@ impl HTMLScriptElement {
             line_number: creator.return_line_number(),
             script_text: Default::default(),
             from_an_external_file: Cell::new(false),
-            blocking: Default::default(),
             marked_as_render_blocking: Default::default(),
             result: DomRefCell::new(None),
         }
-    }
-
-    pub(crate) fn new(
-        cx: &mut JSContext,
-        local_name: LocalName,
-        prefix: Option<Prefix>,
-        document: &Document,
-        proto: Option<HandleObject>,
-        creator: ElementCreator,
-    ) -> DomRoot<HTMLScriptElement> {
-        Node::reflect_node_with_proto(
-            cx,
-            Box::new(HTMLScriptElement::new_inherited(
-                local_name, prefix, document, creator,
-            )),
-            document,
-            proto,
-        )
-    }
-
-    /// Marks that element as delaying the load event or not.
-    ///
-    /// <https://html.spec.whatwg.org/multipage/#concept-script-delay-load>
-    /// <https://html.spec.whatwg.org/multipage/#delaying-the-load-event-flag>
-    fn delay_load_event(&self, document: &Document, url: ServoUrl) {
-        debug_assert!(self.delaying_the_load_event.borrow().is_none());
-
-        *self.delaying_the_load_event.borrow_mut() =
-            Some(LoadBlocker::new(document, LoadType::Script(url)));
-    }
-
-    /// Helper method to determine the script kind based on attributes and insertion context.
-    ///
-    /// This duplicates the script preparation logic from the HTML spec to determine the
-    /// script's active document without full preparation.
-    ///
-    /// <https://html.spec.whatwg.org/multipage/#prepare-the-script-element>
-    fn get_script_kind(&self, script_type: ScriptType) -> ExternalScriptKind {
-        let element = self.upcast::<Element>();
-
-        if element.has_attribute(&local_name!("async")) || self.non_blocking.get() {
-            ExternalScriptKind::Asap
-        } else if !self.parser_inserted.get() {
-            ExternalScriptKind::AsapInOrder
-        } else if element.has_attribute(&local_name!("defer")) || script_type == ScriptType::Module
-        {
-            ExternalScriptKind::Deferred
-        } else {
-            ExternalScriptKind::ParsingBlocking
-        }
-    }
-
-    /// <https://html.spec.whatwg.org/multipage/#prepare-the-script-element>
-    fn get_script_active_document(&self, script_kind: ExternalScriptKind) -> DomRoot<Document> {
-        match script_kind {
-            ExternalScriptKind::Asap => self.preparation_time_document.get().unwrap(),
-            ExternalScriptKind::AsapInOrder => self.preparation_time_document.get().unwrap(),
-            ExternalScriptKind::Deferred => self.parser_document.as_rooted(),
-            ExternalScriptKind::ParsingBlocking => self.parser_document.as_rooted(),
-        }
-    }
-
-    /// <https://html.spec.whatwg.org/multipage/#steps-to-run-when-the-result-is-ready>
-    fn finish_fetching_a_script(&self, cx: &mut JSContext, script_kind: ExternalScriptKind) {
-        let load = self
-            .result
-            .take()
-            .map(|result| result.map(Into::into))
-            .expect("Result must be ready to proceed");
-
-        // Step 2. If el's steps to run when the result is ready are not null, then run them.
-        match script_kind {
-            ExternalScriptKind::Asap => {
-                let document = self.preparation_time_document.get().unwrap();
-                document.asap_script_loaded(cx, self, load)
-            },
-            ExternalScriptKind::AsapInOrder => {
-                let document = self.preparation_time_document.get().unwrap();
-                document.asap_in_order_script_loaded(cx, self, load)
-            },
-            ExternalScriptKind::Deferred => {
-                let document = self.parser_document.as_rooted();
-                document.deferred_script_loaded(cx, self, load);
-            },
-            ExternalScriptKind::ParsingBlocking => {
-                let document = self.parser_document.as_rooted();
-                document.pending_parsing_blocking_script_loaded(self, load, cx);
-            },
-        }
-
-        // Step 4. Set el's delaying the load event to false.
-        LoadBlocker::terminate(cx, &self.delaying_the_load_event);
     }
 }
 
@@ -312,8 +255,8 @@ impl From<TracedScript> for Script {
 
 /// The context required for asynchronously loading an external script source.
 struct ClassicContext {
-    /// The element that initiated the request.
-    elem: Trusted<HTMLScriptElement>,
+    /// The `script` element that initiated the request.
+    elem: Trusted<Element>,
     /// The kind of external script.
     kind: ExternalScriptKind,
     /// The (fallback) character encoding argument to the "fetch a classic
@@ -405,8 +348,9 @@ impl FetchResponseListener for ClassicContext {
                     error, self.url
                 );
                 // Step 6, response is an error.
-                *elem.result.borrow_mut() = Some(Err(()));
-                elem.finish_fetching_a_script(cx, self.kind);
+                let script = elem.as_script_element();
+                *script.script_state().result.borrow_mut() = Some(Err(()));
+                script.finish_fetching_a_script(cx, self.kind);
                 return;
             },
             _ => {},
@@ -463,6 +407,7 @@ impl FetchResponseListener for ClassicContext {
             let _offthread_token = compile_to_stencil_offthread(options.ptr, src, move |result| {
                 task_source.queue(task!(instantiate_stencil: move |cx| {
                     let script_element = trusted.root();
+                    let script_element = script_element.as_script_element();
 
                     let script = ClassicScript::from_stencil(
                         cx,
@@ -473,7 +418,7 @@ impl FetchResponseListener for ClassicContext {
                     );
 
                     let load = Script::Classic(script);
-                    *script_element.result.borrow_mut() = Some(Ok(load.into()));
+                    *script_element.script_state().result.borrow_mut() = Some(Ok(load.into()));
                     script_element.finish_fetching_a_script(cx, self.kind);
                 }));
 
@@ -496,8 +441,9 @@ impl FetchResponseListener for ClassicContext {
         );
 
         let load = Script::Classic(script);
-        *elem.result.borrow_mut() = Some(Ok(load.into()));
-        elem.finish_fetching_a_script(cx, self.kind);
+        let script = elem.as_script_element();
+        *script.script_state().result.borrow_mut() = Some(Ok(load.into()));
+        script.finish_fetching_a_script(cx, self.kind);
     }
 
     fn process_csp_violations(
@@ -508,7 +454,7 @@ impl FetchResponseListener for ClassicContext {
         violations: Vec<Violation>,
     ) {
         let elem = self.elem.root();
-        global.report_csp_violations(cx, violations, Some(elem.upcast()), None);
+        global.report_csp_violations(cx, violations, Some(&*elem), None);
     }
 
     fn process_content_length(&mut self, _request_id: RequestId, size: usize) {
@@ -518,8 +464,7 @@ impl FetchResponseListener for ClassicContext {
 
 impl ResourceTimingListener for ClassicContext {
     fn resource_timing_information(&self) -> (InitiatorType, ServoUrl) {
-        let initiator_type =
-            InitiatorType::LocalName(self.elem.root().upcast::<Element>().local_name().clone());
+        let initiator_type = InitiatorType::LocalName(self.elem.root().local_name().clone());
         (initiator_type, self.url.url())
     }
 }
@@ -552,7 +497,7 @@ pub(crate) fn script_fetch_request(
 
 /// <https://html.spec.whatwg.org/multipage/#fetch-a-classic-script>
 fn fetch_a_classic_script(
-    script: &HTMLScriptElement,
+    script: &Element,
     kind: ExternalScriptKind,
     url: UrlWithBlobClaim,
     cors_setting: Option<CorsSettings>,
@@ -588,10 +533,136 @@ fn fetch_a_classic_script(
     doc.fetch_background(request, context);
 }
 
-impl HTMLScriptElement {
+/// A `script` element in the HTML or the SVG namespace. Both are processed by HTML's script
+/// processing model. SVG `script` elements take their URL from `href` (or the deprecated
+/// `xlink:href`) instead of `src`, and do not have the attributes that only HTML defines for
+/// `script` elements (`async`, `defer`, `nomodule`, `charset`, `integrity`, `referrerpolicy`,
+/// `blocking`, `event`, `for` and `language`).
+///
+/// <https://svgwg.org/svg2-draft/interact.html#ScriptElement>
+pub(crate) trait ScriptElement {
+    fn element(&self) -> &Element;
+
+    fn script_state(&self) -> &ScriptElementState;
+
+    fn has_render_blocking_attribute(&self) -> bool;
+
+    fn is_html(&self) -> bool {
+        *self.element().namespace() == ns!(html)
+    }
+
+    /// Whether the element has `name`, one of the attributes that only HTML `script`
+    /// elements have.
+    fn has_html_only_attribute(&self, name: &LocalName) -> bool {
+        self.is_html() && self.element().has_attribute(name)
+    }
+
+    /// The value of `name`, one of the attributes that only HTML `script` elements have.
+    fn get_html_only_attribute(&self, name: &LocalName) -> Option<String> {
+        if !self.is_html() {
+            return None;
+        }
+        self.element().get_attribute_string_value(name)
+    }
+
+    /// The value of the `src` attribute of an HTML `script` element, or of the `href` attribute
+    /// (or failing that, the `xlink:href` attribute) of an SVG `script` element.
+    ///
+    /// <https://svgwg.org/svg2-draft/linking.html#XLinkRefAttrs>
+    fn source_attribute(&self) -> Option<String> {
+        let element = self.element();
+        if self.is_html() {
+            return element.get_attribute_string_value(&local_name!("src"));
+        }
+        element
+            .get_attribute_string_value(&local_name!("href"))
+            .or_else(|| {
+                element.get_attribute_string_value_with_namespace(&ns!(xlink), &local_name!("href"))
+            })
+    }
+
+    /// Marks that element as delaying the load event or not.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#concept-script-delay-load>
+    /// <https://html.spec.whatwg.org/multipage/#delaying-the-load-event-flag>
+    fn delay_load_event(&self, document: &Document, url: ServoUrl) {
+        let state = self.script_state();
+        debug_assert!(state.delaying_the_load_event.borrow().is_none());
+
+        *state.delaying_the_load_event.borrow_mut() =
+            Some(LoadBlocker::new(document, LoadType::Script(url)));
+    }
+
+    /// Helper method to determine the script kind based on attributes and insertion context.
+    ///
+    /// This duplicates the script preparation logic from the HTML spec to determine the
+    /// script's active document without full preparation.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#prepare-the-script-element>
+    fn get_script_kind(&self, script_type: ScriptType) -> ExternalScriptKind {
+        let state = self.script_state();
+
+        if self.has_html_only_attribute(&local_name!("async")) || state.non_blocking.get() {
+            ExternalScriptKind::Asap
+        } else if !state.parser_inserted.get() {
+            ExternalScriptKind::AsapInOrder
+        } else if self.has_html_only_attribute(&local_name!("defer")) ||
+            script_type == ScriptType::Module
+        {
+            ExternalScriptKind::Deferred
+        } else {
+            ExternalScriptKind::ParsingBlocking
+        }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#prepare-the-script-element>
+    fn get_script_active_document(&self, script_kind: ExternalScriptKind) -> DomRoot<Document> {
+        let state = self.script_state();
+        match script_kind {
+            ExternalScriptKind::Asap => state.preparation_time_document.get().unwrap(),
+            ExternalScriptKind::AsapInOrder => state.preparation_time_document.get().unwrap(),
+            ExternalScriptKind::Deferred => state.parser_document.as_rooted(),
+            ExternalScriptKind::ParsingBlocking => state.parser_document.as_rooted(),
+        }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#steps-to-run-when-the-result-is-ready>
+    fn finish_fetching_a_script(&self, cx: &mut JSContext, script_kind: ExternalScriptKind) {
+        let state = self.script_state();
+        let element = self.element();
+        let load = state
+            .result
+            .take()
+            .map(|result| result.map(Into::into))
+            .expect("Result must be ready to proceed");
+
+        // Step 2. If el's steps to run when the result is ready are not null, then run them.
+        match script_kind {
+            ExternalScriptKind::Asap => {
+                let document = state.preparation_time_document.get().unwrap();
+                document.asap_script_loaded(cx, element, load)
+            },
+            ExternalScriptKind::AsapInOrder => {
+                let document = state.preparation_time_document.get().unwrap();
+                document.asap_in_order_script_loaded(cx, element, load)
+            },
+            ExternalScriptKind::Deferred => {
+                let document = state.parser_document.as_rooted();
+                document.deferred_script_loaded(cx, element, load);
+            },
+            ExternalScriptKind::ParsingBlocking => {
+                let document = state.parser_document.as_rooted();
+                document.pending_parsing_blocking_script_loaded(element, load, cx);
+            },
+        }
+
+        // Step 4. Set el's delaying the load event to false.
+        LoadBlocker::terminate(cx, &state.delaying_the_load_event);
+    }
+
     /// <https://w3c.github.io/trusted-types/dist/spec/#setting-slot-values-from-parser>
-    pub(crate) fn set_initial_script_text(&self) {
-        *self.script_text.borrow_mut() = self.text().traced();
+    fn set_initial_script_text(&self) {
+        *self.script_state().script_text.borrow_mut() = self.text().traced();
     }
 
     /// <https://w3c.github.io/trusted-types/dist/spec/#prepare-script-text>
@@ -599,54 +670,57 @@ impl HTMLScriptElement {
         // Step 1. If script’s script text value is not equal to its child text content,
         // set script’s script text to the result of executing
         // Get Trusted Type compliant string, with the following arguments:
-        if *self.script_text.borrow() != *self.text() {
+        let state = self.script_state();
+        let text = self.text();
+        if *state.script_text.borrow() != *text {
+            let sink = if self.is_html() {
+                "HTMLScriptElement text"
+            } else {
+                "SVGScriptElement text"
+            };
             let result = TrustedScript::get_trusted_type_compliant_string(
                 cx,
-                &self.owner_global(),
-                self.Text(),
-                "HTMLScriptElement text",
+                &self.element().owner_global(),
+                TrustedScriptOrString::String(text),
+                sink,
             )?;
-            *self.script_text.safe_borrow_mut(cx.no_gc()) = result.traced();
+            *state.script_text.safe_borrow_mut(cx.no_gc()) = result.traced();
         }
 
         Ok(())
     }
 
-    fn has_render_blocking_attribute(&self) -> bool {
-        self.blocking
-            .get()
-            .is_some_and(|list| list.Contains(DOMString::from_static("render")))
-    }
-
     /// <https://html.spec.whatwg.org/multipage/#potentially-render-blocking>
     fn potentially_render_blocking(&self, script_type: ScriptType) -> bool {
+        // SVG `script` elements have no `blocking` attribute and are not implicitly potentially
+        // render-blocking.
+        if !self.is_html() {
+            return false;
+        }
         // An element is potentially render-blocking if its blocking tokens set contains "render",
         // or if it is implicitly potentially render-blocking, which will be defined at the individual elements.
         // By default, an element is not implicitly potentially render-blocking.
         if self.has_render_blocking_attribute() {
             return true;
         }
-        let element = self.upcast::<Element>();
+        let element = self.element();
         // https://html.spec.whatwg.org/multipage/#script-processing-model:implicitly-potentially-render-blocking
         // > A script element el is implicitly potentially render-blocking if el's type is "classic",
         // > el is parser-inserted, and el does not have an async or defer attribute.
         script_type == ScriptType::Classic &&
-            self.parser_inserted.get() &&
+            self.script_state().parser_inserted.get() &&
             !element.has_attribute(&local_name!("async")) &&
             !element.has_attribute(&local_name!("defer"))
     }
 
     /// <https://html.spec.whatwg.org/multipage/#prepare-the-script-element>
-    pub(crate) fn prepare(
-        &self,
-        cx: &mut JSContext,
-        introduction_type_override: Option<&'static CStr>,
-    ) {
+    fn prepare(&self, cx: &mut JSContext, introduction_type_override: Option<&'static CStr>) {
         let introduction_type =
             introduction_type_override.or(Some(IntroductionType::INLINE_SCRIPT));
+        let state = self.script_state();
 
         // Step 1. If el's already started is true, then return.
-        if self.already_started.get() {
+        if state.already_started.get() {
             return;
         }
 
@@ -654,16 +728,16 @@ impl HTMLScriptElement {
         // TODO
 
         // Step 3. Set el's parser document to null.
-        let was_parser_inserted = self.parser_inserted.get();
-        self.parser_inserted.set(false);
+        let was_parser_inserted = state.parser_inserted.get();
+        state.parser_inserted.set(false);
 
         // Step 4.
         // If parser document is non-null and el does not have an async attribute, then set el's force async to true.
-        let element = self.upcast::<Element>();
-        let asynch = element.has_attribute(&local_name!("async"));
+        let element = self.element();
+        let asynch = self.has_html_only_attribute(&local_name!("async"));
         // Note: confusingly, this is done if the element does *not* have an "async" attribute.
         if was_parser_inserted && !asynch {
-            self.non_blocking.set(true);
+            state.non_blocking.set(true);
         }
 
         // Step 5. Execute the Prepare the script text algorithm on el.
@@ -672,14 +746,15 @@ impl HTMLScriptElement {
             return;
         }
         // Step 5a. Let source text be el’s script text value.
-        let text: Cow<'_, str> = Cow::Owned(String::from(self.script_text.borrow().str()));
+        let text: Cow<'_, str> = Cow::Owned(String::from(state.script_text.borrow().str()));
+        let source = self.source_attribute();
         // Step 6. If el has no src attribute, and source text is the empty string, then return.
-        if text.is_empty() && !element.has_attribute(&local_name!("src")) {
+        if text.is_empty() && source.is_none() {
             return;
         }
 
         // Step 7. If el is not connected, then return.
-        if !self.upcast::<Node>().is_connected() {
+        if !element.upcast::<Node>().is_connected() {
             return;
         }
 
@@ -692,21 +767,21 @@ impl HTMLScriptElement {
         // If parser document is non-null, then set el's parser document back to parser document and set el's force
         // async to false.
         if was_parser_inserted {
-            self.parser_inserted.set(true);
-            self.non_blocking.set(false);
+            state.parser_inserted.set(true);
+            state.non_blocking.set(false);
         }
 
         // Step 14. Set el's already started to true.
-        self.already_started.set(true);
+        state.already_started.set(true);
 
         // Step 15. Set el's preparation-time document to its node document.
-        let doc = self.owner_document();
-        self.preparation_time_document.set(Some(&doc));
+        let doc = element.owner_document();
+        state.preparation_time_document.set(Some(&doc));
 
         // Step 16.
         // If parser document is non-null, and parser document is not equal to el's preparation-time document, then
         // return.
-        if self.parser_inserted.get() && *self.parser_document != *doc {
+        if state.parser_inserted.get() && *state.parser_document != *doc {
             return;
         }
 
@@ -716,14 +791,16 @@ impl HTMLScriptElement {
         }
 
         // Step 18. If el has a nomodule content attribute and its type is "classic", then return.
-        if element.has_attribute(&local_name!("nomodule")) && script_type == ScriptType::Classic {
+        if self.has_html_only_attribute(&local_name!("nomodule")) &&
+            script_type == ScriptType::Classic
+        {
             return;
         }
 
         let global = &doc.global();
 
         // Step 19. CSP.
-        if !element.has_attribute(&local_name!("src")) &&
+        if source.is_none() &&
             global
                 .get_csp_list()
                 .should_elements_inline_type_behavior_be_blocked(
@@ -732,7 +809,7 @@ impl HTMLScriptElement {
                     element,
                     InlineCheckType::Script,
                     &text,
-                    self.line_number as u32,
+                    state.line_number as u32,
                 )
         {
             warn!("Blocking inline script due to CSP");
@@ -741,8 +818,8 @@ impl HTMLScriptElement {
 
         // Step 20. If el has an event attribute and a for attribute, and el's type is "classic", then:
         if script_type == ScriptType::Classic {
-            let for_attribute = element.get_attribute_string_value(&local_name!("for"));
-            let event_attribute = element.get_attribute_string_value(&local_name!("event"));
+            let for_attribute = self.get_html_only_attribute(&local_name!("for"));
+            let event_attribute = self.get_html_only_attribute(&local_name!("event"));
             if let (Some(for_attribute), Some(event_attribute)) = (for_attribute, event_attribute) {
                 let for_value = for_attribute.trim_matches(HTML_SPACE_CHARACTERS);
                 if !for_value.eq_ignore_ascii_case("window") {
@@ -762,8 +839,8 @@ impl HTMLScriptElement {
         // an encoding from the value of the charset attribute.
         // If el does not have a charset attribute, or if getting an encoding failed,
         // then let encoding be el's node document's the encoding.
-        let encoding = element
-            .get_attribute_string_value(&local_name!("charset"))
+        let encoding = self
+            .get_html_only_attribute(&local_name!("charset"))
             .and_then(|charset| Encoding::for_label(charset.as_bytes()))
             .unwrap_or_else(|| doc.encoding());
 
@@ -786,18 +863,22 @@ impl HTMLScriptElement {
 
         // Step 25. If el has an integrity attribute, then let integrity metadata be that attribute's value.
         // Otherwise, let integrity metadata be the empty string.
-        let integrity_val = element.get_attribute_string_value(&local_name!("integrity"));
+        let integrity_val = self.get_html_only_attribute(&local_name!("integrity"));
         let integrity_val_is_none = integrity_val.is_none();
         let integrity_metadata = integrity_val.unwrap_or_default();
 
         // Step 26. Let referrer policy be the current state of el's referrerpolicy content attribute.
-        let referrer_policy = referrer_policy_for_element(element);
+        let referrer_policy = if self.is_html() {
+            referrer_policy_for_element(element)
+        } else {
+            doc.get_referrer_policy()
+        };
 
         // TODO: Step 27. Fetch priority.
 
         // Step 28. Let parser metadata be "parser-inserted" if el is parser-inserted,
         // and "not-parser-inserted" otherwise.
-        let parser_metadata = if self.parser_inserted.get() {
+        let parser_metadata = if state.parser_inserted.get() {
             ParserMetadata::ParserInserted
         } else {
             ParserMetadata::NotParserInserted
@@ -824,7 +905,7 @@ impl HTMLScriptElement {
 
         // Step 31. If el has a src content attribute, then:
         // Step 31.2. Let src be the value of el's src attribute.
-        if let Some(src) = element.get_attribute_string_value(&local_name!("src")) {
+        if let Some(src) = source {
             // Step 31.1. If el's type is "importmap".
             if script_type == ScriptType::ImportMap {
                 // then queue an element task on the DOM manipulation task source
@@ -840,7 +921,7 @@ impl HTMLScriptElement {
             }
 
             // Step 31.4. Set el's from an external file to true.
-            self.from_an_external_file.set(true);
+            state.from_an_external_file.set(true);
 
             // Step 31.5-31.6. Parse URL.
             let url = match base_url.join(&src) {
@@ -855,7 +936,7 @@ impl HTMLScriptElement {
 
             // Step 31.7. If el is potentially render-blocking, then block rendering on el.
             if potentially_render_blocking && doc.allows_adding_render_blocking_elements() {
-                self.marked_as_render_blocking.set(true);
+                state.marked_as_render_blocking.set(true);
                 doc.increment_render_blocking_element_count();
             }
 
@@ -863,7 +944,7 @@ impl HTMLScriptElement {
             self.delay_load_event(&delayed_document, url.url());
 
             // Step 31.9. If el is currently render-blocking, then set options's render-blocking to true.
-            if self.marked_as_render_blocking.get() {
+            if state.marked_as_render_blocking.get() {
                 script_fetch_options.render_blocking = true;
             }
 
@@ -872,7 +953,7 @@ impl HTMLScriptElement {
                 ScriptType::Classic => {
                     // Step 31.11. Fetch a classic script.
                     fetch_a_classic_script(
-                        self,
+                        element,
                         kind,
                         url,
                         cors_setting,
@@ -889,7 +970,7 @@ impl HTMLScriptElement {
                             .resolve_a_module_integrity_metadata(&url.url());
                     }
 
-                    let script = DomRoot::from_ref(self);
+                    let script = DomRoot::from_ref(element);
 
                     // Step 31.11. Fetch an external module script graph.
                     fetch_an_external_module_script(
@@ -898,10 +979,11 @@ impl HTMLScriptElement {
                         global,
                         script_fetch_options,
                         move |cx, module_tree| {
+                            let script = script.as_script_element();
                             let load = module_tree
                                 .map(|module| Script::Module(RootedTraceableBox::new(module)))
                                 .ok_or(());
-                            *script.result.borrow_mut() = Some(load.map(Into::into));
+                            *script.script_state().result.borrow_mut() = Some(load.map(Into::into));
 
                             script.finish_fetching_a_script(cx, kind);
                         },
@@ -919,14 +1001,14 @@ impl HTMLScriptElement {
                 ScriptType::Classic => {
                     // Step 32.2.1 Let script be the result of creating a classic script
                     // using source text, settings object, base URL, and options.
-                    let script = self.global().create_a_classic_script(
+                    let script = element.global().create_a_classic_script(
                         cx,
                         text,
                         base_url,
                         ScriptOptions::empty(),
                         script_fetch_options,
                         introduction_type,
-                        self.line_number as u32,
+                        state.line_number as u32,
                     );
                     let result = Ok(Script::Classic(script));
 
@@ -936,7 +1018,7 @@ impl HTMLScriptElement {
                         doc.has_a_stylesheet_that_is_blocking_scripts()
                     {
                         // Step 34.2: classic, has no src, was parser-inserted, is blocked on stylesheet.
-                        doc.set_pending_parsing_blocking_script(self, Some(result));
+                        doc.set_pending_parsing_blocking_script(element, Some(result));
                     } else {
                         // Step 34.3: otherwise.
                         self.execute(cx, result);
@@ -950,14 +1032,14 @@ impl HTMLScriptElement {
                     // Step 32.2.2.2 If el is potentially render-blocking, then:
                     if potentially_render_blocking && doc.allows_adding_render_blocking_elements() {
                         // Step 32.2.2.2.1 Block rendering on el.
-                        self.marked_as_render_blocking.set(true);
+                        state.marked_as_render_blocking.set(true);
                         doc.increment_render_blocking_element_count();
 
                         // Step 32.2.2.2.2 Set options's render-blocking to true.
                         script_fetch_options.render_blocking = true;
                     }
 
-                    let script = DomRoot::from_ref(self);
+                    let script = DomRoot::from_ref(element);
                     // Step 32.2.2.3 Fetch an inline module script graph, given source text, base
                     // URL, settings object, options, and with the following steps given result:
                     let module = fetch_inline_module_script(
@@ -966,11 +1048,15 @@ impl HTMLScriptElement {
                         text,
                         base_url,
                         script_fetch_options,
-                        self.line_number as u32,
+                        state.line_number as u32,
                         introduction_type,
                         move |_, module_tree| {
                             if module_tree.is_none() {
-                                *script.result.borrow_mut() = Some(Err(()));
+                                *script
+                                    .as_script_element()
+                                    .script_state()
+                                    .result
+                                    .borrow_mut() = Some(Err(()));
                             }
                             let trusted = Trusted::new(&*script);
 
@@ -982,12 +1068,12 @@ impl HTMLScriptElement {
                                 .queue(task!(terminate_module_fetch: move |cx| {
                                     // Mark as ready el given result.
                                     let element = trusted.root();
-                                    element.finish_fetching_a_script(cx, kind);
+                                    element.as_script_element().finish_fetching_a_script(cx, kind);
                                 }));
                         },
                     );
 
-                    *self.result.borrow_mut() = Some(Ok(TracedScript::Module(*module.into_box())));
+                    *state.result.borrow_mut() = Some(Ok(TracedScript::Module(*module.into_box())));
                 },
                 ScriptType::ImportMap => {
                     // Step 32.1 Let result be the result of creating an import map
@@ -1004,35 +1090,40 @@ impl HTMLScriptElement {
 
         // Step 33.2/33.3/33.4/33.5, substeps 1-2. Add el to the corresponding script list.
         match kind {
-            ExternalScriptKind::Deferred => delayed_document.add_deferred_script(self),
+            ExternalScriptKind::Deferred => delayed_document.add_deferred_script(element),
             ExternalScriptKind::ParsingBlocking => {
-                delayed_document.set_pending_parsing_blocking_script(self, None);
+                delayed_document.set_pending_parsing_blocking_script(element, None);
             },
-            ExternalScriptKind::AsapInOrder => delayed_document.push_asap_in_order_script(self),
-            ExternalScriptKind::Asap => delayed_document.add_asap_script(self),
+            ExternalScriptKind::AsapInOrder => delayed_document.push_asap_in_order_script(element),
+            ExternalScriptKind::Asap => delayed_document.add_asap_script(element),
         }
     }
 
     /// <https://html.spec.whatwg.org/multipage/#execute-the-script-element>
-    pub(crate) fn execute(&self, cx: &mut JSContext, result: ScriptResult) {
+    fn execute(&self, cx: &mut JSContext, result: ScriptResult) {
+        let state = self.script_state();
+        let element = self.element();
+
         // Step 1. Let document be el's node document.
-        let doc = self.owner_document();
+        let doc = element.owner_document();
 
         // Step 2. If el's preparation-time document is not equal to document, then return.
-        if *doc != *self.preparation_time_document.get().unwrap() {
+        if *doc != *state.preparation_time_document.get().unwrap() {
             return;
         }
 
         // Step 3. Unblock rendering on el.
-        if self.marked_as_render_blocking.replace(false) {
-            self.marked_as_render_blocking.set(false);
+        if state.marked_as_render_blocking.replace(false) {
+            state.marked_as_render_blocking.set(false);
             doc.decrement_render_blocking_element_count();
         }
 
         let script = match result {
             // Step 4. If el's result is null, then fire an event named error at el, and return.
             Err(_) => {
-                self.upcast::<EventTarget>().fire_event(cx, atom!("error"));
+                element
+                    .upcast::<EventTarget>()
+                    .fire_event(cx, atom!("error"));
                 return;
             },
 
@@ -1043,31 +1134,31 @@ impl HTMLScriptElement {
         // If el's from an external file is true, or el's type is "module", then increment document's
         // ignore-destructive-writes counter.
         let neutralized_doc =
-            if self.from_an_external_file.get() || matches!(script, Script::Module(_)) {
-                let doc = self.owner_document();
+            if state.from_an_external_file.get() || matches!(script, Script::Module(_)) {
+                let doc = element.owner_document();
                 doc.incr_ignore_destructive_writes_counter();
                 Some(doc)
             } else {
                 None
             };
 
-        let document = self.owner_document();
+        let document = element.owner_document();
 
         match script {
             Script::Classic(script) => {
                 // Step 6."classic".1. Let oldCurrentScript be the value to which document's currentScript object was most recently set.
-                let old_script = document.GetCurrentScript();
+                let old_script = document.current_script();
 
                 // Step 6."classic".2. If el's root is not a shadow root,
                 // then set document's currentScript attribute to el. Otherwise, set it to null.
-                if self.upcast::<Node>().is_in_a_shadow_tree() {
+                if element.upcast::<Node>().is_in_a_shadow_tree() {
                     document.set_current_script(None)
                 } else {
-                    document.set_current_script(Some(self))
+                    document.set_current_script(Some(element))
                 }
 
                 // Step 6."classic".3. Run the classic script given by el's result.
-                _ = self.owner_global().run_a_classic_script(
+                _ = element.owner_global().run_a_classic_script(
                     cx,
                     script,
                     RethrowErrors::No,
@@ -1082,12 +1173,13 @@ impl HTMLScriptElement {
                 document.set_current_script(None);
 
                 // Step 6."module".2. Run the module script given by el's result.
-                self.owner_global()
+                element
+                    .owner_global()
                     .run_a_module_script(cx, module_tree, false);
             },
             Script::ImportMap(import_map) => {
                 // Step 6."importmap".1. Register an import map given el's relevant global object and el's result.
-                register_import_map(cx, &self.owner_global(), import_map);
+                register_import_map(cx, &element.owner_global(), import_map);
             },
         }
 
@@ -1098,24 +1190,32 @@ impl HTMLScriptElement {
         }
 
         // Step 8. If el's from an external file is true, then fire an event named load at el.
-        if self.from_an_external_file.get() {
-            self.upcast::<EventTarget>().fire_event(cx, atom!("load"));
+        if state.from_an_external_file.get() {
+            element
+                .upcast::<EventTarget>()
+                .fire_event(cx, atom!("load"));
         }
     }
 
-    pub(crate) fn queue_error_event(&self) {
-        self.owner_global()
+    fn queue_error_event(&self) {
+        let element = self.element();
+        element
+            .owner_global()
             .task_manager()
             .dom_manipulation_task_source()
-            .queue_simple_event(self.upcast(), atom!("error"));
+            .queue_simple_event(element.upcast(), atom!("error"));
     }
 
     /// <https://html.spec.whatwg.org/multipage/#prepare-a-script> Steps 8-12.
     fn script_type(&self) -> Option<ScriptType> {
-        let element = self.upcast::<Element>();
+        let element = self.element();
 
         let type_attr = element.get_attribute_string_ref(&local_name!("type"));
-        let language_attr = element.get_attribute_string_ref(&local_name!("language"));
+        let language_attr = if self.is_html() {
+            element.get_attribute_string_ref(&local_name!("language"))
+        } else {
+            None
+        };
 
         match (type_attr, language_attr) {
             // Step 8. If any of the following are true:
@@ -1172,21 +1272,106 @@ impl HTMLScriptElement {
         }
     }
 
-    pub(crate) fn set_parser_inserted(&self, parser_inserted: bool) {
-        self.parser_inserted.set(parser_inserted);
+    fn set_parser_inserted(&self, parser_inserted: bool) {
+        self.script_state().parser_inserted.set(parser_inserted);
     }
 
-    pub(crate) fn set_already_started(&self, already_started: bool) {
-        self.already_started.set(already_started);
+    fn set_already_started(&self, already_started: bool) {
+        self.script_state().already_started.set(already_started);
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-script-text>
     fn text(&self) -> DOMString {
-        match self.Text() {
-            TrustedScriptOrString::String(value) => value,
-            TrustedScriptOrString::TrustedScript(trusted_script) => {
-                DOMString::from(trusted_script.to_string())
-            },
+        self.element().upcast::<Node>().child_text_content()
+    }
+
+    /// The `script` element's steps for when an attribute is set, changed or removed: an element
+    /// that is not parser-inserted and is connected is prepared when it gets a source URL.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#script-processing-model:the-script-element-21>
+    fn source_attribute_mutated(&self, cx: &mut JSContext, mutation: AttributeMutation) {
+        if let AttributeMutation::Set(_) = mutation &&
+            !self.script_state().parser_inserted.get() &&
+            self.element().upcast::<Node>().is_connected()
+        {
+            self.prepare(cx, Some(IntroductionType::INJECTED_SCRIPT));
         }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#script-processing-model:the-script-element-26>
+    fn script_children_changed(&self) {
+        let element = self.element();
+        if element.upcast::<Node>().is_connected() && !self.script_state().parser_inserted.get() {
+            let script = DomRoot::from_ref(element);
+            // This method can be invoked while there are script/layout blockers present
+            // as DOM mutations have not yet settled. We use a delayed task to avoid
+            // running any scripts until the DOM tree is safe for interactions.
+            element.owner_document().add_delayed_task(
+                task!(ScriptPrepare: |cx, script: DomRoot<Element>| {
+                    script.as_script_element().prepare(cx, Some(IntroductionType::INJECTED_SCRIPT));
+                }),
+            );
+        }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#script-processing-model:the-script-element-20>
+    fn script_post_connection_steps(&self, cx: &mut JSContext) {
+        if self.element().upcast::<Node>().is_connected() &&
+            !self.script_state().parser_inserted.get()
+        {
+            self.prepare(cx, Some(IntroductionType::INJECTED_SCRIPT));
+        }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#already-started>
+    fn script_cloning_steps(&self, copy: &Node) {
+        if self.script_state().already_started.get() {
+            copy.downcast::<Element>()
+                .unwrap()
+                .as_script_element()
+                .set_already_started(true);
+        }
+    }
+
+    fn script_unbind_from_tree(&self) {
+        if self.script_state().marked_as_render_blocking.replace(false) {
+            let document = self.element().owner_document();
+            document.decrement_render_blocking_element_count();
+        }
+    }
+}
+
+impl ScriptElement for HTMLScriptElement {
+    fn element(&self) -> &Element {
+        self.upcast()
+    }
+
+    fn script_state(&self) -> &ScriptElementState {
+        &self.script_state
+    }
+
+    fn has_render_blocking_attribute(&self) -> bool {
+        self.blocking
+            .get()
+            .is_some_and(|list| list.Contains(DOMString::from_static("render")))
+    }
+}
+
+impl Element {
+    /// The script processing model of this element, if it is an HTML or SVG `script` element.
+    pub(crate) fn as_maybe_script_element(&self) -> Option<&dyn ScriptElement> {
+        if let Some(script) = self.downcast::<HTMLScriptElement>() {
+            return Some(script);
+        }
+        self.downcast::<SVGScriptElement>()
+            .map(|script| script as &dyn ScriptElement)
+    }
+
+    /// The script processing model of this element, which must be an HTML or SVG `script`
+    /// element.
+    pub(crate) fn as_script_element(&self) -> &dyn ScriptElement {
+        self.as_maybe_script_element()
+            .expect("Element must be an HTML or SVG script element")
     }
 }
 
@@ -1205,49 +1390,30 @@ impl VirtualMethods for HTMLScriptElement {
             .unwrap()
             .attribute_mutated(cx, attr, mutation);
         if *attr.local_name() == local_name!("src") {
-            if let AttributeMutation::Set(_) = mutation &&
-                !self.parser_inserted.get() &&
-                self.upcast::<Node>().is_connected()
-            {
-                self.prepare(cx, Some(IntroductionType::INJECTED_SCRIPT));
-            }
+            self.source_attribute_mutated(cx, mutation);
         } else if *attr.local_name() == local_name!("blocking") &&
             !self.has_render_blocking_attribute() &&
-            self.marked_as_render_blocking.replace(false)
+            self.script_state.marked_as_render_blocking.replace(false)
         {
             let document = self.owner_document();
             document.decrement_render_blocking_element_count();
         }
     }
 
-    /// <https://html.spec.whatwg.org/multipage/#script-processing-model:the-script-element-26>
     fn children_changed(&self, cx: &mut JSContext, mutation: &ChildrenMutation) {
         if let Some(s) = self.super_type() {
             s.children_changed(cx, mutation);
         }
 
-        if self.upcast::<Node>().is_connected() && !self.parser_inserted.get() {
-            let script = DomRoot::from_ref(self);
-            // This method can be invoked while there are script/layout blockers present
-            // as DOM mutations have not yet settled. We use a delayed task to avoid
-            // running any scripts until the DOM tree is safe for interactions.
-            self.owner_document().add_delayed_task(
-                task!(ScriptPrepare: |cx, script: DomRoot<HTMLScriptElement>| {
-                    script.prepare(cx, Some(IntroductionType::INJECTED_SCRIPT));
-                }),
-            );
-        }
+        self.script_children_changed();
     }
 
-    /// <https://html.spec.whatwg.org/multipage/#script-processing-model:the-script-element-20>
     fn post_connection_steps(&self, cx: &mut JSContext) {
         if let Some(s) = self.super_type() {
             s.post_connection_steps(cx);
         }
 
-        if self.upcast::<Node>().is_connected() && !self.parser_inserted.get() {
-            self.prepare(cx, Some(IntroductionType::INJECTED_SCRIPT));
-        }
+        self.script_post_connection_steps(cx);
     }
 
     fn cloning_steps(
@@ -1261,21 +1427,13 @@ impl VirtualMethods for HTMLScriptElement {
             s.cloning_steps(cx, copy, maybe_doc, clone_children);
         }
 
-        // https://html.spec.whatwg.org/multipage/#already-started
-        if self.already_started.get() {
-            copy.downcast::<HTMLScriptElement>()
-                .unwrap()
-                .set_already_started(true);
-        }
+        self.script_cloning_steps(copy);
     }
 
     fn unbind_from_tree(&self, cx: &mut JSContext, context: &UnbindContext) {
         self.super_type().unwrap().unbind_from_tree(cx, context);
 
-        if self.marked_as_render_blocking.replace(false) {
-            let document = self.owner_document();
-            document.decrement_render_blocking_element_count();
-        }
+        self.script_unbind_from_tree();
     }
 }
 
@@ -1312,14 +1470,14 @@ impl HTMLScriptElementMethods<crate::DomTypeHolder> for HTMLScriptElement {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-script-async>
     fn Async(&self) -> bool {
-        self.non_blocking.get() ||
+        self.script_state.non_blocking.get() ||
             self.upcast::<Element>()
                 .has_attribute(&local_name!("async"))
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-script-async>
     fn SetAsync(&self, cx: &mut JSContext, value: bool) {
-        self.non_blocking.set(false);
+        self.script_state.non_blocking.set(false);
         self.upcast::<Element>()
             .set_bool_attribute(cx, &local_name!("async"), value);
     }
@@ -1395,7 +1553,7 @@ impl HTMLScriptElementMethods<crate::DomTypeHolder> for HTMLScriptElement {
             input,
             "HTMLScriptElement innerText",
         )?;
-        *self.script_text.safe_borrow_mut(cx.no_gc()) = value.clone().traced();
+        *self.script_state.script_text.safe_borrow_mut(cx.no_gc()) = value.clone().traced();
         // Step 3: Run set the inner text steps with this and value.
         self.upcast::<HTMLElement>().set_inner_text(cx, value);
         Ok(())
@@ -1417,7 +1575,7 @@ impl HTMLScriptElementMethods<crate::DomTypeHolder> for HTMLScriptElement {
             "HTMLScriptElement text",
         )?;
         // Step 2: Set this's script text value to the given value.
-        *self.script_text.safe_borrow_mut(cx.no_gc()) = value.clone().traced();
+        *self.script_state.script_text.safe_borrow_mut(cx.no_gc()) = value.clone().traced();
         // Step 3: String replace all with the given value within this.
         Node::string_replace_all(cx, value, self.upcast::<Node>());
         Ok(())
@@ -1446,7 +1604,7 @@ impl HTMLScriptElementMethods<crate::DomTypeHolder> for HTMLScriptElement {
             "HTMLScriptElement textContent",
         )?;
         // Step 2: Set this's script text value to value.
-        *self.script_text.safe_borrow_mut(cx.no_gc()) = value.clone().traced();
+        *self.script_state.script_text.safe_borrow_mut(cx.no_gc()) = value.clone().traced();
         // Step 3: Run set text content with this and value.
         self.upcast::<Node>()
             .set_text_content_for_element(cx, Some(value));
@@ -1479,7 +1637,7 @@ pub fn substitute_with_local_script(
 }
 
 #[derive(Clone, Copy)]
-enum ExternalScriptKind {
+pub(crate) enum ExternalScriptKind {
     Deferred,
     ParsingBlocking,
     AsapInOrder,

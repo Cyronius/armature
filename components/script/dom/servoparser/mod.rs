@@ -405,7 +405,7 @@ impl ServoParser {
     pub(crate) fn resume_with_pending_parsing_blocking_script(
         &self,
         cx: &mut JSContext,
-        script: &HTMLScriptElement,
+        script: &Element,
         result: ScriptResult,
     ) {
         assert!(self.suspended.get());
@@ -420,7 +420,7 @@ impl ServoParser {
         assert_eq!(script_nesting_level, 0);
 
         self.script_nesting_level.set(script_nesting_level + 1);
-        script.execute(cx, result);
+        script.as_script_element().execute(cx, result);
         self.script_nesting_level.set(script_nesting_level);
 
         if !self.suspended.get() && !self.aborted.get() {
@@ -727,7 +727,7 @@ impl ServoParser {
 
     fn tokenize<F>(&self, cx: &mut JSContext, feed: F)
     where
-        F: Fn(&mut JSContext, &Tokenizer) -> TokenizerResult<DomRoot<HTMLScriptElement>>,
+        F: Fn(&mut JSContext, &Tokenizer) -> TokenizerResult<DomRoot<Element>>,
     {
         loop {
             assert!(!self.suspended.get());
@@ -753,6 +753,7 @@ impl ServoParser {
             let script_nesting_level = self.script_nesting_level.get();
 
             self.script_nesting_level.set(script_nesting_level + 1);
+            let script = script.as_script_element();
             script.set_initial_script_text();
             let introduction_type_override =
                 (script_nesting_level > 0).then_some(IntroductionType::INJECTED_SCRIPT);
@@ -872,7 +873,7 @@ impl Tokenizer {
         input: &BufferQueue,
         profiler_chan: ProfilerChan,
         profiler_metadata: TimerMetadata,
-    ) -> TokenizerResult<DomRoot<HTMLScriptElement>> {
+    ) -> TokenizerResult<DomRoot<Element>> {
         match *self {
             Tokenizer::Html(ref tokenizer) => time_profile!(
                 ProfilerCategory::ScriptParseHTML,
@@ -1809,6 +1810,8 @@ pub(crate) struct Sink {
     parsing_algorithm: ParsingAlgorithm,
     #[conditional_malloc_size_of]
     custom_element_reaction_stack: Rc<CustomElementReactionStack>,
+    /// Whether the HTML parser (html5ever), rather than the XML parser, feeds this sink.
+    is_html_parser: bool,
 }
 
 impl Sink {
@@ -1896,6 +1899,9 @@ impl TreeSink for Sink {
             &self.custom_element_reaction_stack,
             flags.had_duplicate_attributes,
         );
+        if self.is_html_parser {
+            mark_svg_script_from_html_parser_as_already_started(&self.document, &element);
+        }
         Dom::from_ref(element.upcast())
     }
 
@@ -2081,7 +2087,9 @@ impl TreeSink for Sink {
     }
 
     fn mark_script_already_started(&self, node: &Dom<Node>) {
-        let script = node.downcast::<HTMLScriptElement>();
+        let script = node
+            .downcast::<Element>()
+            .and_then(Element::as_maybe_script_element);
         if let Some(script) = script {
             script.set_already_started(true)
         }
@@ -2161,6 +2169,26 @@ impl TreeSink for Sink {
         };
 
         option.maybe_clone_an_option_into_selectedcontent(cx)
+    }
+}
+
+/// html5ever does not report the end tags of SVG `script` elements
+/// (<https://github.com/servo/html5ever/issues/118>), so the HTML parser never prepares them.
+/// In a document where scripting is disabled (such as the documents of `DOMParser` and of the
+/// fragment parsing algorithm), preparing an SVG `script` element would only have marked it
+/// as already started, so do that here, so that its clones do not run when they are inserted
+/// into another document.
+///
+/// <https://html.spec.whatwg.org/multipage/#parsing-main-inforeign>
+pub(crate) fn mark_svg_script_from_html_parser_as_already_started(
+    document: &Document,
+    element: &Element,
+) {
+    if *element.namespace() == ns!(svg) &&
+        !document.scripting_enabled() &&
+        let Some(script) = element.as_maybe_script_element()
+    {
+        script.set_already_started(true);
     }
 }
 

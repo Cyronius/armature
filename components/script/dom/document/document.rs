@@ -121,7 +121,8 @@ use crate::dom::bindings::codegen::Bindings::WindowBinding::{ScrollBehavior, Win
 use crate::dom::bindings::codegen::Bindings::XPathEvaluatorBinding::XPathEvaluatorMethods;
 use crate::dom::bindings::codegen::Bindings::XPathNSResolverBinding::XPathNSResolver;
 use crate::dom::bindings::codegen::UnionTypes::{
-    BooleanOrImportNodeOptions, NodeOrString, StringOrElementCreationOptions, TrustedHTMLOrString,
+    BooleanOrImportNodeOptions, HTMLScriptElementOrSVGScriptElement, NodeOrString,
+    StringOrElementCreationOptions, TrustedHTMLOrString,
 };
 use crate::dom::bindings::domname::{
     self, is_valid_attribute_local_name, is_valid_element_local_name, namespace_from_domstring,
@@ -215,6 +216,7 @@ use crate::dom::selection::Selection;
 use crate::dom::servoparser::ServoParser;
 use crate::dom::shadowroot::shadowroot::ShadowRoot;
 use crate::dom::storageevent::StorageEvent;
+use crate::dom::svg::svgscriptelement::SVGScriptElement;
 use crate::dom::text::Text;
 use crate::dom::textevent::TextEvent;
 use crate::dom::touchevent::TouchEvent as DomTouchEvent;
@@ -497,7 +499,7 @@ pub(crate) struct Document {
     stylesheet_list: MutNullableDom<StyleSheetList>,
     ready_state: Cell<DocumentReadyState>,
     /// The script element that is currently executing.
-    current_script: MutNullableDom<HTMLScriptElement>,
+    current_script: MutNullableDom<Element>,
     #[no_trace]
     current_the_end_loading_phase: Cell<TheEndLoadingPhase>,
     /// <https://html.spec.whatwg.org/multipage/#pending-parsing-blocking-script>
@@ -513,7 +515,7 @@ pub(crate) struct Document {
     /// <https://html.spec.whatwg.org/multipage/#list-of-scripts-that-will-execute-in-order-as-soon-as-possible>
     asap_in_order_scripts_list: PendingInOrderScriptVec,
     /// <https://html.spec.whatwg.org/multipage/#set-of-scripts-that-will-execute-as-soon-as-possible>
-    asap_scripts_set: DomRefCell<Vec<Dom<HTMLScriptElement>>>,
+    asap_scripts_set: DomRefCell<Vec<Dom<Element>>>,
     /// <https://html.spec.whatwg.org/multipage/#animation-frame-callback-identifier>
     /// Current identifier of animation frame callback
     animation_frame_ident: Cell<u32>,
@@ -1950,7 +1952,14 @@ impl Document {
         }
     }
 
-    pub(crate) fn set_current_script(&self, script: Option<&HTMLScriptElement>) {
+    /// <https://html.spec.whatwg.org/multipage/#dom-document-currentscript>
+    pub(crate) fn current_script(&self) -> Option<DomRoot<Element>> {
+        self.current_script.get()
+    }
+
+    /// Sets `document.currentScript` to an HTML or SVG `script` element, or to null.
+    pub(crate) fn set_current_script(&self, script: Option<&Element>) {
+        debug_assert!(script.is_none_or(|script| script.as_maybe_script_element().is_some()));
         self.current_script.set(script);
     }
 
@@ -2667,7 +2676,7 @@ impl Document {
     /// <https://html.spec.whatwg.org/multipage/#pending-parsing-blocking-script>
     pub(crate) fn set_pending_parsing_blocking_script(
         &self,
-        script: &HTMLScriptElement,
+        script: &Element,
         load: Option<ScriptResult>,
     ) {
         assert!(!self.has_pending_parsing_blocking_script());
@@ -2683,7 +2692,7 @@ impl Document {
     /// <https://html.spec.whatwg.org/multipage/#prepare-a-script> step 22.d.
     pub(crate) fn pending_parsing_blocking_script_loaded(
         &self,
-        element: &HTMLScriptElement,
+        element: &Element,
         result: ScriptResult,
         cx: &mut JSContext,
     ) {
@@ -2714,7 +2723,7 @@ impl Document {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#set-of-scripts-that-will-execute-as-soon-as-possible>
-    pub(crate) fn add_asap_script(&self, script: &HTMLScriptElement) {
+    pub(crate) fn add_asap_script(&self, script: &Element) {
         self.asap_scripts_set
             .borrow_mut()
             .push(Dom::from_ref(script));
@@ -2725,7 +2734,7 @@ impl Document {
     pub(crate) fn asap_script_loaded(
         &self,
         cx: &mut JSContext,
-        element: &HTMLScriptElement,
+        element: &Element,
         result: ScriptResult,
     ) {
         {
@@ -2736,12 +2745,12 @@ impl Document {
                 .unwrap();
             scripts.swap_remove(idx);
         }
-        element.execute(cx, result);
+        element.as_script_element().execute(cx, result);
         self.wait_until_asap_scripts_have_executed();
     }
 
     /// <https://html.spec.whatwg.org/multipage/#list-of-scripts-that-will-execute-in-order-as-soon-as-possible>
-    pub(crate) fn push_asap_in_order_script(&self, script: &HTMLScriptElement) {
+    pub(crate) fn push_asap_in_order_script(&self, script: &Element) {
         self.asap_in_order_scripts_list.push(script);
     }
 
@@ -2750,7 +2759,7 @@ impl Document {
     pub(crate) fn asap_in_order_script_loaded(
         &self,
         cx: &mut JSContext,
-        element: &HTMLScriptElement,
+        element: &Element,
         result: ScriptResult,
     ) {
         self.asap_in_order_scripts_list.loaded(element, result);
@@ -2758,14 +2767,14 @@ impl Document {
             .asap_in_order_scripts_list
             .take_next_ready_to_be_executed()
         {
-            element.execute(cx, result);
+            element.as_script_element().execute(cx, result);
         }
 
         self.wait_until_asap_scripts_have_executed();
     }
 
     /// <https://html.spec.whatwg.org/multipage/#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing>
-    pub(crate) fn add_deferred_script(&self, script: &HTMLScriptElement) {
+    pub(crate) fn add_deferred_script(&self, script: &Element) {
         self.deferred_scripts.push(script);
     }
 
@@ -2774,7 +2783,7 @@ impl Document {
     pub(crate) fn deferred_script_loaded(
         &self,
         cx: &mut JSContext,
-        element: &HTMLScriptElement,
+        element: &Element,
         result: ScriptResult,
     ) {
         self.deferred_scripts.loaded(element, result);
@@ -2800,7 +2809,7 @@ impl Document {
             if let Some((element, result)) = self.deferred_scripts.take_next_ready_to_be_executed()
             {
                 // Step 5.2. Execute the script element given by the first script in the list of scripts that will execute when the document has finished parsing.
-                element.execute(cx, result);
+                element.as_script_element().execute(cx, result);
             } else {
                 break;
             }
@@ -6583,8 +6592,16 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-document-currentscript>
-    fn GetCurrentScript(&self) -> Option<DomRoot<HTMLScriptElement>> {
-        self.current_script.get()
+    fn GetCurrentScript(&self) -> Option<HTMLScriptElementOrSVGScriptElement> {
+        let script = self.current_script.get()?;
+        if let Some(script) = script.downcast::<HTMLScriptElement>() {
+            return Some(HTMLScriptElementOrSVGScriptElement::HTMLScriptElement(
+                DomRoot::from_ref(script),
+            ));
+        }
+        script.downcast::<SVGScriptElement>().map(|script| {
+            HTMLScriptElementOrSVGScriptElement::SVGScriptElement(DomRoot::from_ref(script))
+        })
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-document-body>
@@ -7585,13 +7602,13 @@ impl PendingInOrderScriptVec {
         self.scripts.borrow().is_empty()
     }
 
-    fn push(&self, element: &HTMLScriptElement) {
+    fn push(&self, element: &Element) {
         self.scripts
             .borrow_mut()
             .push_back(PendingScript::new(element));
     }
 
-    fn loaded(&self, element: &HTMLScriptElement, result: ScriptResult) {
+    fn loaded(&self, element: &Element, result: ScriptResult) {
         let mut scripts = self.scripts.borrow_mut();
         let entry = scripts
             .iter_mut()
@@ -7600,7 +7617,7 @@ impl PendingInOrderScriptVec {
         entry.loaded(result);
     }
 
-    fn take_next_ready_to_be_executed(&self) -> Option<(DomRoot<HTMLScriptElement>, ScriptResult)> {
+    fn take_next_ready_to_be_executed(&self) -> Option<(DomRoot<Element>, ScriptResult)> {
         let mut scripts = self.scripts.borrow_mut();
         let pair = scripts.front_mut()?.take_result()?;
         scripts.pop_front();
@@ -7615,19 +7632,20 @@ impl PendingInOrderScriptVec {
 #[derive(JSTraceable, MallocSizeOf)]
 #[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 struct PendingScript {
-    element: Dom<HTMLScriptElement>,
+    /// An HTML or SVG `script` element.
+    element: Dom<Element>,
     load: Option<TracedScriptResult>,
 }
 
 impl PendingScript {
-    fn new(element: &HTMLScriptElement) -> Self {
+    fn new(element: &Element) -> Self {
         Self {
             element: Dom::from_ref(element),
             load: None,
         }
     }
 
-    fn new_with_load(element: &HTMLScriptElement, load: Option<ScriptResult>) -> Self {
+    fn new_with_load(element: &Element, load: Option<ScriptResult>) -> Self {
         Self {
             element: Dom::from_ref(element),
             load: load.map(|result| result.map(Into::into)),
@@ -7639,7 +7657,7 @@ impl PendingScript {
         self.load = Some(result.map(Into::into));
     }
 
-    fn take_result(&mut self) -> Option<(DomRoot<HTMLScriptElement>, ScriptResult)> {
+    fn take_result(&mut self) -> Option<(DomRoot<Element>, ScriptResult)> {
         self.load
             .take()
             .map(|result| (DomRoot::from_ref(&*self.element), result.map(Into::into)))

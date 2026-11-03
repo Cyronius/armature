@@ -36,13 +36,13 @@ use crate::dom::document::Document;
 use crate::dom::documenttype::DocumentType;
 use crate::dom::element::{Element, ElementCreator};
 use crate::dom::html::htmlformelement::{FormControlElementHelpers, HTMLFormElement};
-use crate::dom::html::htmlscriptelement::HTMLScriptElement;
 use crate::dom::html::htmltemplateelement::HTMLTemplateElement;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::vtable_for;
 use crate::dom::processinginstruction::ProcessingInstruction;
 use crate::dom::servoparser::{
     ElementAttribute, ParsingAlgorithm, attach_declarative_shadow_inner, create_element_for_token,
+    mark_svg_script_from_html_parser_as_already_started,
 };
 
 type ParseNodeId = usize;
@@ -297,7 +297,7 @@ impl Tokenizer {
         &self,
         input: &BufferQueue,
         cx: &mut js::context::JSContext,
-    ) -> TokenizerResult<DomRoot<HTMLScriptElement>> {
+    ) -> TokenizerResult<DomRoot<Element>> {
         let mut send_tendrils = VecDeque::new();
         while let Some(str) = input.pop_front() {
             send_tendrils.push_back(SendTendril::from(str));
@@ -500,6 +500,7 @@ impl Tokenizer {
                     &self.custom_element_reaction_stack,
                     had_duplicate_attributes,
                 );
+                mark_svg_script_from_html_parser_as_already_started(document, &element);
                 self.insert_node(node, Dom::from_ref(element.upcast()));
             },
             ParseOperation::CreateComment { text, node } => {
@@ -557,7 +558,9 @@ impl Tokenizer {
             },
             ParseOperation::MarkScriptAlreadyStarted { node } => {
                 let node = self.get_node(&node);
-                let script = node.downcast::<HTMLScriptElement>();
+                let script = node
+                    .downcast::<Element>()
+                    .and_then(Element::as_maybe_script_element);
                 if let Some(script) = script {
                     script.set_already_started(true)
                 }

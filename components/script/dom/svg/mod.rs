@@ -20,6 +20,7 @@ pub(crate) mod svgpolygonelement;
 pub(crate) mod svgpolylineelement;
 pub(crate) mod svgradialgradientelement;
 pub(crate) mod svgrectelement;
+pub(crate) mod svgscriptelement;
 pub(crate) mod svgstopelement;
 pub(crate) mod svgsvgelement;
 pub(crate) mod svgsymbolelement;

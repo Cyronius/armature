@@ -103,6 +103,7 @@ use crate::dom::svg::svgpolygonelement::SVGPolygonElement;
 use crate::dom::svg::svgpolylineelement::SVGPolylineElement;
 use crate::dom::svg::svgradialgradientelement::SVGRadialGradientElement;
 use crate::dom::svg::svgrectelement::SVGRectElement;
+use crate::dom::svg::svgscriptelement::SVGScriptElement;
 use crate::dom::svg::svgstopelement::SVGStopElement;
 use crate::dom::svg::svgsvgelement::SVGSVGElement;
 use crate::dom::svg::svgsymbolelement::SVGSymbolElement;
@@ -117,6 +118,7 @@ fn create_svg_element(
     name: QualName,
     prefix: Option<Prefix>,
     document: &Document,
+    creator: ElementCreator,
     proto: Option<HandleObject>,
 ) -> DomRoot<Element> {
     assert_eq!(name.ns, ns!(svg));
@@ -126,6 +128,10 @@ fn create_svg_element(
             let obj = $ctor::new(cx, name.local, prefix, document, proto);
             DomRoot::upcast(obj)
         });
+        ($ctor:ident, $($arg:expr),+) => ({
+            let obj = $ctor::new(cx, name.local, prefix, document, proto, $($arg),+);
+            DomRoot::upcast(obj)
+        })
     );
 
     match name.local {
@@ -144,6 +150,7 @@ fn create_svg_element(
         local_name!("radialGradient") => make!(SVGRadialGradientElement),
         local_name!("stop") => make!(SVGStopElement),
         local_name!("rect") => make!(SVGRectElement),
+        local_name!("script") => make!(SVGScriptElement, creator),
         local_name!("svg") => make!(SVGSVGElement),
         local_name!("symbol") => make!(SVGSymbolElement),
         local_name!("text") => make!(SVGTextElement),
@@ -506,7 +513,7 @@ pub(crate) fn create_element(
     let prefix = name.prefix.clone();
     match name.ns {
         ns!(html) => create_html_element(cx, name, prefix, is, document, creator, mode, proto),
-        ns!(svg) => create_svg_element(cx, name, prefix, document, proto),
+        ns!(svg) => create_svg_element(cx, name, prefix, document, creator, proto),
         ns!(mathml) => create_mathml_element(cx, name, prefix, document, proto),
         _ => Element::new(cx, name.local, name.ns, prefix, document, proto),
     }
