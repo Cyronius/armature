@@ -75,6 +75,8 @@
 "layout.css.text-combine-upright.enabled" = false
 "layout.css.text-decoration-inset-percentage.enabled" = false
 "layout.css.text-decoration-inset.enabled" = false
+# Armature (AS-404): Gates text-decoration-skip-ink for Servo.
+"layout.css.text-decoration-skip-ink.enabled" = false
 "layout.css.text-emphasis.enabled" = false
 "layout.css.text-indent-keywords.enabled" = false
 "layout.css.text-overflow.enabled" = false

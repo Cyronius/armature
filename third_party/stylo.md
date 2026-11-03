@@ -104,3 +104,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `css/css-transforms/inheritance.html`.
 - Upstream: Could go upstream together with Servo's layout support, but Servo's AI policy currently prevents sending
   it.
+
+### AS-404: Enable text-decoration-skip-ink for Servo behind a preference
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `text-decoration-skip-ink` for Servo behind the new preference
+  `layout.css.text-decoration-skip-ink.enabled`. Servo's painting ignores the value. Affects
+  `css/css-text-decor/parsing/text-decoration-skip-ink-*.html`, `css/css-text-decor/text-decoration-skip-ink.html`
+  and `css/css-text-decor/inheritance.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
