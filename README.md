@@ -37,6 +37,14 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 - **`HTMLElement.draggable`** (323 subtests), **fractional `MouseEvent` coordinates** as CSSOM View specifies (433),
   and the current HTML rules for **valid custom element names** (113). Element names with code points above U+10FFF,
   such as most emoji, are no longer rejected.
+- **Editing commands** (`document.execCommand`, behind Servo's `dom_exec_command_enabled` preference):
+  `justifyCenter`/`justifyFull`/`justifyLeft`/`justifyRight`, `insertOrderedList`/`insertUnorderedList`, `outdent`,
+  `formatBlock` and `insertHTML`, plus fixes to the shared editing algorithms (line-break visibility, splitting a
+  parent, sublist normalization, the backColor/hiliteColor value override) and the `align` attribute of table sections,
+  rows and cells. The `editing` tests went from 23,799 failing subtests to 15,304.
+- **SVG image sizing**: SVG images get their natural width, height and ratio from the outermost `svg` element as SVG 2
+  specifies, and `img.naturalWidth`/`naturalHeight` follow the default sizing rules. `naturalWidth-naturalHeight-width-height`
+  went from 182 failing subtests to 0, and about 340 more pass in the image, background, sizing and SVG tests.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -56,6 +64,9 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   Servo has no cross-origin isolation, so shared memory is off in every global.
 - 182 `img` `naturalWidth`/`naturalHeight` subtests for SVG images fail, because the image cache records every SVG
   image as a fixed integer size.
+- Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
+  tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
+  `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
 - Some reflection subtests still fail (`col.span`, `progress.max`, `meter`, `textarea.rows`/`cols`, `pre.width`), as
   do 30 in the tentative ARIA test.
 - Conformance outside the directories above has not been measured or improved, and other missing features have not
