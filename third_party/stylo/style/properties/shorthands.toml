@@ -480,7 +480,8 @@ spec = "https://drafts.csswg.org/css-multicol/#propdef-columns"
 servo_pref = "layout.css.columns.enabled"
 
 [column-rule]
-engine = "gecko"
+# Armature (AS-304): Build for Servo too, behind the columns pref.
+servo_pref = "layout.css.columns.enabled"
 sub_properties = ["column-rule-width", "column-rule-style", "column-rule-color"]
 spec = "https://drafts.csswg.org/css-multicol/#propdef-column-rule"
 derive_serialize = true

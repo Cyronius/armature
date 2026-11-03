@@ -102,3 +102,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `-inside` shorthands for Servo behind the new `layout.css.break-properties.enabled` preference
   (css/css-break/parsing). Servo does not fragment, so they have no layout effect.
 - Upstream: Could go upstream as a Servo preference.
+
+### AS-304: Build column-rule and column-fill for Servo behind the columns pref
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `style/properties/shorthands.rs`
+- Why: Enables `column-rule-color`, `column-rule-style`, `column-rule-width`, `column-fill` and the `column-rule`
+  shorthand for Servo behind the existing `layout.css.columns.enabled` preference, like the other multicol
+  properties (css/css-multicol/parsing, css/css-gaps/parsing). Servo does not paint column rules yet.
+- Upstream: Could go upstream as a Servo preference.
