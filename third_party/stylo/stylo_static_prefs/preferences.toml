@@ -81,6 +81,8 @@
 "layout.css.text-underline.enabled" = false
 "layout.css.text-wrap-style.balance.enabled" = false
 "layout.css.text-wrap-style.pretty.enabled" = false
+# Armature (AS-403): Gates transform-box for Servo.
+"layout.css.transform-box.enabled" = false
 "layout.css.tree-counting-functions.enabled" = false
 "layout.css.view-transitions.enabled" = false
 "layout.css.webkit-fill-available.all-size-properties.enabled" = true

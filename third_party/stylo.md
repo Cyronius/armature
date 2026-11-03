@@ -95,3 +95,12 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   shorthand's parser and serializer for Servo. Servo's layout does not apply motion paths yet. Affects
   `css/motion/parsing`, `css/motion/animation` and `css/motion/inheritance.html`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-403: Enable transform-box for Servo behind a preference
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`, `style/values/specified/transform.rs`
+- Why: Builds `transform-box` for Servo behind the new preference `layout.css.transform-box.enabled`, and lets Servo
+  parse all five keywords, since Servo's layout now uses the content box or the border box as the reference box.
+  Affects `css/css-transforms/parsing/transform-box-*.html`, `css/css-transforms/transform-box/cssbox-*.html` and
+  `css/css-transforms/inheritance.html`.
+- Upstream: Could go upstream together with Servo's layout support, but Servo's AI policy currently prevents sending
+  it.
