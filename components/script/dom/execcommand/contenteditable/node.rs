@@ -18,6 +18,7 @@ use crate::dom::abstractrange::bp_position;
 use crate::dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterDataMethods;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLAnchorElementBinding::HTMLAnchorElementMethods;
+use crate::dom::bindings::codegen::Bindings::HTMLFontElementBinding::HTMLFontElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::inheritance::NodeTypeId;
@@ -30,6 +31,7 @@ use crate::dom::execcommand::commands::forecolor::serialize_to_simple_color;
 use crate::dom::html::htmlanchorelement::HTMLAnchorElement;
 use crate::dom::html::htmlbrelement::HTMLBRElement;
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::htmlfontelement::HTMLFontElement;
 use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmllielement::HTMLLIElement;
 use crate::dom::iterators::ShadowIncluding;
@@ -1348,11 +1350,13 @@ impl Node {
                         let new_font_element = document.create_element(cx, "font");
                         // Step 10.5.2. Set the color attribute of new parent to the result of applying the rules for
                         // serializing simple color values to new value (interpreted as a simple color).
-                        new_font_element.set_string_attribute(
-                            cx,
-                            &local_name!("color"),
-                            serialize_to_simple_color(legacy_color),
-                        );
+                        //
+                        // Note: This goes through the IDL setter (also for the face attribute below),
+                        // so that the attribute value is parsed and creates its presentational hint.
+                        new_font_element
+                            .downcast::<HTMLFontElement>()
+                            .expect("Must be a font element")
+                            .SetColor(cx, serialize_to_simple_color(legacy_color));
                         new_parent = Some(new_font_element);
                     }
                 },
@@ -1361,11 +1365,10 @@ impl Node {
                 // then set the face attribute of new parent to new value.
                 CommandName::FontName => {
                     let new_font_element = document.create_element(cx, "font");
-                    new_font_element.set_string_attribute(
-                        cx,
-                        &local_name!("face"),
-                        new_value.clone(),
-                    );
+                    new_font_element
+                        .downcast::<HTMLFontElement>()
+                        .expect("Must be a font element")
+                        .SetFace(cx, new_value.clone());
                     new_parent = Some(new_font_element);
                 },
                 _ => {},
