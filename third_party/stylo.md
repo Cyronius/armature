@@ -80,4 +80,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Upstream: Whether the change could go upstream, or why it is Armature-only.
 ```
 
-No changes yet.
+### AS-101: Enable the scroll snap properties for Servo
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `scroll-snap-type`, `scroll-snap-align`, `scroll-snap-stop`, the `scroll-margin-*` and
+  `scroll-padding-*` longhands and the `scroll-margin`, `scroll-margin-block`, `scroll-margin-inline`,
+  `scroll-padding`, `scroll-padding-block` and `scroll-padding-inline` shorthands for Servo, behind the new
+  `layout.css.scroll-snap.enabled` preference. Parsing, computed values, serialization and interpolation work as in
+  Gecko; Servo does not snap yet. Affects css/css-scroll-snap/parsing, css/cssom-view/scrollIntoView-scroll*.
+- Upstream: Could go upstream as is (the value types already build for Servo).
