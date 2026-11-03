@@ -397,10 +397,6 @@ input[type="radio"]:checked:disabled::after {
   background: grey;
 }
 
-td[align="left"]    { text-align: left; }
-td[align="center"]  { text-align: center; }
-td[align="right"]   { text-align: right; }
-
 center { text-align: -moz-center; }
 
 label { cursor: default; }
