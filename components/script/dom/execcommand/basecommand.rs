@@ -28,6 +28,9 @@ use crate::dom::execcommand::commands::fontsize::{
     execute_fontsize_command, font_size_loosely_equivalent, value_for_fontsize_command,
 };
 use crate::dom::execcommand::commands::forecolor::execute_forecolor_command;
+use crate::dom::execcommand::commands::formatblock::{
+    execute_formatblock_command, is_formatblock_indeterminate, value_for_formatblock_command,
+};
 use crate::dom::execcommand::commands::forwarddelete::execute_forward_delete_command;
 use crate::dom::execcommand::commands::hilitecolor::execute_hilitecolor_command;
 use crate::dom::execcommand::commands::indent::execute_indent_command;
@@ -364,6 +367,9 @@ pub(crate) enum CommandName {
 impl CommandName {
     /// <https://w3c.github.io/editing/docs/execCommand/#indeterminate>
     pub(crate) fn is_indeterminate(&self, cx: &mut JSContext, document: &Document) -> bool {
+        if *self == CommandName::FormatBlock {
+            return is_formatblock_indeterminate(cx, document);
+        }
         if !self.is_standard_inline_value_command() {
             return false;
         }
@@ -465,6 +471,7 @@ impl CommandName {
                 document.default_single_line_container_name().into()
             },
             CommandName::FontSize => value_for_fontsize_command(cx, document)?,
+            CommandName::FormatBlock => value_for_formatblock_command(cx, document)?,
             _ if self.is_standard_inline_value_command() => {
                 // https://w3c.github.io/editing/docs/execCommand/#standard-inline-value-command
                 // > Its value is the effective command value of the first formattable node that
@@ -746,6 +753,7 @@ impl CommandName {
             CommandName::FontName => execute_fontname_command(cx, document, selection, value),
             CommandName::FontSize => execute_fontsize_command(cx, document, selection, value),
             CommandName::ForeColor => execute_forecolor_command(cx, document, selection, value),
+            CommandName::FormatBlock => execute_formatblock_command(cx, document, selection, value),
             CommandName::ForwardDelete => execute_forward_delete_command(cx, document, selection),
             CommandName::HiliteColor => execute_hilitecolor_command(cx, document, selection, value),
             CommandName::Indent => execute_indent_command(cx, document, selection),

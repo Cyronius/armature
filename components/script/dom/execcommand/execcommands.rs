@@ -160,6 +160,7 @@ impl Document {
             "fontname" => CommandName::FontName,
             "fontsize" => CommandName::FontSize,
             "forecolor" => CommandName::ForeColor,
+            "formatblock" => CommandName::FormatBlock,
             "forwarddelete" => CommandName::ForwardDelete,
             "hilitecolor" => CommandName::HiliteColor,
             "indent" => CommandName::Indent,
