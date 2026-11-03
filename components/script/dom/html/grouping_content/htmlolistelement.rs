@@ -3,15 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use dom_struct::dom_struct;
-use html5ever::{LocalName, Prefix, local_name};
+use html5ever::{LocalName, Prefix, local_name, ns};
 use js::rust::HandleObject;
-use style::attr::AttrValue;
+use style::attr::{AttrValue, parse_integer};
+use style::values::CustomIdent;
+use style::values::generics::counters::CounterPair;
+use style::values::specified::{CounterReset, Integer};
+use stylo_atoms::Atom;
 
 use crate::dom::bindings::codegen::Bindings::HTMLOListElementBinding::HTMLOListElementMethods;
 use crate::dom::bindings::inheritance::Castable;
-use crate::dom::bindings::root::DomRoot;
+use crate::dom::bindings::root::{DomRoot, LayoutDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
+use crate::dom::element::Element;
+use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
@@ -50,6 +56,35 @@ impl HTMLOListElement {
     }
 }
 
+impl LayoutDom<'_, HTMLOListElement> {
+    /// The `counter-reset` presentational hint of the `start` and `reversed` attributes.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#lists>
+    pub(crate) fn get_counter_reset(self) -> Option<CounterReset> {
+        let element = self.upcast::<Element>();
+        let start = element
+            .get_attr_val_for_layout(&ns!(), &local_name!("start"))
+            .and_then(|value| parse_integer(value.chars()).ok());
+        let reversed = element
+            .get_attr_for_layout(&ns!(), &local_name!("reversed"))
+            .is_some();
+
+        // `i32::MIN` is reserved for `reversed(list-item)` without a value, so clamp to the
+        // range that `counter-reset` accepts.
+        let value = match (reversed, start) {
+            (true, Some(start)) => start.saturating_add(1),
+            (true, None) => i32::MIN,
+            (false, Some(start)) => start.saturating_sub(1).max(i32::MIN + 1),
+            (false, None) => return None,
+        };
+        Some(CounterReset::new(vec![CounterPair {
+            name: CustomIdent(Atom::from("list-item")),
+            value: Integer::new(value),
+            is_reversed: reversed,
+        }]))
+    }
+}
+
 impl HTMLOListElementMethods<crate::DomTypeHolder> for HTMLOListElement {
     // <https://html.spec.whatwg.org/multipage/#dom-ol-reversed>
     make_bool_getter!(Reversed, "reversed");
@@ -79,6 +114,16 @@ impl HTMLOListElementMethods<crate::DomTypeHolder> for HTMLOListElement {
 impl VirtualMethods for HTMLOListElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<HTMLElement>() as &dyn VirtualMethods)
+    }
+
+    fn attribute_affects_presentational_hints(&self, attr: AttrRef<'_>) -> bool {
+        match attr.local_name() {
+            &local_name!("start") | &local_name!("reversed") => true,
+            _ => self
+                .super_type()
+                .unwrap()
+                .attribute_affects_presentational_hints(attr),
+        }
     }
 
     fn parse_plain_attribute(&self, name: &LocalName, value: DOMString) -> AttrValue {

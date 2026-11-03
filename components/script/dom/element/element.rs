@@ -46,6 +46,7 @@ use selectors::attr::CaseSensitivity;
 use selectors::matching::ElementSelectorFlags;
 use selectors::sink::Push;
 use servo_arc::Arc as ServoArc;
+use servo_config::pref;
 use style::applicable_declarations::ApplicableDeclarationBlock;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 use style::context::QuirksMode;
@@ -153,6 +154,7 @@ use crate::dom::html::htmllegendelement::HTMLLegendElement;
 use crate::dom::html::htmllinkelement::HTMLLinkElement;
 use crate::dom::html::htmlmarqueeelement::HTMLMarqueeElement;
 use crate::dom::html::htmlobjectelement::HTMLObjectElement;
+use crate::dom::html::htmlolistelement::HTMLOListElement;
 use crate::dom::html::htmloutputelement::HTMLOutputElement;
 use crate::dom::html::htmlscriptelement::HTMLScriptElement;
 use crate::dom::html::htmlselectelement::HTMLSelectElement;
@@ -1616,6 +1618,14 @@ impl<'dom> LayoutDom<'dom, Element> {
                     ));
                 },
             }
+        }
+
+        // https://html.spec.whatwg.org/multipage/#lists
+        if let Some(list_element) = self.downcast::<HTMLOListElement>() &&
+            pref!(layout_css_counters_enabled) &&
+            let Some(counter_reset) = list_element.get_counter_reset()
+        {
+            push(PropertyDeclaration::CounterReset(counter_reset));
         }
 
         let Some(property_declaration_block) = property_declaration_block else {
