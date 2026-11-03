@@ -37,22 +37,26 @@ interface HTMLElement : Element {
   [Throws] ElementInternals attachInternals();
 
   // The popover API
-  // undefined showPopover(optional ShowPopoverOptions options = {});
-  // undefined hidePopover();
-  // boolean togglePopover(optional (TogglePopoverOptions or boolean) options = {});
-  // [CEReactions] attribute DOMString? popover;
+  [Pref="dom_popover_enabled", Throws]
+  undefined showPopover(optional ShowPopoverOptions options = {});
+  [Pref="dom_popover_enabled", Throws]
+  undefined hidePopover();
+  [Pref="dom_popover_enabled", Throws]
+  boolean togglePopover(optional (TogglePopoverOptions or boolean) options = {});
+  [Pref="dom_popover_enabled", CEReactions]
+  attribute DOMString? popover;
 
   // [CEReactions, Reflect, ReflectRange=(0, 8)] attribute unsigned long headingOffset;
   // [CEReactions, Reflect] attribute boolean headingReset;
 };
 
-// dictionary ShowPopoverOptions {
-//   HTMLElement source;
-// };
-//
-// dictionary TogglePopoverOptions : ShowPopoverOptions {
-//   boolean force;
-// };
+dictionary ShowPopoverOptions {
+  HTMLElement source;
+};
+
+dictionary TogglePopoverOptions : ShowPopoverOptions {
+  boolean force;
+};
 
 // http://dev.w3.org/csswg/cssom-view/#extensions-to-the-htmlelement-interface
 partial interface HTMLElement {

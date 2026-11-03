@@ -122,6 +122,9 @@ static SERVO_CSS: &[u8] = include_bytes!("./stylesheets/servo.css");
 /// A CSS file to style the presentational hints.
 static PRESENTATIONAL_HINTS_CSS: &[u8] = include_bytes!("./stylesheets/presentational-hints.css");
 
+/// A CSS file to style popovers, used when the popover API is enabled.
+static POPOVER_CSS: &[u8] = include_bytes!("./stylesheets/popover.css");
+
 /// A CSS file to style the quirks mode.
 static QUIRKS_MODE_CSS: &[u8] = include_bytes!("./stylesheets/quirks-mode.css");
 
@@ -1851,7 +1854,7 @@ fn get_ua_stylesheets(shared_lock: &SharedRwLock) -> Rc<UserAgentStylesheets> {
             .get_or_init(|| {
                 // FIXME: presentational-hints.css should be at author origin with zero specificity.
                 //        (Does it make a difference?)
-                let user_agent_stylesheets = vec![
+                let mut user_agent_stylesheets = vec![
                     parse_ua_stylesheet(shared_lock, "user-agent.css", USER_AGENT_CSS),
                     parse_ua_stylesheet(shared_lock, "servo.css", SERVO_CSS),
                     parse_ua_stylesheet(
@@ -1860,6 +1863,13 @@ fn get_ua_stylesheets(shared_lock: &SharedRwLock) -> Rc<UserAgentStylesheets> {
                         PRESENTATIONAL_HINTS_CSS,
                     ),
                 ];
+                if pref!(dom_popover_enabled) {
+                    user_agent_stylesheets.push(parse_ua_stylesheet(
+                        shared_lock,
+                        "popover.css",
+                        POPOVER_CSS,
+                    ));
+                }
 
                 let html_mode_stylesheet =
                     parse_ua_stylesheet(shared_lock, "html-mode.css", HTML_MODE_CSS);

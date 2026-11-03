@@ -194,6 +194,7 @@ pub struct Preferences {
     // feature: OffscreenCanvas | #34111 | Web/API/OffscreenCanvas
     pub dom_offscreen_canvas_enabled: bool,
     pub dom_parallel_css_parsing_enabled: bool,
+    pub dom_popover_enabled: bool,
     // feature: Permissions API | #31235 | Web/API/Permissions_API
     pub dom_permissions_enabled: bool,
     pub dom_permissions_testing_allowed_in_nonsecure_contexts: bool,
@@ -476,6 +477,7 @@ impl Preferences {
             dom_processing_instruction_attributes_enabled: false,
             dom_parallel_css_parsing_enabled: true,
             dom_offscreen_canvas_enabled: false,
+            dom_popover_enabled: false,
             dom_permissions_enabled: false,
             dom_permissions_testing_allowed_in_nonsecure_contexts: false,
             dom_resize_observer_enabled: true,

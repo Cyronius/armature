@@ -29,6 +29,7 @@ use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::event::{Event, EventBubbles, EventCancelable};
 use crate::dom::eventtarget::EventTarget;
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::popover::topmost_popover_ancestor;
 use crate::dom::htmlbuttonelement::{CommandState, HTMLButtonElement};
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::focus::FocusTrigger;
@@ -119,7 +120,12 @@ impl HTMLDialogElement {
             )));
         }
 
-        // TODO: Step 5. If subject is in the popover showing state, then throw an "InvalidStateError" DOMException.
+        // Step 5. If subject is in the popover showing state, then throw an "InvalidStateError" DOMException.
+        if self.upcast::<HTMLElement>().is_popover_showing() {
+            return Err(Error::InvalidState(Some(
+                "Cannot call showModal() on a dialog that is showing as a popover.".into(),
+            )));
+        }
 
         // Step 6. If the result of firing an event named beforetoggle, using ToggleEvent, with the cancelable attribute initialized to true, the oldState attribute initialized to "closed", the newState attribute initialized to "open", and the source attribute initialized to source at subject is false, then return.
         let event = ToggleEvent::new(
@@ -147,7 +153,10 @@ impl HTMLDialogElement {
             return Ok(());
         }
 
-        // TODO: Step 9. If subject is in the popover showing state, then return.
+        // Step 9. If subject is in the popover showing state, then return.
+        if self.upcast::<HTMLElement>().is_popover_showing() {
+            return Ok(());
+        }
 
         // Step 10. Queue a dialog toggle event task given subject, "closed", "open", and source.
         self.queue_dialog_toggle_event_task("closed", "open", source);
@@ -174,17 +183,13 @@ impl HTMLDialogElement {
             cx.no_gc(),
         );
 
-        // TODO: Step 17. Let document be subject's node document.
+        // Step 17. Let document be subject's node document.
+        // Step 18. Let hideUntil be the result of running topmost popover ancestor given subject,
+        // null, and false.
+        // Step 19. Run hide popovers until given document, hideUntil, false, and true.
+        self.hide_popovers_until_topmost_popover_ancestor(cx);
 
-        // TODO: Step 18. Let hideUntil be the result of running topmost popover ancestor given subject, document's showing hint popover list, null, and false.
-
-        // TODO: Step 19. If hideUntil is null, then set hideUntil to the result of running topmost popover ancestor given subject, document's showing auto popover list, null, and false.
-
-        // TODO: Step 20. If hideUntil is null, then set hideUntil to document.
-
-        // TODO: Step 21. Run hide all popovers until given hideUntil, false, and true.
-
-        // Step 22. Run the dialog focusing steps given subject.
+        // Step 20. Run the dialog focusing steps given subject.
         self.run_dialog_focusing_steps(cx);
         Ok(())
     }
@@ -401,8 +406,16 @@ impl HTMLDialogElement {
         // TODO: Step 3. Set element's dialog toggle task tracker to a struct with task set to the just-queued task and old state set to oldState.
     }
 
+    /// The steps of `show()` and "show a modal dialog" that hide the popovers that are not
+    /// ancestors of the dialog.
+    fn hide_popovers_until_topmost_popover_ancestor(&self, cx: &mut JSContext) {
+        let document = self.owner_document();
+        let hide_until = topmost_popover_ancestor(cx.no_gc(), self.upcast(), None, false);
+        document.hide_popovers_until(cx, hide_until.as_deref(), false, true);
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dialog-focusing-steps>
-    fn run_dialog_focusing_steps(&self, cx: &mut JSContext) {
+    pub(crate) fn run_dialog_focusing_steps(&self, cx: &mut JSContext) {
         // TODO: Step 1. If the allow focus steps given subject's node document return false, then return.
 
         // Step 2. Let control be null.
@@ -607,17 +620,13 @@ impl HTMLDialogElementMethods<crate::DomTypeHolder> for HTMLDialogElement {
             cx.no_gc(),
         );
 
-        // TODO: Step 8. Let document be this's node document.
+        // Step 8. Let document be this's node document.
+        // Step 9. Let hideUntil be the result of running topmost popover ancestor given this,
+        // null, and false.
+        // Step 10. Run hide popovers until given document, hideUntil, false, and true.
+        self.hide_popovers_until_topmost_popover_ancestor(cx);
 
-        // TODO: Step 9. Let hideUntil be the result of running topmost popover ancestor given this, document's showing hint popover list, null, and false.
-
-        // TODO: Step 10. If hideUntil is null, then set hideUntil to the result of running topmost popover ancestor given this, document's showing auto popover list, null, and false.
-
-        // TODO: Step 11. If hideUntil is null, then set hideUntil to document.
-
-        // TODO: Step 12. Run hide all popovers until given hideUntil, false, and true.
-
-        // Step 13. Run the dialog focusing steps given this.
+        // Step 11. Run the dialog focusing steps given this.
         self.run_dialog_focusing_steps(cx);
         Ok(())
     }
@@ -678,7 +687,10 @@ impl VirtualMethods for HTMLDialogElement {
             return true;
         }
 
-        // TODO Step 1. If element is in the popover showing state, then return.
+        // Step 1. If element is in the popover showing state, then return.
+        if self.upcast::<HTMLElement>().is_popover_showing() {
+            return false;
+        }
         let element = self.upcast::<Element>();
 
         // Step 2. If command is in the Close state and element has an open attribute, then

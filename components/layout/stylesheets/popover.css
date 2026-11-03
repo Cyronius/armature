@@ -1,0 +1,38 @@
+@namespace url(http://www.w3.org/1999/xhtml);
+
+/* https://html.spec.whatwg.org/multipage/#flow-content-3
+   This stylesheet is only used when the `dom_popover_enabled` preference is set. */
+
+[popover]:not(:popover-open):not(dialog[open]) {
+  display:none;
+}
+
+dialog:popover-open {
+  display:block;
+}
+
+[popover] {
+  position: fixed;
+  inset: 0;
+  width: fit-content;
+  height: fit-content;
+  margin: auto;
+  border: solid;
+  padding: 0.25em;
+  overflow: auto;
+  color: CanvasText;
+  background-color: Canvas;
+}
+
+:popover-open::backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none !important;
+  background-color: transparent;
+}
+
+/* The internal-only -servo-top-layer property is used
+   to implement https://drafts.csswg.org/css-position-4/#top-layer */
+:popover-open {
+  -servo-top-layer: auto;
+}

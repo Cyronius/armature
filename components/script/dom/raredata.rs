@@ -18,6 +18,7 @@ use crate::dom::customelementregistry::{
 use crate::dom::domtokenlist::DOMTokenList;
 use crate::dom::html::htmlslotelement::SlottableData;
 use crate::dom::html::internals::elementinternals::ElementInternals;
+use crate::dom::html::popover::PopoverData;
 use crate::dom::intersectionobserver::IntersectionObserverRegistration;
 use crate::dom::mutationobserver::RegisteredObserver;
 use crate::dom::nodelist::NodeList;
@@ -103,6 +104,9 @@ pub(crate) struct ElementRareData {
 
     /// <https://html.spec.whatwg.org/multipage/#previously-focused-element>
     pub(crate) previously_focused_element: MutNullableDom<Element>,
+
+    /// The popover-related state of an HTML element.
+    pub(crate) popover_data: PopoverData,
 
     /// <https://dom.spec.whatwg.org/#concept-element-is-value>
     ///
