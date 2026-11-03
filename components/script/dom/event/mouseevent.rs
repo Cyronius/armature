@@ -25,6 +25,7 @@ use crate::dom::bindings::codegen::Bindings::MouseEventBinding::MouseEventMethod
 use crate::dom::bindings::codegen::Bindings::UIEventBinding::UIEventMethods;
 use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::inheritance::Castable;
+use crate::dom::bindings::num::Finite;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::DOMString;
@@ -49,7 +50,7 @@ pub(crate) struct MouseEvent {
     /// <https://w3c.github.io/uievents/#dom-mouseevent-screenx>
     /// <https://w3c.github.io/uievents/#dom-mouseevent-screeny>
     #[no_trace]
-    screen_point: Cell<Point2D<i32, CSSPixel>>,
+    screen_point: Cell<Point2D<f64, CSSPixel>>,
 
     /// The point in the viewport of where this [`MouseEvent`] was originally triggered,
     /// to use during the dispatch phase.
@@ -58,7 +59,7 @@ pub(crate) struct MouseEvent {
     /// <https://w3c.github.io/uievents/#dom-mouseevent-clientx>
     /// <https://w3c.github.io/uievents/#dom-mouseevent-clienty>
     #[no_trace]
-    client_point: Cell<Point2D<i32, CSSPixel>>,
+    client_point: Cell<Point2D<f64, CSSPixel>>,
 
     /// The point in the initial containing block of where this [`MouseEvent`] was
     /// originally triggered to use during the dispatch phase.
@@ -67,7 +68,7 @@ pub(crate) struct MouseEvent {
     /// <https://w3c.github.io/uievents/#dom-mouseevent-pagex>
     /// <https://w3c.github.io/uievents/#dom-mouseevent-pagey>
     #[no_trace]
-    page_point: Cell<Point2D<i32, CSSPixel>>,
+    page_point: Cell<Point2D<f64, CSSPixel>>,
 
     /// The keyboard modifiers that were active when this mouse event was triggered.
     #[no_trace]
@@ -120,9 +121,9 @@ impl MouseEvent {
         cancelable: EventCancelable,
         view: Option<&Window>,
         detail: i32,
-        screen_point: Point2D<i32, CSSPixel>,
-        client_point: Point2D<i32, CSSPixel>,
-        page_point: Point2D<i32, CSSPixel>,
+        screen_point: Point2D<f64, CSSPixel>,
+        client_point: Point2D<f64, CSSPixel>,
+        page_point: Point2D<f64, CSSPixel>,
         modifiers: Modifiers,
         button: MouseButton,
         buttons: MouseButtons,
@@ -159,9 +160,9 @@ impl MouseEvent {
         cancelable: EventCancelable,
         view: Option<&Window>,
         detail: i32,
-        screen_point: Point2D<i32, CSSPixel>,
-        client_point: Point2D<i32, CSSPixel>,
-        page_point: Point2D<i32, CSSPixel>,
+        screen_point: Point2D<f64, CSSPixel>,
+        client_point: Point2D<f64, CSSPixel>,
+        page_point: Point2D<f64, CSSPixel>,
         modifiers: Modifiers,
         button: MouseButton,
         buttons: MouseButtons,
@@ -196,9 +197,9 @@ impl MouseEvent {
         cancelable: EventCancelable,
         view: Option<&Window>,
         detail: i32,
-        screen_point: Point2D<i32, CSSPixel>,
-        client_point: Point2D<i32, CSSPixel>,
-        page_point: Point2D<i32, CSSPixel>,
+        screen_point: Point2D<f64, CSSPixel>,
+        client_point: Point2D<f64, CSSPixel>,
+        page_point: Point2D<f64, CSSPixel>,
         modifiers: Modifiers,
         button: MouseButton,
         buttons: MouseButtons,
@@ -255,11 +256,12 @@ impl MouseEvent {
             cancelable,
             Some(window),
             0i32,
-            hit_test_result.point_in_frame.to_i32(),
-            hit_test_result.point_in_frame.to_i32(),
+            hit_test_result.point_in_frame.to_i32().to_f64(),
+            hit_test_result.point_in_frame.to_i32().to_f64(),
             hit_test_result
                 .point_relative_to_initial_containing_block
-                .to_i32(),
+                .to_i32()
+                .to_f64(),
             input_event.active_keyboard_modifiers,
             MouseButton::Primary,
             input_event.pressed_mouse_buttons,
@@ -288,10 +290,11 @@ impl MouseEvent {
         modifiers: Modifiers,
         click_count: usize,
     ) -> DomRoot<Self> {
-        let client_point = hit_test_result.point_in_frame.to_i32();
+        let client_point = hit_test_result.point_in_frame.to_i32().to_f64();
         let page_point = hit_test_result
             .point_relative_to_initial_containing_block
-            .to_i32();
+            .to_i32()
+            .to_f64();
 
         let mouse_event = Self::new(
             cx,
@@ -368,8 +371,8 @@ impl MouseEvent {
             self.GetRelatedTarget().as_deref(),
             self.point_in_target.get(),
             PointerId::Mouse as i32, // Mouse pointer ID is always -1
-            1,                       // width
-            1,                       // height
+            1.0,                     // width
+            1.0,                     // height
             pressure,
             0.0,      // tangential_pressure
             0,        // tilt_x
@@ -427,8 +430,8 @@ impl MouseEvent {
             self.GetRelatedTarget().as_deref(),
             self.point_in_target.get(),
             PointerId::Mouse as i32, // Mouse pointer ID is always -1
-            1,                       // width
-            1,                       // height
+            1.0,                     // width
+            1.0,                     // height
             0.0,                     // pressure: 0.0 for hover events
             0.0,                     // tangential_pressure
             0,                       // tilt_x
@@ -460,7 +463,7 @@ impl MouseEvent {
         self.button.get()
     }
 
-    pub(crate) fn client_point(&self) -> Point2D<i32, CSSPixel> {
+    pub(crate) fn client_point(&self) -> Point2D<f64, CSSPixel> {
         self.client_point.get()
     }
 
@@ -482,8 +485,8 @@ impl MouseEventMethods<crate::DomTypeHolder> for MouseEvent {
         let cancelable = EventCancelable::from(init.parent.parent.parent.cancelable);
         let scroll_offset = window.scroll_offset();
         let page_point = Point2D::new(
-            scroll_offset.x as i32 + init.clientX,
-            scroll_offset.y as i32 + init.clientY,
+            scroll_offset.x as f64 + *init.clientX,
+            scroll_offset.y as f64 + *init.clientY,
         );
         let event = MouseEvent::new_with_proto(
             cx,
@@ -494,8 +497,8 @@ impl MouseEventMethods<crate::DomTypeHolder> for MouseEvent {
             cancelable,
             init.parent.parent.view.as_deref(),
             init.parent.parent.detail,
-            Point2D::new(init.screenX, init.screenY),
-            Point2D::new(init.clientX, init.clientY),
+            Point2D::new(*init.screenX, *init.screenY),
+            Point2D::new(*init.clientX, *init.clientY),
             page_point,
             init.parent.modifiers(),
             init.button.into(),
@@ -510,69 +513,69 @@ impl MouseEventMethods<crate::DomTypeHolder> for MouseEvent {
     }
 
     /// <https://w3c.github.io/pointerevents/#dom-mouseevent-screenx>
-    fn ScreenX(&self) -> i32 {
-        self.screen_point.get().x
+    fn ScreenX(&self) -> Finite<f64> {
+        Finite::wrap(self.screen_point.get().x)
     }
 
     /// <https://w3c.github.io/pointerevents/#dom-mouseevent-screeny>
-    fn ScreenY(&self) -> i32 {
-        self.screen_point.get().y
+    fn ScreenY(&self) -> Finite<f64> {
+        Finite::wrap(self.screen_point.get().y)
     }
 
     /// <https://w3c.github.io/pointerevents/#dom-mouseevent-clientx>
-    fn ClientX(&self) -> i32 {
-        self.client_point.get().x
+    fn ClientX(&self) -> Finite<f64> {
+        Finite::wrap(self.client_point.get().x)
     }
 
     /// <https://w3c.github.io/pointerevents/#dom-mouseevent-clienty>
-    fn ClientY(&self) -> i32 {
-        self.client_point.get().y
+    fn ClientY(&self) -> Finite<f64> {
+        Finite::wrap(self.client_point.get().y)
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-mouseevent-pagex>
-    fn PageX(&self) -> i32 {
+    fn PageX(&self) -> Finite<f64> {
         // The pageX attribute must follow these steps:
         // > 1. If the event’s dispatch flag is set, return the horizontal coordinate of the
         // > position where the event occurred relative to the origin of the initial containing
         // > block and terminate these steps.
         if self.upcast::<Event>().dispatching() {
-            return self.page_point.get().x;
+            return Finite::wrap(self.page_point.get().x);
         }
 
         // > 2. Let offset be the value of the scrollX attribute of the event’s associated
         // > Window object, if there is one, or zero otherwise.
         // > 3. Return the sum of offset and the value of the event’s clientX attribute.
-        self.global().as_window().ScrollX() + self.ClientX()
+        Finite::wrap(f64::from(self.global().as_window().ScrollX()) + *self.ClientX())
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-mouseevent-pagey>
-    fn PageY(&self) -> i32 {
+    fn PageY(&self) -> Finite<f64> {
         // The pageY attribute must follow these steps:
         // > 1. If the event’s dispatch flag is set, return the vertical coordinate of the
         // > position where the event occurred relative to the origin of the initial
         // > containing block and terminate these steps.
         if self.upcast::<Event>().dispatching() {
-            return self.page_point.get().y;
+            return Finite::wrap(self.page_point.get().y);
         }
 
         // > 2. Let offset be the value of the scrollY attribute of the event’s associated
         // > Window object, if there is one, or zero otherwise.
         // > 3. Return the sum of offset and the value of the event’s clientY attribute.
-        self.global().as_window().ScrollY() + self.ClientY()
+        Finite::wrap(f64::from(self.global().as_window().ScrollY()) + *self.ClientY())
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-mouseevent-x>
-    fn X(&self) -> i32 {
+    fn X(&self) -> Finite<f64> {
         self.ClientX()
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-mouseevent-y>
-    fn Y(&self) -> i32 {
+    fn Y(&self) -> Finite<f64> {
         self.ClientY()
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-mouseevent-offsetx>
-    fn OffsetX(&self) -> i32 {
+    fn OffsetX(&self) -> Finite<f64> {
         // > The offsetX attribute must follow these steps:
         // > 1. If the event’s dispatch flag is set, return the x-coordinate of the position
         // >    where the event occurred relative to the origin of the padding edge of the
@@ -581,12 +584,12 @@ impl MouseEventMethods<crate::DomTypeHolder> for MouseEvent {
         let event = self.upcast::<Event>();
         if event.dispatching() {
             let Some(target) = event.GetTarget() else {
-                return 0;
+                return Finite::wrap(0.);
             };
             let Some(node) = target.downcast::<Node>() else {
-                return 0;
+                return Finite::wrap(0.);
             };
-            return self.ClientX() - node.client_rect().origin.x;
+            return Finite::wrap(*self.ClientX() - f64::from(node.client_rect().origin.x));
         }
 
         // > 2. Return the value of the event’s pageX attribute.
@@ -594,7 +597,7 @@ impl MouseEventMethods<crate::DomTypeHolder> for MouseEvent {
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-mouseevent-offsety>
-    fn OffsetY(&self) -> i32 {
+    fn OffsetY(&self) -> Finite<f64> {
         // > The offsetY attribute must follow these steps:
         // > 1. If the event’s dispatch flag is set, return the y-coordinate of the
         // >    position where the event occurred relative to the origin of the padding edge of
@@ -603,12 +606,12 @@ impl MouseEventMethods<crate::DomTypeHolder> for MouseEvent {
         let event = self.upcast::<Event>();
         if event.dispatching() {
             let Some(target) = event.GetTarget() else {
-                return 0;
+                return Finite::wrap(0.);
             };
             let Some(node) = target.downcast::<Node>() else {
-                return 0;
+                return Finite::wrap(0.);
             };
-            return self.ClientY() - node.client_rect().origin.y;
+            return Finite::wrap(*self.ClientY() - f64::from(node.client_rect().origin.y));
         }
 
         // 2. Return the value of the event’s pageY attribute.
@@ -680,16 +683,20 @@ impl MouseEventMethods<crate::DomTypeHolder> for MouseEvent {
             view_arg,
             detail_arg,
         );
-        self.screen_point
-            .set(Point2D::new(screen_x_arg, screen_y_arg));
-        self.client_point
-            .set(Point2D::new(client_x_arg, client_y_arg));
+        self.screen_point.set(Point2D::new(
+            f64::from(screen_x_arg),
+            f64::from(screen_y_arg),
+        ));
+        self.client_point.set(Point2D::new(
+            f64::from(client_x_arg),
+            f64::from(client_y_arg),
+        ));
 
         let global = self.global();
         let scroll_offset = global.as_window().scroll_offset();
         self.page_point.set(Point2D::new(
-            scroll_offset.x as i32 + client_x_arg,
-            scroll_offset.y as i32 + client_y_arg,
+            scroll_offset.x as f64 + f64::from(client_x_arg),
+            scroll_offset.y as f64 + f64::from(client_y_arg),
         ));
 
         let mut modifiers = Modifiers::empty();

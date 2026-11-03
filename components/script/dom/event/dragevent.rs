@@ -61,8 +61,8 @@ impl DragEventMethods<crate::DomTypeHolder> for DragEvent {
         let ui_init = &modifier_init.parent;
         let scroll_offset = window.scroll_offset();
         let page_point = Point2D::new(
-            scroll_offset.x as i32 + mouse_init.clientX,
-            scroll_offset.y as i32 + mouse_init.clientY,
+            scroll_offset.x as f64 + *mouse_init.clientX,
+            scroll_offset.y as f64 + *mouse_init.clientY,
         );
 
         let event = DragEvent::new_uninitialized_with_proto(cx, window, proto);
@@ -72,8 +72,8 @@ impl DragEventMethods<crate::DomTypeHolder> for DragEvent {
             EventCancelable::from(ui_init.parent.cancelable),
             ui_init.view.as_deref(),
             ui_init.detail,
-            Point2D::new(mouse_init.screenX, mouse_init.screenY),
-            Point2D::new(mouse_init.clientX, mouse_init.clientY),
+            Point2D::new(*mouse_init.screenX, *mouse_init.screenY),
+            Point2D::new(*mouse_init.clientX, *mouse_init.clientY),
             page_point,
             modifier_init.modifiers(),
             mouse_init.button.into(),

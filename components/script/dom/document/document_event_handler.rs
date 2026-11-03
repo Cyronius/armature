@@ -1351,19 +1351,20 @@ impl DocumentEventHandler {
             EventCancelable::Cancelable, // cancelable
             Some(&self.window),          // view
             0,                           // detail
-            hit_test_result.point_in_frame.to_i32(),
-            hit_test_result.point_in_frame.to_i32(),
+            hit_test_result.point_in_frame.to_i32().to_f64(),
+            hit_test_result.point_in_frame.to_i32().to_f64(),
             hit_test_result
                 .point_relative_to_initial_containing_block
-                .to_i32(),
+                .to_i32()
+                .to_f64(),
             input_event.active_keyboard_modifiers,
             MouseButton::Secondary,
             input_event.pressed_mouse_buttons,
             None,                            // related_target
             None,                            // point_in_target
             PointerId::Mouse as i32,         // pointer_id
-            1,                               // width
-            1,                               // height
+            1.0,                             // width
+            1.0,                             // height
             0.5,                             // pressure
             0.0,                             // tangential_pressure
             0,                               // tilt_x
@@ -1927,11 +1928,12 @@ impl DocumentEventHandler {
             cancelable,
             Some(&self.window),
             0i32,
-            hit_test_result.point_in_frame.to_i32(),
-            hit_test_result.point_in_frame.to_i32(),
+            hit_test_result.point_in_frame.to_i32().to_f64(),
+            hit_test_result.point_in_frame.to_i32().to_f64(),
             hit_test_result
                 .point_relative_to_initial_containing_block
-                .to_i32(),
+                .to_i32()
+                .to_f64(),
             input_event.active_keyboard_modifiers,
             MouseButton::Primary,
             input_event.pressed_mouse_buttons,
@@ -2705,17 +2707,17 @@ impl DocumentEventHandler {
             EventCancelable::NotCancelable,
             Some(&self.window),
             0,
-            Point2D::new(0, 0),
-            Point2D::new(0, 0),
-            Point2D::new(0, 0),
+            Point2D::zero(),
+            Point2D::zero(),
+            Point2D::zero(),
             Modifiers::empty(),
             MouseButton::Primary,
             MouseButtons::empty(),
             None,
             None,
             pointer_id,
-            1,
-            1,
+            1.0,
+            1.0,
             0.0,
             0.0,
             0,
@@ -2755,17 +2757,17 @@ impl DocumentEventHandler {
             EventCancelable::NotCancelable,
             Some(&self.window),
             0,
-            Point2D::new(0, 0),
-            Point2D::new(0, 0),
-            Point2D::new(0, 0),
+            Point2D::zero(),
+            Point2D::zero(),
+            Point2D::zero(),
             Modifiers::empty(),
             MouseButton::None,
             self.mouse_button_state.get(),
             related_target.map(|el| el.upcast::<EventTarget>()),
             None,
             pointer_id,
-            1,
-            1,
+            1.0,
+            1.0,
             0.0,
             0.0,
             0,
