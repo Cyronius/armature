@@ -101,12 +101,24 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_basic_shape_shape_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.break-properties.enabled",
+        preferences.layout_css_break_properties_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.contain.enabled",
         preferences.layout_css_contain_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.contain-intrinsic-size.enabled",
+        preferences.layout_css_contain_intrinsic_size_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.content.alt-text.enabled",
         preferences.layout_css_content_alt_text_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.content-visibility.enabled",
+        preferences.layout_css_content_visibility_enabled
     );
     stylo_static_prefs::set_pref!(
         "layout.css.corner-shape.enabled",
@@ -135,6 +147,10 @@ pub fn set(preferences: Preferences) {
     stylo_static_prefs::set_pref!(
         "layout.css.dominant-baseline.enabled",
         preferences.layout_css_dominant_baseline_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.field-sizing.enabled",
+        preferences.layout_css_field_sizing_enabled
     );
     stylo_static_prefs::set_pref!(
         "layout.css.first-line.enabled",
@@ -201,6 +217,10 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_margin_rules_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.margin-trim.enabled",
+        preferences.layout_css_margin_trim_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.masking.enabled",
         preferences.layout_css_masking_enabled
     );
@@ -231,6 +251,10 @@ pub fn set(preferences: Preferences) {
     stylo_static_prefs::set_pref!(
         "layout.css.random.enabled",
         preferences.layout_css_random_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.resize.enabled",
+        preferences.layout_css_resize_enabled
     );
     stylo_static_prefs::set_pref!(
         "layout.css.ruby.enabled",
@@ -595,8 +619,11 @@ pub struct Preferences {
     pub layout_css_background_clip_border_area_enabled: bool,
     pub layout_css_background_clip_text_enabled: bool,
     pub layout_css_basic_shape_shape_enabled: bool,
+    pub layout_css_break_properties_enabled: bool,
     pub layout_css_contain_enabled: bool,
+    pub layout_css_contain_intrinsic_size_enabled: bool,
     pub layout_css_content_alt_text_enabled: bool,
+    pub layout_css_content_visibility_enabled: bool,
     pub layout_css_corner_shape_enabled: bool,
     pub layout_css_counters_enabled: bool,
     pub layout_css_cross_fade_enabled: bool,
@@ -604,6 +631,7 @@ pub struct Preferences {
     pub layout_css_display_animations_enabled: bool,
     pub layout_css_display_grid_lanes_enabled: bool,
     pub layout_css_dominant_baseline_enabled: bool,
+    pub layout_css_field_sizing_enabled: bool,
     pub layout_css_first_line_enabled: bool,
     pub layout_css_flexbox_balance_enabled: bool,
     pub layout_css_font_palette_enabled: bool,
@@ -620,6 +648,7 @@ pub struct Preferences {
     pub layout_css_light_dark_images_enabled: bool,
     pub layout_css_line_clamp_enabled: bool,
     pub layout_css_margin_rules_enabled: bool,
+    pub layout_css_margin_trim_enabled: bool,
     pub layout_css_masking_enabled: bool,
     pub layout_css_math_properties_enabled: bool,
     pub layout_css_motion_path_url_enabled: bool,
@@ -628,6 +657,7 @@ pub struct Preferences {
     pub layout_css_overflow_moz_hidden_unscrollable_enabled: bool,
     pub layout_css_overscroll_behavior_enabled: bool,
     pub layout_css_random_enabled: bool,
+    pub layout_css_resize_enabled: bool,
     pub layout_css_ruby_enabled: bool,
     pub layout_css_scroll_behavior_enabled: bool,
     pub layout_css_scroll_driven_animations_enabled: bool,
@@ -920,8 +950,11 @@ impl Preferences {
             layout_css_background_clip_border_area_enabled: false,
             layout_css_background_clip_text_enabled: false,
             layout_css_basic_shape_shape_enabled: false,
+            layout_css_break_properties_enabled: false,
             layout_css_contain_enabled: false,
+            layout_css_contain_intrinsic_size_enabled: false,
             layout_css_content_alt_text_enabled: false,
+            layout_css_content_visibility_enabled: false,
             layout_css_corner_shape_enabled: false,
             layout_css_counters_enabled: false,
             layout_css_cross_fade_enabled: false,
@@ -929,6 +962,7 @@ impl Preferences {
             layout_css_display_animations_enabled: false,
             layout_css_display_grid_lanes_enabled: false,
             layout_css_dominant_baseline_enabled: false,
+            layout_css_field_sizing_enabled: false,
             layout_css_first_line_enabled: false,
             layout_css_flexbox_balance_enabled: false,
             layout_css_font_palette_enabled: false,
@@ -945,6 +979,7 @@ impl Preferences {
             layout_css_light_dark_images_enabled: false,
             layout_css_line_clamp_enabled: false,
             layout_css_margin_rules_enabled: false,
+            layout_css_margin_trim_enabled: false,
             layout_css_masking_enabled: false,
             layout_css_math_properties_enabled: false,
             layout_css_motion_path_url_enabled: false,
@@ -953,6 +988,7 @@ impl Preferences {
             layout_css_overflow_moz_hidden_unscrollable_enabled: false,
             layout_css_overscroll_behavior_enabled: false,
             layout_css_random_enabled: false,
+            layout_css_resize_enabled: false,
             layout_css_ruby_enabled: false,
             layout_css_scroll_behavior_enabled: false,
             layout_css_scroll_driven_animations_enabled: false,
