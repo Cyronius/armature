@@ -5544,7 +5544,7 @@ impl Document {
         if let Some(state) = state {
             self.state_override.borrow_mut().insert(command_name, state);
         } else {
-            self.value_override.borrow_mut().remove(&command_name);
+            self.state_override.borrow_mut().remove(&command_name);
         }
     }
 
