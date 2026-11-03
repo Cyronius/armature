@@ -18,6 +18,7 @@ pub(crate) mod readablestreambyobreader;
 pub(crate) mod readablestreambyobrequest;
 pub(crate) mod readablestreamdefaultcontroller;
 pub(crate) mod readablestreamdefaultreader;
+pub(crate) mod readablestreamfrom;
 pub(crate) mod readablestreamgenericreader;
 pub(crate) mod transformstream;
 pub(crate) mod transformstreamdefaultcontroller;

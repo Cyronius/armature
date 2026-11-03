@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use std::rc::Rc;
+
 use dom_struct::dom_struct;
 use js::context::JSContext;
 use js::jsapi::{Heap, JSObject};
@@ -15,12 +17,14 @@ use crate::dom::bindings::callback::ExceptionHandling;
 use crate::dom::bindings::codegen::Bindings::UnderlyingSourceBinding::UnderlyingSource as JsUnderlyingSource;
 use crate::dom::bindings::codegen::UnionTypes::ReadableStreamDefaultControllerOrReadableByteStreamController as Controller;
 use crate::dom::bindings::error::Error;
+use crate::dom::bindings::iteration::IteratorRecord;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::messageport::MessagePort;
 use crate::dom::promise::{Promise, RootedPromise, TracedPromise};
 use crate::dom::stream::defaultteeunderlyingsource::DefaultTeeUnderlyingSource;
+use crate::dom::stream::readablestreamfrom;
 use crate::dom::stream::transformstream::TransformStream;
 
 /// A variation of [UnderlyingSourceType] used for storing state within UnderlyingContainer.
@@ -36,6 +40,7 @@ enum UnderlyingSource {
     Transfer(Dom<MessagePort>),
     Transform(Dom<TransformStream>, TracedPromise),
     TeeByte(Dom<ByteTeeUnderlyingSource>),
+    Iterable(Rc<IteratorRecord>),
 }
 
 impl UnderlyingSource {
@@ -62,6 +67,7 @@ impl From<UnderlyingSourceType<'_>> for UnderlyingSource {
             UnderlyingSourceType::TeeByte(source) => {
                 UnderlyingSource::TeeByte(Dom::from_ref(source))
             },
+            UnderlyingSourceType::Iterable(record) => UnderlyingSource::Iterable(record.clone()),
         }
     }
 }
@@ -91,6 +97,8 @@ pub(crate) enum UnderlyingSourceType<'a> {
     Transform(&'a TransformStream, &'a RootedPromise),
     /// Tee Byte
     TeeByte(&'a ByteTeeUnderlyingSource),
+    /// The iterator of the iterable of `ReadableStream.from()`.
+    Iterable(&'a Rc<IteratorRecord>),
 }
 
 impl UnderlyingSourceType<'_> {
@@ -200,6 +208,9 @@ impl UnderlyingSourceContainer {
                 // Call the cancel algorithm for the appropriate branch.
                 tee_underlyin_source.cancel_algorithm(cx, reason)
             },
+            UnderlyingSource::Iterable(record) => Some(Ok(readablestreamfrom::cancel_algorithm(
+                cx, global, record, reason,
+            ))),
             _ => None,
         }
     }
@@ -243,6 +254,17 @@ impl UnderlyingSourceContainer {
             UnderlyingSource::TeeByte(tee_underlyin_source) => {
                 // Call the pull algorithm for the appropriate branch.
                 Some(Ok(tee_underlyin_source.pull_algorithm(cx, None)))
+            },
+            UnderlyingSource::Iterable(record) => {
+                let Controller::ReadableStreamDefaultController(controller) = controller else {
+                    unreachable!("The stream of ReadableStream.from() has a default controller");
+                };
+                Some(Ok(readablestreamfrom::pull_algorithm(
+                    cx,
+                    &self.global(),
+                    record,
+                    &controller,
+                )))
             },
             // Note: other source type have no pull steps for now.
             UnderlyingSource::Transform(stream, _) => {

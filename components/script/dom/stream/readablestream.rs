@@ -60,6 +60,7 @@ use crate::dom::stream::readablestreambyobreader::ReadableStreamBYOBReader;
 use crate::dom::stream::readablestreamdefaultcontroller::ReadableStreamDefaultController;
 use crate::dom::stream::readablestreamdefaultreader::{ReadRequest, ReadableStreamDefaultReader};
 use crate::dom::stream::readablestreamasynciterator::ReadableStreamAsyncIteratorState;
+use crate::dom::stream::readablestreamfrom::readable_stream_from_iterable;
 use crate::dom::bindings::asynciterable::AsyncIterableIterator;
 use crate::dom::types::ReadableStreamAsyncIterator;
 use crate::dom::stream::defaultteeunderlyingsource::DefaultTeeCancelAlgorithm;
@@ -2195,6 +2196,16 @@ impl ReadableStreamMethods<crate::DomTypeHolder> for ReadableStream {
         };
 
         Ok(stream)
+    }
+
+    /// <https://streams.spec.whatwg.org/#rs-from>
+    fn From(
+        cx: &mut JSContext,
+        global: &GlobalScope,
+        async_iterable: SafeHandleValue,
+    ) -> Fallible<DomRoot<ReadableStream>> {
+        // Return ? ReadableStreamFromIterable(asyncIterable).
+        readable_stream_from_iterable(cx, global, async_iterable)
     }
 
     /// <https://streams.spec.whatwg.org/#rs-locked>
