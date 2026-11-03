@@ -116,3 +116,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `counter-reset` and `counter-increment` (css/css-lists/parsing/counter-set-*, and the `li value` presentational
   hint in html/rendering/non-replaced-elements/lists).
 - Upstream: Could go upstream as a Servo preference.
+
+### AS-306: Build margin-trim for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `margin-trim` for Servo behind `layout.css.margin-trim.enabled`, the name Gecko also uses
+  (css/css-box/parsing/margin-trim*). Parsing only; Servo's layout does not trim margins.
+- Upstream: Could go upstream as a Servo preference.

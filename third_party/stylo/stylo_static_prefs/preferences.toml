@@ -48,6 +48,8 @@
 "layout.css.light-dark.images.enabled" = false
 "layout.css.line-clamp.enabled" = false
 "layout.css.margin-rules.enabled" = false
+# Armature (AS-306): Servo preference for the properties this change enables.
+"layout.css.margin-trim.enabled" = false
 "layout.css.marker.restricted" = true
 "layout.css.masking.enabled" = false
 "layout.css.math-properties.enabled" = false
