@@ -95,3 +95,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   css/css-overflow/parsing/scrollbar-gutter-*.html and css/css-overflow/inheritance.html. Servo's scrollbars take no
   space, so the gutter is always zero wide, which is what the property means for overlay scrollbars.
 - Upstream: Could go upstream as is.
+
+### AS-103: Enable `overflow-anchor` for Servo
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `overflow-anchor` for Servo behind the new `layout.css.scroll-anchoring.enabled` preference (the name
+  Gecko uses). Only parsing and computed values; Servo does no scroll anchoring.
+- Upstream: Could go upstream as is.

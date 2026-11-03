@@ -56,6 +56,8 @@
 "layout.css.random.enabled" = false
 "layout.css.revert-rule.enabled" = true
 "layout.css.ruby.enabled" = false
+# Armature (AS-103): Gates overflow-anchor for Servo.
+"layout.css.scroll-anchoring.enabled" = false
 "layout.css.scroll-behavior.enabled" = false
 "layout.css.scroll-driven-animations.enabled" = false
 # Armature (AS-101): Gates the scroll snap properties for Servo.
