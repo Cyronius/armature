@@ -2262,8 +2262,14 @@ impl ReadableStreamMethods<crate::DomTypeHolder> for ReadableStream {
         // Set iterator’s reader to reader.
         // Let preventCancel be args[0]["preventCancel"].
         // Set iterator’s prevent cancel to preventCancel.
-        let state = ReadableStreamAsyncIteratorState::new(&reader, options.preventCancel);
-        Ok(AsyncIterableIterator::new(cx, self, state))
+        Ok(AsyncIterableIterator::new(
+            cx,
+            self,
+            Box::new(ReadableStreamAsyncIteratorState::new(
+                &reader,
+                options.preventCancel,
+            )),
+        ))
     }
 
     /// <https://streams.spec.whatwg.org/#rs-tee>

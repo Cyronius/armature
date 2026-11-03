@@ -44,6 +44,7 @@ pub(crate) trait AsyncIterable:
 {
     /// The state of an asynchronous iterator, which the asynchronous iterator initialization
     /// steps set up.
+    #[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
     type IteratorState: JSTraceable + MallocSizeOf + 'static;
 
     /// <https://webidl.spec.whatwg.org/#dfn-get-the-next-iteration-result>
@@ -110,7 +111,7 @@ where
     pub(crate) fn new(
         realm: &mut CurrentRealm,
         target: &T,
-        state: T::IteratorState,
+        state: Box<T::IteratorState>,
     ) -> DomRoot<Self> {
         let global = GlobalScope::from_current_realm(realm);
         let iterator = reflect_dom_object(
@@ -118,7 +119,7 @@ where
             Box::new(AsyncIterableIterator {
                 reflector_: Reflector::new(),
                 target: Dom::from_ref(target),
-                state,
+                state: *state,
                 ongoing_promise: DomRefCell::new(None),
                 is_finished: Cell::new(false),
                 end_of_iteration: Heap::default(),
@@ -147,12 +148,17 @@ impl<T: AsyncIterable> AsyncIterableIterator<T> {
         value.is_object() && value.to_object() == self.end_of_iteration.get()
     }
 
-    /// Runs `steps` after `ongoing_promise` settled, or now, if there is no ongoing promise, and
-    /// sets the ongoing promise to the result.
+    /// Runs the nextSteps, or the returnSteps with `return_value` if it is `Some`, after
+    /// `ongoing_promise` settled, or now, if there is no ongoing promise, and sets the ongoing
+    /// promise to the result.
     ///
     /// Steps 9 to 11 of the `next()` and the `return()` methods of
     /// <https://webidl.spec.whatwg.org/#es-asynchronous-iterator-prototype-object>.
-    fn chain_to_ongoing_promise(&self, cx: &mut JSContext, steps: IteratorSteps) -> RootedPromise {
+    fn chain_to_ongoing_promise(
+        &self,
+        cx: &mut JSContext,
+        return_value: Option<HandleValue>,
+    ) -> RootedPromise {
         // Let ongoingPromise be object’s ongoing promise.
         let ongoing_promise = self
             .ongoing_promise
@@ -170,15 +176,20 @@ impl<T: AsyncIterable> AsyncIterableIterator<T> {
                 // Let onSettled be CreateBuiltinFunction(steps, « »).
                 // Perform PerformPromiseThen(ongoingPromise, onSettled, onSettled,
                 // afterOngoingPromiseCapability).
-                let on_settled = || {
-                    Box::new(RunIteratorSteps {
+                let handler = PromiseNativeHandler::new(
+                    cx,
+                    &global,
+                    Some(Box::new(RunIteratorSteps {
                         iterator: Dom::from_ref(self),
-                        steps: steps.clone(),
+                        steps: IteratorSteps::new(return_value),
                         capability: after_ongoing_promise.to_traced(),
-                    }) as Box<dyn Callback>
-                };
-                let handler =
-                    PromiseNativeHandler::new(cx, &global, Some(on_settled()), Some(on_settled()));
+                    })),
+                    Some(Box::new(RunIteratorSteps {
+                        iterator: Dom::from_ref(self),
+                        steps: IteratorSteps::new(return_value),
+                        capability: after_ongoing_promise.to_traced(),
+                    })),
+                );
                 let mut realm = enter_auto_realm(cx, &*global);
                 ongoing_promise.append_native_handler(&mut realm.current_realm(), &handler);
 
@@ -186,20 +197,13 @@ impl<T: AsyncIterable> AsyncIterableIterator<T> {
                 after_ongoing_promise
             },
             // Otherwise: Set object’s ongoing promise to the result of running steps.
-            None => self.run_steps(cx, &steps),
+            None => match return_value {
+                None => self.next_steps(cx),
+                Some(value) => self.return_steps(cx, value),
+            },
         };
         *self.ongoing_promise.borrow_mut() = Some(promise.to_traced());
         promise
-    }
-
-    fn run_steps(&self, cx: &mut JSContext, steps: &IteratorSteps) -> RootedPromise {
-        match steps {
-            IteratorSteps::Next => self.next_steps(cx),
-            IteratorSteps::Return(value) => {
-                rooted!(&in(cx) let value = value.get());
-                self.return_steps(cx, value.handle())
-            },
-        }
     }
 
     /// The nextSteps of the `next()` method of
@@ -272,15 +276,14 @@ impl<T: AsyncIterable> AsyncIterator<DomTypeHolder> for AsyncIterableIterator<T>
     /// Note: The bindings check that the this value is an asynchronous iterator of the
     /// interface.
     fn next(&self, cx: &mut JSContext) -> RootedPromise {
-        self.chain_to_ongoing_promise(cx, IteratorSteps::Next)
+        self.chain_to_ongoing_promise(cx, None)
     }
 
     /// The `return()` method of
     /// <https://webidl.spec.whatwg.org/#es-asynchronous-iterator-prototype-object>.
     fn r#return(&self, cx: &mut JSContext, value: HandleValue) -> RootedPromise {
         // Steps 9 to 11, which run the returnSteps.
-        let ongoing_promise =
-            self.chain_to_ongoing_promise(cx, IteratorSteps::Return(Heap::boxed(value.get())));
+        let ongoing_promise = self.chain_to_ongoing_promise(cx, Some(value));
 
         // Let returnPromiseCapability be ! NewPromiseCapability(%Promise%).
         let global = self.global();
@@ -328,11 +331,12 @@ enum IteratorSteps {
     Return(#[ignore_malloc_size_of = "mozjs"] Box<Heap<JSVal>>),
 }
 
-impl Clone for IteratorSteps {
-    fn clone(&self) -> Self {
-        match self {
-            IteratorSteps::Next => IteratorSteps::Next,
-            IteratorSteps::Return(value) => IteratorSteps::Return(Heap::boxed(value.get())),
+impl IteratorSteps {
+    /// The nextSteps, or the returnSteps with `return_value` if it is `Some`.
+    fn new(return_value: Option<HandleValue>) -> IteratorSteps {
+        match return_value {
+            None => IteratorSteps::Next,
+            Some(value) => IteratorSteps::Return(Heap::boxed(value.get())),
         }
     }
 }
@@ -348,7 +352,13 @@ struct RunIteratorSteps<T: AsyncIterable> {
 
 impl<T: AsyncIterable> Callback for RunIteratorSteps<T> {
     fn callback(&self, cx: &mut CurrentRealm, _value: HandleValue) {
-        let promise = self.iterator.run_steps(cx, &self.steps);
+        let promise = match &self.steps {
+            IteratorSteps::Next => self.iterator.next_steps(cx),
+            IteratorSteps::Return(value) => {
+                rooted!(&in(cx) let value = value.get());
+                self.iterator.return_steps(cx, value.handle())
+            },
+        };
         self.capability.resolve_native(cx, &promise);
     }
 }
