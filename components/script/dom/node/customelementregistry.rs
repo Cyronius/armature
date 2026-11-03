@@ -37,6 +37,7 @@ use crate::dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
 use crate::dom::bindings::codegen::Bindings::FunctionBinding::Function;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::Window_Binding::WindowMethods;
 use crate::dom::bindings::conversions::{ConversionResult, StringificationBehavior, get_property};
+use crate::dom::bindings::domname::is_valid_element_local_name;
 use crate::dom::bindings::error::{
     Error, ErrorResult, Fallible, report_pending_exception, throw_dom_exception,
 };
@@ -1586,66 +1587,27 @@ impl ElementQueue {
 
 /// <https://html.spec.whatwg.org/multipage/#valid-custom-element-name>
 pub(crate) fn is_valid_custom_element_name(name: &str) -> bool {
-    // Custom elment names must match:
-    // PotentialCustomElementName ::= [a-z] (PCENChar)* '-' (PCENChar)*
-    let mut chars = name.chars();
-    if !chars.next().is_some_and(|c| c.is_ascii_lowercase()) {
-        return false;
-    }
-
-    let mut has_dash = false;
-
-    for c in chars {
-        if c == '-' {
-            has_dash = true;
-            continue;
-        }
-
-        if !is_potential_custom_element_char(c) {
-            return false;
-        }
-    }
-
-    if !has_dash {
-        return false;
-    }
-
-    if name == "annotation-xml" ||
-        name == "color-profile" ||
-        name == "font-face" ||
-        name == "font-face-src" ||
-        name == "font-face-uri" ||
-        name == "font-face-format" ||
-        name == "font-face-name" ||
-        name == "missing-glyph"
-    {
-        return false;
-    }
-
-    true
-}
-
-/// Check if this character is a PCENChar
-/// <https://html.spec.whatwg.org/multipage/#prod-pcenchar>
-fn is_potential_custom_element_char(c: char) -> bool {
-    c == '-' ||
-        c == '.' ||
-        c == '_' ||
-        c == '\u{B7}' ||
-        c.is_ascii_digit() ||
-        c.is_ascii_lowercase() ||
-        ('\u{C0}'..='\u{D6}').contains(&c) ||
-        ('\u{D8}'..='\u{F6}').contains(&c) ||
-        ('\u{F8}'..='\u{37D}').contains(&c) ||
-        ('\u{37F}'..='\u{1FFF}').contains(&c) ||
-        ('\u{200C}'..='\u{200D}').contains(&c) ||
-        ('\u{203F}'..='\u{2040}').contains(&c) ||
-        ('\u{2070}'..='\u{218F}').contains(&c) ||
-        ('\u{2C00}'..='\u{2FEF}').contains(&c) ||
-        ('\u{3001}'..='\u{D7FF}').contains(&c) ||
-        ('\u{F900}'..='\u{FDCF}').contains(&c) ||
-        ('\u{FDF0}'..='\u{FFFD}').contains(&c) ||
-        ('\u{10000}'..='\u{EFFFF}').contains(&c)
+    // > A string name is a valid custom element name if all of the following are true:
+    // > - name is a valid element local name;
+    // > - name's 0th code point is an ASCII lower alpha;
+    // > - name does not contain any ASCII upper alphas;
+    // > - name contains a U+002D (-); and
+    // > - name is not any of the following: ...
+    is_valid_element_local_name(name) &&
+        name.starts_with(|c: char| c.is_ascii_lowercase()) &&
+        !name.contains(|c: char| c.is_ascii_uppercase()) &&
+        name.contains('-') &&
+        !matches!(
+            name,
+            "annotation-xml" |
+                "color-profile" |
+                "font-face" |
+                "font-face-src" |
+                "font-face-uri" |
+                "font-face-format" |
+                "font-face-name" |
+                "missing-glyph"
+        )
 }
 
 fn is_extendable_element_interface(element: &str) -> bool {
