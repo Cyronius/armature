@@ -1178,7 +1178,7 @@ pub mod gap {
     }
 }
 
-#[cfg(feature = "gecko")]
+// Armature (AS-201): Also build the marker shorthand for Servo.
 pub mod marker {
     pub use crate::properties::generated::shorthands::marker::*;
 
