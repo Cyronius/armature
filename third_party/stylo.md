@@ -90,3 +90,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `svg/painting`, `svg/pservers`, `svg/text`, `svg/coordinate-systems`, `svg/styling`, `css/css-masking` and
   `css/filter-effects`.
 - Upstream: Could go upstream as is; the properties need no Gecko-only code.
+
+### AS-202: Build accent-color for Servo
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `accent-color` for Servo behind the new preference `layout.css.accent-color.enabled`, for the
+  `css/css-ui` parsing, computed and animation tests. Servo's form controls do not use it yet.
+- Upstream: Could go upstream as is.

@@ -1,6 +1,8 @@
 "dom.select.customizable_select.enabled" = false
 "dom.viewTransitions.cross-document.enabled" = false
 "gfx.font_rendering.opentype_svg.enabled" = false
+# Armature (AS-202): Gates the property for Servo.
+"layout.css.accent-color.enabled" = false
 "layout.css.alpha-color-function.enabled" = true
 "layout.css.anchor-positioning.enabled" = false
 "layout.css.appearance-base.enabled" = false
