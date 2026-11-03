@@ -17,6 +17,8 @@
 "layout.css.contain-intrinsic-size.enabled" = false
 "layout.css.contain.enabled" = false
 "layout.css.container-queries.enabled" = false
+# Armature (AS-302): Servo preference for the properties this change enables.
+"layout.css.content-visibility.enabled" = false
 "layout.css.content.alt-text.enabled" = false
 "layout.css.corner-shape.enabled" = false
 "layout.css.counters.enabled" = false

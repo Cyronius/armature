@@ -87,3 +87,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   values and interpolation (css/css-sizing/contain-intrinsic-size/parsing and animation). Servo's layout does not
   implement size containment, so the properties have no layout effect yet.
 - Upstream: Could go upstream as a Servo preference.
+
+### AS-302: Build content-visibility for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `style/properties/helpers/animated_properties.mako.rs`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `content-visibility` for Servo behind the new `layout.css.content-visibility.enabled` preference, with
+  its discrete animation behaviour (css/css-contain/content-visibility/parsing and content-visibility-interpolation).
+  Parsing only: Servo's layout does not skip the contents, and the Gecko-only style adjustments for containment are
+  left as they are.
+- Upstream: Could go upstream as a Servo preference.
