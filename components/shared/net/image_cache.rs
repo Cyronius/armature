@@ -57,8 +57,21 @@ pub struct VectorImage {
     pub id: VectorImageId,
     pub svg_id: Option<Uuid>,
     pub metadata: ImageMetadata,
+    pub natural_dimensions: VectorImageNaturalDimensions,
     pub cors_status: CorsStatus,
     pub load_time: Option<CrossProcessInstant>,
+}
+
+/// The natural dimensions of an SVG image, which come from the `width`, `height` and
+/// `viewBox` attributes of its outermost `<svg>` element. Unlike a raster image, an SVG
+/// image can lack a natural width, a natural height or a natural aspect ratio. Lengths
+/// are in CSS pixels. See <https://svgwg.org/svg2-draft/coords.html#SizingSVGInCSS>.
+#[derive(Clone, Copy, Debug, Default, Deserialize, MallocSizeOf, PartialEq, Serialize)]
+pub struct VectorImageNaturalDimensions {
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    /// The natural aspect ratio, as width divided by height.
+    pub ratio: Option<f32>,
 }
 
 impl Image {
@@ -229,11 +242,14 @@ pub trait ImageCache: Sync + Send {
     /// Returns `Some` if the given `image_id` has already been rasterized at the given `size`.
     /// Otherwise, triggers a new job to perform the rasterization. If a notification
     /// is needed after rasterization is completed, the `add_rasterization_complete_listener`
-    /// API below can be used to add a listener.
+    /// API below can be used to add a listener. `device_pixel_ratio` is the number of device
+    /// pixels per CSS pixel in `size`, which an image without a `viewBox` needs to lay out its
+    /// content at its own scale.
     fn rasterize_vector_image(
         &self,
         image_id: VectorImageId,
         size: DeviceIntSize,
+        device_pixel_ratio: f32,
         svg_id: Option<Uuid>,
     ) -> Option<RasterImage>;
 

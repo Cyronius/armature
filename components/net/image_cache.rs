@@ -19,6 +19,7 @@ use net_traits::image_cache::{
     FontResolver, Image, ImageCache, ImageCacheFactory, ImageCacheResponseCallback,
     ImageCacheResponseMessage, ImageCacheResult, ImageLoadListener, ImageOrMetadataAvailable,
     ImageResponse, PendingImageId, RasterizationCompleteResponse, VectorImage,
+    VectorImageNaturalDimensions,
 };
 use net_traits::request::CorsSettings;
 use net_traits::{FetchResponseMsg, Metadata, NetworkError};
@@ -82,15 +83,260 @@ const MAX_SVG_PIXMAP_DIMENSION: u32 = 5000;
 // Helper functions.
 // ======================================================================
 
+/// How the `width` or `height` attribute of an outermost `<svg>` element contributes to
+/// the natural dimensions of an SVG image.
+/// See <https://svgwg.org/svg2-draft/coords.html#SizingSVGInCSS>.
+#[derive(Clone, Copy, MallocSizeOf, PartialEq)]
+enum OutermostSvgSize {
+    /// The attribute is missing or can't be parsed, so it behaves as `auto`.
+    Auto,
+    /// A negative length is invalid, so it also behaves as `auto`.
+    Negative,
+    /// A percentage, as a fraction. It can't be resolved against anything when determining
+    /// the natural dimensions, so it doesn't give a natural dimension.
+    Percentage(f32),
+    /// An absolute length in CSS pixels, which is the natural dimension. A length of zero
+    /// disables rendering of the element.
+    Absolute(f32),
+}
+
+impl OutermostSvgSize {
+    fn parse(value: Option<&str>) -> Self {
+        let Some(length) = value.and_then(|value| value.trim().parse::<svgtypes::Length>().ok())
+        else {
+            return Self::Auto;
+        };
+        if !length.number.is_finite() {
+            return Self::Auto;
+        }
+        if length.number < 0. {
+            return Self::Negative;
+        }
+        // The CSS absolute length conversions. Font-relative units are resolved against a
+        // `font-size` of `medium`, with `ex` taken as half an `em` like usvg does.
+        let pixels_per_unit = match length.unit {
+            svgtypes::LengthUnit::Percent => return Self::Percentage(length.number as f32 / 100.),
+            svgtypes::LengthUnit::None | svgtypes::LengthUnit::Px => 1.,
+            svgtypes::LengthUnit::Em => 16.,
+            svgtypes::LengthUnit::Ex => 8.,
+            svgtypes::LengthUnit::In => 96.,
+            svgtypes::LengthUnit::Cm => 96. / 2.54,
+            svgtypes::LengthUnit::Mm => 96. / 25.4,
+            svgtypes::LengthUnit::Pt => 4. / 3.,
+            svgtypes::LengthUnit::Pc => 16.,
+        };
+        Self::Absolute((length.number * pixels_per_unit) as f32)
+    }
+
+    fn natural_dimension(self) -> Option<f32> {
+        match self {
+            Self::Absolute(length) => Some(length),
+            Self::Auto | Self::Negative | Self::Percentage(_) => None,
+        }
+    }
+
+    /// The length this resolves to in a viewport of the given length, unless it is absolute.
+    fn resolve_against_viewport(self, viewport_length: f32) -> Option<f32> {
+        match self {
+            Self::Absolute(_) => None,
+            Self::Auto | Self::Negative => Some(viewport_length),
+            Self::Percentage(fraction) => Some(fraction * viewport_length),
+        }
+    }
+}
+
+/// An SVG image without a `viewBox`, whose outermost `<svg>` element lacks an absolute width
+/// or height. usvg resolves such sizes against a fixed size of 100 by 100 and then shrinks the
+/// image to its content, but they should be resolved against the viewport that the image is
+/// drawn in, with its content at its own scale. So the image is parsed again for each size it
+/// is rasterized at, with those sizes replaced by the size of the viewport.
+#[derive(Clone, MallocSizeOf)]
+struct ViewportDependentSvg {
+    #[conditional_malloc_size_of]
+    text: Arc<String>,
+    width: OutermostSvgSize,
+    height: OutermostSvgSize,
+}
+
+impl ViewportDependentSvg {
+    fn tree_for_viewport(
+        &self,
+        viewport_width: f32,
+        viewport_height: f32,
+        usvg_options: &usvg::Options,
+    ) -> Option<usvg::Tree> {
+        let document = parse_xml(&self.text).ok()?;
+        let text = with_outermost_svg_sizes(
+            &self.text,
+            &document,
+            self.width
+                .resolve_against_viewport(viewport_width)
+                .map(Some),
+            self.height
+                .resolve_against_viewport(viewport_height)
+                .map(Some),
+        );
+        usvg::Tree::from_str(&text, usvg_options).ok()
+    }
+}
+
+const INVALID_SVG_DOCUMENT: &str = "Not a valid SVG document";
+
+fn parse_xml(text: &str) -> Result<usvg::roxmltree::Document<'_>, &'static str> {
+    // These are the options that `usvg::Tree::from_str` uses.
+    let options = usvg::roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    usvg::roxmltree::Document::parse_with_options(text, options).map_err(|error| {
+        warn!("Error when parsing SVG data: {error}");
+        INVALID_SVG_DOCUMENT
+    })
+}
+
+/// Returns `text`, the source of `document`, with the `width` and `height` attributes of its
+/// root element changed: `None` keeps an attribute, `Some(None)` removes it and
+/// `Some(Some(length))` sets it to that length.
+fn with_outermost_svg_sizes(
+    text: &str,
+    document: &usvg::roxmltree::Document,
+    width: Option<Option<f32>>,
+    height: Option<Option<f32>>,
+) -> String {
+    let root = document.root_element();
+    let element_start = root.range().start;
+    // New attributes go right after the element name.
+    let after_element_name = text[element_start..]
+        .find(|character: char| character.is_whitespace() || matches!(character, '/' | '>'))
+        .map_or(element_start, |offset| element_start + offset);
+    let mut edits: Vec<_> = [("width", width), ("height", height)]
+        .into_iter()
+        .filter_map(|(name, value)| {
+            let range = root
+                .attributes()
+                .find(|attribute| attribute.namespace().is_none() && attribute.name() == name)
+                .map_or(after_element_name..after_element_name, |attribute| {
+                    attribute.range()
+                });
+            let replacement =
+                value?.map_or_else(String::new, |length| format!(" {name}=\"{length}\" "));
+            Some((range, replacement))
+        })
+        .collect();
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    let mut text = text.to_owned();
+    for (range, replacement) in edits {
+        text.replace_range(range, &replacement);
+    }
+    text
+}
+
+/// <https://svgwg.org/svg2-draft/coords.html#SizingSVGInCSS>
+fn natural_dimensions_of_outermost_svg_element(
+    width: OutermostSvgSize,
+    height: OutermostSvgSize,
+    view_box: Option<svgtypes::ViewBox>,
+) -> VectorImageNaturalDimensions {
+    let width = width.natural_dimension();
+    let height = height.natural_dimension();
+    // > If the width and height sizing properties on the outermost svg element are both
+    // > absolute values, the natural aspect ratio is width / height.
+    // > Otherwise, if a positive-sized viewBox is specified, the natural aspect ratio is
+    // > the aspect ratio of the viewBox.
+    // A degenerate ratio, where either part is zero, counts as no natural aspect ratio.
+    // See <https://drafts.csswg.org/css-images/#natural-aspect-ratio>.
+    let ratio = match (width, height) {
+        (Some(width), Some(height)) => Some(width / height),
+        _ => view_box.map(|view_box| (view_box.w / view_box.h) as f32),
+    }
+    .filter(|ratio| ratio.is_normal());
+    VectorImageNaturalDimensions {
+        width,
+        height,
+        ratio,
+    }
+}
+
+struct ParsedSvgDocument {
+    tree: usvg::Tree,
+    natural_dimensions: VectorImageNaturalDimensions,
+    viewport_dependent: Option<ViewportDependentSvg>,
+}
+
 fn parse_svg_document_in_memory(
     bytes: &[u8],
     usvg_options: Arc<usvg::Options>,
-) -> Result<usvg::Tree, &'static str> {
-    usvg::Tree::from_data(bytes, &usvg_options)
-        .inspect_err(|error| {
-            warn!("Error when parsing SVG data: {error}");
-        })
-        .map_err(|_| "Not a valid SVG document")
+) -> Result<ParsedSvgDocument, &'static str> {
+    // usvg throws away whether the root `width`, `height` and `viewBox` attributes were
+    // given, so parse the XML first and read them from the document.
+    let decompressed;
+    let bytes = if bytes.starts_with(&[0x1f, 0x8b]) {
+        decompressed = usvg::decompress_svgz(bytes).map_err(|_| INVALID_SVG_DOCUMENT)?;
+        &decompressed
+    } else {
+        bytes
+    };
+    let text = std::str::from_utf8(bytes).map_err(|_| INVALID_SVG_DOCUMENT)?;
+    let document = parse_xml(text)?;
+    let root = document.root_element();
+    let width = OutermostSvgSize::parse(root.attribute("width"));
+    let height = OutermostSvgSize::parse(root.attribute("height"));
+    let view_box_attribute = root.attribute("viewBox");
+    let view_box =
+        view_box_attribute.and_then(|view_box| view_box.parse::<svgtypes::ViewBox>().ok());
+    let natural_dimensions = natural_dimensions_of_outermost_svg_element(width, height, view_box);
+    // > A negative value for <width> or <height> is an error and invalidates the 'viewBox'
+    // > attribute. A value of zero disables rendering of the element.
+    // <https://svgwg.org/svg2-draft/coords.html#ViewBoxAttribute>
+    let view_box_disables_rendering = view_box_attribute.is_some_and(|view_box| {
+        let numbers: Vec<f64> = svgtypes::NumberListParser::from(view_box)
+            .map_while(Result::ok)
+            .collect();
+        matches!(numbers[..], [_, _, width, height] if width == 0. || height == 0.)
+    });
+
+    let to_parse_error = |error| {
+        warn!("Error when parsing SVG data: {error}");
+        INVALID_SVG_DOCUMENT
+    };
+    if view_box_disables_rendering || [width, height].contains(&OutermostSvgSize::Absolute(0.)) {
+        // A width or height of zero, of the element or of its `viewBox`, disables rendering.
+        // usvg rejects some of these documents, so render an empty document instead.
+        let tree = usvg::Tree::from_str(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>",
+            &usvg_options,
+        )
+        .map_err(to_parse_error)?;
+        return Ok(ParsedSvgDocument {
+            tree,
+            natural_dimensions,
+            viewport_dependent: None,
+        });
+    }
+
+    // usvg rejects negative sizes, which behave as `auto`, so remove them.
+    let remove_if_negative =
+        |size: OutermostSvgSize| (size == OutermostSvgSize::Negative).then_some(None);
+    let text = with_outermost_svg_sizes(
+        text,
+        &document,
+        remove_if_negative(width),
+        remove_if_negative(height),
+    );
+    let tree = usvg::Tree::from_str(&text, &usvg_options).map_err(to_parse_error)?;
+    let has_absolute_size = |size| matches!(size, OutermostSvgSize::Absolute(_));
+    let viewport_dependent = (view_box.is_none() &&
+        !(has_absolute_size(width) && has_absolute_size(height)))
+    .then(|| ViewportDependentSvg {
+        text: Arc::new(text),
+        width,
+        height,
+    });
+    Ok(ParsedSvgDocument {
+        tree,
+        natural_dimensions,
+        viewport_dependent,
+    })
 }
 
 fn decode_bytes_sync(
@@ -111,9 +357,11 @@ fn decode_bytes_sync(
     let image = if is_svg_document {
         parse_svg_document_in_memory(bytes, usvg_options)
             .ok()
-            .map(|svg_tree| {
+            .map(|document| {
                 DecodedImage::Vector(VectorImageData {
-                    svg_tree: Arc::new(svg_tree),
+                    svg_tree: Arc::new(document.tree),
+                    natural_dimensions: document.natural_dimensions,
+                    viewport_dependent: document.viewport_dependent,
                     cors_status: cors,
                 })
             })
@@ -249,6 +497,8 @@ impl CompletedLoad {
 struct VectorImageData {
     #[conditional_malloc_size_of]
     svg_tree: Arc<usvg::Tree>,
+    natural_dimensions: VectorImageNaturalDimensions,
+    viewport_dependent: Option<ViewportDependentSvg>,
     cors_status: CorsStatus,
 }
 
@@ -697,6 +947,7 @@ impl ImageCacheStore {
                     id: key,
                     svg_id: None,
                     metadata,
+                    natural_dimensions: vector_image.natural_dimensions,
                     cors_status: vector_image.cors_status,
                     load_time: pending_load.response_end,
                 };
@@ -1056,6 +1307,7 @@ impl ImageCache for ImageCacheImpl {
         &self,
         image_id: PendingImageId,
         requested_size: DeviceIntSize,
+        device_pixel_ratio: f32,
         svg_id: Option<Uuid>,
     ) -> Option<RasterImage> {
         let mut store = self.store.lock();
@@ -1124,11 +1376,8 @@ impl ImageCache for ImageCacheImpl {
         }
 
         let store = self.store.clone();
+        let usvg_options = self.usvg_options.clone();
         self.thread_pool.spawn(move || {
-            let transform = tiny_skia::Transform::from_scale(
-                tinyskia_requested_size.width() as f32 / natural_size.width() as f32,
-                tinyskia_requested_size.height() as f32 / natural_size.height() as f32,
-            );
             let mut pixmap = tiny_skia::Pixmap::new(
                 tinyskia_requested_size.width(),
                 tinyskia_requested_size.height(),
@@ -1149,7 +1398,20 @@ impl ImageCache for ImageCacheImpl {
             // doesn't use internal global state that could become invalid after the panic.
             SUPPRESS_ABORT_IN_PANIC_HOOK.set(true);
             let resvg_result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                resvg::render(&vector_image.svg_tree, transform, &mut pixmap.as_mut());
+                let viewport_tree = vector_image.viewport_dependent.as_ref().and_then(|svg| {
+                    svg.tree_for_viewport(
+                        requested_size.width as f32 / device_pixel_ratio,
+                        requested_size.height as f32 / device_pixel_ratio,
+                        &usvg_options,
+                    )
+                });
+                let svg_tree = viewport_tree.as_ref().unwrap_or(&vector_image.svg_tree);
+                let natural_size = svg_tree.size().to_int_size();
+                let transform = tiny_skia::Transform::from_scale(
+                    tinyskia_requested_size.width() as f32 / natural_size.width() as f32,
+                    tinyskia_requested_size.height() as f32 / natural_size.height() as f32,
+                );
+                resvg::render(svg_tree, transform, &mut pixmap.as_mut());
 
                 let bytes = pixmap.take();
                 let frame = ImageFrame {

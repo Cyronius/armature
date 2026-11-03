@@ -10,6 +10,7 @@ use layout_api::{
     LayoutNodeType as ScriptLayoutNodeType, NodeRenderingType, SVGElementData,
 };
 use malloc_size_of_derive::MallocSizeOf;
+use net_traits::image_cache::Image;
 use script::layout_dom::ServoLayoutNode;
 use servo_arc::Arc as ServoArc;
 use servo_base::text::{AssumeUnder4GB, RangeAny, Utf32CodeUnits};
@@ -33,7 +34,7 @@ use crate::formatting_contexts::IndependentFormattingContext;
 use crate::fragment_tree::{Fragment, FragmentFlags};
 use crate::geom::PhysicalSize;
 use crate::layout_box_base::LayoutBoxBase;
-use crate::replaced::{CanvasInfo, IFrameInfo, ImageInfo, VideoInfo};
+use crate::replaced::{CanvasInfo, IFrameInfo, ImageInfo, NaturalSizes, VideoInfo};
 use crate::style_ext::{
     ComputedValuesExt, Display, DisplayGeneratingBox, DisplayLayoutInternal, DisplayOutside,
 };
@@ -499,7 +500,7 @@ pub(crate) trait NodeExt<'dom> {
     /// Return true if the element is an HTML `<wbr>` element.
     fn is_html_wbr_element(&self) -> bool;
     /// Returns the relevant data wrapping into respective struct and its size in pixels.
-    fn as_image(&self) -> Option<(ImageInfo, PhysicalSize<f64>)>;
+    fn as_image(&self) -> Option<(ImageInfo, NaturalSizes)>;
     fn as_canvas(&self) -> Option<(CanvasInfo, PhysicalSize<f64>)>;
     fn as_iframe(&self) -> Option<IFrameInfo>;
     fn as_video(&self) -> Option<(VideoInfo, Option<PhysicalSize<f64>>)>;
@@ -582,16 +583,22 @@ impl<'dom> NodeExt<'dom> for ServoLayoutNode<'dom> {
             .is_some_and(|element| element.local_name() == &local_name!("wbr"))
     }
 
-    fn as_image(&self) -> Option<(ImageInfo, PhysicalSize<f64>)> {
+    fn as_image(&self) -> Option<(ImageInfo, NaturalSizes)> {
         let (resource, metadata) = self.image_data()?;
-        let width = metadata.map(|metadata| metadata.width).unwrap_or_default();
-        let height = metadata.map(|metadata| metadata.height).unwrap_or_default();
-        let (mut width, mut height) = (width as f64, height as f64);
-        // Take `image_density` into account for calculating the size in pixels for images.
-        if let Some(density) = self.image_density().filter(|density| *density != 1.) {
-            width /= density;
-            height /= density;
-        }
+        let density = self.image_density();
+        let natural_size = if let Some(Image::Vector(vector_image)) = &resource {
+            NaturalSizes::from_vector_image(vector_image, density.unwrap_or(1.))
+        } else {
+            let width = metadata.map(|metadata| metadata.width).unwrap_or_default();
+            let height = metadata.map(|metadata| metadata.height).unwrap_or_default();
+            let (mut width, mut height) = (width as f64, height as f64);
+            // Take `image_density` into account for calculating the size in pixels for images.
+            if let Some(density) = density.filter(|density| *density != 1.) {
+                width /= density;
+                height /= density;
+            }
+            NaturalSizes::from_natural_size_in_dots(PhysicalSize::new(width, height))
+        };
         Some((
             ImageInfo {
                 load_time: self.load_time(),
@@ -599,7 +606,7 @@ impl<'dom> NodeExt<'dom> for ServoLayoutNode<'dom> {
                 showing_broken_image_icon: self.showing_broken_image_icon(),
                 url: self.image_url(),
             },
-            PhysicalSize::new(width, height),
+            natural_size,
         ))
     }
 

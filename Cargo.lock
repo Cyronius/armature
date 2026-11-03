@@ -9220,6 +9220,7 @@ dependencies = [
  "servo-url",
  "servo_arc",
  "smallvec",
+ "svgtypes",
  "tempfile",
  "time",
  "tokio",
