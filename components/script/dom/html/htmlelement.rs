@@ -24,12 +24,15 @@ use crate::dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterData
 use crate::dom::bindings::codegen::Bindings::EventHandlerBinding::{
     EventHandlerNonNull, OnErrorEventHandlerNonNull,
 };
-use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::HTMLElementMethods;
+use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::{
+    HTMLElementMethods, ShowPopoverOptions,
+};
 use crate::dom::bindings::codegen::Bindings::HTMLLabelElementBinding::HTMLLabelElementMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLOrSVGOrMathMLElementBinding::FocusOptions;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::Node_Binding::NodeMethods;
 use crate::dom::bindings::codegen::Bindings::ShadowRootBinding::ShadowRoot_Binding::ShadowRootMethods;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
+use crate::dom::bindings::codegen::UnionTypes::TogglePopoverOptionsOrBoolean;
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::inheritance::{Castable, ElementTypeId, HTMLElementTypeId, NodeTypeId};
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
@@ -1082,6 +1085,43 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
 
         access_key_label.into()
     }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-showpopover>
+    fn ShowPopover(&self, cx: &mut JSContext, options: &ShowPopoverOptions) -> ErrorResult {
+        self.show_popover_method(cx, options)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-hidepopover>
+    fn HidePopover(&self, cx: &mut JSContext) -> ErrorResult {
+        self.hide_popover_method(cx)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-togglepopover>
+    fn TogglePopover(
+        &self,
+        cx: &mut JSContext,
+        options: TogglePopoverOptionsOrBoolean,
+    ) -> Fallible<bool> {
+        self.toggle_popover_method(cx, &options)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-popover>
+    fn GetPopover(&self) -> Option<DOMString> {
+        self.popover_reflected_value()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-popover>
+    fn SetPopover(&self, cx: &mut JSContext, value: Option<DOMString>) {
+        match value {
+            Some(value) => self
+                .element
+                .set_string_attribute(cx, &local_name!("popover"), value),
+            None => {
+                self.element
+                    .remove_attribute(cx, &ns!(), &local_name!("popover"));
+            },
+        }
+    }
 }
 
 fn append_text_node_to_fragment(
@@ -1521,6 +1561,9 @@ impl VirtualMethods for HTMLElement {
                     },
                 }
             },
+            (&local_name!("popover"), _) if *attr.namespace() == ns!() => {
+                self.popover_attribute_changed(cx);
+            },
             (&local_name!("nonce"), mutation) => match mutation {
                 AttributeMutation::Set(_) => {
                     let nonce = &**attr.value();
@@ -1603,6 +1646,10 @@ impl VirtualMethods for HTMLElement {
                 .event_handler()
                 .unassign_access_key(self);
         }
+
+        // 5. If removedNode's popover attribute is not in the No Popover state, then run the hide
+        // popover algorithm given removedNode, false, false, false, and null.
+        self.popover_removing_steps(cx);
     }
 
     fn attribute_affects_presentational_hints(&self, attr: AttrRef<'_>) -> bool {

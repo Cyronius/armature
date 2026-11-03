@@ -167,6 +167,7 @@ use crate::dom::html::htmltemplateelement::HTMLTemplateElement;
 use crate::dom::html::htmltextareaelement::HTMLTextAreaElement;
 use crate::dom::html::htmlvideoelement::HTMLVideoElement;
 use crate::dom::html::internals::elementinternals::ElementInternals;
+use crate::dom::html::popover::PopoverData;
 use crate::dom::intersectionobserver::{IntersectionObserver, IntersectionObserverRegistration};
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::mathmlelement::MathMLElement;
@@ -2164,21 +2165,18 @@ impl Element {
     /// <https://dom.spec.whatwg.org/#concept-element-attributes-change>
     pub(crate) fn change_attribute(&self, cx: &mut JSContext, attr: &Attr, mut value: AttrValue) {
         // Step 1. Let oldValue be attribute’s value.
-        //
-        // Clone to avoid double borrow
-        let old_value = &attr.value().clone();
         // Step 2. Set attribute’s value to value.
+        //
+        // After the swap, `value` holds the old value.
         self.will_mutate_attr(cx.no_gc(), AttrRef::Dom(attr));
         attr.swap_value(&mut value);
+        let old_value = value;
         // Step 3. Handle attribute changes for attribute with attribute’s element, oldValue, and value.
         //
-        // Put on a separate line to avoid double borrow
-        self.handle_attribute_changes(
-            cx,
-            AttrRef::Dom(attr),
-            Some(old_value),
-            Some(&*attr.value()),
-        );
+        // Clone the new value, so that the attribute is not borrowed while the attribute change
+        // steps run, which can run script that changes the attribute again.
+        let new_value = attr.value().clone();
+        self.handle_attribute_changes(cx, AttrRef::Dom(attr), Some(&old_value), Some(&new_value));
     }
 
     /// <https://dom.spec.whatwg.org/#concept-element-attributes-append>
@@ -2863,6 +2861,15 @@ impl Element {
 
     pub(crate) fn get_name(&self) -> Option<Atom> {
         self.rare_data().as_ref()?.name_attribute.clone()
+    }
+
+    /// Returns the popover-related state of this element, without allocating rare data for
+    /// elements that never had any.
+    pub(crate) fn popover_data(&self) -> Option<Ref<'_, PopoverData>> {
+        Ref::filter_map(self.rare_data(), |rare_data| {
+            rare_data.as_ref().map(|rare_data| &rare_data.popover_data)
+        })
+        .ok()
     }
 
     pub(crate) fn get_element_internals(&self) -> Option<DomRoot<ElementInternals>> {

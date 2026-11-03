@@ -64,6 +64,10 @@ use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::htmlformelement::{
     FormControl, FormDatum, FormDatumValue, FormSubmitterElement, HTMLFormElement, SubmittedFrom,
 };
+use crate::dom::html::popover::{
+    get_the_popovertarget_associated_element, run_the_popover_target_attribute_activation_behavior,
+    set_popover_target_element,
+};
 use crate::dom::input_type::radio_input_type::radio_group_iter;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::virtualmethods::VirtualMethods;
@@ -135,6 +139,11 @@ pub(crate) struct HTMLInputElement {
 
     /// <https://w3c.github.io/selection-api/#dfn-has-scheduled-selectionchange-event>
     has_scheduled_selectionchange_event: Cell<bool>,
+
+    /// The explicitly set attr-element of `popoverTargetElement`.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#explicitly-set-attr-element>
+    explicitly_set_popover_target_element: MutNullableDom<Element>,
 }
 
 #[derive(JSTraceable)]
@@ -193,6 +202,7 @@ impl HTMLInputElement {
             validity_state: Default::default(),
             pending_webdriver_response: Default::default(),
             has_scheduled_selectionchange_event: Default::default(),
+            explicitly_set_popover_target_element: Default::default(),
         }
     }
 
@@ -1178,6 +1188,37 @@ impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
     // https://html.spec.whatwg.org/multipage/#dom-input-vspace
     make_dimension_uint_setter!(SetVspace, "vspace");
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-popovertargetelement>
+    fn GetPopoverTargetElement(&self, no_gc: &NoGC) -> Option<DomRoot<Element>> {
+        get_the_popovertarget_associated_element(
+            no_gc,
+            self.upcast(),
+            self.explicitly_set_popover_target_element.get(),
+        )
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-popovertargetelement>
+    fn SetPopoverTargetElement(&self, cx: &mut JSContext, value: Option<&Element>) {
+        set_popover_target_element(
+            cx,
+            self.upcast(),
+            &self.explicitly_set_popover_target_element,
+            value,
+        );
+    }
+
+    // https://html.spec.whatwg.org/multipage/#dom-popovertargetaction
+    make_enumerated_getter!(
+        PopoverTargetAction,
+        "popovertargetaction",
+        "toggle" | "show" | "hide",
+        missing => "toggle",
+        invalid => "toggle"
+    );
+
+    // https://html.spec.whatwg.org/multipage/#dom-popovertargetaction
+    make_setter!(SetPopoverTargetAction, "popovertargetaction");
+
     /// <https://html.spec.whatwg.org/multipage/#dom-fae-form>
     fn GetForm(&self) -> Option<DomRoot<HTMLFormElement>> {
         self.form_owner()
@@ -1908,6 +1949,10 @@ impl HTMLInputElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#concept-fe-mutable>
+    pub(crate) fn explicitly_set_popover_target_element(&self) -> Option<DomRoot<Element>> {
+        self.explicitly_set_popover_target_element.get()
+    }
+
     pub(crate) fn is_mutable(&self) -> bool {
         // https://html.spec.whatwg.org/multipage/#the-input-element:concept-fe-mutable
         // https://html.spec.whatwg.org/multipage/#the-readonly-attribute:concept-fe-mutable
@@ -2242,6 +2287,10 @@ impl VirtualMethods for HTMLInputElement {
             .attribute_mutated(cx, attr, mutation);
 
         match *attr.local_name() {
+            // https://html.spec.whatwg.org/multipage/#reflecting-content-attributes-in-idl-attributes:concept-element-attributes-change-ext
+            local_name!("popovertarget") if *attr.namespace() == ns!() => {
+                self.explicitly_set_popover_target_element.set(None);
+            },
             local_name!("disabled") => {
                 let element = self.upcast::<Element>();
                 if self.input_type().is_textual() {
@@ -2757,11 +2806,13 @@ impl Activatable for HTMLInputElement {
 
         // Step 3. If element has a form owner and element's type attribute
         // is not in the Button state, then return.
-        // TODO
+        if self.form_owner().is_some() && !matches!(*self.input_type(), InputType::Button(_)) {
+            return;
+        }
 
         // Step 4. Run the popover target attribute activation behavior
         // given element and event's target.
-        // TODO
+        run_the_popover_target_attribute_activation_behavior(cx, self.upcast(), target);
     }
 }
 

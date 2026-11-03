@@ -23,6 +23,8 @@ use crate::dom::document::documentorshadowroot::DocumentOrShadowRoot;
 use crate::dom::element::Element;
 use crate::dom::event::event::{EventBubbles, EventCancelable, EventComposed};
 use crate::dom::event::eventtarget::EventTarget;
+use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::popover::topmost_popover_ancestor;
 use crate::dom::node::NodeTraits;
 use crate::dom::node::node::Node;
 use crate::dom::promise::Promise;
@@ -264,6 +266,14 @@ impl Element {
         if !self.is_connected() {
             return false;
         }
+        // > element namespace is not the HTML namespace or element’s popover visibility state is
+        // > hidden.
+        if self
+            .downcast::<HTMLElement>()
+            .is_some_and(HTMLElement::is_popover_showing)
+        {
+            return false;
+        }
         self.owner_document().get_allow_fullscreen()
     }
 }
@@ -320,6 +330,15 @@ impl TaskOnce for ElementPerformFullscreenEnter {
 
         // TODO(#42067): Implement step 11-13
         // The following operations is based on the old version of the specs.
+
+        // <https://fullscreen.spec.whatwg.org/#fullscreen-an-element>
+        // > Let hideUntil be the result of running topmost popover ancestor given element, null,
+        // > and false.
+        // > Run hide popovers until given element’s node document, hideUntil, false, and true.
+        let hide_until = topmost_popover_ancestor(cx.no_gc(), element.upcast(), None, false);
+        document.hide_popovers_until(cx, hide_until.as_deref(), false, true);
+
+        // > Set element’s fullscreen flag.
         element.set_fullscreen_state(cx.no_gc(), true);
         document.set_fullscreen_element(Some(&element));
         document.upcast::<EventTarget>().fire_event_with_params(

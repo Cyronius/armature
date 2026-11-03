@@ -188,6 +188,7 @@ use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmlmediaelement::HTMLMediaElement;
 use crate::dom::html::htmlscriptelement::{HTMLScriptElement, ScriptResult, TracedScriptResult};
 use crate::dom::html::htmltitleelement::HTMLTitleElement;
+use crate::dom::html::popover::DocumentPopoverData;
 use crate::dom::htmldetailselement::DetailsNameGroups;
 use crate::dom::intersectionobserver::IntersectionObserver;
 use crate::dom::iterators::ShadowIncluding;
@@ -568,6 +569,12 @@ pub(crate) struct Document {
 
     /// Entry node for fullscreen.
     fullscreen_element: MutNullableDom<Element>,
+    /// <https://drafts.csswg.org/css-position-4/#document-top-layer>
+    ///
+    /// Only popovers are added to the top layer so far.
+    top_layer: DomRefCell<Vec<Dom<Element>>>,
+    /// The popover-related state of this document.
+    popover_data: DocumentPopoverData,
     /// Map from ID to set of form control elements that have that ID as
     /// their 'form' content attribute. Used to reset form controls
     /// whenever any element with the same ID as the form attribute
@@ -4277,6 +4284,8 @@ impl Document {
             ignore_opens_during_unload_counter: Default::default(),
             spurious_animation_frames: Cell::new(0),
             fullscreen_element: MutNullableDom::new(None),
+            top_layer: Default::default(),
+            popover_data: Default::default(),
             form_id_listener_map: Default::default(),
             interactive_time: DomRefCell::new(interactive_time),
             tti_window: DomRefCell::new(InteractiveWindow::default()),
@@ -5460,6 +5469,69 @@ impl Document {
 
     pub(crate) fn fullscreen_element(&self) -> Option<DomRoot<Element>> {
         self.fullscreen_element.get()
+    }
+
+    pub(crate) fn popover_data(&self) -> &DocumentPopoverData {
+        &self.popover_data
+    }
+
+    /// Returns the elements of the top layer, from bottom to top.
+    pub(crate) fn top_layer_elements(&self) -> Vec<DomRoot<Element>> {
+        self.top_layer
+            .borrow()
+            .iter()
+            .map(|element| element.as_rooted())
+            .collect()
+    }
+
+    pub(crate) fn top_layer_contains(&self, element: &Element) -> bool {
+        self.top_layer
+            .borrow()
+            .iter()
+            .any(|top_layer_element| &**top_layer_element == element)
+    }
+
+    /// <https://drafts.csswg.org/css-position-4/#add-an-element-to-the-top-layer>
+    pub(crate) fn add_an_element_to_the_top_layer(&self, no_gc: &NoGC, element: &Element) {
+        let mut top_layer = self.top_layer.safe_borrow_mut(no_gc);
+        // Step 1. Let doc be el's node document.
+        // Step 2. If el is already contained in doc's top layer:
+        // Step 2.1. Assert: el is also in doc's pending top layer removals. (Otherwise, this is a
+        // spec error.)
+        // Step 2.2. Remove el from both doc's top layer and pending top layer removals.
+        top_layer.retain(|top_layer_element| &**top_layer_element != element);
+
+        // Step 3. Append el to doc's top layer.
+        top_layer.push(Dom::from_ref(element));
+
+        // TODO: Step 4. At the UA !important cascade origin, add a rule targeting el containing
+        // an overlay: auto declaration.
+    }
+
+    /// <https://drafts.csswg.org/css-position-4/#request-an-element-to-be-removed-from-the-top-layer>
+    pub(crate) fn request_an_element_to_be_removed_from_the_top_layer(
+        &self,
+        no_gc: &NoGC,
+        element: &Element,
+    ) {
+        // TODO: Pending top layer removals are not supported, because the overlay property is
+        // not, so there is no transition to wait for. Remove the element right away.
+        self.remove_an_element_from_the_top_layer_immediately(no_gc, element);
+    }
+
+    /// <https://drafts.csswg.org/css-position-4/#remove-an-element-from-the-top-layer-immediately>
+    pub(crate) fn remove_an_element_from_the_top_layer_immediately(
+        &self,
+        no_gc: &NoGC,
+        element: &Element,
+    ) {
+        // Step 1. Let doc be el's node document.
+        // Step 2. Remove el from doc's top layer and pending top layer removals.
+        self.top_layer
+            .safe_borrow_mut(no_gc)
+            .retain(|top_layer_element| &**top_layer_element != element);
+
+        // TODO: Step 3. Remove the UA !important overlay: auto rule targeting el, if it exists.
     }
 
     /// <https://w3c.github.io/editing/docs/execCommand/#state-override>

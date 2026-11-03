@@ -996,6 +996,41 @@ impl Window {
         manager.set_next_user_interaction_allows_a_new_group(false);
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#process-close-watchers>
+    pub(crate) fn process_close_watchers(&self, cx: &mut JSContext) -> bool {
+        // Step 1. Let processedACloseWatcher be false.
+        let mut processed_a_close_watcher = false;
+
+        // Step 2. If window's close watcher manager's groups is not empty:
+        // Step 2.1. Let group be the last item in window's close watcher manager's groups.
+        let manager = self.close_watcher_manager();
+        let group = manager.groups().last().cloned();
+        if let Some(group) = group {
+            // Step 2.2. For each closeWatcher of group, in reverse order:
+            for close_watcher in group.iter().rev() {
+                // Step 2.2.1. If the result of running closeWatcher's get enabled state is true,
+                // set processedACloseWatcher to true.
+                if close_watcher.get_enabled_state() {
+                    processed_a_close_watcher = true;
+                }
+
+                // Step 2.2.2. Let shouldProceed be the result of requesting to close closeWatcher
+                // with true.
+                // Step 2.2.3. If shouldProceed is false, then break.
+                if !close_watcher.request_to_close(cx, true) {
+                    break;
+                }
+            }
+        }
+
+        // Step 3. If window's close watcher manager's allowed number of groups is greater than 1,
+        // decrement it by 1.
+        manager.decrement_allowed_number_of_groups();
+
+        // Step 4. Return processedACloseWatcher.
+        processed_a_close_watcher
+    }
+
     pub(crate) fn close_watcher_manager(&self) -> &CloseWatcherManager {
         &self.close_watcher_manager
     }

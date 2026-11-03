@@ -27,3 +27,4 @@ pub(crate) mod htmlcollection;
 pub(crate) mod htmlelement;
 pub(crate) mod htmlslotelement;
 pub(crate) mod htmlunknownelement;
+pub(crate) mod popover;
