@@ -143,55 +143,6 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   it decodes an image, so `image-orientation: none` is parsed but not yet honoured.
 - Upstream: Could go upstream as is.
 
-### AS-401: Enable the CSS Shapes properties for Servo behind a preference
-- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`, `style/values/specified/basic_shape.rs`
-- Why: Builds `shape-outside`, `shape-margin` and `shape-image-threshold` for Servo behind the new preference
-  `layout.css.shapes.enabled`, so they parse, compute, serialize and interpolate. Servo's float layout does not wrap
-  content around the shapes yet and ignores the values. Servo does not parse images in `shape-outside`, because it
-  can neither fetch them (with CORS, as the spec requires) nor use them; otherwise
-  `css/fetching/fetch-resources.https.sub.html` waits for a request that never comes and times out. Affects
-  `css/css-shapes/parsing`, `css/css-shapes/animation` and `css/css-shapes/inheritance.html`.
-- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
-
-### AS-402: Enable the motion path properties and the offset shorthand for Servo
-- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `style/properties/shorthands.rs`
-- Why: Builds `offset-position`, `offset-distance`, `offset-rotate`, `offset-anchor` and the `offset` shorthand for
-  Servo behind `layout.css.motion-path.enabled`, the preference that already gates `offset-path`, and builds the
-  shorthand's parser and serializer for Servo. Servo's layout does not apply motion paths yet. Affects
-  `css/motion/parsing`, `css/motion/animation` and `css/motion/inheritance.html`.
-- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
-
-### AS-403: Enable transform-box for Servo behind a preference
-- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`, `style/values/specified/transform.rs`
-- Why: Builds `transform-box` for Servo behind the new preference `layout.css.transform-box.enabled`, and lets Servo
-  parse all five keywords, since Servo's layout now uses the content box or the border box as the reference box.
-  Affects `css/css-transforms/parsing/transform-box-*.html`, `css/css-transforms/transform-box/cssbox-*.html` and
-  `css/css-transforms/inheritance.html`.
-- Upstream: Could go upstream together with Servo's layout support, but Servo's AI policy currently prevents sending
-  it.
-
-### AS-404: Enable text-decoration-skip-ink for Servo behind a preference
-- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
-- Why: Builds `text-decoration-skip-ink` for Servo behind the new preference
-  `layout.css.text-decoration-skip-ink.enabled`. Servo's painting ignores the value. Affects
-  `css/css-text-decor/parsing/text-decoration-skip-ink-*.html`, `css/css-text-decor/text-decoration-skip-ink.html`
-  and `css/css-text-decor/inheritance.html`.
-- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
-
-### AS-405: Enable hyphenate-limit-chars for Servo behind the hyphens preference
-- Files: `style/properties/longhands.toml`
-- Why: Builds `hyphenate-limit-chars` for Servo behind `layout.css.hyphens.enabled`, which already gates `hyphens`
-  and `hyphenate-character`. Servo's layout ignores the value. Affects
-  `css/css-text/parsing/hyphenate-limit-chars-*.html`.
-- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
-
-### AS-406: Enable math-shift for Servo behind the math properties preference
-- Files: `style/properties/longhands.toml`
-- Why: Builds `math-shift` for Servo behind `layout.css.math-properties.enabled`, which already gates `math-depth`
-  and `math-style`. Servo's layout ignores the value. Affects
-  `mathml/relations/css-styling/parsing/math-shift-*.html`.
-- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
-
 ### AS-301: Build contain-intrinsic-size for Servo behind a pref
 - Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `stylo_static_prefs/preferences.toml`
 - Why: Enables `contain-intrinsic-width`, `-height`, `-block-size`, `-inline-size` and the `contain-intrinsic-size`
@@ -246,3 +197,52 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Enables `field-sizing` for Servo behind `layout.css.field-sizing.enabled`, the name Gecko also uses
   (css/css-ui/parsing/field-sizing-*). Parsing only; Servo's form controls keep their fixed size.
 - Upstream: Could go upstream as a Servo preference.
+
+### AS-401: Enable the CSS Shapes properties for Servo behind a preference
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`, `style/values/specified/basic_shape.rs`
+- Why: Builds `shape-outside`, `shape-margin` and `shape-image-threshold` for Servo behind the new preference
+  `layout.css.shapes.enabled`, so they parse, compute, serialize and interpolate. Servo's float layout does not wrap
+  content around the shapes yet and ignores the values. Servo does not parse images in `shape-outside`, because it
+  can neither fetch them (with CORS, as the spec requires) nor use them; otherwise
+  `css/fetching/fetch-resources.https.sub.html` waits for a request that never comes and times out. Affects
+  `css/css-shapes/parsing`, `css/css-shapes/animation` and `css/css-shapes/inheritance.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-402: Enable the motion path properties and the offset shorthand for Servo
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `style/properties/shorthands.rs`
+- Why: Builds `offset-position`, `offset-distance`, `offset-rotate`, `offset-anchor` and the `offset` shorthand for
+  Servo behind `layout.css.motion-path.enabled`, the preference that already gates `offset-path`, and builds the
+  shorthand's parser and serializer for Servo. Servo's layout does not apply motion paths yet. Affects
+  `css/motion/parsing`, `css/motion/animation` and `css/motion/inheritance.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-403: Enable transform-box for Servo behind a preference
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`, `style/values/specified/transform.rs`
+- Why: Builds `transform-box` for Servo behind the new preference `layout.css.transform-box.enabled`, and lets Servo
+  parse all five keywords, since Servo's layout now uses the content box or the border box as the reference box.
+  Affects `css/css-transforms/parsing/transform-box-*.html`, `css/css-transforms/transform-box/cssbox-*.html` and
+  `css/css-transforms/inheritance.html`.
+- Upstream: Could go upstream together with Servo's layout support, but Servo's AI policy currently prevents sending
+  it.
+
+### AS-404: Enable text-decoration-skip-ink for Servo behind a preference
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `text-decoration-skip-ink` for Servo behind the new preference
+  `layout.css.text-decoration-skip-ink.enabled`. Servo's painting ignores the value. Affects
+  `css/css-text-decor/parsing/text-decoration-skip-ink-*.html`, `css/css-text-decor/text-decoration-skip-ink.html`
+  and `css/css-text-decor/inheritance.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-405: Enable hyphenate-limit-chars for Servo behind the hyphens preference
+- Files: `style/properties/longhands.toml`
+- Why: Builds `hyphenate-limit-chars` for Servo behind `layout.css.hyphens.enabled`, which already gates `hyphens`
+  and `hyphenate-character`. Servo's layout ignores the value. Affects
+  `css/css-text/parsing/hyphenate-limit-chars-*.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-406: Enable math-shift for Servo behind the math properties preference
+- Files: `style/properties/longhands.toml`
+- Why: Builds `math-shift` for Servo behind `layout.css.math-properties.enabled`, which already gates `math-depth`
+  and `math-style`. Servo's layout ignores the value. Affects
+  `mathml/relations/css-styling/parsing/math-shift-*.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
