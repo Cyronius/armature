@@ -12,11 +12,17 @@
 "layout.css.background-clip.border-area.enabled" = false
 "layout.css.background-clip.text.enabled" = false
 "layout.css.basic-shape-shape.enabled" = false
+# Armature (AS-303): Servo preference for the properties this change enables.
+"layout.css.break-properties.enabled" = false
 "layout.css.calc-typed-arithmetic.enabled" = true
 "layout.css.color-mix-multi-color.enabled" = true
 "layout.css.columns.enabled" = false
+# Armature (AS-301): Servo preference for the properties this change enables.
+"layout.css.contain-intrinsic-size.enabled" = false
 "layout.css.contain.enabled" = false
 "layout.css.container-queries.enabled" = false
+# Armature (AS-302): Servo preference for the properties this change enables.
+"layout.css.content-visibility.enabled" = false
 "layout.css.content.alt-text.enabled" = false
 "layout.css.corner-shape.enabled" = false
 "layout.css.counters.enabled" = false
@@ -26,6 +32,8 @@
 "layout.css.display-grid-lanes.enabled" = false
 "layout.css.dominant-baseline.enabled" = false
 "layout.css.ellipse-corners.enabled" = false
+# Armature (AS-308): Servo preference for the properties this change enables.
+"layout.css.field-sizing.enabled" = false
 "layout.css.first-line.enabled" = false
 "layout.css.fit-content-function.enabled" = true
 "layout.css.flexbox-balance.enabled" = false
@@ -46,6 +54,8 @@
 "layout.css.light-dark.images.enabled" = false
 "layout.css.line-clamp.enabled" = false
 "layout.css.margin-rules.enabled" = false
+# Armature (AS-306): Servo preference for the properties this change enables.
+"layout.css.margin-trim.enabled" = false
 "layout.css.marker.restricted" = true
 "layout.css.masking.enabled" = false
 "layout.css.math-properties.enabled" = false
@@ -60,6 +70,8 @@
 "layout.css.progress-function.enabled" = true
 "layout.css.properties-and-values.enabled" = true
 "layout.css.random.enabled" = false
+# Armature (AS-307): Servo preference for the properties this change enables.
+"layout.css.resize.enabled" = false
 "layout.css.revert-rule.enabled" = true
 "layout.css.ruby.enabled" = false
 # Armature (AS-103): Gates overflow-anchor for Servo.

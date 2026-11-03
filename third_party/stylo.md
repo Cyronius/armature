@@ -191,3 +191,58 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   and `math-style`. Servo's layout ignores the value. Affects
   `mathml/relations/css-styling/parsing/math-shift-*.html`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-301: Build contain-intrinsic-size for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `contain-intrinsic-width`, `-height`, `-block-size`, `-inline-size` and the `contain-intrinsic-size`
+  shorthand for Servo behind the new `layout.css.contain-intrinsic-size.enabled` preference, for parsing, computed
+  values and interpolation (css/css-sizing/contain-intrinsic-size/parsing and animation). Servo's layout does not
+  implement size containment, so the properties have no layout effect yet.
+- Upstream: Could go upstream as a Servo preference.
+
+### AS-302: Build content-visibility for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `style/properties/helpers/animated_properties.mako.rs`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `content-visibility` for Servo behind the new `layout.css.content-visibility.enabled` preference, with
+  its discrete animation behaviour (css/css-contain/content-visibility/parsing and content-visibility-interpolation).
+  Parsing only: Servo's layout does not skip the contents, and the Gecko-only style adjustments for containment are
+  left as they are.
+- Upstream: Could go upstream as a Servo preference.
+
+### AS-303: Build the break properties for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `break-before`, `break-after`, `break-inside` and the legacy `page-break-before`, `-after` and
+  `-inside` shorthands for Servo behind the new `layout.css.break-properties.enabled` preference
+  (css/css-break/parsing). Servo does not fragment, so they have no layout effect.
+- Upstream: Could go upstream as a Servo preference.
+
+### AS-304: Build column-rule and column-fill for Servo behind the columns pref
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `style/properties/shorthands.rs`
+- Why: Enables `column-rule-color`, `column-rule-style`, `column-rule-width`, `column-fill` and the `column-rule`
+  shorthand for Servo behind the existing `layout.css.columns.enabled` preference, like the other multicol
+  properties (css/css-multicol/parsing, css/css-gaps/parsing). Servo does not paint column rules yet.
+- Upstream: Could go upstream as a Servo preference.
+
+### AS-305: Build counter-set for Servo behind the counters pref
+- Files: `style/properties/longhands.toml`
+- Why: Enables `counter-set` for Servo behind the existing `layout.css.counters.enabled` preference, next to
+  `counter-reset` and `counter-increment` (css/css-lists/parsing/counter-set-*, and the `li value` presentational
+  hint in html/rendering/non-replaced-elements/lists).
+- Upstream: Could go upstream as a Servo preference.
+
+### AS-306: Build margin-trim for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `margin-trim` for Servo behind `layout.css.margin-trim.enabled`, the name Gecko also uses
+  (css/css-box/parsing/margin-trim*). Parsing only; Servo's layout does not trim margins.
+- Upstream: Could go upstream as a Servo preference.
+
+### AS-307: Build resize for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `resize` for Servo behind the new `layout.css.resize.enabled` preference
+  (css/css-ui/parsing/resize-*). Parsing only; Servo has no resize handles.
+- Upstream: Could go upstream as a Servo preference.
+
+### AS-308: Build field-sizing for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `field-sizing` for Servo behind `layout.css.field-sizing.enabled`, the name Gecko also uses
+  (css/css-ui/parsing/field-sizing-*). Parsing only; Servo's form controls keep their fixed size.
+- Upstream: Could go upstream as a Servo preference.

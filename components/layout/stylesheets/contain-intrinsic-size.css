@@ -1,0 +1,10 @@
+@namespace url(http://www.w3.org/1999/xhtml);
+
+/* https://html.spec.whatwg.org/multipage/#images-3
+   This stylesheet is only used when the `layout_css_contain_intrinsic_size_enabled` preference
+   is set. */
+
+img:is([sizes="auto" i], [sizes^="auto," i]) {
+  contain: size !important;
+  contain-intrinsic-size: 300px 150px;
+}

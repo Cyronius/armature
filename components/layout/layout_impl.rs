@@ -125,6 +125,13 @@ static PRESENTATIONAL_HINTS_CSS: &[u8] = include_bytes!("./stylesheets/presentat
 /// A CSS file to style popovers, used when the popover API is enabled.
 static POPOVER_CSS: &[u8] = include_bytes!("./stylesheets/popover.css");
 
+/// A CSS file with the list counter rules, used when CSS counters are enabled.
+static COUNTERS_CSS: &[u8] = include_bytes!("./stylesheets/counters.css");
+
+/// A CSS file with the rules that use `contain-intrinsic-size`, used when it is enabled.
+static CONTAIN_INTRINSIC_SIZE_CSS: &[u8] =
+    include_bytes!("./stylesheets/contain-intrinsic-size.css");
+
 /// A CSS file to style the quirks mode.
 static QUIRKS_MODE_CSS: &[u8] = include_bytes!("./stylesheets/quirks-mode.css");
 
@@ -1869,6 +1876,20 @@ fn get_ua_stylesheets(shared_lock: &SharedRwLock) -> Rc<UserAgentStylesheets> {
                         shared_lock,
                         "popover.css",
                         POPOVER_CSS,
+                    ));
+                }
+                if pref!(layout_css_counters_enabled) {
+                    user_agent_stylesheets.push(parse_ua_stylesheet(
+                        shared_lock,
+                        "counters.css",
+                        COUNTERS_CSS,
+                    ));
+                }
+                if pref!(layout_css_contain_intrinsic_size_enabled) {
+                    user_agent_stylesheets.push(parse_ua_stylesheet(
+                        shared_lock,
+                        "contain-intrinsic-size.css",
+                        CONTAIN_INTRINSIC_SIZE_CSS,
                     ));
                 }
 

@@ -810,7 +810,7 @@ pub mod columns {
     }
 }
 
-#[cfg(feature = "gecko")]
+// Armature (AS-304): Build for Servo too, now that column-rule is enabled there.
 pub mod column_rule {
     pub use crate::properties::generated::shorthands::column_rule::*;
 
