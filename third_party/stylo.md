@@ -81,11 +81,13 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 ```
 
 ### AS-401: Enable the CSS Shapes properties for Servo behind a preference
-- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`, `style/values/specified/basic_shape.rs`
 - Why: Builds `shape-outside`, `shape-margin` and `shape-image-threshold` for Servo behind the new preference
   `layout.css.shapes.enabled`, so they parse, compute, serialize and interpolate. Servo's float layout does not wrap
-  content around the shapes yet and ignores the values. Affects `css/css-shapes/parsing`, `css/css-shapes/animation`
-  and `css/css-shapes/inheritance.html`.
+  content around the shapes yet and ignores the values. Servo does not parse images in `shape-outside`, because it
+  can neither fetch them (with CORS, as the spec requires) nor use them; otherwise
+  `css/fetching/fetch-resources.https.sub.html` waits for a request that never comes and times out. Affects
+  `css/css-shapes/parsing`, `css/css-shapes/animation` and `css/css-shapes/inheritance.html`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
 
 ### AS-402: Enable the motion path properties and the offset shorthand for Servo

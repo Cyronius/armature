@@ -271,7 +271,11 @@ impl Parse for ShapeOutside {
             return Ok(ShapeOutside::None);
         }
 
-        if let Ok(image) = input.try_parse(|i| Image::parse_with_cors_anonymous(context, i)) {
+        // Armature (AS-401): Servo's layout can neither fetch nor use shape images yet, so only
+        // parse them for Gecko, so that feature detection does not report them as supported.
+        if cfg!(feature = "gecko")
+            && let Ok(image) = input.try_parse(|i| Image::parse_with_cors_anonymous(context, i))
+        {
             debug_assert_ne!(image, Image::None);
             return Ok(ShapeOutside::Image(image));
         }
