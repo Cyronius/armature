@@ -150,6 +150,7 @@ pub(crate) mod frozenarray;
 pub(crate) mod function;
 pub(crate) mod import;
 pub(crate) mod inheritance;
+pub(crate) mod iteration;
 pub(crate) mod like;
 pub(crate) mod principals;
 pub(crate) mod refcounted;

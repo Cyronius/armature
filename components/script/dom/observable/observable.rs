@@ -24,13 +24,13 @@ use crate::dom::bindings::codegen::Bindings::ObservableBinding::{
 use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::error::{ErrorResult, Fallible};
+use crate::dom::bindings::iteration::IteratorRecord;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::trace::JSTraceable;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::observable::from::{close_iterator, convert_to_observable, report_error};
 use crate::dom::observable::higher_order;
-use crate::dom::observable::iteration::IteratorRecord;
 use crate::dom::observable::operators::{self, InspectAbortState};
 use crate::dom::observable::promise_operators::{self, PredicateOperator};
 use crate::dom::observable::subscriber::{
