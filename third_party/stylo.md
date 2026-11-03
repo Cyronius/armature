@@ -87,3 +87,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   content around the shapes yet and ignores the values. Affects `css/css-shapes/parsing`, `css/css-shapes/animation`
   and `css/css-shapes/inheritance.html`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-402: Enable the motion path properties and the offset shorthand for Servo
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `style/properties/shorthands.rs`
+- Why: Builds `offset-position`, `offset-distance`, `offset-rotate`, `offset-anchor` and the `offset` shorthand for
+  Servo behind `layout.css.motion-path.enabled`, the preference that already gates `offset-path`, and builds the
+  shorthand's parser and serializer for Servo. Servo's layout does not apply motion paths yet. Affects
+  `css/motion/parsing`, `css/motion/animation` and `css/motion/inheritance.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.

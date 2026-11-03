@@ -641,7 +641,7 @@ pub mod vertical_align {
     }
 }
 
-#[cfg(feature = "gecko")]
+// Armature (AS-402): Built for Servo too, which enables the offset shorthand behind a preference.
 pub mod offset {
     use super::*;
     use crate::Zero;
