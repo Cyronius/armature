@@ -103,3 +103,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `layout.css.print-color-adjust.enabled`, for the `css/css-color-adjust` parsing and inheritance tests. Servo does
   not print, so the value has no effect.
 - Upstream: Could go upstream as is.
+
+### AS-204: Build image-orientation for Servo
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Builds `image-orientation` for Servo behind the new preference `layout.css.image-orientation.enabled`, for the
+  `css/css-images/image-orientation` parsing and computed-style tests. Servo always applies the EXIF orientation when
+  it decodes an image, so `image-orientation: none` is parsed but not yet honoured.
+- Upstream: Could go upstream as is.

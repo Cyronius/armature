@@ -3896,7 +3896,8 @@ initial = "computed::TextOrientation::Mixed"
 
 [image-orientation]
 struct = "inherited_box"
-engine = "gecko"
+# Armature (AS-204): Also build for Servo, behind a preference.
+servo_pref = "layout.css.image-orientation.enabled"
 spec = "https://drafts.csswg.org/css-images/#propdef-image-orientation"
 animation_type = "discrete"
 affects = "layout"

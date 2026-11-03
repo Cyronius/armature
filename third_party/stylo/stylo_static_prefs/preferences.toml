@@ -40,6 +40,8 @@
 "layout.css.grid-template-subgrid-value.enabled" = false
 "layout.css.has-selector.enabled" = false
 "layout.css.hyphens.enabled" = false
+# Armature (AS-204): Gates the property for Servo.
+"layout.css.image-orientation.enabled" = false
 "layout.css.initial-letter.enabled" = false
 "layout.css.light-dark.images.enabled" = false
 "layout.css.line-clamp.enabled" = false
