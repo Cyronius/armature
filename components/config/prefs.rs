@@ -73,6 +73,10 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_writing_mode_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.accent-color.enabled",
+        preferences.layout_css_accent_color_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.anchor-positioning.enabled",
         preferences.layout_css_anchor_positioning_enabled
     );
@@ -185,6 +189,10 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_hyphens_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.image-orientation.enabled",
+        preferences.layout_css_image_orientation_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.initial-letter.enabled",
         preferences.layout_css_initial_letter_enabled
     );
@@ -229,6 +237,10 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_overscroll_behavior_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.print-color-adjust.enabled",
+        preferences.layout_css_print_color_adjust_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.random.enabled",
         preferences.layout_css_random_enabled
     );
@@ -259,6 +271,10 @@ pub fn set(preferences: Preferences) {
     stylo_static_prefs::set_pref!(
         "layout.css.style-queries.enabled",
         preferences.layout_css_style_queries_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.svg-properties.enabled",
+        preferences.layout_css_svg_properties_enabled
     );
     stylo_static_prefs::set_pref!(
         "layout.css.text-autospace.enabled",
@@ -588,6 +604,7 @@ pub struct Preferences {
     pub layout_css_writing_mode_enabled: bool,
     // Stylo preferences without a Servo-specific name. Each is forwarded to the Stylo
     // preference of the same name, with `.` and `-` turned into `_`.
+    pub layout_css_accent_color_enabled: bool,
     pub layout_css_anchor_positioning_enabled: bool,
     pub layout_css_appearance_base_enabled: bool,
     pub layout_css_appearance_enabled: bool,
@@ -616,6 +633,7 @@ pub struct Preferences {
     pub layout_css_grid_template_subgrid_value_enabled: bool,
     pub layout_css_has_selector_enabled: bool,
     pub layout_css_hyphens_enabled: bool,
+    pub layout_css_image_orientation_enabled: bool,
     pub layout_css_initial_letter_enabled: bool,
     pub layout_css_light_dark_images_enabled: bool,
     pub layout_css_line_clamp_enabled: bool,
@@ -627,6 +645,7 @@ pub struct Preferences {
     pub layout_css_nth_child_of_enabled: bool,
     pub layout_css_overflow_moz_hidden_unscrollable_enabled: bool,
     pub layout_css_overscroll_behavior_enabled: bool,
+    pub layout_css_print_color_adjust_enabled: bool,
     pub layout_css_random_enabled: bool,
     pub layout_css_ruby_enabled: bool,
     pub layout_css_scroll_behavior_enabled: bool,
@@ -635,6 +654,7 @@ pub struct Preferences {
     pub layout_css_scrollbar_styling_enabled: bool,
     pub layout_css_starting_style_at_rules_enabled: bool,
     pub layout_css_style_queries_enabled: bool,
+    pub layout_css_svg_properties_enabled: bool,
     pub layout_css_text_autospace_enabled: bool,
     pub layout_css_text_box_enabled: bool,
     pub layout_css_text_combine_upright_enabled: bool,
@@ -913,6 +933,7 @@ impl Preferences {
             layout_css_ellipse_corners_enabled: false,
             layout_css_font_variations_enabled: false,
             layout_css_writing_mode_enabled: false,
+            layout_css_accent_color_enabled: false,
             layout_css_anchor_positioning_enabled: false,
             layout_css_appearance_base_enabled: false,
             layout_css_appearance_enabled: false,
@@ -941,6 +962,7 @@ impl Preferences {
             layout_css_grid_template_subgrid_value_enabled: false,
             layout_css_has_selector_enabled: false,
             layout_css_hyphens_enabled: false,
+            layout_css_image_orientation_enabled: false,
             layout_css_initial_letter_enabled: false,
             layout_css_light_dark_images_enabled: false,
             layout_css_line_clamp_enabled: false,
@@ -952,6 +974,7 @@ impl Preferences {
             layout_css_nth_child_of_enabled: false,
             layout_css_overflow_moz_hidden_unscrollable_enabled: false,
             layout_css_overscroll_behavior_enabled: false,
+            layout_css_print_color_adjust_enabled: false,
             layout_css_random_enabled: false,
             layout_css_ruby_enabled: false,
             layout_css_scroll_behavior_enabled: false,
@@ -960,6 +983,7 @@ impl Preferences {
             layout_css_scrollbar_styling_enabled: false,
             layout_css_starting_style_at_rules_enabled: false,
             layout_css_style_queries_enabled: false,
+            layout_css_svg_properties_enabled: false,
             layout_css_text_autospace_enabled: false,
             layout_css_text_box_enabled: false,
             layout_css_text_combine_upright_enabled: false,
