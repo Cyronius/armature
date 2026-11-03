@@ -16,6 +16,7 @@ use style::Atom;
 use style_traits::CSSPixel;
 
 use crate::dom::bindings::codegen::Bindings::MouseEventBinding::MouseEventMethods;
+use crate::dom::bindings::codegen::Bindings::UIEventBinding::UIEventMethods;
 use crate::dom::bindings::codegen::Bindings::WheelEventBinding;
 use crate::dom::bindings::codegen::Bindings::WheelEventBinding::WheelEventMethods;
 use crate::dom::bindings::error::Fallible;
@@ -26,6 +27,7 @@ use crate::dom::bindings::str::DOMString;
 use crate::dom::event::{Event, EventBubbles, EventCancelable};
 use crate::dom::eventtarget::EventTarget;
 use crate::dom::mouseevent::MouseEvent;
+use crate::dom::uievent::UIEvent;
 use crate::dom::window::Window;
 
 #[dom_struct]
@@ -65,9 +67,9 @@ impl WheelEvent {
         cancelable: EventCancelable,
         view: Option<&Window>,
         detail: i32,
-        screen_point: Point2D<i32, CSSPixel>,
-        client_point: Point2D<i32, CSSPixel>,
-        page_point: Point2D<i32, CSSPixel>,
+        screen_point: Point2D<f64, CSSPixel>,
+        client_point: Point2D<f64, CSSPixel>,
+        page_point: Point2D<f64, CSSPixel>,
         modifiers: Modifiers,
         button: MouseButton,
         buttons: MouseButtons,
@@ -112,9 +114,9 @@ impl WheelEvent {
         cancelable: EventCancelable,
         view: Option<&Window>,
         detail: i32,
-        screen_point: Point2D<i32, CSSPixel>,
-        client_point: Point2D<i32, CSSPixel>,
-        page_point: Point2D<i32, CSSPixel>,
+        screen_point: Point2D<f64, CSSPixel>,
+        client_point: Point2D<f64, CSSPixel>,
+        page_point: Point2D<f64, CSSPixel>,
         modifiers: Modifiers,
         button: MouseButton,
         buttons: MouseButtons,
@@ -157,9 +159,9 @@ impl WheelEvent {
         cancelable: EventCancelable,
         view: Option<&Window>,
         detail: i32,
-        screen_point: Point2D<i32, CSSPixel>,
-        client_point: Point2D<i32, CSSPixel>,
-        page_point: Point2D<i32, CSSPixel>,
+        screen_point: Point2D<f64, CSSPixel>,
+        client_point: Point2D<f64, CSSPixel>,
+        page_point: Point2D<f64, CSSPixel>,
         modifiers: Modifiers,
         button: MouseButton,
         buttons: MouseButtons,
@@ -209,9 +211,9 @@ impl WheelEventMethods<crate::DomTypeHolder> for WheelEvent {
         let cancelable = EventCancelable::from(init.parent.parent.parent.parent.cancelable);
         let scroll_offset = window.scroll_offset();
 
-        let page_point = Point2D::<i32, CSSPixel>::new(
-            scroll_offset.x as i32 + init.parent.clientX,
-            scroll_offset.y as i32 + init.parent.clientY,
+        let page_point = Point2D::<f64, CSSPixel>::new(
+            scroll_offset.x as f64 + *init.parent.clientX,
+            scroll_offset.y as f64 + *init.parent.clientY,
         );
 
         let event = WheelEvent::new_with_proto(
@@ -223,8 +225,8 @@ impl WheelEventMethods<crate::DomTypeHolder> for WheelEvent {
             cancelable,
             init.parent.parent.parent.view.as_deref(),
             init.parent.parent.parent.detail,
-            Point2D::new(init.parent.screenX, init.parent.screenY),
-            Point2D::new(init.parent.clientX, init.parent.clientY),
+            Point2D::new(*init.parent.screenX, *init.parent.screenY),
+            Point2D::new(*init.parent.clientX, *init.parent.clientY),
             Point2D::new(page_point.x, page_point.y),
             init.parent.parent.modifiers(),
             init.parent.button.into(),
@@ -277,22 +279,13 @@ impl WheelEventMethods<crate::DomTypeHolder> for WheelEvent {
             return;
         }
 
-        self.upcast::<MouseEvent>().InitMouseEvent(
+        // The coordinates, modifiers, button and related target are left as they are.
+        self.upcast::<UIEvent>().InitUIEvent(
             type_arg,
             can_bubble_arg,
             cancelable_arg,
             view_arg,
             detail_arg,
-            self.mouseevent.ScreenX(),
-            self.mouseevent.ScreenY(),
-            self.mouseevent.ClientX(),
-            self.mouseevent.ClientY(),
-            self.mouseevent.CtrlKey(),
-            self.mouseevent.AltKey(),
-            self.mouseevent.ShiftKey(),
-            self.mouseevent.MetaKey(),
-            self.mouseevent.Button(),
-            self.mouseevent.GetRelatedTarget().as_deref(),
         );
         self.delta_x.set(delta_x_arg);
         self.delta_y.set(delta_y_arg);

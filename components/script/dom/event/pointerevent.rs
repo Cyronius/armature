@@ -40,8 +40,8 @@ pub(crate) enum PointerId {
 pub(crate) struct PointerEvent {
     mouseevent: MouseEvent,
     pointer_id: Cell<i32>,
-    width: Cell<i32>,
-    height: Cell<i32>,
+    width: Cell<f64>,
+    height: Cell<f64>,
     pressure: Cell<f32>,
     tangential_pressure: Cell<f32>,
     tilt_x: Cell<i32>,
@@ -60,8 +60,8 @@ impl PointerEvent {
         PointerEvent {
             mouseevent: MouseEvent::new_inherited(),
             pointer_id: Cell::new(0),
-            width: Cell::new(0),
-            height: Cell::new(0),
+            width: Cell::new(0.),
+            height: Cell::new(0.),
             pressure: Cell::new(0.),
             tangential_pressure: Cell::new(0.),
             tilt_x: Cell::new(0),
@@ -93,17 +93,17 @@ impl PointerEvent {
         cancelable: EventCancelable,
         view: Option<&Window>,
         detail: i32,
-        screen_point: Point2D<i32, CSSPixel>,
-        client_point: Point2D<i32, CSSPixel>,
-        page_point: Point2D<i32, CSSPixel>,
+        screen_point: Point2D<f64, CSSPixel>,
+        client_point: Point2D<f64, CSSPixel>,
+        page_point: Point2D<f64, CSSPixel>,
         modifiers: Modifiers,
         button: MouseButton,
         buttons: MouseButtons,
         related_target: Option<&EventTarget>,
         point_in_target: Option<Point2D<f32, CSSPixel>>,
         pointer_id: i32,
-        width: i32,
-        height: i32,
+        width: f64,
+        height: f64,
         pressure: f32,
         tangential_pressure: f32,
         tilt_x: i32,
@@ -160,17 +160,17 @@ impl PointerEvent {
         cancelable: EventCancelable,
         view: Option<&Window>,
         detail: i32,
-        screen_point: Point2D<i32, CSSPixel>,
-        client_point: Point2D<i32, CSSPixel>,
-        page_point: Point2D<i32, CSSPixel>,
+        screen_point: Point2D<f64, CSSPixel>,
+        client_point: Point2D<f64, CSSPixel>,
+        page_point: Point2D<f64, CSSPixel>,
         modifiers: Modifiers,
         button: MouseButton,
         buttons: MouseButtons,
         related_target: Option<&EventTarget>,
         point_in_target: Option<Point2D<f32, CSSPixel>>,
         pointer_id: i32,
-        width: i32,
-        height: i32,
+        width: f64,
+        height: f64,
         pressure: f32,
         tangential_pressure: f32,
         tilt_x: i32,
@@ -236,8 +236,8 @@ impl PointerEventMethods<crate::DomTypeHolder> for PointerEvent {
         let cancelable = EventCancelable::from(init.parent.parent.parent.parent.cancelable);
         let scroll_offset = window.scroll_offset();
         let page_point = Point2D::new(
-            scroll_offset.x as i32 + init.parent.clientX,
-            scroll_offset.y as i32 + init.parent.clientY,
+            scroll_offset.x as f64 + *init.parent.clientX,
+            scroll_offset.y as f64 + *init.parent.clientY,
         );
         PointerEvent::new_with_proto(
             cx,
@@ -248,8 +248,8 @@ impl PointerEventMethods<crate::DomTypeHolder> for PointerEvent {
             cancelable,
             init.parent.parent.parent.view.as_deref(),
             init.parent.parent.parent.detail,
-            Point2D::new(init.parent.screenX, init.parent.screenY),
-            Point2D::new(init.parent.clientX, init.parent.clientY),
+            Point2D::new(*init.parent.screenX, *init.parent.screenY),
+            Point2D::new(*init.parent.clientX, *init.parent.clientY),
             page_point,
             init.parent.parent.modifiers(),
             init.parent.button.into(),
@@ -257,8 +257,8 @@ impl PointerEventMethods<crate::DomTypeHolder> for PointerEvent {
             init.parent.relatedTarget.as_deref(),
             None,
             init.pointerId,
-            init.width,
-            init.height,
+            *init.width,
+            *init.height,
             *init.pressure,
             *init.tangentialPressure,
             init.tiltX.unwrap_or_default(),
@@ -279,13 +279,13 @@ impl PointerEventMethods<crate::DomTypeHolder> for PointerEvent {
     }
 
     /// <https://w3c.github.io/pointerevents/#dom-pointerevent-width>
-    fn Width(&self) -> i32 {
-        self.width.get()
+    fn Width(&self) -> Finite<f64> {
+        Finite::wrap(self.width.get())
     }
 
     /// <https://w3c.github.io/pointerevents/#dom-pointerevent-height>
-    fn Height(&self) -> i32 {
-        self.height.get()
+    fn Height(&self) -> Finite<f64> {
+        Finite::wrap(self.height.get())
     }
 
     /// <https://w3c.github.io/pointerevents/#dom-pointerevent-pressure>

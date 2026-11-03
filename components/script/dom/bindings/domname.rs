@@ -68,7 +68,7 @@ pub(crate) fn is_valid_element_local_name(name: &str) -> bool {
     }
     // Step 3. If name’s 0th code point is not U+003A (:), U+005F (_),
     // or in the range U+0080 to U+10FFFF, inclusive, then return false.
-    else if matches!(c0, '\u{003A}' | '\u{005F}' | '\u{0080}'..='\u{10FFF}') {
+    else if matches!(c0, '\u{003A}' | '\u{005F}' | '\u{0080}'..='\u{10FFFF}') {
         for c in iter {
             // Step 4. If name’s subsequent code points,
             // if any, are not ASCII alphas, ASCII digits,
@@ -78,7 +78,7 @@ pub(crate) fn is_valid_element_local_name(name: &str) -> bool {
             if !c.is_ascii_alphanumeric() &&
                 !matches!(
                     c,
-                    '\u{002D}' | '\u{002E}' | '\u{003A}' | '\u{005F}' | '\u{0080}'..='\u{10FFF}'
+                    '\u{002D}' | '\u{002E}' | '\u{003A}' | '\u{005F}' | '\u{0080}'..='\u{10FFFF}'
                 )
             {
                 return false;
