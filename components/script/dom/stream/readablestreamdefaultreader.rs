@@ -34,7 +34,7 @@ use crate::dom::promisenativehandler::{Callback, PromiseNativeHandler};
 use crate::dom::readablestream::ReadableStream;
 use crate::dom::stream::defaultteereadrequest::DefaultTeeReadRequest;
 use crate::dom::stream::readablestreamgenericreader::ReadableStreamGenericReader;
-use crate::dom::types::ReadableStreamDefaultController;
+use crate::dom::types::{ReadableStreamAsyncIterator, ReadableStreamDefaultController};
 use crate::realms::enter_auto_realm;
 
 type ReadAllBytesSuccessSteps = dyn Fn(&mut js::context::JSContext, Vec<u8>);
@@ -109,6 +109,12 @@ pub(crate) enum ReadRequest {
     ByteTee {
         byte_tee_read_request: Dom<ByteTeeReadRequest>,
     },
+    /// The get the next iteration result steps of
+    /// <https://streams.spec.whatwg.org/#rs-asynciterator>
+    AsyncIterator {
+        promise: TracedPromise,
+        iterator: Dom<ReadableStreamAsyncIterator>,
+    },
 }
 
 impl js::rust::Rootable for ReadRequest {}
@@ -135,6 +141,11 @@ impl ReadRequest {
             },
             ReadRequest::DefaultTee { tee_read_request } => {
                 tee_read_request.enqueue_chunk_steps(cx, chunk);
+            },
+            ReadRequest::AsyncIterator { promise, .. } => {
+                // chunk steps, given chunk
+                // Resolve promise with chunk.
+                promise.resolve_native(cx, &chunk.handle());
             },
             ReadRequest::ByteTee {
                 byte_tee_read_request,
@@ -228,6 +239,17 @@ impl ReadRequest {
             ReadRequest::DefaultTee { tee_read_request } => {
                 tee_read_request.close_steps(cx);
             },
+            ReadRequest::AsyncIterator { promise, iterator } => {
+                // close steps
+                // Perform ! ReadableStreamDefaultReaderRelease(reader).
+                iterator
+                    .state()
+                    .reader()
+                    .release(cx)
+                    .expect("Releasing the reader of an async iterator should succeed");
+                // Resolve promise with end of iteration.
+                iterator.resolve_with_end_of_iteration(cx, promise);
+            },
             ReadRequest::ByteTee {
                 byte_tee_read_request,
             } => {
@@ -262,6 +284,17 @@ impl ReadRequest {
             },
             ReadRequest::DefaultTee { tee_read_request } => {
                 tee_read_request.error_steps();
+            },
+            ReadRequest::AsyncIterator { promise, iterator } => {
+                // error steps, given e
+                // Perform ! ReadableStreamDefaultReaderRelease(reader).
+                iterator
+                    .state()
+                    .reader()
+                    .release(cx)
+                    .expect("Releasing the reader of an async iterator should succeed");
+                // Reject promise with e.
+                promise.reject_native(cx, &e);
             },
             ReadRequest::ByteTee {
                 byte_tee_read_request,

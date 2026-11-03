@@ -13,6 +13,7 @@ pub(crate) mod defaultteereadrequest;
 pub(crate) mod defaultteeunderlyingsource;
 pub(crate) mod readablebytestreamcontroller;
 pub(crate) mod readablestream;
+pub(crate) mod readablestreamasynciterator;
 pub(crate) mod readablestreambyobreader;
 pub(crate) mod readablestreambyobrequest;
 pub(crate) mod readablestreamdefaultcontroller;
