@@ -101,3 +101,14 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Builds `overflow-anchor` for Servo behind the new `layout.css.scroll-anchoring.enabled` preference (the name
   Gecko uses). Only parsing and computed values; Servo does no scroll anchoring.
 - Upstream: Could go upstream as is.
+
+### AS-104: Enable the scroll-driven animation timeline properties for Servo
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `style/properties/shorthands.rs`
+- Why: Builds `scroll-timeline-name`, `scroll-timeline-axis`, `view-timeline-name`, `view-timeline-axis`,
+  `view-timeline-inset`, `timeline-scope` and the `scroll-timeline`, `view-timeline` and `animation-range`
+  shorthands for Servo, behind the existing `layout.css.scroll-driven-animations.enabled` preference that already
+  gates `animation-timeline` and `animation-range-start`/`-end` there. The three shorthand modules in `shorthands.rs`
+  lose their `#[cfg(feature = "gecko")]`. Affects css/css-animations/parsing/animation-range-shorthand*.html and
+  scroll-animations/css/*-parsing.html, *-computed.html and *-shorthand.html. Servo does not run scroll-driven
+  animations yet.
+- Upstream: Could go upstream as is.

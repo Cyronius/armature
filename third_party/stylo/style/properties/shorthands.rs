@@ -1654,7 +1654,7 @@ pub mod position_try {
     }
 }
 
-#[cfg(feature = "gecko")]
+// Armature (AS-104): Built for Servo too.
 pub mod scroll_timeline {
     pub use crate::properties::generated::shorthands::scroll_timeline::*;
 
@@ -1711,7 +1711,7 @@ pub mod scroll_timeline {
     }
 }
 
-#[cfg(feature = "gecko")]
+// Armature (AS-104): Built for Servo too.
 pub mod view_timeline {
     pub use crate::properties::generated::shorthands::view_timeline::*;
 
@@ -1798,7 +1798,7 @@ pub mod view_timeline {
     }
 }
 
-#[cfg(feature = "gecko")]
+// Armature (AS-104): Built for Servo too.
 pub mod animation_range {
     pub use crate::properties::generated::shorthands::animation_range::*;
 
