@@ -128,3 +128,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Enables `resize` for Servo behind the new `layout.css.resize.enabled` preference
   (css/css-ui/parsing/resize-*). Parsing only; Servo has no resize handles.
 - Upstream: Could go upstream as a Servo preference.
+
+### AS-308: Build field-sizing for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `field-sizing` for Servo behind `layout.css.field-sizing.enabled`, the name Gecko also uses
+  (css/css-ui/parsing/field-sizing-*). Parsing only; Servo's form controls keep their fixed size.
+- Upstream: Could go upstream as a Servo preference.

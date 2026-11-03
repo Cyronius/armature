@@ -4244,7 +4244,8 @@ initial = "computed::WindowShadow::Auto"
 
 [field-sizing]
 struct = "ui"
-engine = "gecko"
+# Armature (AS-308): Build for Servo too, behind a pref.
+servo_pref = "layout.css.field-sizing.enabled"
 spec = "https://drafts.csswg.org/css-ui/#field-sizing"
 animation_type = "discrete"
 affects = "layout"
