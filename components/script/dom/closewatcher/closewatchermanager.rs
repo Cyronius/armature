@@ -51,6 +51,12 @@ impl CloseWatcherManager {
             .update(|allowed_number_of_groups| allowed_number_of_groups + 1);
     }
 
+    /// Decrements the allowed number of groups, if it is greater than 1.
+    pub(crate) fn decrement_allowed_number_of_groups(&self) {
+        self.allowed_number_of_groups
+            .update(|allowed_number_of_groups| allowed_number_of_groups.saturating_sub(1).max(1));
+    }
+
     pub(crate) fn next_user_interaction_allows_a_new_group(&self) -> bool {
         self.next_user_interaction_allows_a_new_group.get()
     }

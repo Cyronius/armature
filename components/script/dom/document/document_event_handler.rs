@@ -2276,6 +2276,17 @@ impl DocumentEventHandler {
                     KeyboardScroll::PageDown
                 }
             },
+            // <https://html.spec.whatwg.org/multipage/#close-requests>
+            // > On platforms where Esc is the close request, the user agent will first fire an
+            // > appropriately-initialized keydown event. If the web developer cancels the event by
+            // > calling preventDefault(), then nothing further happens. But if the event fires
+            // > without being canceled, then the user agent proceeds to process close watchers.
+            Key::Named(NamedKey::Escape) => {
+                if self.window.process_close_watchers(cx) {
+                    return input_event_result | InputEventResult::Consumed;
+                }
+                return input_event_result;
+            },
             Key::Named(NamedKey::Tab) => {
                 // From <https://w3c.github.io/uievents/#keydown>:
                 //
