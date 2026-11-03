@@ -11,7 +11,8 @@ use js::context::{JSContext, NoGC};
 use script_bindings::codegen::GenericBindings::RangeBinding::RangeMethods;
 use script_bindings::inheritance::Castable;
 use style::attr::parse_legacy_color;
-use style::values::specified::box_::DisplayOutside;
+use style::values::specified::box_::{Display, DisplayOutside};
+use style::values::specified::text::TextAlignKeyword;
 
 use crate::dom::Document;
 use crate::dom::abstractrange::bp_position;
@@ -1513,6 +1514,58 @@ impl Node {
             }
             // Step 2. Return node.
             return Some(node);
+        }
+    }
+
+    /// <https://w3c.github.io/editing/docs/execCommand/#alignment-value>
+    pub(crate) fn alignment_value(&self) -> &'static str {
+        // Step 1. While node is neither null nor an Element, or it is an Element but its "display"
+        // property has resolved value "inline" or "none", set node to its parent.
+        let Some((element, style)) =
+            self.inclusive_ancestors(ShadowIncluding::No)
+                .find_map(|node| {
+                    let element = DomRoot::downcast::<Element>(node)?;
+                    let style = element.style()?;
+                    let display = style.get_box().display;
+                    (display != Display::Inline && display != Display::None)
+                        .then_some((element, style))
+                })
+        else {
+            // Step 2. If node is not an Element, return "left".
+            return "left";
+        };
+        let is_rtl = || element.directionality() == "rtl";
+        match style.get_inherited_text().text_align {
+            // Step 3. If node's "text-align" property has resolved value "start",
+            // return "left" if the directionality of node is "ltr", "right" if it is "rtl".
+            TextAlignKeyword::Start => {
+                if is_rtl() {
+                    "right"
+                } else {
+                    "left"
+                }
+            },
+            // Step 4. If node's "text-align" property has resolved value "end",
+            // return "right" if the directionality of node is "ltr", "left" if it is "rtl".
+            TextAlignKeyword::End => {
+                if is_rtl() {
+                    "left"
+                } else {
+                    "right"
+                }
+            },
+            // Step 5. If node's "text-align" property has resolved value "center", "justify",
+            // "left", or "right", return that value.
+            //
+            // Note: The align attribute of div and the center element map to the "-moz-" prefixed
+            // values, which we treat like their unprefixed counterparts.
+            TextAlignKeyword::Center | TextAlignKeyword::MozCenter => "center",
+            TextAlignKeyword::Justify => "justify",
+            TextAlignKeyword::Left | TextAlignKeyword::MozLeft => "left",
+            TextAlignKeyword::Right | TextAlignKeyword::MozRight => "right",
+            // Step 6. Return "left".
+            //
+            // Note: Never reached, since there are no other computed values of "text-align".
         }
     }
 

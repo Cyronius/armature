@@ -37,6 +37,10 @@ use crate::dom::execcommand::commands::insertlinebreak::execute_insert_line_brea
 use crate::dom::execcommand::commands::insertparagraph::execute_insert_paragraph_command;
 use crate::dom::execcommand::commands::inserttext::execute_insert_text_command;
 use crate::dom::execcommand::commands::italic::execute_italic_command;
+use crate::dom::execcommand::commands::justify::{
+    execute_justify_command, justify_command_indeterminate, justify_command_state,
+    justify_command_value,
+};
 use crate::dom::execcommand::commands::removeformat::execute_removeformat_command;
 use crate::dom::execcommand::commands::strikethrough::execute_strikethrough_command;
 use crate::dom::execcommand::commands::stylewithcss::execute_style_with_css_command;
@@ -149,6 +153,7 @@ pub(crate) enum CssPropertyName {
     FontSize,
     FontWeight,
     FontStyle,
+    TextAlign,
     TextDecoration,
     TextDecorationLine,
 }
@@ -237,6 +242,7 @@ impl CssPropertyName {
                 },
                 CssPropertyName::FontWeight => style.get_font_weight().to_css_string(),
                 CssPropertyName::FontStyle => style.get_font_style().to_css_string(),
+                CssPropertyName::TextAlign => style.get_inherited_text().text_align.to_css_string(),
                 CssPropertyName::TextDecoration => unreachable!("Should use longhands instead"),
                 CssPropertyName::TextDecorationLine => {
                     let text_decoration_line = style.get_text().text_decoration_line;
@@ -268,6 +274,7 @@ impl CssPropertyName {
             CssPropertyName::FontSize => LonghandId::FontSize,
             CssPropertyName::FontWeight => LonghandId::FontWeight,
             CssPropertyName::FontStyle => LonghandId::FontStyle,
+            CssPropertyName::TextAlign => LonghandId::TextAlign,
             CssPropertyName::TextDecoration => {
                 let mut dest = String::new();
                 style
@@ -294,6 +301,7 @@ impl CssPropertyName {
             CssPropertyName::FontSize => "font-size",
             CssPropertyName::FontWeight => "font-weight",
             CssPropertyName::FontStyle => "font-style",
+            CssPropertyName::TextAlign => "text-align",
             CssPropertyName::TextDecoration => "text-decoration",
             CssPropertyName::TextDecorationLine => "text-decoration-line",
         }
@@ -364,8 +372,13 @@ pub(crate) enum CommandName {
 impl CommandName {
     /// <https://w3c.github.io/editing/docs/execCommand/#indeterminate>
     pub(crate) fn is_indeterminate(&self, cx: &mut JSContext, document: &Document) -> bool {
-        if !self.is_standard_inline_value_command() {
-            return false;
+        match self {
+            CommandName::JustifyCenter |
+            CommandName::JustifyFull |
+            CommandName::JustifyLeft |
+            CommandName::JustifyRight => return justify_command_indeterminate(cx, document, *self),
+            _ if !self.is_standard_inline_value_command() => return false,
+            _ => {},
         }
         // https://w3c.github.io/editing/docs/execCommand/#standard-inline-value-command
         // > it is indeterminate if among formattable nodes that are effectively contained in the active range,
@@ -412,6 +425,10 @@ impl CommandName {
                 // > True if the CSS styling flag is true, otherwise false.
                 document.css_styling_flag()
             },
+            CommandName::JustifyCenter |
+            CommandName::JustifyFull |
+            CommandName::JustifyLeft |
+            CommandName::JustifyRight => justify_command_state(cx, document, *self),
             _ => {
                 // https://w3c.github.io/editing/docs/execCommand/#inline-formatting-command-definitions
                 // > If a command has inline command activated values defined, its state is true if either
@@ -465,6 +482,10 @@ impl CommandName {
                 document.default_single_line_container_name().into()
             },
             CommandName::FontSize => value_for_fontsize_command(cx, document)?,
+            CommandName::JustifyCenter |
+            CommandName::JustifyFull |
+            CommandName::JustifyLeft |
+            CommandName::JustifyRight => justify_command_value(cx, document),
             _ if self.is_standard_inline_value_command() => {
                 // https://w3c.github.io/editing/docs/execCommand/#standard-inline-value-command
                 // > Its value is the effective command value of the first formattable node that
@@ -763,6 +784,10 @@ impl CommandName {
             },
             CommandName::InsertText => execute_insert_text_command(cx, document, selection, value),
             CommandName::Italic => execute_italic_command(cx, document, selection),
+            CommandName::JustifyCenter |
+            CommandName::JustifyFull |
+            CommandName::JustifyLeft |
+            CommandName::JustifyRight => execute_justify_command(cx, document, selection, *self),
             CommandName::RemoveFormat => execute_removeformat_command(cx, document, selection),
             CommandName::Strikethrough => execute_strikethrough_command(cx, document, selection),
             CommandName::StyleWithCss => execute_style_with_css_command(document, value),
