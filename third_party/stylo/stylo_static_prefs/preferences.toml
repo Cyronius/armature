@@ -10,6 +10,8 @@
 "layout.css.background-clip.border-area.enabled" = false
 "layout.css.background-clip.text.enabled" = false
 "layout.css.basic-shape-shape.enabled" = false
+# Armature (AS-303): Servo preference for the properties this change enables.
+"layout.css.break-properties.enabled" = false
 "layout.css.calc-typed-arithmetic.enabled" = true
 "layout.css.color-mix-multi-color.enabled" = true
 "layout.css.columns.enabled" = false

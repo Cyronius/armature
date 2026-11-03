@@ -95,3 +95,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   Parsing only: Servo's layout does not skip the contents, and the Gecko-only style adjustments for containment are
   left as they are.
 - Upstream: Could go upstream as a Servo preference.
+
+### AS-303: Build the break properties for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `style/properties/shorthands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `break-before`, `break-after`, `break-inside` and the legacy `page-break-before`, `-after` and
+  `-inside` shorthands for Servo behind the new `layout.css.break-properties.enabled` preference
+  (css/css-break/parsing). Servo does not fragment, so they have no layout effect.
+- Upstream: Could go upstream as a Servo preference.
