@@ -122,3 +122,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Enables `margin-trim` for Servo behind `layout.css.margin-trim.enabled`, the name Gecko also uses
   (css/css-box/parsing/margin-trim*). Parsing only; Servo's layout does not trim margins.
 - Upstream: Could go upstream as a Servo preference.
+
+### AS-307: Build resize for Servo behind a pref
+- Files: `style/properties/longhands.toml`, `stylo_static_prefs/preferences.toml`
+- Why: Enables `resize` for Servo behind the new `layout.css.resize.enabled` preference
+  (css/css-ui/parsing/resize-*). Parsing only; Servo has no resize handles.
+- Upstream: Could go upstream as a Servo preference.
