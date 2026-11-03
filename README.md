@@ -25,10 +25,22 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   `<body>`/`<frameset>` window event-handler attributes now forward `onblur` and the frameset handlers.
 - **MIME types**: Request and Response `blob()` keep non-ASCII MIME parameters, and navigation quotes parameters it
   re-parses (so `charset` is no longer lost). `mimesniff/mime-types/parsing` went from 1,916 failing subtests to 1,402.
+- **[Popover API](https://html.spec.whatwg.org/multipage/popover.html)**, behind the `dom_popover_enabled`
+  preference (off by default; enabled for the tests): the `popover` attribute (`auto`, `manual` and `hint`),
+  `showPopover()`/`hidePopover()`/`togglePopover()`, `beforetoggle`/`toggle` events, `popovertarget` on buttons and
+  inputs, light dismiss, nested popovers, and dialog and fullscreen integration. `html/semantics/popovers` went from
+  3,902 failing subtests to 79. Pressing Escape now also closes dialogs and close watchers.
+- **WebCrypto hybrid KEMs**: MLKEM768-P256 and MLKEM1024-P384, next to the existing MLKEM768-X25519. The
+  `WebCryptoAPI/modern-algos` tests have no failures left (2,036 fixed).
+- **Streams**: async iteration of `ReadableStream` (`for await`, `values()`) and `ReadableStream.from()`, built on new
+  generic support for `async_iterable` declarations in the WebIDL code generator: 320 failing subtests down to 0.
+- **`HTMLElement.draggable`** (323 subtests), **fractional `MouseEvent` coordinates** as CSSOM View specifies (433),
+  and the current HTML rules for **valid custom element names** (113). Element names with code points above U+10FFF,
+  such as most emoji, are no longer rejected.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
-- `./mach fmt` and the crown GC-rooting lint pass, and the tested `dom`, `html/dom`, `mimesniff`, `fetch` and
-  `FileAPI` directories have no unexpected results other than a few tests that also fail on the unmodified tree.
+- `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
+  few tests that also fail or are flaky on the unmodified tree.
 
 ## What has not been done
 
@@ -38,6 +50,12 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   xml5ever's serializer to escape `>` in attribute values.
 - About 1,200 `mimesniff` Blob/File subtests expect `new Blob([], {type})` to parse and re-serialise the type, which
   Servo does not do; about 190 more need header values with control characters, which Servo's header storage rejects.
+- 79 popover subtests still fail: layout has no real top layer or `::backdrop` (open popovers are drawn as
+  `position: fixed`), focus navigation into popovers is not implemented, and 6 tests contradict the spec.
+- `TextEncoder.encodeInto()` and `TextDecoder` streaming into a `SharedArrayBuffer` (about 210 subtests) fail because
+  Servo has no cross-origin isolation, so shared memory is off in every global.
+- 182 `img` `naturalWidth`/`naturalHeight` subtests for SVG images fail, because the image cache records every SVG
+  image as a fixed integer size.
 - Some reflection subtests still fail (`col.span`, `progress.max`, `meter`, `textarea.rows`/`cols`, `pre.width`), as
   do 30 in the tentative ARIA test.
 - Conformance outside the directories above has not been measured or improved, and other missing features have not
