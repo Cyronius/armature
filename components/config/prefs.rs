@@ -72,6 +72,266 @@ pub fn set(preferences: Preferences) {
         "layout.css.writing-mode.enabled",
         preferences.layout_css_writing_mode_enabled
     );
+    stylo_static_prefs::set_pref!(
+        "layout.css.anchor-positioning.enabled",
+        preferences.layout_css_anchor_positioning_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.appearance-base.enabled",
+        preferences.layout_css_appearance_base_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.appearance.enabled",
+        preferences.layout_css_appearance_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.at-scope.enabled",
+        preferences.layout_css_at_scope_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.background-clip.border-area.enabled",
+        preferences.layout_css_background_clip_border_area_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.background-clip.text.enabled",
+        preferences.layout_css_background_clip_text_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.basic-shape-shape.enabled",
+        preferences.layout_css_basic_shape_shape_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.contain.enabled",
+        preferences.layout_css_contain_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.content.alt-text.enabled",
+        preferences.layout_css_content_alt_text_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.corner-shape.enabled",
+        preferences.layout_css_corner_shape_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.counters.enabled",
+        preferences.layout_css_counters_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.cross-fade.enabled",
+        preferences.layout_css_cross_fade_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.custom-media.enabled",
+        preferences.layout_css_custom_media_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.display-animations.enabled",
+        preferences.layout_css_display_animations_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.display-grid-lanes.enabled",
+        preferences.layout_css_display_grid_lanes_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.dominant-baseline.enabled",
+        preferences.layout_css_dominant_baseline_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.first-line.enabled",
+        preferences.layout_css_first_line_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.flexbox-balance.enabled",
+        preferences.layout_css_flexbox_balance_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.font-palette.enabled",
+        preferences.layout_css_font_palette_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.font-size-adjust.enabled",
+        preferences.layout_css_font_size_adjust_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.font-synthesis.enabled",
+        preferences.layout_css_font_synthesis_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.font-tech.enabled",
+        preferences.layout_css_font_tech_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.font-variant-caps.all-values.enabled",
+        preferences.layout_css_font_variant_caps_all_values_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.font-variant-emoji.enabled",
+        preferences.layout_css_font_variant_emoji_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.forced-color-adjust.enabled",
+        preferences.layout_css_forced_color_adjust_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.grid-template-subgrid-value.enabled",
+        preferences.layout_css_grid_template_subgrid_value_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.has-selector.enabled",
+        preferences.layout_css_has_selector_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.hyphens.enabled",
+        preferences.layout_css_hyphens_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.initial-letter.enabled",
+        preferences.layout_css_initial_letter_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.light-dark.images.enabled",
+        preferences.layout_css_light_dark_images_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.line-clamp.enabled",
+        preferences.layout_css_line_clamp_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.margin-rules.enabled",
+        preferences.layout_css_margin_rules_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.masking.enabled",
+        preferences.layout_css_masking_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.math-properties.enabled",
+        preferences.layout_css_math_properties_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.motion-path-url.enabled",
+        preferences.layout_css_motion_path_url_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.motion-path.enabled",
+        preferences.layout_css_motion_path_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.nth-child-of.enabled",
+        preferences.layout_css_nth_child_of_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.overflow-moz-hidden-unscrollable.enabled",
+        preferences.layout_css_overflow_moz_hidden_unscrollable_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.overscroll-behavior.enabled",
+        preferences.layout_css_overscroll_behavior_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.random.enabled",
+        preferences.layout_css_random_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.ruby.enabled",
+        preferences.layout_css_ruby_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.scroll-behavior.enabled",
+        preferences.layout_css_scroll_behavior_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.scroll-driven-animations.enabled",
+        preferences.layout_css_scroll_driven_animations_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.scroll-state.enabled",
+        preferences.layout_css_scroll_state_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.scrollbar-styling.enabled",
+        preferences.layout_css_scrollbar_styling_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.starting-style-at-rules.enabled",
+        preferences.layout_css_starting_style_at_rules_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.style-queries.enabled",
+        preferences.layout_css_style_queries_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-autospace.enabled",
+        preferences.layout_css_text_autospace_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-box.enabled",
+        preferences.layout_css_text_box_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-combine-upright.enabled",
+        preferences.layout_css_text_combine_upright_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-decoration-inset-percentage.enabled",
+        preferences.layout_css_text_decoration_inset_percentage_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-decoration-inset.enabled",
+        preferences.layout_css_text_decoration_inset_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-emphasis.enabled",
+        preferences.layout_css_text_emphasis_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-indent-keywords.enabled",
+        preferences.layout_css_text_indent_keywords_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-overflow.enabled",
+        preferences.layout_css_text_overflow_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-underline.enabled",
+        preferences.layout_css_text_underline_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-wrap-style.balance.enabled",
+        preferences.layout_css_text_wrap_style_balance_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.text-wrap-style.pretty.enabled",
+        preferences.layout_css_text_wrap_style_pretty_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.tree-counting-functions.enabled",
+        preferences.layout_css_tree_counting_functions_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.view-transitions.enabled",
+        preferences.layout_css_view_transitions_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.white-space-collapse.preserve-spaces.enabled",
+        preferences.layout_css_white_space_collapse_preserve_spaces_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.word-break.break-word.enabled",
+        preferences.layout_css_word_break_break_word_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.writing-mode.sideways.enabled",
+        preferences.layout_css_writing_mode_sideways_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.writing-mode.text-orientation.enabled",
+        preferences.layout_css_writing_mode_text_orientation_enabled
+    );
+    stylo_static_prefs::set_pref!(
+        "layout.css.zoom.enabled",
+        preferences.layout_css_zoom_enabled
+    );
 
     *PREFERENCES.write().unwrap() = preferences;
 
@@ -326,6 +586,73 @@ pub struct Preferences {
     pub layout_css_font_variations_enabled: bool,
     // feature: CSS writing modes | #2560 | Web/CSS/Guides/Writing_modes
     pub layout_css_writing_mode_enabled: bool,
+    // Stylo preferences without a Servo-specific name. Each is forwarded to the Stylo
+    // preference of the same name, with `.` and `-` turned into `_`.
+    pub layout_css_anchor_positioning_enabled: bool,
+    pub layout_css_appearance_base_enabled: bool,
+    pub layout_css_appearance_enabled: bool,
+    pub layout_css_at_scope_enabled: bool,
+    pub layout_css_background_clip_border_area_enabled: bool,
+    pub layout_css_background_clip_text_enabled: bool,
+    pub layout_css_basic_shape_shape_enabled: bool,
+    pub layout_css_contain_enabled: bool,
+    pub layout_css_content_alt_text_enabled: bool,
+    pub layout_css_corner_shape_enabled: bool,
+    pub layout_css_counters_enabled: bool,
+    pub layout_css_cross_fade_enabled: bool,
+    pub layout_css_custom_media_enabled: bool,
+    pub layout_css_display_animations_enabled: bool,
+    pub layout_css_display_grid_lanes_enabled: bool,
+    pub layout_css_dominant_baseline_enabled: bool,
+    pub layout_css_first_line_enabled: bool,
+    pub layout_css_flexbox_balance_enabled: bool,
+    pub layout_css_font_palette_enabled: bool,
+    pub layout_css_font_size_adjust_enabled: bool,
+    pub layout_css_font_synthesis_enabled: bool,
+    pub layout_css_font_tech_enabled: bool,
+    pub layout_css_font_variant_caps_all_values_enabled: bool,
+    pub layout_css_font_variant_emoji_enabled: bool,
+    pub layout_css_forced_color_adjust_enabled: bool,
+    pub layout_css_grid_template_subgrid_value_enabled: bool,
+    pub layout_css_has_selector_enabled: bool,
+    pub layout_css_hyphens_enabled: bool,
+    pub layout_css_initial_letter_enabled: bool,
+    pub layout_css_light_dark_images_enabled: bool,
+    pub layout_css_line_clamp_enabled: bool,
+    pub layout_css_margin_rules_enabled: bool,
+    pub layout_css_masking_enabled: bool,
+    pub layout_css_math_properties_enabled: bool,
+    pub layout_css_motion_path_url_enabled: bool,
+    pub layout_css_motion_path_enabled: bool,
+    pub layout_css_nth_child_of_enabled: bool,
+    pub layout_css_overflow_moz_hidden_unscrollable_enabled: bool,
+    pub layout_css_overscroll_behavior_enabled: bool,
+    pub layout_css_random_enabled: bool,
+    pub layout_css_ruby_enabled: bool,
+    pub layout_css_scroll_behavior_enabled: bool,
+    pub layout_css_scroll_driven_animations_enabled: bool,
+    pub layout_css_scroll_state_enabled: bool,
+    pub layout_css_scrollbar_styling_enabled: bool,
+    pub layout_css_starting_style_at_rules_enabled: bool,
+    pub layout_css_style_queries_enabled: bool,
+    pub layout_css_text_autospace_enabled: bool,
+    pub layout_css_text_box_enabled: bool,
+    pub layout_css_text_combine_upright_enabled: bool,
+    pub layout_css_text_decoration_inset_percentage_enabled: bool,
+    pub layout_css_text_decoration_inset_enabled: bool,
+    pub layout_css_text_emphasis_enabled: bool,
+    pub layout_css_text_indent_keywords_enabled: bool,
+    pub layout_css_text_overflow_enabled: bool,
+    pub layout_css_text_underline_enabled: bool,
+    pub layout_css_text_wrap_style_balance_enabled: bool,
+    pub layout_css_text_wrap_style_pretty_enabled: bool,
+    pub layout_css_tree_counting_functions_enabled: bool,
+    pub layout_css_view_transitions_enabled: bool,
+    pub layout_css_white_space_collapse_preserve_spaces_enabled: bool,
+    pub layout_css_word_break_break_word_enabled: bool,
+    pub layout_css_writing_mode_sideways_enabled: bool,
+    pub layout_css_writing_mode_text_orientation_enabled: bool,
+    pub layout_css_zoom_enabled: bool,
     pub layout_style_sharing_cache_enabled: bool,
     pub layout_threads: i64,
     /// The minimum number of parallelizable jobs required before turning on parallelism
@@ -586,6 +913,71 @@ impl Preferences {
             layout_css_ellipse_corners_enabled: false,
             layout_css_font_variations_enabled: false,
             layout_css_writing_mode_enabled: false,
+            layout_css_anchor_positioning_enabled: false,
+            layout_css_appearance_base_enabled: false,
+            layout_css_appearance_enabled: false,
+            layout_css_at_scope_enabled: false,
+            layout_css_background_clip_border_area_enabled: false,
+            layout_css_background_clip_text_enabled: false,
+            layout_css_basic_shape_shape_enabled: false,
+            layout_css_contain_enabled: false,
+            layout_css_content_alt_text_enabled: false,
+            layout_css_corner_shape_enabled: false,
+            layout_css_counters_enabled: false,
+            layout_css_cross_fade_enabled: false,
+            layout_css_custom_media_enabled: false,
+            layout_css_display_animations_enabled: false,
+            layout_css_display_grid_lanes_enabled: false,
+            layout_css_dominant_baseline_enabled: false,
+            layout_css_first_line_enabled: false,
+            layout_css_flexbox_balance_enabled: false,
+            layout_css_font_palette_enabled: false,
+            layout_css_font_size_adjust_enabled: false,
+            layout_css_font_synthesis_enabled: false,
+            layout_css_font_tech_enabled: false,
+            layout_css_font_variant_caps_all_values_enabled: false,
+            layout_css_font_variant_emoji_enabled: false,
+            layout_css_forced_color_adjust_enabled: false,
+            layout_css_grid_template_subgrid_value_enabled: false,
+            layout_css_has_selector_enabled: false,
+            layout_css_hyphens_enabled: false,
+            layout_css_initial_letter_enabled: false,
+            layout_css_light_dark_images_enabled: false,
+            layout_css_line_clamp_enabled: false,
+            layout_css_margin_rules_enabled: false,
+            layout_css_masking_enabled: false,
+            layout_css_math_properties_enabled: false,
+            layout_css_motion_path_url_enabled: false,
+            layout_css_motion_path_enabled: false,
+            layout_css_nth_child_of_enabled: false,
+            layout_css_overflow_moz_hidden_unscrollable_enabled: false,
+            layout_css_overscroll_behavior_enabled: false,
+            layout_css_random_enabled: false,
+            layout_css_ruby_enabled: false,
+            layout_css_scroll_behavior_enabled: false,
+            layout_css_scroll_driven_animations_enabled: false,
+            layout_css_scroll_state_enabled: false,
+            layout_css_scrollbar_styling_enabled: false,
+            layout_css_starting_style_at_rules_enabled: false,
+            layout_css_style_queries_enabled: false,
+            layout_css_text_autospace_enabled: false,
+            layout_css_text_box_enabled: false,
+            layout_css_text_combine_upright_enabled: false,
+            layout_css_text_decoration_inset_percentage_enabled: false,
+            layout_css_text_decoration_inset_enabled: false,
+            layout_css_text_emphasis_enabled: false,
+            layout_css_text_indent_keywords_enabled: false,
+            layout_css_text_overflow_enabled: false,
+            layout_css_text_underline_enabled: false,
+            layout_css_text_wrap_style_balance_enabled: false,
+            layout_css_text_wrap_style_pretty_enabled: false,
+            layout_css_tree_counting_functions_enabled: false,
+            layout_css_view_transitions_enabled: false,
+            layout_css_white_space_collapse_preserve_spaces_enabled: false,
+            layout_css_word_break_break_word_enabled: false,
+            layout_css_writing_mode_sideways_enabled: false,
+            layout_css_writing_mode_text_orientation_enabled: false,
+            layout_css_zoom_enabled: false,
             layout_style_sharing_cache_enabled: true,
             // TODO(mrobinson): This should likely be based on the number of processors.
             layout_threads: 3,
