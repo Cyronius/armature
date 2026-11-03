@@ -5,12 +5,16 @@
 use js::context::JSContext;
 use script_bindings::inheritance::Castable;
 use style::attr::parse_legacy_color;
-use style::color::ColorFlags;
+use style::color::{AbsoluteColor, ColorFlags};
 use style::properties::PropertyDeclarationId;
 use style::properties::generated::{LonghandId, ShorthandId};
+use style::stylesheets::CssRuleType;
+use style::values::computed::color::Color as ComputedColor;
+use style::values::specified::color::Color;
 use style::values::specified::text::TextDecorationLine;
-use style_traits::ToCss;
+use style_traits::{ParsingMode, ToCss};
 
+use crate::css::css::{ANONYMOUS_CONTENT_URL_DATA, parser_context_for_anonymous_content};
 use crate::dom::bindings::codegen::Bindings::CSSStyleDeclarationBinding::CSSStyleDeclarationMethods;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::HTMLElementMethods;
@@ -144,6 +148,21 @@ impl RecordedStateOfCommand {
     }
 }
 
+/// Parses a string as a CSS `<color>`, returning failure for anything that is not a valid
+/// absolute CSS color (such as `currentcolor`).
+fn parse_css_color(string: &str) -> Result<AbsoluteColor, ()> {
+    let mut parser = cssparser::Parser::new(string);
+    let context = parser_context_for_anonymous_content(
+        CssRuleType::Style,
+        ParsingMode::DEFAULT,
+        &ANONYMOUS_CONTENT_URL_DATA,
+    );
+    match Color::parse_and_compute(&context, &mut parser, None) {
+        Ok(ComputedColor::Absolute(color)) => Ok(color),
+        _ => Err(()),
+    }
+}
+
 /// <https://w3c.github.io/editing/docs/execCommand/#relevant-css-property>
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum CssPropertyName {
@@ -187,11 +206,13 @@ impl CssPropertyName {
                     // value" for these elements, we need to special case this. Otherwise, we
                     // would add both a `color` attribute and `color` style declaration
                     // to a parent font element.
-                    if let Some(ancestor_font) = element.downcast::<HTMLFontElement>() {
-                        let color = ancestor_font.Color();
-                        if !color.is_empty() {
-                            return Some(color);
-                        }
+                    //
+                    // Note: The color is serialized like a resolved value, so that it can be
+                    // compared with the resolved values of other elements.
+                    if let Some(ancestor_font) = element.downcast::<HTMLFontElement>() &&
+                        let Ok(color) = parse_legacy_color(&ancestor_font.Color().str())
+                    {
+                        return Some(color.to_css_string().into());
                     }
                     style.get_color().to_css_string()
                 },
@@ -524,8 +545,8 @@ impl CommandName {
                         // > Either both strings are valid CSS colors and have the same red, green, blue, and alpha components,
                         // > or neither string is a valid CSS color.
                         match (
-                            parse_legacy_color(&first_str.str()),
-                            parse_legacy_color(&second_str.str()),
+                            parse_css_color(&first_str.str()),
+                            parse_css_color(&second_str.str()),
                         ) {
                             (Ok(first_legacy_color), Ok(second_legacy_color)) => {
                                 first_legacy_color == second_legacy_color
