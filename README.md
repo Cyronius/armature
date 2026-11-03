@@ -45,6 +45,20 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 - **SVG image sizing**: SVG images get their natural width, height and ratio from the outermost `svg` element as SVG 2
   specifies, and `img.naturalWidth`/`naturalHeight` follow the default sizing rules. `naturalWidth-naturalHeight-width-height`
   went from 182 failing subtests to 0, and about 340 more pass in the image, background, sizing and SVG tests.
+- **Vendored Stylo**: Stylo, Servo's CSS engine, is vendored in `third_party/stylo/` as an unmodified import plus a
+  log of every Armature change (`third_party/stylo.md`), so changes can be ported to and from upstream Stylo.
+  `./mach test-tidy` checks that the log matches the actual diff.
+- **CSS features behind Stylo preferences**: Servo now exposes 65 of Stylo's own `layout.css.*` preferences (51 are on
+  in experimental mode; the rest would reach unimplemented layout code). About 50 standard properties that Stylo
+  built only for Firefox are enabled behind new preferences: scroll snapping, `scroll-margin`/`scroll-padding`,
+  `scrollbar-gutter`, `overflow-anchor`, scroll and view timelines, the SVG presentation properties, `accent-color`,
+  `print-color-adjust`, `image-orientation`, `contain-intrinsic-size`, `content-visibility`, `break-*`, column rules,
+  `counter-set`, `margin-trim`, `resize`, `field-sizing`, `shape-*`, `offset-*` (motion path), `transform-box` and
+  `text-decoration-skip-ink`. In layout, `scrollIntoView()` honours scroll margin and padding, `transform-box` works,
+  the SVG properties are mapped from presentation attributes, and lists use the `list-item` counter (including
+  `<ol start reversed>` and `<li value>`). Most of the others are parsed, computed, serialised and animated but not
+  laid out. The previously run CSS tests have about 5,300 fewer failing subtests, and newly enabled parsing and
+  animation directories add 6,807 passing subtests.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -62,8 +76,12 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   `position: fixed`), focus navigation into popovers is not implemented, and 6 tests contradict the spec.
 - `TextEncoder.encodeInto()` and `TextDecoder` streaming into a `SharedArrayBuffer` (about 210 subtests) fail because
   Servo has no cross-origin isolation, so shared memory is off in every global.
-- 182 `img` `naturalWidth`/`naturalHeight` subtests for SVG images fail, because the image cache records every SVG
-  image as a fixed integer size.
+- Not enabled from Stylo: anchor positioning, `@scope`, `@starting-style`, `@page` margin rules, custom media,
+  `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
+  Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
+  `resize` has no resize handles, and `Element.animate()` is missing, so many CSS animation subtests still fail.
+- Every testharness test written as an `.svg` file errors in Servo's test harness, so many SVG property tests are not
+  measured.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
