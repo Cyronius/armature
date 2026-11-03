@@ -25,7 +25,7 @@ use style::computed_values::position::T as ComputedPosition;
 use style::computed_values::text_decoration_style::T as TextDecorationStyle;
 use style::computed_values::text_decoration_thickness::T as TextDecorationThickness;
 use style::values::computed::angle::Angle;
-use style::values::computed::{ClipRectOrAuto, Length, TextDecorationLine};
+use style::values::computed::{ClipRectOrAuto, Length, TextDecorationLine, TransformBox};
 use style::values::generics::box_::{OverflowClipMarginBox, Perspective};
 use style::values::generics::transform::{
     self, GenericRotate, GenericScale, GenericTranslate, get_normalized_vector_and_angle,
@@ -1381,6 +1381,30 @@ impl BoxFragment {
         })
     }
 
+    /// Returns the reference box for this fragment's transform, given its border rectangle.
+    ///
+    /// <https://drafts.csswg.org/css-transforms-1/#transform-box>
+    pub(crate) fn transform_reference_box(
+        &self,
+        border_rect: &Rect<Au, CSSPixel>,
+    ) -> Rect<Au, CSSPixel> {
+        // > For elements with associated CSS layout box, the used value for fill-box is
+        // > content-box and for stroke-box and view-box is border-box.
+        match self.style().get_box().transform_box {
+            TransformBox::ContentBox | TransformBox::FillBox => Rect::new(
+                border_rect.origin +
+                    PhysicalVec::new(
+                        self.border.left + self.padding.left,
+                        self.border.top + self.padding.top,
+                    ),
+                self.content_rect().size,
+            ),
+            TransformBox::BorderBox | TransformBox::StrokeBox | TransformBox::ViewBox => {
+                *border_rect
+            },
+        }
+    }
+
     /// Returns the 4D matrix representing this fragment's transform.
     pub fn calculate_transform_matrix(
         &self,
@@ -1388,7 +1412,11 @@ impl BoxFragment {
     ) -> Option<LayoutTransform> {
         let style = self.style();
         let list = &style.get_box().transform;
-        let length_rect = au_rect_to_length_rect(border_rect);
+        // The transform functions and the transform origin are relative to the reference box,
+        // but the returned matrix is relative to the origin of the border box.
+        let reference_box = self.transform_reference_box(border_rect);
+        let reference_box_offset = reference_box.origin - border_rect.origin;
+        let length_rect = au_rect_to_length_rect(&reference_box);
         // https://drafts.csswg.org/css-transforms-2/#individual-transforms
         let rotate = match style.get_rotate() {
             GenericRotate::Rotate(angle) => (0., 0., 1., *angle),
@@ -1422,14 +1450,16 @@ impl BoxFragment {
             .then(&translation);
 
         let transform_origin = &style.get_box().transform_origin;
-        let transform_origin_x = transform_origin
-            .horizontal
-            .to_used_value(border_rect.size.width)
-            .to_f32_px();
-        let transform_origin_y = transform_origin
-            .vertical
-            .to_used_value(border_rect.size.height)
-            .to_f32_px();
+        let transform_origin_x = (reference_box_offset.x +
+            transform_origin
+                .horizontal
+                .to_used_value(reference_box.size.width))
+        .to_f32_px();
+        let transform_origin_y = (reference_box_offset.y +
+            transform_origin
+                .vertical
+                .to_used_value(reference_box.size.height))
+        .to_f32_px();
         let transform_origin_z = transform_origin.depth.px();
 
         Some(transform.change_basis(transform_origin_x, transform_origin_y, transform_origin_z))
@@ -1443,16 +1473,22 @@ impl BoxFragment {
         let style = self.style();
         match style.get_box().perspective {
             Perspective::Length(length) => {
+                // The perspective origin is relative to the reference box, but the returned
+                // matrix is relative to the origin of the border box.
+                let reference_box = self.transform_reference_box(border_rect);
+                let reference_box_offset = reference_box.origin - border_rect.origin;
                 let perspective_origin = &style.get_box().perspective_origin;
                 let perspective_origin = LayoutPoint::new(
-                    perspective_origin
-                        .horizontal
-                        .percentage_relative_to(border_rect.size.width.into())
-                        .px(),
-                    perspective_origin
-                        .vertical
-                        .percentage_relative_to(border_rect.size.height.into())
-                        .px(),
+                    reference_box_offset.x.to_f32_px() +
+                        perspective_origin
+                            .horizontal
+                            .percentage_relative_to(reference_box.size.width.into())
+                            .px(),
+                    reference_box_offset.y.to_f32_px() +
+                        perspective_origin
+                            .vertical
+                            .percentage_relative_to(reference_box.size.height.into())
+                            .px(),
                 );
 
                 let perspective_matrix = LayoutTransform::from_untyped(
