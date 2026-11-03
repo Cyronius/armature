@@ -151,6 +151,7 @@ use crate::dom::html::htmliframeelement::HTMLIFrameElement;
 use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmllabelelement::HTMLLabelElement;
 use crate::dom::html::htmllegendelement::HTMLLegendElement;
+use crate::dom::html::htmllielement::HTMLLIElement;
 use crate::dom::html::htmllinkelement::HTMLLinkElement;
 use crate::dom::html::htmlmarqueeelement::HTMLMarqueeElement;
 use crate::dom::html::htmlobjectelement::HTMLObjectElement;
@@ -1626,6 +1627,13 @@ impl<'dom> LayoutDom<'dom, Element> {
             let Some(counter_reset) = list_element.get_counter_reset()
         {
             push(PropertyDeclaration::CounterReset(counter_reset));
+        }
+
+        if let Some(list_item_element) = self.downcast::<HTMLLIElement>() &&
+            pref!(layout_css_counters_enabled) &&
+            let Some(counter_set) = list_item_element.get_counter_set()
+        {
+            push(PropertyDeclaration::CounterSet(counter_set));
         }
 
         let Some(property_declaration_block) = property_declaration_block else {
