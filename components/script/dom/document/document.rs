@@ -5555,10 +5555,22 @@ impl Document {
 
     /// <https://w3c.github.io/editing/docs/execCommand/#value-override>
     pub(crate) fn set_value_override(&self, command_name: CommandName, value: Option<DOMString>) {
-        if let Some(value) = value {
-            self.value_override.borrow_mut().insert(command_name, value);
-        } else {
-            self.value_override.borrow_mut().remove(&command_name);
+        // > The value override for the backColor command must be the same as the value override
+        // > for the hiliteColor command, such that setting one sets the other to the same thing
+        // > and unsetting one unsets the other.
+        let command_names = match command_name {
+            CommandName::BackColor | CommandName::HiliteColor => {
+                vec![CommandName::BackColor, CommandName::HiliteColor]
+            },
+            _ => vec![command_name],
+        };
+        let mut value_override = self.value_override.borrow_mut();
+        for command_name in command_names {
+            if let Some(value) = &value {
+                value_override.insert(command_name, value.clone());
+            } else {
+                value_override.remove(&command_name);
+            }
         }
     }
 
