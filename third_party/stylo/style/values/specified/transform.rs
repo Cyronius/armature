@@ -44,7 +44,9 @@ fn all_transform_boxes_are_enabled(_context: &ParserContext) -> bool {
 
 #[cfg(feature = "servo")]
 fn all_transform_boxes_are_enabled(_context: &ParserContext) -> bool {
-    false
+    // Armature (AS-403): Servo's layout supports every transform box, and the property itself is
+    // behind a preference.
+    true
 }
 
 /// The specified value of `transform-box`.

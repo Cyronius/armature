@@ -72,6 +72,8 @@
 # Armature (AS-102): Gates scrollbar-gutter for Servo.
 "layout.css.scrollbar-gutter.enabled" = false
 "layout.css.scrollbar-styling.enabled" = false
+# Armature (AS-401): Gates shape-outside, shape-margin and shape-image-threshold for Servo.
+"layout.css.shapes.enabled" = false
 "layout.css.starting-style-at-rules.enabled" = false
 "layout.css.stretch-size-keyword.enabled" = true
 "layout.css.style-queries.enabled" = false
@@ -87,12 +89,16 @@
 "layout.css.text-combine-upright.enabled" = false
 "layout.css.text-decoration-inset-percentage.enabled" = false
 "layout.css.text-decoration-inset.enabled" = false
+# Armature (AS-404): Gates text-decoration-skip-ink for Servo.
+"layout.css.text-decoration-skip-ink.enabled" = false
 "layout.css.text-emphasis.enabled" = false
 "layout.css.text-indent-keywords.enabled" = false
 "layout.css.text-overflow.enabled" = false
 "layout.css.text-underline.enabled" = false
 "layout.css.text-wrap-style.balance.enabled" = false
 "layout.css.text-wrap-style.pretty.enabled" = false
+# Armature (AS-403): Gates transform-box for Servo.
+"layout.css.transform-box.enabled" = false
 "layout.css.tree-counting-functions.enabled" = false
 "layout.css.view-transitions.enabled" = false
 "layout.css.webkit-fill-available.all-size-properties.enabled" = true
