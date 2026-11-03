@@ -119,3 +119,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   and `hyphenate-character`. Servo's layout ignores the value. Affects
   `css/css-text/parsing/hyphenate-limit-chars-*.html`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-406: Enable math-shift for Servo behind the math properties preference
+- Files: `style/properties/longhands.toml`
+- Why: Builds `math-shift` for Servo behind `layout.css.math-properties.enabled`, which already gates `math-depth`
+  and `math-style`. Servo's layout ignores the value. Affects
+  `mathml/relations/css-styling/parsing/math-shift-*.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.

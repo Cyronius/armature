@@ -3835,7 +3835,8 @@ initial = "computed::MathStyle::Normal"
 
 [math-shift]
 struct = "font"
-engine = "gecko"
+# Armature (AS-406): Enabled for Servo behind the math properties preference.
+servo_pref = "layout.css.math-properties.enabled"
 spec = "https://w3c.github.io/mathml-core/#the-math-shift"
 animation_type = "discrete"
 affects = "layout"
