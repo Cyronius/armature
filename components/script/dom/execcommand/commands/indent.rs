@@ -141,10 +141,11 @@ pub(crate) fn normalize_sublists(cx: &mut JSContext, item: DomRoot<Node>) {
         //             let new item be the result of calling createElement("li") on the ownerDocument of item,
         //             then insert new item into the parent of item immediately after item.
         if new_item.is_none() {
-            new_item = Some(item.owner_document().create_element(cx, "li"));
+            let li = item.owner_document().create_element(cx, "li");
             item_element
-                .insert_adjacent(cx, AdjacentPosition::AfterEnd, &child)
+                .insert_adjacent(cx, AdjacentPosition::AfterEnd, li.upcast())
                 .expect("Insertion should always work here.");
+            new_item = Some(li);
         }
 
         // Step 3.3.2. Insert child into new item as its first child, preserving ranges.
