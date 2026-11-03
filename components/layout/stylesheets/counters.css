@@ -1,0 +1,6 @@
+@namespace url(http://www.w3.org/1999/xhtml);
+
+/* https://html.spec.whatwg.org/multipage/#lists
+   This stylesheet is only used when the `layout_css_counters_enabled` preference is set. */
+
+ol, ul, menu { counter-reset: list-item; }
