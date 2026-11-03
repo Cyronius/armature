@@ -5550,27 +5550,29 @@ impl Document {
 
     /// <https://w3c.github.io/editing/docs/execCommand/#value-override>
     pub(crate) fn value_override(&self, command_name: &CommandName) -> Option<DOMString> {
-        self.value_override.borrow().get(command_name).cloned()
+        let command_name = Self::command_name_for_value_override(*command_name);
+        self.value_override.borrow().get(&command_name).cloned()
     }
 
     /// <https://w3c.github.io/editing/docs/execCommand/#value-override>
     pub(crate) fn set_value_override(&self, command_name: CommandName, value: Option<DOMString>) {
+        let command_name = Self::command_name_for_value_override(command_name);
+        if let Some(value) = value {
+            self.value_override.borrow_mut().insert(command_name, value);
+        } else {
+            self.value_override.borrow_mut().remove(&command_name);
+        }
+    }
+
+    /// <https://w3c.github.io/editing/docs/execCommand/#value-override>
+    fn command_name_for_value_override(command_name: CommandName) -> CommandName {
         // > The value override for the backColor command must be the same as the value override
         // > for the hiliteColor command, such that setting one sets the other to the same thing
         // > and unsetting one unsets the other.
-        let command_names = match command_name {
-            CommandName::BackColor | CommandName::HiliteColor => {
-                vec![CommandName::BackColor, CommandName::HiliteColor]
-            },
-            _ => vec![command_name],
-        };
-        let mut value_override = self.value_override.borrow_mut();
-        for command_name in command_names {
-            if let Some(value) = &value {
-                value_override.insert(command_name, value.clone());
-            } else {
-                value_override.remove(&command_name);
-            }
+        if command_name == CommandName::BackColor {
+            CommandName::HiliteColor
+        } else {
+            command_name
         }
     }
 
@@ -7334,7 +7336,9 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
         _show_ui: bool,
         value: TrustedHTMLOrString,
     ) -> Fallible<bool> {
-        let value = if command_id == "insertHTML" {
+        // Note: Commands are matched ASCII case-insensitively, so this must be as well,
+        // or "inserthtml" would bypass the Trusted Types check of the insertHTML command.
+        let value = if command_id.str().eq_ignore_ascii_case("insertHTML") {
             TrustedHTML::get_trusted_type_compliant_string(
                 cx,
                 self.window.as_global_scope(),

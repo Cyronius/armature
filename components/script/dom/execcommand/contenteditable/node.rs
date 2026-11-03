@@ -19,6 +19,7 @@ use crate::dom::abstractrange::bp_position;
 use crate::dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterDataMethods;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLAnchorElementBinding::HTMLAnchorElementMethods;
+use crate::dom::bindings::codegen::Bindings::HTMLFontElementBinding::HTMLFontElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::inheritance::NodeTypeId;
@@ -31,6 +32,7 @@ use crate::dom::execcommand::commands::forecolor::serialize_to_simple_color;
 use crate::dom::html::htmlanchorelement::HTMLAnchorElement;
 use crate::dom::html::htmlbrelement::HTMLBRElement;
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::htmlfontelement::HTMLFontElement;
 use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmllielement::HTMLLIElement;
 use crate::dom::iterators::ShadowIncluding;
@@ -909,9 +911,81 @@ pub(crate) fn restore_the_values(cx: &mut JSContext, values: Vec<RecordedValueAn
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum LineDirection {
+    Backward,
+    Forward,
+}
+
+/// Looks for the first thing in node (in the given direction) that would be on the same line as
+/// a br next to node. Returns true for a block boundary, or, walking backward, another line break;
+/// false for visible inline content; and None if node contains neither.
+fn first_line_content_is_line_boundary(
+    node: &Node,
+    direction: LineDirection,
+    no_gc: &NoGC,
+) -> Option<bool> {
+    if node.is_block_node() {
+        return Some(true);
+    }
+    if node.is::<HTMLBRElement>() {
+        return Some(direction == LineDirection::Backward);
+    }
+    if node.is::<Text>() || node.is::<HTMLImageElement>() {
+        return (!node.is_invisible(no_gc)).then_some(false);
+    }
+    let element = node.downcast::<Element>()?;
+    if element.resolved_display_value() == Some(DisplayOutside::None) {
+        return None;
+    }
+    match direction {
+        LineDirection::Forward => node
+            .children()
+            .find_map(|child| first_line_content_is_line_boundary(&child, direction, no_gc)),
+        LineDirection::Backward => node
+            .rev_children()
+            .find_map(|child| first_line_content_is_line_boundary(&child, direction, no_gc)),
+    }
+}
+
+/// Whether there is no visible inline content between br and the end (or, walking backward,
+/// the start) of its line, without leaving the block node of br.
+fn line_break_is_at_line_boundary(br: &Node, direction: LineDirection, no_gc: &NoGC) -> bool {
+    let mut current = DomRoot::from_ref(br);
+    loop {
+        let sibling = match direction {
+            LineDirection::Forward => current.GetNextSibling(),
+            LineDirection::Backward => current.GetPreviousSibling(),
+        };
+        if let Some(sibling) = sibling {
+            if let Some(is_line_boundary) =
+                first_line_content_is_line_boundary(&sibling, direction, no_gc)
+            {
+                return is_line_boundary;
+            }
+            current = sibling;
+            continue;
+        }
+        match current.GetParentNode() {
+            Some(parent) if !parent.is_block_node() => current = parent,
+            _ => return true,
+        }
+    }
+}
+
 impl HTMLBRElement {
+    /// <https://w3c.github.io/editing/docs/execCommand/#collapsed-line-break>
+    fn is_collapsed_line_break(&self, no_gc: &NoGC) -> bool {
+        // > A collapsed line break is a br that begins a line box which has nothing else in it,
+        // > and therefore has zero height.
+        //
+        // Note: Rather than querying layout, this is approximated by the br being followed by a
+        // block boundary, so that nothing is placed on the line after it.
+        line_break_is_at_line_boundary(self.upcast(), LineDirection::Forward, no_gc)
+    }
+
     /// <https://w3c.github.io/editing/docs/execCommand/#extraneous-line-break>
-    fn is_extraneous_line_break(&self) -> bool {
+    fn is_extraneous_line_break(&self, no_gc: &NoGC) -> bool {
         let node = self.upcast::<Node>();
         // > An extraneous line break is a br that has no visual effect, in that removing it from the DOM would not change layout,
         // except that a br that is the sole child of an li is not extraneous.
@@ -922,8 +996,10 @@ impl HTMLBRElement {
         {
             return false;
         }
-        // TODO: Figure out what this actually makes it have no visual effect
-        !node.is_block_node()
+        // Note: Rather than querying layout, this is approximated by the br being a collapsed
+        // line break that ends a line with visible content. Removing it then doesn't remove a line.
+        self.is_collapsed_line_break(no_gc) &&
+            !line_break_is_at_line_boundary(node, LineDirection::Backward, no_gc)
     }
 }
 
@@ -1275,11 +1351,13 @@ impl Node {
                         let new_font_element = document.create_element(cx, "font");
                         // Step 10.5.2. Set the color attribute of new parent to the result of applying the rules for
                         // serializing simple color values to new value (interpreted as a simple color).
-                        new_font_element.set_string_attribute(
-                            cx,
-                            &local_name!("color"),
-                            serialize_to_simple_color(legacy_color),
-                        );
+                        //
+                        // Note: This goes through the IDL setter (also for the face attribute below),
+                        // so that the attribute value is parsed and creates its presentational hint.
+                        new_font_element
+                            .downcast::<HTMLFontElement>()
+                            .expect("Must be a font element")
+                            .SetColor(cx, serialize_to_simple_color(legacy_color));
                         new_parent = Some(new_font_element);
                     }
                 },
@@ -1288,11 +1366,10 @@ impl Node {
                 // then set the face attribute of new parent to new value.
                 CommandName::FontName => {
                     let new_font_element = document.create_element(cx, "font");
-                    new_font_element.set_string_attribute(
-                        cx,
-                        &local_name!("face"),
-                        new_value.clone(),
-                    );
+                    new_font_element
+                        .downcast::<HTMLFontElement>()
+                        .expect("Must be a font element")
+                        .SetFace(cx, new_value.clone());
                     new_parent = Some(new_font_element);
                 },
                 _ => {},
@@ -1598,7 +1675,7 @@ impl Node {
         }
         if self
             .downcast::<HTMLBRElement>()
-            .is_some_and(|br| !br.is_extraneous_line_break())
+            .is_some_and(|br| !br.is_extraneous_line_break(no_gc))
         {
             return true;
         }
@@ -1797,12 +1874,9 @@ impl Node {
     /// <https://w3c.github.io/editing/docs/execCommand/#collapsed-block-prop>
     pub(crate) fn is_collapsed_block_prop(&self, no_gc: &NoGC) -> bool {
         // > A collapsed block prop is either a collapsed line break that is not an extraneous line break,
-
-        // TODO: Check for collapsed line break
-        if self
-            .downcast::<HTMLBRElement>()
-            .is_some_and(|br| !br.is_extraneous_line_break())
-        {
+        if self.downcast::<HTMLBRElement>().is_some_and(|br| {
+            br.is_collapsed_line_break(no_gc) && !br.is_extraneous_line_break(no_gc)
+        }) {
             return true;
         }
         // > or an Element that is an inline node and whose children are all either invisible or collapsed block props
@@ -2200,7 +2274,7 @@ impl Node {
         loop {
             if ref_.is_invisible(cx.no_gc()) &&
                 ref_.downcast::<HTMLBRElement>()
-                    .is_none_or(|br| !br.is_extraneous_line_break()) &&
+                    .is_none_or(|br| !br.is_extraneous_line_break(cx.no_gc())) &&
                 let Some(parent) = parent.as_ref() &&
                 ref_ != *parent
             {
@@ -2215,7 +2289,7 @@ impl Node {
         // Step 5. If ref is an editable extraneous line break, remove it from its parent.
         if ref_.is_editable() &&
             ref_.downcast::<HTMLBRElement>()
-                .is_some_and(|br| br.is_extraneous_line_break())
+                .is_some_and(|br| br.is_extraneous_line_break(cx.no_gc()))
         {
             assert!(ref_.has_parent());
             ref_.remove_self(cx);
@@ -2236,7 +2310,7 @@ impl Node {
             if ref_.is_invisible(cx.no_gc()) &&
                 *ref_ != *self &&
                 ref_.downcast::<HTMLBRElement>()
-                    .is_none_or(|br| !br.is_extraneous_line_break()) &&
+                    .is_none_or(|br| !br.is_extraneous_line_break(cx.no_gc())) &&
                 let Some(parent_of_ref) = ref_.GetParentNode()
             {
                 ref_ = match ref_.preceding_nodes(&parent_of_ref).nth(0) {
@@ -2250,7 +2324,7 @@ impl Node {
         // Step 4. If ref is an editable extraneous line break:
         if ref_.is_editable() &&
             ref_.downcast::<HTMLBRElement>()
-                .is_some_and(|br| br.is_extraneous_line_break())
+                .is_some_and(|br| br.is_extraneous_line_break(cx.no_gc()))
         {
             // Step 4.1. While ref's parent is editable and invisible, set ref to its parent.
             loop {

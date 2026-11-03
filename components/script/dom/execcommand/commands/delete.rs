@@ -267,7 +267,8 @@ pub(crate) fn execute_delete_command(
                 .is_some_and(|child| {
                     child.is::<HTMLHRElement>() ||
                         (child.is::<HTMLBRElement>() &&
-                            child.GetPreviousSibling().is_some_and(|previous| {
+                            // Note: A null previousSibling is not an inline node either.
+                            child.GetPreviousSibling().is_none_or(|previous| {
                                 previous.is::<HTMLBRElement>() || !previous.is_inline_node()
                             }))
                 }))

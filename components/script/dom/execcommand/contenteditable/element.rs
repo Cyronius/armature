@@ -10,6 +10,7 @@ use style::properties::{LonghandId, PropertyDeclaration, PropertyDeclarationId, 
 use style::values::specified::TextDecorationLine;
 use style::values::specified::box_::DisplayOutside;
 
+use crate::dom::bindings::codegen::Bindings::HTMLFontElementBinding::HTMLFontElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::inheritance::{ElementTypeId, HTMLElementTypeId, NodeTypeId};
 use crate::dom::bindings::root::DomRoot;
@@ -117,6 +118,17 @@ impl Element {
                 .flatten()
         {
             return Some(font_size_to_css_font(&font_size).into());
+        }
+        if let Some(font) = self.downcast::<HTMLFontElement>() {
+            match property {
+                CssPropertyName::Color if self.has_attribute(&local_name!("color")) => {
+                    return Some(font.Color());
+                },
+                CssPropertyName::FontFamily if self.has_attribute(&local_name!("face")) => {
+                    return Some(font.Face());
+                },
+                _ => {},
+            }
         }
 
         // Step 12. If element is in the following list, and property is equal to the CSS property name listed for it,
