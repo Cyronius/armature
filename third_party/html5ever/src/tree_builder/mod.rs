@@ -778,7 +778,8 @@ where
 
             let Some((furthest_block_index, furthest_block)) = maybe_furthest_block else {
                 // 10.
-                self.open_elems.borrow_mut().truncate(fmt_elem_stack_index);
+                // Armature (AH-002): Tell the sink about the popped elements.
+                self.pop_to_len(fmt_elem_stack_index);
                 self.active_formatting.borrow_mut().remove(fmt_elem_index);
                 return;
             };
@@ -933,6 +934,14 @@ where
 
         self.sink.pop(&elem);
         elem
+    }
+
+    // Armature (AH-002): Pop elements off the stack of open elements, current node first, until
+    // `len` elements are left, telling the sink about each one, as `pop` does.
+    fn pop_to_len(&self, len: usize) {
+        while self.open_elems.borrow().len() > len {
+            self.pop();
+        }
     }
 
     fn remove_from_stack(&self, elem: &Handle) {
@@ -1167,7 +1176,8 @@ where
         TagSet: Fn(ExpandedName) -> bool,
     {
         while !self.current_node_in(&tag_set) {
-            self.open_elems.borrow_mut().pop();
+            // Armature (AH-002): Tell the sink about the popped element.
+            self.pop();
         }
     }
 
@@ -1180,9 +1190,12 @@ where
         let mut n = 0;
         loop {
             n += 1;
-            match self.open_elems.borrow_mut().pop() {
+            // Armature (AH-002): Tell the sink about the popped element.
+            let elem = self.open_elems.borrow_mut().pop();
+            match elem {
                 None => break,
                 Some(elem) => {
+                    self.sink.pop(&elem);
                     if pred(self.sink.elem_name(&elem).expanded()) {
                         break;
                     }
@@ -1581,7 +1594,8 @@ where
             // mis-nested tags
             self.unexpected(&tag);
         }
-        self.open_elems.borrow_mut().truncate(match_idx);
+        // Armature (AH-002): Tell the sink about the popped elements.
+        self.pop_to_len(match_idx);
     }
 
     fn handle_misnested_a_tags(&self, tag: &Tag) {
@@ -1671,13 +1685,16 @@ where
         self.adjust_foreign_attributes(&mut tag);
 
         if tag.self_closing {
-            self.insert_element(
+            // Armature (AH-002): The element is pushed and immediately popped, so tell the sink
+            // that it was popped.
+            let node = self.insert_element(
                 PushFlag::NoPush,
                 ns,
                 tag.name,
                 tag.attrs,
                 tag.had_duplicate_attributes,
             );
+            self.sink.pop(&node);
             ProcessResult::DoneAckSelfClosing
         } else {
             self.insert_element(
@@ -1863,13 +1880,16 @@ where
                 );
                 return ProcessResult::Script(node);
             }
-            self.insert_element(
+            // Armature (AH-002): The element is pushed and immediately popped, so tell the sink
+            // that it was popped.
+            let node = self.insert_element(
                 PushFlag::NoPush,
                 current_ns,
                 tag.name,
                 tag.attrs,
                 tag.had_duplicate_attributes,
             );
+            self.sink.pop(&node);
             ProcessResult::DoneAckSelfClosing
         } else {
             self.insert_element(

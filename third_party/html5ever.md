@@ -95,3 +95,16 @@ Each entry has this form (the check reads the `### AH-NNN` headings and the `Fil
   HTML documents (inline `<svg>`) never ran. Affects svg/scripted,
   trusted-types/script-enforcement-*, html/semantics/scripting-1 and other tests that put a `script` inside `<svg>`.
 - Upstream: Could go upstream as is.
+
+### AH-002: Tell the sink about every element popped off the stack of open elements
+- Files: `src/tree_builder/mod.rs`, `src/tree_builder/rules.rs`
+- Why: Several HTML and SVG features act when an element "is popped off the stack of open elements" (the
+  sink's `pop`), but upstream only calls `TreeSink::pop` from some of the places that pop elements. Others remove
+  elements by truncating the stack (an end tag in foreign content, `pop_until`, `pop_until_current`, the end tag of
+  a generic element in body, the adoption agency's step 10 and the `frameset` start tag), or never push them
+  (self-closing foreign elements such as `<svg/>`). This change adds a `pop_to_len` helper and calls `sink.pop`
+  for each of those elements, current node first. Servo fires the `load` event of `svg` elements from the sink's
+  `pop`, so without this, `<svg onload>` in HTML documents never fired. Elements that the adoption agency removes
+  from the middle of the stack, and HTML void elements, are unchanged. Affects svg/animations,
+  svg/render/reftests and other HTML tests that wait for the `load` event of an `svg` element.
+- Upstream: Could go upstream as is.
