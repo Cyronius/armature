@@ -21,7 +21,8 @@ use crate::macros::time;
 use crate::tendril::StrTendril;
 use crate::{buffer_queue, Attribute, QualName, SmallCharSet};
 use log::debug;
-use markup5ever::{local_name, namespace_prefix, ns, small_char_set, TokenizerResult};
+// Armature (AX-001): `local_name` and `namespace_prefix` are no longer used here.
+use markup5ever::{ns, small_char_set, TokenizerResult};
 use std::borrow::Cow::{self, Borrowed};
 use std::cell::{Cell, RefCell, RefMut};
 use std::cmp::Reverse;
@@ -1303,13 +1304,11 @@ impl<Sink: TokenSink> XmlTokenizer<Sink> {
                 value: replace(&mut self.current_attr_value.borrow_mut(), StrTendril::new()),
             };
 
-            if qname.local == local_name!("xmlns")
-                || qname.prefix == Some(namespace_prefix!("xmlns"))
-            {
-                self.current_tag_attrs.borrow_mut().insert(0, attr);
-            } else {
-                self.current_tag_attrs.borrow_mut().push(attr);
-            }
+            // Armature (AX-001): Keep the attributes in source order. Upstream moved namespace
+            // declarations to the front (in reverse order), which the tree builder does not need, as
+            // it handles all declarations before binding names, and which reordered the attributes
+            // that the DOM now gets.
+            self.current_tag_attrs.borrow_mut().push(attr);
         }
     }
 

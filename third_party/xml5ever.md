@@ -87,3 +87,13 @@ Each entry has this form (the check reads the `### AX-NNN` headings and the `Fil
 - Why: What the change enables or fixes, and which WPT tests it affects.
 - Upstream: Whether the change could go upstream, or why it is Armature-only.
 ```
+
+### AX-001: Keep namespace declaration attributes, in source order
+- Files: `src/tokenizer/mod.rs`, `src/tree_builder/mod.rs`
+- Why: The DOM keeps namespace declarations as attributes in the XMLNS namespace (`xmlns="..."` with no prefix and
+  `xmlns:p="..."` with the prefix `xmlns` and the local name `p`), but the tree builder used them to bind names and
+  then dropped them, and the tokenizer moved them to the front of the attribute list in reverse order. Keep them in
+  the XMLNS namespace and leave every attribute in source order. Without them, `getAttribute("xmlns")`,
+  `attributes` and the XML serialization of parsed documents lost their declarations. Affects
+  domparsing/XMLSerializer-serializeToString.html and other tests that parse XML with namespace declarations.
+- Upstream: Could go upstream as is.

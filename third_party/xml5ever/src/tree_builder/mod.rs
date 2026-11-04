@@ -336,10 +336,18 @@ where
         }
 
         // Then we bind those namespace declarations to attributes
-        for attr in tag.attrs.iter_mut().filter(|attr| {
-            attr.name.prefix != Some(namespace_prefix!("xmlns"))
-                && attr.name.local != local_name!("xmlns")
-        }) {
+        // Armature (AX-001): Keep the namespace declarations too, in the XMLNS namespace and in
+        // their original order, as the DOM has them, instead of dropping them.
+        for attr in tag.attrs.iter_mut() {
+            if attr.name.prefix == Some(namespace_prefix!("xmlns"))
+                || attr.name.local == local_name!("xmlns")
+            {
+                attr.name.ns = ns!(xmlns);
+                if Self::check_duplicate_attr(&mut present_attrs, &attr.name) {
+                    new_attr.push(attr.clone());
+                }
+                continue;
+            }
             if self.bind_attr_qname(&mut present_attrs, &mut attr.name) {
                 new_attr.push(attr.clone());
             }
