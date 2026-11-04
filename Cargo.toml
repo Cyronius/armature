@@ -10,9 +10,9 @@ members = [
     "tests/unit/*",
 ]
 default-members = ["ports/servoshell"]
-# Stylo and html5ever are vendored and build outside this workspace; see third_party/stylo.md and
-# third_party/html5ever.md.
-exclude = [".cargo", "support/crown", "third_party/html5ever", "third_party/stylo"]
+# Stylo, html5ever and xml5ever are vendored and build outside this workspace; see third_party/stylo.md,
+# third_party/html5ever.md and third_party/xml5ever.md.
+exclude = [".cargo", "support/crown", "third_party/html5ever", "third_party/stylo", "third_party/xml5ever"]
 
 [workspace.package]
 version = "0.7.0"
@@ -303,7 +303,7 @@ x25519-dalek = { version = "3.0", features = ["getrandom", "static_secrets", "ze
 x448 = { version = "=0.14.0-pre.12", features = ["static_secrets"] }
 xcomponent-sys = "0.4.0"
 xml = "1.1"
-xml5ever = "0.40"
+xml5ever = { path = "third_party/xml5ever" }
 yuv = { version = "0.8.14", features = ["rayon"] }
 zeroize = "1.8"
 
@@ -467,12 +467,12 @@ codegen-units = 1
 #
 #     <crate> = { path = "/path/to/local/checkout" }
 #
-# For html5ever (html5ever itself is vendored, see third_party/html5ever.md):
+# For html5ever (html5ever and xml5ever themselves are vendored, see third_party/html5ever.md and
+# third_party/xml5ever.md):
 #
 # markup5ever = { path = "../html5ever/markup5ever" }
 # tendril = { path = "../html5ever/tendril" }
 # web_atoms = { path = "../html5ever/web_atoms" }
-# xml5ever = { path = "../html5ever/xml5ever" }
 #
 # For WebRender:
 #
