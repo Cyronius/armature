@@ -59,6 +59,10 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   `<ol start reversed>` and `<li value>`). Most of the others are parsed, computed, serialised and animated but not
   laid out. The previously run CSS tests have about 5,300 fewer failing subtests, and newly enabled parsing and
   animation directories add 6,807 passing subtests.
+- **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
+  be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
+  script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
+  `.svg` files, which all errored, 249 now complete, with about 1,300 passing subtests.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -80,8 +84,10 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `Element.animate()` is missing, so many CSS animation subtests still fail.
-- Every testharness test written as an `.svg` file errors in Servo's test harness, so many SVG property tests are not
-  measured.
+- SVG `<script>` elements inside HTML documents (inline `<svg>`) still do not run, because html5ever does not report
+  their end tags. SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
+  less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. SVG `<style>`
+  in SVG documents, SMIL animation and SVG `<image>` load events are also missing.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
