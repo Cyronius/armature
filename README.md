@@ -63,10 +63,12 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
   `.svg` files, which all errored, 249 now complete, with about 1,300 passing subtests. SVG scripts inside inline
-  `<svg>` in HTML documents run too.
+  `<svg>` in HTML documents run too. `svg` elements fire `load` once parsed (`<svg onload>`), and SVG `<image>`
+  elements fetch their image and fire `load` or `error`.
 - **Vendored html5ever**: the HTML parser is vendored in `third_party/html5ever/` with a change log
-  (`third_party/html5ever.md`), checked by `./mach test-tidy` like the Stylo one. Its first change implements the
-  parsing rules for SVG `script` end tags and self-closing `<script/>` in SVG, which upstream had not implemented.
+  (`third_party/html5ever.md`), checked by `./mach test-tidy` like the Stylo one. Its changes implement the
+  parsing rules for SVG `script` end tags and self-closing `<script/>` in SVG, which upstream had not implemented,
+  and tell Servo about every element the parser closes.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -89,8 +91,10 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `Element.animate()` is missing, so many CSS animation subtests still fail.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
-  less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. SVG `<style>`
-  in SVG documents, SMIL animation and SVG `<image>` load events are also missing.
+  less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
+  draws `<image>` elements whose `href` is a `data:` URL, and not even those when the URL contains `<`, because
+  xml5ever's serializer leaves it unescaped in attribute values. SVG `<style>` in SVG documents and SMIL animation
+  are also missing.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
