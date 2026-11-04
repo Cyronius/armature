@@ -16,7 +16,7 @@ use crate::dom::document::Document;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{
     AttributeMutation, Element, ElementCreator, reflect_cross_origin_attribute,
-    set_cross_origin_attribute,
+    reflect_referrer_policy_attribute, set_cross_origin_attribute,
 };
 use crate::dom::html::htmlscriptelement::{ScriptElement, ScriptElementState};
 use crate::dom::node::virtualmethods::VirtualMethods;
@@ -150,4 +150,12 @@ impl SVGScriptElementMethods<crate::DomTypeHolder> for SVGScriptElement {
     fn SetCrossOrigin(&self, cx: &mut JSContext, value: Option<DOMString>) {
         set_cross_origin_attribute(cx, self.upcast::<Element>(), value);
     }
+
+    /// <https://svgwg.org/svg2-draft/interact.html#__svg__SVGScriptElement__referrerPolicy>
+    fn ReferrerPolicy(&self) -> DOMString {
+        reflect_referrer_policy_attribute(self.upcast::<Element>())
+    }
+
+    // https://svgwg.org/svg2-draft/interact.html#__svg__SVGScriptElement__referrerPolicy
+    make_setter!(SetReferrerPolicy, "referrerpolicy");
 }

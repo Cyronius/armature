@@ -536,8 +536,8 @@ fn fetch_a_classic_script(
 /// A `script` element in the HTML or the SVG namespace. Both are processed by HTML's script
 /// processing model. SVG `script` elements take their URL from `href` (or the deprecated
 /// `xlink:href`) instead of `src`, and do not have the attributes that only HTML defines for
-/// `script` elements (`async`, `defer`, `nomodule`, `charset`, `integrity`, `referrerpolicy`,
-/// `blocking`, `event`, `for` and `language`).
+/// `script` elements (`async`, `defer`, `nomodule`, `charset`, `integrity`, `blocking`, `event`,
+/// `for` and `language`).
 ///
 /// <https://svgwg.org/svg2-draft/interact.html#ScriptElement>
 pub(crate) trait ScriptElement {
@@ -868,11 +868,9 @@ pub(crate) trait ScriptElement {
         let integrity_metadata = integrity_val.unwrap_or_default();
 
         // Step 26. Let referrer policy be the current state of el's referrerpolicy content attribute.
-        let referrer_policy = if self.is_html() {
-            referrer_policy_for_element(element)
-        } else {
-            doc.get_referrer_policy()
-        };
+        // SVG `script` elements have the same attribute.
+        // <https://svgwg.org/svg2-draft/interact.html#ScriptElementReferrerpolicyAttribute>
+        let referrer_policy = referrer_policy_for_element(element);
 
         // TODO: Step 27. Fetch priority.
 

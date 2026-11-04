@@ -9,6 +9,8 @@ interface SVGScriptElement : SVGElement {
            attribute DOMString type;
   [CEReactions]
            attribute DOMString? crossOrigin;
+  [CEReactions]
+           attribute DOMString referrerPolicy;
 };
 
 //SVGScriptElement includes SVGURIReference;
