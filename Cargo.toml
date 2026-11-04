@@ -10,8 +10,9 @@ members = [
     "tests/unit/*",
 ]
 default-members = ["ports/servoshell"]
-# Stylo is vendored with its own workspace manifest; see third_party/stylo.md.
-exclude = [".cargo", "support/crown", "third_party/stylo"]
+# Stylo and html5ever are vendored and build outside this workspace; see third_party/stylo.md and
+# third_party/html5ever.md.
+exclude = [".cargo", "support/crown", "third_party/html5ever", "third_party/stylo"]
 
 [workspace.package]
 version = "0.7.0"
@@ -126,7 +127,7 @@ headers = "0.4"
 hilog = "0.2.2"
 hitrace = { version = "0.2.0", features = ["api-19", "tracing-rs"] }
 hkdf = "0.13"
-html5ever = "0.40.1"
+html5ever = { path = "third_party/html5ever" }
 http = "1.4"
 http-body-util = "0.1"
 httparse = "1.9"
@@ -466,9 +467,8 @@ codegen-units = 1
 #
 #     <crate> = { path = "/path/to/local/checkout" }
 #
-# For html5ever:
+# For html5ever (html5ever itself is vendored, see third_party/html5ever.md):
 #
-# html5ever = { path = "../html5ever/html5ever" }
 # markup5ever = { path = "../html5ever/markup5ever" }
 # tendril = { path = "../html5ever/tendril" }
 # web_atoms = { path = "../html5ever/web_atoms" }
