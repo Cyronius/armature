@@ -25,6 +25,8 @@ pub enum Token {
     Doctype(Doctype),
     Comment(StrTendril),
     Characters(StrTendril),
+    // Armature (AX-002): CDATA sections are tokens of their own.
+    CdataSection(StrTendril),
     Pi(Pi),
     NullCharacter,
     Eof,

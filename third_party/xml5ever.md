@@ -98,3 +98,13 @@ Each entry has this form (the check reads the `### AX-NNN` headings and the `Fil
   `attributes` and the XML serialization of parsed documents lost their declarations. Affects
   domparsing/XMLSerializer-serializeToString.html and other tests that parse XML with namespace declarations.
 - Upstream: Could go upstream as is.
+
+### AX-002: Parse CDATA sections into CDATA section nodes
+- Files: `src/tokenizer/interface.rs`, `src/tokenizer/mod.rs`, `src/tree_builder/mod.rs`, `src/tree_builder/types.rs`, `examples/simple_xml_tokenizer.rs`
+- Why: The tokenizer emitted the contents of a CDATA section as characters, so the tree builder merged them into the
+  surrounding text, and an empty CDATA section disappeared. The tokenizer now collects each section and emits it as a
+  `CdataSection` token (keeping trailing `]` characters at the end of the input), and the tree builder appends it with
+  `TreeSink::append_cdata_section` (markup5ever AM-001). Affects domparsing/DOMParser-parseFromString-xml-CDATA.html,
+  domparsing/DOMParser-parseFromString-xml-empty-nodes.html and domparsing/xml-parse-serialize-roundtrip.html.
+- Upstream: Could go upstream together with markup5ever AM-001. Adding a `Token` variant breaks code that matches
+  tokens exhaustively, such as the `simple_xml_tokenizer` example, which this change updates.

@@ -154,6 +154,10 @@ pub struct XmlTokenizer<Sink> {
     /// Current processing instruction target.
     current_pi_target: RefCell<StrTendril>,
 
+    // Armature (AX-002): Collect the contents of a CDATA section.
+    /// Current CDATA section.
+    current_cdata: RefCell<StrTendril>,
+
     /// Current processing instruction value.
     current_pi_data: RefCell<StrTendril>,
 
@@ -192,6 +196,7 @@ impl<Sink: TokenSink> XmlTokenizer<Sink> {
             current_comment: RefCell::new(StrTendril::new()),
             current_pi_data: RefCell::new(StrTendril::new()),
             current_pi_target: RefCell::new(StrTendril::new()),
+            current_cdata: RefCell::new(StrTendril::new()),
             current_doctype: RefCell::new(Doctype::default()),
             state_profile: RefCell::new(BTreeMap::new()),
             time_in_sink: Cell::new(0),
@@ -485,6 +490,19 @@ impl<Sink: TokenSink> XmlTokenizer<Sink> {
         self.process_token(Token::Comment(comment));
     }
 
+    // Armature (AX-002): Emit the CDATA section as a token of its own.
+    fn emit_current_cdata(&self) {
+        let cdata = self.current_cdata.take();
+        self.process_token(Token::CdataSection(cdata));
+    }
+
+    fn push_cdata(&self, c: char) {
+        self.current_cdata.borrow_mut().push_char(match c {
+            '\0' => '\u{FFFD}',
+            c => c,
+        });
+    }
+
     fn emit_current_doctype(&self) {
         let doctype = self.current_doctype.take();
         self.process_token(Token::Doctype(doctype));
@@ -542,6 +560,10 @@ macro_rules! shorthand (
     ( $me:ident : append_comment $c:expr           ) => ( $me.current_comment.borrow_mut().push_slice($c)     );
     ( $me:ident : emit_comment                     ) => ( $me.emit_current_comment()                          );
     ( $me:ident : clear_comment                    ) => ( $me.current_comment.borrow_mut().clear()            );
+    // Armature (AX-002): Collect CDATA sections.
+    ( $me:ident : push_cdata $c:expr               ) => ( $me.push_cdata($c)                                  );
+    ( $me:ident : emit_cdata                       ) => ( $me.emit_current_cdata()                            );
+    ( $me:ident : clear_cdata                      ) => ( $me.current_cdata.borrow_mut().clear()              );
     ( $me:ident : create_doctype                   ) => ( *$me.current_doctype.borrow_mut() = Doctype::default() );
     ( $me:ident : push_doctype_name $c:expr        ) => ( option_push(&mut $me.current_doctype.borrow_mut().name, $c) );
     ( $me:ident : push_doctype_id $k:ident $c:expr ) => ( option_push(&mut $me.doctype_id($k), $c)            );
@@ -755,7 +777,8 @@ impl<Sink: TokenSink> XmlTokenizer<Sink> {
                 if eat!(self, input, "--") {
                     go!(self: clear_comment; to XmlState::CommentStart);
                 } else if eat!(self, input, "[CDATA[") {
-                    go!(self: to XmlState::Cdata);
+                    // Armature (AX-002): Start a new CDATA section.
+                    go!(self: clear_cdata; to XmlState::Cdata);
                 } else if eat!(self, input, "DOCTYPE") {
                     go!(self: to XmlState::Doctype);
                 } else {
@@ -847,26 +870,28 @@ impl<Sink: TokenSink> XmlTokenizer<Sink> {
                     c => go!(self: push_comment c),
                 }
             },
+            // Armature (AX-002): Collect the contents of CDATA sections instead of emitting them
+            // as characters, and emit each section as one token.
             //§ cdata-state
             XmlState::Cdata => loop {
                 match get_char!(self, input) {
                     ']' => go!(self: to XmlState::CdataBracket),
-                    cl => go!(self: emit cl),
+                    cl => go!(self: push_cdata cl),
                 }
             },
             //§ cdata-bracket-state
             XmlState::CdataBracket => loop {
                 match get_char!(self, input) {
                     ']' => go!(self: to XmlState::CdataEnd),
-                    cl => go!(self: emit ']'; emit cl; to XmlState::Cdata),
+                    cl => go!(self: push_cdata ']'; push_cdata cl; to XmlState::Cdata),
                 }
             },
             //§ cdata-end-state
             XmlState::CdataEnd => loop {
                 match get_char!(self, input) {
-                    '>' => go!(self: to XmlState::Data),
-                    ']' => go!(self: emit ']'),
-                    cl => go!(self: emit ']'; emit ']'; emit cl; to XmlState::Cdata),
+                    '>' => go!(self: emit_cdata; to XmlState::Data),
+                    ']' => go!(self: push_cdata ']'),
+                    cl => go!(self: push_cdata ']'; push_cdata ']'; push_cdata cl; to XmlState::Cdata),
                 }
             },
             //§ tag-name-state
@@ -1196,8 +1221,13 @@ impl<Sink: TokenSink> XmlTokenizer<Sink> {
             XmlState::TagState => go!(self: error_eof; emit '<'; to XmlState::Data),
             XmlState::EndTagState => go!(self: error_eof; emit '<'; emit '/'; to XmlState::Data),
             XmlState::TagEmpty => go!(self: error_eof; to XmlState::TagAttrNameBefore),
-            XmlState::Cdata | XmlState::CdataBracket | XmlState::CdataEnd => {
-                go!(self: error_eof; to XmlState::Data)
+            // Armature (AX-002): Emit the unterminated CDATA section, with its trailing brackets.
+            XmlState::Cdata => go!(self: error_eof; emit_cdata; to XmlState::Data),
+            XmlState::CdataBracket => {
+                go!(self: error_eof; push_cdata ']'; emit_cdata; to XmlState::Data)
+            },
+            XmlState::CdataEnd => {
+                go!(self: error_eof; push_cdata ']'; push_cdata ']'; emit_cdata; to XmlState::Data)
             },
             XmlState::Pi => go!(self: error_eof; to XmlState::BogusComment),
             XmlState::PiTargetAfter => go!(self: reconsume XmlState::PiData),
@@ -1382,6 +1412,58 @@ mod test {
         let _ = tokenizer.feed(&queue);
         tokenizer.end();
         tokenizer.sink.errors.into_inner()
+    }
+
+    // Armature (AX-002): Tests for CDATA section tokens.
+    struct CdataCollector {
+        tokens: RefCell<Vec<String>>,
+    }
+
+    impl TokenSink for CdataCollector {
+        type Handle = ();
+
+        fn process_token(&self, token: Token) -> ProcessResult<()> {
+            let mut tokens = self.tokens.borrow_mut();
+            match token {
+                Token::CdataSection(cdata) => tokens.push(format!("cdata:{cdata}")),
+                Token::Characters(chars) => match tokens.last_mut() {
+                    Some(last) if last.starts_with("text:") => last.push_str(&chars),
+                    _ => tokens.push(format!("text:{chars}")),
+                },
+                _ => {},
+            }
+            ProcessResult::Continue
+        }
+    }
+
+    fn tokenize_cdata(input: &str) -> Vec<String> {
+        let sink = CdataCollector {
+            tokens: RefCell::new(Vec::new()),
+        };
+        let queue = BufferQueue::default();
+        queue.push_back(StrTendril::from(input));
+        let tokenizer = XmlTokenizer::new(sink, Default::default());
+        let _ = tokenizer.feed(&queue);
+        tokenizer.end();
+        tokenizer.sink.tokens.into_inner()
+    }
+
+    #[test]
+    fn cdata_sections_are_tokens() {
+        assert_eq!(
+            tokenize_cdata("<a>x<![CDATA[> < \" &amp;]]>y<![CDATA[]]></a>"),
+            vec!["text:x", "cdata:> < \" &amp;", "text:y", "cdata:"]
+        );
+    }
+
+    #[test]
+    fn cdata_sections_keep_brackets() {
+        assert_eq!(
+            tokenize_cdata("<a><![CDATA[x]]y]x]]]></a>"),
+            vec!["cdata:x]]y]x]"]
+        );
+        assert_eq!(tokenize_cdata("<a><![CDATA[x]"), vec!["cdata:x]"]);
+        assert_eq!(tokenize_cdata("<a><![CDATA[x]]"), vec!["cdata:x]]"]);
     }
 
     #[test]

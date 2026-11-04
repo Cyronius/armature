@@ -95,6 +95,9 @@ pub enum Token {
     Comment(StrTendril),
     /// Token that represents a series of characters.
     Characters(StrTendril),
+    // Armature (AX-002): CDATA sections are tokens of their own, not characters.
+    /// A CDATA section, with its contents.
+    CdataSection(StrTendril),
     /// End of File found.
     EndOfFile,
     /// NullCharacter encountered.

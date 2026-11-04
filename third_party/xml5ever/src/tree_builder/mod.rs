@@ -426,6 +426,8 @@ where
             tokenizer::Token::NullCharacter => Token::NullCharacter,
             tokenizer::Token::EndOfFile => Token::Eof,
             tokenizer::Token::Characters(x) => Token::Characters(x),
+            // Armature (AX-002): CDATA sections are tokens of their own.
+            tokenizer::Token::CdataSection(x) => Token::CdataSection(x),
         };
 
         self.process_to_completion(token)
@@ -531,6 +533,14 @@ where
 
     fn append_text(&self, chars: StrTendril) -> XmlProcessResult<Handle> {
         self.insert_appropriately(AppendText(chars));
+        XmlProcessResult::Done
+    }
+
+    // Armature (AX-002): Append CDATA sections as nodes of their own.
+    fn append_cdata_section(&self, text: StrTendril) -> XmlProcessResult<Handle> {
+        let open_elems = self.open_elems.borrow();
+        let target = current_node(&open_elems);
+        self.sink.append_cdata_section(target, text);
         XmlProcessResult::Done
     }
 
@@ -679,6 +689,8 @@ where
             },
             XmlPhase::Main => match token {
                 Token::Characters(chs) => self.append_text(chs),
+                // Armature (AX-002): Append CDATA sections as nodes of their own.
+                Token::CdataSection(text) => self.append_cdata_section(text),
                 Token::Tag(Tag {
                     kind: StartTag,
                     name,

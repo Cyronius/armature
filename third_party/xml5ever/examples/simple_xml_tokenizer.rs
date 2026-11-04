@@ -47,6 +47,10 @@ impl TokenSink for SimpleTokenPrinter {
             Token::EndOfFile => {
                 println!("EOF");
             },
+            // Armature (AX-002): CDATA sections are tokens of their own.
+            Token::CdataSection(ref cdata) => {
+                println!("<![CDATA[{cdata:?}]]>");
+            },
             Token::Doctype(Doctype {
                 ref name,
                 ref public_id,
