@@ -82,6 +82,11 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   (`third_party/xml5ever.md`), checked by `./mach test-tidy` like the other vendored copies. Parsed XML documents now
   keep their namespace declarations (`xmlns`, `xmlns:p`) as attributes, in source order, which fixes 10 more
   `XMLSerializer` subtests and 7 `Node.lookupPrefix()` subtests.
+- **Vendored markup5ever and CDATA sections**: markup5ever, which holds the interface (`TreeSink`) through which
+  both parsers build the DOM, is vendored in `third_party/markup5ever/` with its own change log
+  (`third_party/markup5ever.md`). A new `TreeSink` method lets the XML parser create CDATA sections, which it used to
+  turn into text: `DOMParser` now produces `CDATASection` nodes (also empty ones), and CDATA sections survive a parse
+  and serialize round trip, which fixes 14 `domparsing` subtests.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -92,8 +97,6 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 - One Observable subtest still fails: `when()` in a detached document, because ordinary event listeners still run in
   detached documents.
 - 20 `ProcessingInstruction` subtests need the HTML parser to produce processing instructions (html5ever).
-- The CDATA round-trip and `DOMParser` CDATA tests fail because the XML parser (xml5ever) turns CDATA sections into
-  text: markup5ever's tree sink has no way to create a CDATA section.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
   expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
   contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
