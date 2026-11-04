@@ -68,7 +68,16 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 - **Vendored html5ever**: the HTML parser is vendored in `third_party/html5ever/` with a change log
   (`third_party/html5ever.md`), checked by `./mach test-tidy` like the Stylo one. Its changes implement the
   parsing rules for SVG `script` end tags and self-closing `<script/>` in SVG, which upstream had not implemented,
-  and tell Servo about every element the parser closes.
+  tell Servo about every element the parser closes, and give the `xmlns` attribute of inline SVG and MathML no
+  prefix (it had the empty prefix, so its `name` was `":xmlns"`).
+- **XML serialization**: `XMLSerializer`, `innerHTML` and `outerHTML` in XML documents, and the drawing of inline SVG
+  now use an implementation of the [DOM Parsing](https://w3c.github.io/DOM-Parsing/#xml-serialization) XML
+  serialization algorithm instead of xml5ever's serializer. It keeps namespaces with prefixes and `xmlns`
+  declarations as the spec says, escapes attribute values (`<`, `>`, `"`, tabs and newlines), writes doctypes with
+  their public and system IDs, and makes `innerHTML`/`outerHTML` throw `InvalidStateError` for markup that would not
+  be well-formed. 48 failing subtests and 14 reftests now pass in `domparsing`, `html/syntax`, the
+  `ProcessingInstruction` tests and the SVG tests, among them inline SVG `<image>` elements with `data:` URLs that
+  contain `<`. Inline SVG `<use>` also follows `xlink:href`.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -78,8 +87,13 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 - One Observable subtest still fails: `when()` in a detached document, because ordinary event listeners still run in
   detached documents.
-- 26 `ProcessingInstruction` subtests need the HTML parser to produce processing instructions (html5ever) or
-  xml5ever's serializer to escape `>` in attribute values.
+- 20 `ProcessingInstruction` subtests need the HTML parser to produce processing instructions (html5ever).
+- 12 `XMLSerializer` subtests and the CDATA round-trip tests still fail. Most parse their input with `DOMParser`, and
+  the XML parser (xml5ever) drops namespace declaration attributes (`xmlns`, `xmlns:p`) and turns CDATA sections into
+  text. Three subtests (one of those 12 and two doctype subtests in `xml-serialization.xhtml`) expect behaviour that
+  the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that contains `"` is quoted
+  with `'`, and an attribute keeps its own prefix when that prefix is free (an open web-platform-tests change updates
+  the tests).
 - About 1,200 `mimesniff` Blob/File subtests expect `new Blob([], {type})` to parse and re-serialise the type, which
   Servo does not do; about 190 more need header values with control characters, which Servo's header storage rejects.
 - 79 popover subtests still fail: layout has no real top layer or `::backdrop` (open popovers are drawn as
@@ -92,9 +106,8 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   `resize` has no resize handles, and `Element.animate()` is missing, so many CSS animation subtests still fail.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
-  draws `<image>` elements whose `href` is a `data:` URL, and not even those when the URL contains `<`, because
-  xml5ever's serializer leaves it unescaped in attribute values. SVG `<style>` in SVG documents and SMIL animation
-  are also missing.
+  draws `<image>` elements whose `href` is a `data:` URL. SVG `<style>` in SVG documents and SMIL animation are also
+  missing.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
