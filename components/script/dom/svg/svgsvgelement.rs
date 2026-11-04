@@ -278,4 +278,29 @@ impl VirtualMethods for SVGSVGElement {
 
         self.invalidate_cached_serialized_subtree_and_rasterization_result(cx.no_gc());
     }
+
+    /// Fire a `load` event at an `svg` element once the parser has parsed it and its
+    /// descendants.
+    ///
+    /// SVG 1.1 fires its `SVGLoad` event "at the point at which the user agent has fully parsed
+    /// the element and its descendants" (<https://www.w3.org/TR/SVG11/interact.html#LoadEvent>),
+    /// and browsers still fire it, as `load`, at the `svg` elements of both SVG and HTML
+    /// documents. SVG 2 only describes the `load` event of the `Window` and of elements that
+    /// load external resources (<https://svgwg.org/svg2-draft/interact.html#LoadEvent>), so this
+    /// follows the browsers. Parser-blocking scripts inside the element have run by the time the
+    /// parser pops it. Elements in documents without a browsing context, such as `template`
+    /// contents and documents from `DOMParser`, fire no event.
+    fn pop(&self, cx: &mut JSContext) {
+        if let Some(s) = self.super_type() {
+            s.pop(cx);
+        }
+
+        if !self.owner_document().has_browsing_context() {
+            return;
+        }
+        self.owner_global()
+            .task_manager()
+            .dom_manipulation_task_source()
+            .queue_simple_event(self.upcast(), atom!("load"));
+    }
 }
