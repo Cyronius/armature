@@ -10,9 +10,16 @@ members = [
     "tests/unit/*",
 ]
 default-members = ["ports/servoshell"]
-# Stylo, html5ever and xml5ever are vendored and build outside this workspace; see third_party/stylo.md,
-# third_party/html5ever.md and third_party/xml5ever.md.
-exclude = [".cargo", "support/crown", "third_party/html5ever", "third_party/stylo", "third_party/xml5ever"]
+# Stylo, html5ever, xml5ever and markup5ever are vendored and build outside this workspace; see
+# third_party/stylo.md, third_party/html5ever.md, third_party/xml5ever.md and third_party/markup5ever.md.
+exclude = [
+    ".cargo",
+    "support/crown",
+    "third_party/html5ever",
+    "third_party/markup5ever",
+    "third_party/stylo",
+    "third_party/xml5ever",
+]
 
 [workspace.package]
 version = "0.7.0"
@@ -154,7 +161,7 @@ libc = "0.2"
 log = "0.4.32"
 mach2 = "0.7"
 malloc_size_of_derive = "0.1"
-markup5ever = "0.40"
+markup5ever = { path = "third_party/markup5ever" }
 memmap2 = "0.9.10"
 mime = "0.3.13"
 mime_guess = "2.0.5"
@@ -462,15 +469,18 @@ lto = "thin"
 codegen-units = 1
 
 [patch.crates-io]
+# The vendored markup5ever (see third_party/markup5ever.md). The vendored html5ever and xml5ever depend on
+# markup5ever by version, so this makes them build against the copy too.
+markup5ever = { path = "third_party/markup5ever" }
+
 # If you need to temporarily test Servo with a local fork of some upstream
 # crate, add that here. Use the form:
 #
 #     <crate> = { path = "/path/to/local/checkout" }
 #
-# For html5ever (html5ever and xml5ever themselves are vendored, see third_party/html5ever.md and
-# third_party/xml5ever.md):
+# For html5ever (html5ever, xml5ever and markup5ever themselves are vendored, see third_party/html5ever.md,
+# third_party/xml5ever.md and third_party/markup5ever.md):
 #
-# markup5ever = { path = "../html5ever/markup5ever" }
 # tendril = { path = "../html5ever/tendril" }
 # web_atoms = { path = "../html5ever/web_atoms" }
 #

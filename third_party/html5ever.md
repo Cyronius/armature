@@ -19,9 +19,10 @@ The import commit contains the crates.io package unmodified (without the `.cargo
 `src/` is identical to `html5ever/src/` at the upstream commit. Its `Cargo.toml` is the self-contained manifest that
 crates.io generates; the upstream one (`Cargo.toml.orig`) inherits from the upstream workspace.
 
-Only `html5ever` and `xml5ever` (see [the vendored xml5ever](xml5ever.md)) are vendored. Their sibling crates
-(`markup5ever`, `web_atoms`, `tendril`) still come from crates.io, and the copy depends on the same `markup5ever`
-release as the rest of Servo.
+`html5ever`, `xml5ever` (see [the vendored xml5ever](xml5ever.md)) and `markup5ever` (see
+[the vendored markup5ever](markup5ever.md)) are vendored. Their other sibling crates (`web_atoms`, `tendril`) still
+come from crates.io. The copy depends on `markup5ever` by version, and the root `Cargo.toml` patches that version to
+the vendored copy.
 
 ## How Servo uses the copy
 

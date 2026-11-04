@@ -20,8 +20,9 @@ The import commit contains the crates.io package unmodified (without the `.cargo
 exactly what Armature has changed. The package's `src/` is identical to `xml5ever/src/` at the upstream commit. Its
 `Cargo.toml` is the self-contained manifest that crates.io generates.
 
-Only `html5ever` and `xml5ever` are vendored. Their sibling crates (`markup5ever`, `web_atoms`, `tendril`) still come
-from crates.io, and the copy depends on the same `markup5ever` release as the rest of Servo. The XML serializer in
+`html5ever`, `xml5ever` and `markup5ever` (see [the vendored markup5ever](markup5ever.md)) are vendored. Their other
+sibling crates (`web_atoms`, `tendril`) still come from crates.io. The copy depends on `markup5ever` by version, and
+the root `Cargo.toml` patches that version to the vendored copy. The XML serializer in
 `src/serialize/` is no longer used by Servo, which has its own (`components/script/dom/xml/xmlserialization.rs`).
 
 ## How Servo uses the copy
