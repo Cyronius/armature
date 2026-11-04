@@ -27,7 +27,7 @@ use crate::dom::globalscope::GlobalScope;
 // https://w3c.github.io/resource-timing/#sec-cross-origin-resources
 
 // TODO CSS
-#[derive(Debug, JSTraceable, MallocSizeOf, PartialEq)]
+#[derive(Clone, Debug, JSTraceable, MallocSizeOf, PartialEq)]
 pub(crate) enum InitiatorType {
     Beacon,
     Css,

@@ -30,6 +30,7 @@ struct LayoutImageContext {
     cache: Arc<dyn ImageCache>,
     doc: Trusted<Document>,
     url: ServoUrl,
+    initiator_type: InitiatorType,
 }
 
 impl FetchResponseListener for LayoutImageContext {
@@ -96,7 +97,7 @@ impl FetchResponseListener for LayoutImageContext {
 
 impl ResourceTimingListener for LayoutImageContext {
     fn resource_timing_information(&self) -> (InitiatorType, ServoUrl) {
-        (InitiatorType::Css, self.url.clone())
+        (self.initiator_type.clone(), self.url.clone())
     }
 }
 
@@ -107,12 +108,34 @@ pub(crate) fn fetch_image_for_layout(
     is_internal_request: InternalRequest,
     cache: Arc<dyn ImageCache>,
 ) {
+    fetch_image_into_cache(
+        url,
+        node,
+        id,
+        is_internal_request,
+        cache,
+        InitiatorType::Css,
+    );
+}
+
+/// Fetch `url` as an image for `node` and hand the response to the image cache under `id`. The
+/// fetch delays the load event of the node's document. `initiator_type` is the initiator type that
+/// the resource timing entry reports.
+pub(crate) fn fetch_image_into_cache(
+    url: ServoUrl,
+    node: &Node,
+    id: PendingImageId,
+    is_internal_request: InternalRequest,
+    cache: Arc<dyn ImageCache>,
+    initiator_type: InitiatorType,
+) {
     let document = node.owner_document();
     let context = LayoutImageContext {
         id,
         cache,
         doc: Trusted::new(&document),
         url: url.clone(),
+        initiator_type,
     };
 
     let global = node.owner_global();
