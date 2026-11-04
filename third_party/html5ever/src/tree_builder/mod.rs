@@ -1850,7 +1850,19 @@ where
         }
         self.adjust_foreign_attributes(&mut tag);
         if tag.self_closing {
-            // FIXME(#118): <script /> in SVG
+            // Armature (AH-001): If the token's tag name is "script" and the new current node is in
+            // the SVG namespace, acknowledge the self-closing flag and act as for a "script" end
+            // tag: pop the element and hand the script to the sink.
+            if current_ns == ns!(svg) && tag.name == local_name!("script") {
+                let node = self.insert_element(
+                    PushFlag::NoPush,
+                    current_ns,
+                    tag.name,
+                    tag.attrs,
+                    tag.had_duplicate_attributes,
+                );
+                return ProcessResult::Script(node);
+            }
             self.insert_element(
                 PushFlag::NoPush,
                 current_ns,
