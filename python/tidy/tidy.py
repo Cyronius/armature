@@ -846,6 +846,7 @@ VENDORED_COPIES = [
     VendoredCopy("Stylo", "third_party/stylo", "third_party/stylo.md", "AS", "Stylo"),
     VendoredCopy("html5ever", "third_party/html5ever", "third_party/html5ever.md", "AH", "Html5ever"),
     VendoredCopy("xml5ever", "third_party/xml5ever", "third_party/xml5ever.md", "AX", "Xml5ever"),
+    VendoredCopy("markup5ever", "third_party/markup5ever", "third_party/markup5ever.md", "AM", "Markup5ever"),
 ]
 VENDORED_FILES = re.compile(r"^- Files: (.*)$")
 
