@@ -1845,7 +1845,13 @@ where
             local_name!("xlink:type") => Some(qualname!("xlink" xlink "type")),
             local_name!("xml:lang") => Some(qualname!("xml" xml "lang")),
             local_name!("xml:space") => Some(qualname!("xml" xml "space")),
-            local_name!("xmlns") => Some(qualname!("" xmlns "xmlns")),
+            // Armature (AH-003): The `xmlns` attribute has no prefix, but `qualname!("" xmlns "xmlns")`
+            // would give it the empty prefix.
+            local_name!("xmlns") => Some(QualName {
+                prefix: None,
+                ns: ns!(xmlns),
+                local: local_name!("xmlns"),
+            }),
             local_name!("xmlns:xlink") => Some(qualname!("xmlns" xmlns "xlink")),
             _ => None,
         });

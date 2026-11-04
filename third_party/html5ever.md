@@ -108,3 +108,14 @@ Each entry has this form (the check reads the `### AH-NNN` headings and the `Fil
   from the middle of the stack, and HTML void elements, are unchanged. Affects svg/animations,
   svg/render/reftests and other HTML tests that wait for the `load` event of an `svg` element.
 - Upstream: Could go upstream as is.
+
+### AH-003: Give the `xmlns` attribute of foreign elements no prefix
+- Files: `src/tree_builder/mod.rs`
+- Why: The "adjust foreign attributes" table maps `xmlns` to no prefix, the XMLNS namespace and the local name
+  `xmlns`, but upstream built that name with `qualname!("" xmlns "xmlns")`, which gives it the empty prefix instead of
+  none. `svg.attributes[0].prefix` was then `""` and its `name` `":xmlns"`, and the XML serializer, which tells
+  default namespace declarations from prefix declarations by their prefix, wrote `<svg xmlns="...">` as
+  `<xmlns:svg ...>`, so inline SVG with an `xmlns` attribute stopped rendering. Affects svg/render, css/filter-effects
+  and other reftests that draw inline `<svg xmlns="http://www.w3.org/2000/svg">`, and XMLSerializer output for
+  inline SVG and MathML.
+- Upstream: Could go upstream as is.
