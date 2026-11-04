@@ -823,90 +823,114 @@ def check_webidl_spec(file_name: str, contents: bytes) -> Iterator[tuple[int, st
     yield (0, "No specification link found.")
 
 
-VENDORED_STYLO_DIR = "third_party/stylo"
-VENDORED_STYLO_LOG = "third_party/stylo.md"
-VENDORED_STYLO_ENTRY = re.compile(r"^### (AS-\d{3}):")
-VENDORED_STYLO_FILES = re.compile(r"^- Files: (.*)$")
-VENDORED_STYLO_TRAILER = re.compile(r"^Stylo-Change: (AS-\d{3})$", re.MULTILINE)
+@dataclass(frozen=True)
+class VendoredCopy:
+    """A vendored upstream project whose changes are recorded in a change log."""
+
+    name: str
+    directory: str
+    log: str
+    id_prefix: str
+    trailer_prefix: str
+
+    @property
+    def entry(self) -> re.Pattern[str]:
+        return re.compile(rf"^### ({self.id_prefix}-\d{{3}}):")
+
+    @property
+    def change_trailer(self) -> re.Pattern[str]:
+        return re.compile(rf"^{self.trailer_prefix}-Change: ({self.id_prefix}-\d{{3}})$", re.MULTILINE)
+
+
+VENDORED_COPIES = [
+    VendoredCopy("Stylo", "third_party/stylo", "third_party/stylo.md", "AS", "Stylo"),
+    VendoredCopy("html5ever", "third_party/html5ever", "third_party/html5ever.md", "AH", "Html5ever"),
+]
+VENDORED_FILES = re.compile(r"^- Files: (.*)$")
 
 
 def git_output(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=TOPDIR, capture_output=True, text=True, check=True).stdout
 
 
-def parse_vendored_stylo_log() -> dict[str, tuple[int, set[str]]]:
-    """Returns the change entries of the vendored Stylo log, as ID -> (line number, files)."""
+def parse_vendored_log(copy: VendoredCopy) -> dict[str, tuple[int, set[str]]]:
+    """Returns the change entries of a vendored copy's log, as ID -> (line number, files)."""
     entries: dict[str, tuple[int, set[str]]] = {}
     current = None
     in_code_block = False
-    with open(os.path.join(TOPDIR, VENDORED_STYLO_LOG), encoding="utf-8") as log:
+    with open(os.path.join(TOPDIR, copy.log), encoding="utf-8") as log:
         for line_number, line in enumerate(log, start=1):
             if line.startswith("```"):
                 in_code_block = not in_code_block
                 continue
             if in_code_block:
                 continue
-            if match := VENDORED_STYLO_ENTRY.match(line):
+            if match := copy.entry.match(line):
                 current = match.group(1)
                 entries[current] = (line_number, set())
-            elif current and (match := VENDORED_STYLO_FILES.match(line)):
+            elif current and (match := VENDORED_FILES.match(line)):
                 entries[current][1].update(re.findall(r"`([^`]+)`", match.group(1)))
     return entries
 
 
-def check_vendored_stylo_changes() -> Iterator[tuple[str, int, str]]:
-    """Checks that every change to the vendored copy of Stylo is recorded in its log."""
-    print("\r ➤  Checking the vendored Stylo change log...")
-    import_commit = git_output("log", "-1", "--format=%H", "--grep=^Stylo-Import: ", "--", VENDORED_STYLO_DIR).strip()
+def check_vendored_changes() -> Iterator[tuple[str, int, str]]:
+    for copy in VENDORED_COPIES:
+        yield from check_vendored_copy_changes(copy)
+
+
+def check_vendored_copy_changes(copy: VendoredCopy) -> Iterator[tuple[str, int, str]]:
+    """Checks that every change to a vendored copy is recorded in its log."""
+    print(f"\r ➤  Checking the vendored {copy.name} change log...")
+    import_trailer = f"{copy.trailer_prefix}-Import: "
+    import_commit = git_output("log", "-1", "--format=%H", f"--grep=^{import_trailer}", "--", copy.directory).strip()
     if not import_commit:
-        yield (VENDORED_STYLO_LOG, 0, "No commit with a `Stylo-Import:` trailer imports third_party/stylo")
+        yield (copy.log, 0, f"No commit with a `{import_trailer.strip()}` trailer imports {copy.directory}")
         return
-    entries = parse_vendored_stylo_log()
+    entries = parse_vendored_log(copy)
 
     # Every file that differs from the import, including uncommitted changes, is named in an entry.
-    prefix = VENDORED_STYLO_DIR + "/"
+    prefix = copy.directory + "/"
     changed = {
         path[len(prefix) :]
-        for path in git_output("diff", "--name-only", import_commit, "--", VENDORED_STYLO_DIR).splitlines()
+        for path in git_output("diff", "--name-only", import_commit, "--", copy.directory).splitlines()
     }
     changed.update(
         path[len(prefix) :]
-        for path in git_output("ls-files", "--others", "--exclude-standard", "--", VENDORED_STYLO_DIR).splitlines()
+        for path in git_output("ls-files", "--others", "--exclude-standard", "--", copy.directory).splitlines()
     )
     listed = set().union(*(files for _, files in entries.values())) if entries else set()
     for path in sorted(changed - listed):
-        yield (VENDORED_STYLO_LOG, 0, f"`{path}` differs from the imported Stylo but no AS entry lists it")
+        yield (copy.log, 0, f"`{path}` differs from the imported {copy.name} but no {copy.id_prefix} entry lists it")
     for change_id, (line_number, files) in sorted(entries.items()):
         if not files:
-            yield (VENDORED_STYLO_LOG, line_number, f"{change_id} has no `- Files:` line")
+            yield (copy.log, line_number, f"{change_id} has no `- Files:` line")
         for path in sorted(files - changed):
             yield (
-                VENDORED_STYLO_LOG,
+                copy.log,
                 line_number,
                 f"{change_id} lists `{path}`, which does not differ from the import",
             )
 
     # Every commit since the import that touches the copy names its entry and touches nothing else.
-    for commit in git_output(
-        "rev-list", "--no-merges", f"{import_commit}..HEAD", "--", VENDORED_STYLO_DIR
-    ).splitlines():
+    for commit in git_output("rev-list", "--no-merges", f"{import_commit}..HEAD", "--", copy.directory).splitlines():
         message = git_output("log", "-1", "--format=%B", commit)
         summary = f"Commit {commit[:11]}"
-        trailers = VENDORED_STYLO_TRAILER.findall(message)
-        if "Stylo-Import: " in message:
+        trailers = copy.change_trailer.findall(message)
+        if import_trailer in message:
             continue
         if not trailers:
             yield (
-                VENDORED_STYLO_LOG,
+                copy.log,
                 0,
-                f"{summary} changes third_party/stylo without a `Stylo-Change: AS-NNN` trailer",
+                f"{summary} changes {copy.directory} without a "
+                f"`{copy.trailer_prefix}-Change: {copy.id_prefix}-NNN` trailer",
             )
         for change_id in trailers:
             if change_id not in entries:
-                yield (VENDORED_STYLO_LOG, 0, f"{summary} names {change_id}, which has no entry")
+                yield (copy.log, 0, f"{summary} names {change_id}, which has no entry")
         for path in git_output("diff-tree", "--no-commit-id", "--name-only", "-r", commit).splitlines():
-            if not path.startswith(prefix) and path != VENDORED_STYLO_LOG:
-                yield (VENDORED_STYLO_LOG, 0, f"{summary} changes third_party/stylo and also `{path}`")
+            if not path.startswith(prefix) and path != copy.log:
+                yield (copy.log, 0, f"{summary} changes {copy.directory} and also `{path}`")
 
 
 def check_that_manifests_exist() -> Iterator[tuple[str, int, str]]:
@@ -1215,7 +1239,7 @@ def scan(only_changed_files: bool = False, progress: bool = False, github_annota
     python_type_check = run_python_type_checker()
     cargo_lock_errors = run_cargo_deny_lints()
     wpt_errors = run_wpt_lints(only_changed_files)
-    vendored_stylo_errors = check_vendored_stylo_changes()
+    vendored_errors = check_vendored_changes()
 
     # chain all the iterators
     errors = itertools.chain(
@@ -1226,7 +1250,7 @@ def scan(only_changed_files: bool = False, progress: bool = False, github_annota
         python_type_check,
         wpt_errors,
         cargo_lock_errors,
-        vendored_stylo_errors,
+        vendored_errors,
     )
 
     colorama.init()
