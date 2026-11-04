@@ -78,6 +78,10 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   be well-formed. 48 failing subtests and 14 reftests now pass in `domparsing`, `html/syntax`, the
   `ProcessingInstruction` tests and the SVG tests, among them inline SVG `<image>` elements with `data:` URLs that
   contain `<`. Inline SVG `<use>` also follows `xlink:href`.
+- **Vendored xml5ever**: the XML parser is vendored in `third_party/xml5ever/` with a change log
+  (`third_party/xml5ever.md`), checked by `./mach test-tidy` like the other vendored copies. Parsed XML documents now
+  keep their namespace declarations (`xmlns`, `xmlns:p`) as attributes, in source order, which fixes 10 more
+  `XMLSerializer` subtests and 7 `Node.lookupPrefix()` subtests.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -88,12 +92,13 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 - One Observable subtest still fails: `when()` in a detached document, because ordinary event listeners still run in
   detached documents.
 - 20 `ProcessingInstruction` subtests need the HTML parser to produce processing instructions (html5ever).
-- 12 `XMLSerializer` subtests and the CDATA round-trip tests still fail. Most parse their input with `DOMParser`, and
-  the XML parser (xml5ever) drops namespace declaration attributes (`xmlns`, `xmlns:p`) and turns CDATA sections into
-  text. Three subtests (one of those 12 and two doctype subtests in `xml-serialization.xhtml`) expect behaviour that
-  the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that contains `"` is quoted
-  with `'`, and an attribute keeps its own prefix when that prefix is free (an open web-platform-tests change updates
-  the tests).
+- The CDATA round-trip and `DOMParser` CDATA tests fail because the XML parser (xml5ever) turns CDATA sections into
+  text: markup5ever's tree sink has no way to create a CDATA section.
+- Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
+  expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
+  contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
+  prefix itself (an open web-platform-tests change updates the tests). One more expects a redundant `xmlns=""` to be
+  kept, which the spec drops.
 - About 1,200 `mimesniff` Blob/File subtests expect `new Blob([], {type})` to parse and re-serialise the type, which
   Servo does not do; about 190 more need header values with control characters, which Servo's header storage rejects.
 - 79 popover subtests still fail: layout has no real top layer or `::backdrop` (open popovers are drawn as
