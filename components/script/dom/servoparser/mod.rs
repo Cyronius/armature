@@ -65,6 +65,7 @@ use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
 use crate::dom::bindings::settings_stack::is_execution_stack_empty;
 use crate::dom::bindings::str::{DOMString, USVString};
+use crate::dom::cdatasection::CDATASection;
 use crate::dom::characterdata::CharacterData;
 use crate::dom::comment::Comment;
 use crate::dom::csp::parse_csp_list_from_metadata;
@@ -1782,9 +1783,12 @@ fn insert(
         },
         NodeOrText::AppendText(t) => {
             // https://html.spec.whatwg.org/multipage/#insert-a-character
+            // A CDATA section is a Text node too, but text that follows one (in an XML
+            // document) starts a Text node of its own.
             let text = reference_child
                 .and_then(Node::GetPreviousSibling)
                 .or_else(|| parent.GetLastChild())
+                .filter(|node| !node.is::<CDATASection>())
                 .and_then(DomRoot::downcast::<Text>);
 
             if let Some(text) = text {
@@ -1932,6 +1936,23 @@ impl TreeSink for Sink {
             doc,
         );
         Dom::from_ref(pi.upcast())
+    }
+
+    #[expect(unsafe_code)]
+    fn append_cdata_section(&self, parent: &Dom<Node>, text: StrTendril) {
+        // TODO: https://github.com/servo/servo/issues/42839
+        let mut cx = unsafe { temp_cx() };
+        let cx = &mut cx;
+        let cdata_section =
+            CDATASection::new(cx, DOMString::from(String::from(text)), &parent.owner_doc());
+        insert(
+            cx,
+            parent,
+            None,
+            NodeOrText::AppendNode(Dom::from_ref(cdata_section.upcast())),
+            self.parsing_algorithm,
+            &self.custom_element_reaction_stack,
+        );
     }
 
     #[expect(unsafe_code)]
