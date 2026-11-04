@@ -17,7 +17,6 @@ use style::stylesheets::Origin;
 use style::values::specified::LengthPercentage;
 use style_traits::ParsingMode;
 use uuid::Uuid;
-use xml5ever::serialize::TraversalScope;
 
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
@@ -96,7 +95,7 @@ impl SVGSVGElement {
 
         self.process_use_elements(cx, &cloned_node);
 
-        let Ok(xml_source) = cloned_node.xml_serialize(TraversalScope::IncludeNode) else {
+        let Ok(xml_source) = cloned_node.xml_serialize(false) else {
             *self.cached_serialized_data_url.borrow_mut() = Some(Err(()));
             return;
         };

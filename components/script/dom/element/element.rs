@@ -73,9 +73,6 @@ use style::{ArcSlice, CaseSensitivityExt, dom_apis, thread_state};
 use style_traits::CSSPixel;
 use stylo_atoms::Atom;
 use stylo_dom::ElementState;
-use xml5ever::serialize::TraversalScope::{
-    ChildrenOnly as XmlChildrenOnly, IncludeNode as XmlIncludeNode,
-};
 
 use crate::conversions::Convert;
 use crate::css::stylesheet_loader::StylesheetOwner;
@@ -3887,8 +3884,7 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
             self.upcast::<Node>()
                 .html_serialize(cx, ChildrenOnly(Some(qname)), false, vec![])
         } else {
-            self.upcast::<Node>()
-                .xml_serialize(XmlChildrenOnly(Some(qname)))?
+            self.upcast::<Node>().xml_serialize_children(true)?
         };
 
         Ok(TrustedHTMLOrNullIsEmptyString::NullIsEmptyString(result))
@@ -3948,7 +3944,7 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
             self.upcast::<Node>()
                 .html_serialize(cx, IncludeNode, false, vec![])
         } else {
-            self.upcast::<Node>().xml_serialize(XmlIncludeNode)?
+            self.upcast::<Node>().xml_serialize(true)?
         };
 
         Ok(TrustedHTMLOrNullIsEmptyString::NullIsEmptyString(result))

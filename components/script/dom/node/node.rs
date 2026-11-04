@@ -53,7 +53,7 @@ use style::selector_parser::PseudoElement;
 use style::values::computed::{Inert, Interactivity};
 use style_traits::CSSPixel;
 use uuid::Uuid;
-use xml5ever::{local_name, serialize as xml_serialize};
+use xml5ever::local_name;
 
 use crate::dom::ChildrenMutation;
 use crate::dom::attr::Attr;
@@ -115,13 +115,13 @@ use crate::dom::node::nodelist::NodeList;
 use crate::dom::node::virtualmethods::{VirtualMethods, vtable_for};
 use crate::dom::pointerevent::{PointerEvent, PointerId};
 use crate::dom::raredata::NodeRareData;
-use crate::dom::servoparser::html::HtmlSerialize;
 use crate::dom::servoparser::serialize_html_fragment;
 use crate::dom::shadowroot::shadowroot::{IsUserAgentWidget, ShadowRoot};
 use crate::dom::text::Text;
 use crate::dom::traversal::LightDomNoGcTraversal;
 use crate::dom::types::{CDATASection, KeyboardEvent, ProcessingInstruction};
 use crate::dom::window::Window;
+use crate::dom::xml::xmlserialization;
 use crate::event_loop::document_loader::DocumentLoader;
 use crate::event_loop::script_thread::ScriptThread;
 use crate::layout_dom::{ServoDangerousStyleElement, ServoDangerousStyleNode};
@@ -3523,28 +3523,17 @@ impl Node {
     }
 
     /// <https://w3c.github.io/DOM-Parsing/#dfn-xml-serialization>
-    pub(crate) fn xml_serialize(
-        &self,
-        traversal_scope: xml_serialize::TraversalScope,
-    ) -> Fallible<DOMString> {
-        let mut writer = vec![];
-        xml_serialize::serialize(
-            &mut writer,
-            &HtmlSerialize::new(self),
-            xml_serialize::SerializeOpts { traversal_scope },
-        )
-        .map_err(|error| {
-            error!("Cannot serialize node: {error}");
-            Error::InvalidState(Some("Cannot serialize node".into()))
-        })?;
+    pub(crate) fn xml_serialize(&self, require_well_formed: bool) -> Fallible<DOMString> {
+        xmlserialization::serialize_node(self, require_well_formed)
+            .map(DOMString::from)
+            .map_err(|_| Error::InvalidState(Some("Cannot serialize node".into())))
+    }
 
-        // FIXME(ajeffrey): Directly convert UTF8 to DOMString
-        let string = DOMString::from(String::from_utf8(writer).map_err(|error| {
-            error!("Cannot serialize node: {error}");
-            Error::InvalidState(Some("Cannot serialize node".into()))
-        })?);
-
-        Ok(string)
+    /// The XML serialization of this node's children, as `innerHTML` returns it in XML documents.
+    pub(crate) fn xml_serialize_children(&self, require_well_formed: bool) -> Fallible<DOMString> {
+        xmlserialization::serialize_children(self, require_well_formed)
+            .map(DOMString::from)
+            .map_err(|_| Error::InvalidState(Some("Cannot serialize node".into())))
     }
 
     /// <https://html.spec.whatwg.org/multipage/#fragment-serializing-algorithm-steps>
@@ -3568,9 +3557,7 @@ impl Node {
         }
 
         // Step 3. Return the XML serialization of node given require well-formed.
-        // TODO: xml5ever doesn't seem to want require_well_formed
-        let _ = require_well_formed;
-        self.xml_serialize(xml_serialize::TraversalScope::ChildrenOnly(None))
+        self.xml_serialize_children(require_well_formed)
     }
 
     pub(crate) fn get_next_sibling_unrooted<'a>(

@@ -62,6 +62,12 @@ impl HTMLTemplateElement {
     pub(crate) fn set_contents(&self, document_fragment: Option<&DocumentFragment>) {
         self.contents.set(document_fragment);
     }
+
+    /// The template contents, if they have been created. Contents that have not been created
+    /// yet are empty.
+    pub(crate) fn existing_contents(&self) -> Option<DomRoot<DocumentFragment>> {
+        self.contents.get()
+    }
 }
 
 #[expect(unused_doc_comments)]
