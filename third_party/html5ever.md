@@ -85,3 +85,12 @@ Each entry has this form (the check reads the `### AH-NNN` headings and the `Fil
 - Why: What the change enables or fixes, and which WPT tests it affects.
 - Upstream: Whether the change could go upstream, or why it is Armature-only.
 ```
+
+### AH-001: Report the end tags of SVG `script` elements
+- Files: `src/tree_builder/rules.rs`
+- Why: Implements the foreign content rule for "an end tag whose tag name is "script", if the current node is an SVG
+  `script` element" (upstream FIXME, servo/html5ever#118): the tree builder pops the element and returns it to the
+  sink as a script to run, as it does for HTML scripts, so the parser pauses and Servo prepares and runs it. Without
+  it, SVG `script` elements inside HTML documents (inline `<svg>`) never ran. Affects svg/scripted,
+  trusted-types/script-enforcement-*, html/semantics/scripting-1 and other tests that put a `script` inside `<svg>`.
+- Upstream: Could go upstream as is.

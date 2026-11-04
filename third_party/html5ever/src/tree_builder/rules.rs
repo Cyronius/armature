@@ -1648,7 +1648,16 @@ where
 
             Token::Tag(tag @ tag!(<>)) => self.foreign_start_tag(tag),
 
-            // FIXME(#118): </script> in SVG
+            // Armature (AH-001): An end tag whose tag name is "script", if the current node is an SVG
+            // script element: pop the current node and hand the script to the sink, which processes it
+            // according to the SVG rules, as for an HTML script end tag in the "text" insertion mode.
+            Token::Tag(tag!(</script>))
+                if self.current_node_in(|name| name == expanded_name!(svg "script")) =>
+            {
+                let node = self.pop();
+                ProcessResult::Script(node)
+            },
+
             Token::Tag(tag @ tag!(</>)) => {
                 let mut first = true;
                 let mut stack_idx = self.open_elems.borrow().len() - 1;
