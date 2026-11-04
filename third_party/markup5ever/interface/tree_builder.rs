@@ -195,6 +195,19 @@ pub trait TreeSink {
     /// The child node will not already have a parent.
     fn append(&self, parent: &Self::Handle, child: NodeOrText<Self::Handle>);
 
+    // Armature (AM-001): Let the XML parser create CDATA section nodes.
+    /// Append a CDATA section with the given contents as the last child of the given node.
+    /// Unlike text appended with [`TreeSink::append`], a CDATA section is a node of its
+    /// own: it is never merged with adjacent text, and it exists even when it is empty.
+    ///
+    /// Used by the XML parser. The default appends the contents as text, for sinks that
+    /// have no CDATA section nodes.
+    fn append_cdata_section(&self, parent: &Self::Handle, text: StrTendril) {
+        if !text.is_empty() {
+            self.append(parent, NodeOrText::AppendText(text));
+        }
+    }
+
     /// When the insertion point is decided by the existence of a parent node of the
     /// element, we consider both possibilities and send the element which will be used
     /// if a parent node exists, along with the element to be used if there isn't one.

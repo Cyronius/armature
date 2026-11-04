@@ -95,3 +95,12 @@ Each entry has this form (the check reads the `### AM-NNN` headings and the `Fil
 - Why: What the change enables or fixes, and which WPT tests it affects.
 - Upstream: Whether the change could go upstream, or why it is Armature-only.
 ```
+
+### AM-001: Add `TreeSink::append_cdata_section`
+- Files: `interface/tree_builder.rs`
+- Why: The XML parser turned CDATA sections into text, because `TreeSink` had no way to create a CDATA section node,
+  so `DOMParser` produced no `CDATASection` nodes, and empty CDATA sections disappeared. The new method, used by the
+  vendored xml5ever (AX-002), appends a CDATA section. Its default appends the contents as text, as before, so sinks
+  without CDATA section nodes keep working. Affects domparsing/DOMParser-parseFromString-xml-CDATA.html,
+  domparsing/DOMParser-parseFromString-xml-empty-nodes.html and domparsing/xml-parse-serialize-roundtrip.html.
+- Upstream: Could go upstream as is.
