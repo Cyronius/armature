@@ -55,6 +55,7 @@ use style_traits::CSSPixel;
 use uuid::Uuid;
 use xml5ever::local_name;
 
+use crate::css::stylesheet_loader::StylesheetOwner;
 use crate::dom::ChildrenMutation;
 use crate::dom::attr::Attr;
 use crate::dom::bindings::codegen::Bindings::AttrBinding::AttrMethods;
@@ -2077,9 +2078,29 @@ impl Node {
             node.get_cssom_stylesheet(cx)
         } else if let Some(node) = self.downcast::<HTMLLinkElement>() {
             node.get_cssom_stylesheet(cx)
+        } else if let Some(node) = self.downcast::<ProcessingInstruction>() {
+            node.get_cssom_stylesheet(cx)
         } else {
             None
         }
+    }
+
+    /// The node as the owner of a style sheet: a `<style>` or `<link>` element, or an
+    /// `xml-stylesheet` processing instruction.
+    pub(crate) fn as_stylesheet_owner(&self) -> Option<&dyn StylesheetOwner> {
+        if let Some(s) = self.downcast::<HTMLStyleElement>() {
+            return Some(s as &dyn StylesheetOwner);
+        }
+
+        if let Some(l) = self.downcast::<HTMLLinkElement>() {
+            return Some(l as &dyn StylesheetOwner);
+        }
+
+        if let Some(pi) = self.downcast::<ProcessingInstruction>() {
+            return Some(pi as &dyn StylesheetOwner);
+        }
+
+        None
     }
 
     /// <https://html.spec.whatwg.org/multipage/#language>

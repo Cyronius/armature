@@ -14,7 +14,7 @@ use crate::dom::bindings::codegen::Bindings::StyleSheetListBinding::StyleSheetLi
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::document::Document;
 use crate::dom::documentorshadowroot::StylesheetSource;
-use crate::dom::element::Element;
+use crate::dom::node::Node;
 use crate::dom::shadowroot::shadowroot::ShadowRoot;
 use crate::dom::window::Window;
 
@@ -49,7 +49,7 @@ impl StyleSheetListOwner {
     pub(crate) fn add_owned_stylesheet(
         &self,
         no_gc: &NoGC,
-        owner_node: &Element,
+        owner_node: &Node,
         sheet: Arc<Stylesheet>,
     ) {
         match *self {

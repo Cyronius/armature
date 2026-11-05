@@ -1935,6 +1935,7 @@ impl TreeSink for Sink {
             DOMString::from(String::from(data)),
             doc,
         );
+        pi.set_parser_inserted();
         Dom::from_ref(pi.upcast())
     }
 

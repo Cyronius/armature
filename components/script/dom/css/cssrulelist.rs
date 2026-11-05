@@ -28,7 +28,6 @@ use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
 use crate::dom::cssgroupingrule::CSSGroupingRule;
-use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::window::Window;
 
 unsafe_no_jsmanaged_fields!(RulesSource);
@@ -133,13 +132,10 @@ impl CSSRuleList {
         let index = idx as usize;
 
         let parent_stylesheet = self.parent_stylesheet.style_stylesheet();
-        let owner = self
-            .parent_stylesheet
-            .owner_node()
-            .and_then(DomRoot::downcast::<HTMLElement>);
+        let owner = self.parent_stylesheet.owner_node();
         let loader = owner
             .as_ref()
-            .map(|element| ElementStylesheetLoader::new(element));
+            .map(|owner| ElementStylesheetLoader::new(owner));
         let allow_import_rules = if self.parent_stylesheet.is_constructed() {
             AllowImportRules::No
         } else {

@@ -29,3 +29,6 @@ interface ProcessingInstruction : CharacterData {
   [Pref="dom_processing_instruction_attributes_enabled"]
   boolean hasAttribute(DOMString name);
 };
+
+// https://drafts.csswg.org/cssom/#requirements-on-user-agents-implementing-the-xml-stylesheet-processing-instruction
+ProcessingInstruction includes LinkStyle;

@@ -38,11 +38,11 @@ use crate::dom::document::Document;
 use crate::dom::element::Element;
 use crate::dom::eventtarget::EventTarget;
 use crate::dom::globalscope::GlobalScope;
-use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::htmllinkelement::{HTMLLinkElement, RequestGenerationId};
-use crate::dom::node::NodeTraits;
+use crate::dom::node::{Node, NodeTraits};
 use crate::dom::performance::performanceresourcetiming::InitiatorType;
 use crate::dom::shadowroot::shadowroot::ShadowRoot;
+use crate::dom::types::ProcessingInstruction;
 use crate::dom::window::CSSErrorReporter;
 use crate::event_loop::document_loader::LoadType;
 use crate::fetch::fetch::{RequestWithGlobalScope, create_a_potential_cors_request};
@@ -84,10 +84,16 @@ pub(crate) trait StylesheetOwner {
 
     /// Sets origin_clean flag.
     fn set_origin_clean(&self, cx: &mut JSContext, origin_clean: bool);
+
+    /// Whether the owner's media (the `media` attribute of an element, or the `media`
+    /// pseudo-attribute of a processing instruction) matches the environment.
+    fn media_matches_environment(&self) -> bool;
 }
 
 pub(crate) enum StylesheetContextSource {
     LinkElement,
+    /// The style sheet of an `xml-stylesheet` processing instruction.
+    ProcessingInstruction,
     Import(Arc<Locked<ImportRule>>),
 }
 
@@ -96,8 +102,8 @@ struct StylesheetContext {
     /// The id associated with this [`StylesheetContext`]. This is used to uniquely identify
     /// it in the `Document`'s script-blocking stylesheet set.
     id: StylesheetContextId,
-    /// The element that initiated the request.
-    element: Trusted<HTMLElement>,
+    /// The element or processing instruction that initiated the request.
+    element: Trusted<Node>,
     source: StylesheetContextSource,
     media: Arc<Locked<MediaList>>,
     url: ServoUrl,
@@ -108,8 +114,8 @@ struct StylesheetContext {
     document: Trusted<Document>,
     shadow_root: Option<Trusted<ShadowRoot>>,
     origin_clean: bool,
-    /// A token which must match the generation id of the `HTMLLinkElement` for it to load the stylesheet.
-    /// This is ignored for `HTMLStyleElement` and imports.
+    /// A token which must match the generation id of the `HTMLLinkElement` or `ProcessingInstruction`
+    /// for it to load the stylesheet. This is ignored for `HTMLStyleElement` and imports.
     request_generation_id: Option<RequestGenerationId>,
     /// <https://html.spec.whatwg.org/multipage/#contributes-a-script-blocking-style-sheet>
     is_script_blocking: bool,
@@ -198,9 +204,16 @@ impl StylesheetContext {
         ))
     }
 
-    fn contributes_to_the_styling_processing_model(&self, element: &HTMLElement) -> bool {
-        if !element.upcast::<Element>().is_connected() {
+    fn contributes_to_the_styling_processing_model(&self, element: &Node) -> bool {
+        if !element.is_connected() {
             return false;
+        }
+
+        if matches!(&self.source, StylesheetContextSource::ProcessingInstruction) {
+            let processing_instruction = element.downcast::<ProcessingInstruction>().unwrap();
+            return self.request_generation_id.is_none_or(|generation| {
+                generation == processing_instruction.get_request_generation_id()
+            });
         }
 
         // Whether or not this `StylesheetContext` is for a `<link>` element that comes
@@ -220,7 +233,7 @@ impl StylesheetContext {
     /// <https://html.spec.whatwg.org/multipage/#contributes-a-script-blocking-style-sheet>
     fn contributes_a_script_blocking_style_sheet(
         &self,
-        element: &HTMLElement,
+        element: &Node,
         owner: &dyn StylesheetOwner,
         document: &Document,
     ) -> bool {
@@ -234,7 +247,7 @@ impl StylesheetContext {
             && !link.is_effectively_disabled()
         )
         // el's media attribute's value matches the environment.
-        && element.media_attribute_matches_media_environment()
+        && owner.media_matches_environment()
         // The last time the event loop reached step 1, el's root was that Document.
         && *element.owner_document() == *document
         // The user agent hasn't given up on loading that particular style sheet yet.
@@ -268,9 +281,8 @@ impl StylesheetContext {
         let element = self.element.root();
         let document = self.document.root();
         let owner = element
-            .upcast::<Element>()
             .as_stylesheet_owner()
-            .expect("Stylesheet not loaded by <style> or <link> element!");
+            .expect("Stylesheet not loaded by <style>, <link> or xml-stylesheet!");
 
         match &self.source {
             // https://html.spec.whatwg.org/multipage/#link-type-stylesheet%3Aprocess-the-linked-resource
@@ -302,6 +314,21 @@ impl StylesheetContext {
                 // That's why `set_stylesheet` also removes the previous stylesheet
                 link.set_stylesheet(cx.no_gc(), stylesheet);
             },
+            // https://drafts.csswg.org/cssom/#requirements-on-user-agents-implementing-the-xml-stylesheet-processing-instruction
+            StylesheetContextSource::ProcessingInstruction => {
+                let processing_instruction = element
+                    .downcast::<ProcessingInstruction>()
+                    .expect("Should be ProcessingInstruction due to StylesheetContextSource");
+                // Ignore the result of a fetch that the processing instruction has since
+                // aborted, by changing or leaving the prolog.
+                if self.request_generation_id.is_some_and(|generation| {
+                    generation != processing_instruction.get_request_generation_id()
+                }) {
+                    self.decrement_blockers_and_finish_load(&document, cx);
+                    return;
+                }
+                processing_instruction.set_stylesheet(cx.no_gc(), stylesheet);
+            },
             StylesheetContextSource::Import(import_rule) => {
                 let mut guard = document.style_shared_author_lock().write();
                 import_rule.write_with(&mut guard).stylesheet = ImportSheet::Sheet(stylesheet);
@@ -321,7 +348,11 @@ impl StylesheetContext {
 
         // Step 4.2. Fire an event named load at el.
         // Step 5. Otherwise, fire an event named error at el.
-        if let Some(any_failed) = owner.load_finished(success) {
+        //
+        // No events are fired at processing instructions.
+        if let Some(any_failed) = owner.load_finished(success) &&
+            element.is::<Element>()
+        {
             // Only fire an event if we have no more pending events
             // (in which case `owner.load_finished` would return None)
             let event = match any_failed {
@@ -388,7 +419,9 @@ impl FetchResponseListener for StylesheetContext {
         let element = self.element.root();
 
         // https://html.spec.whatwg.org/multipage/#link-type-stylesheet:process-the-linked-resource
-        if element.is::<HTMLLinkElement>() {
+        //
+        // Style sheets of `xml-stylesheet` processing instructions are handled in the same way.
+        if element.is::<HTMLLinkElement>() || element.is::<ProcessingInstruction>() {
             // Step 1. If the resource's Content-Type metadata is not text/css, then set success to false.
             let is_css = MimeClassifier::is_css(
                 &metadata.resource_content_type_metadata(LoadContext::Style, &self.data),
@@ -451,19 +484,21 @@ impl FetchResponseListener for StylesheetContext {
 
 impl ResourceTimingListener for StylesheetContext {
     fn resource_timing_information(&self) -> (InitiatorType, ServoUrl) {
-        let initiator_type =
-            InitiatorType::LocalName(self.element.root().upcast::<Element>().local_name().clone());
+        let initiator_type = match self.element.root().downcast::<Element>() {
+            Some(element) => InitiatorType::LocalName(element.local_name().clone()),
+            None => InitiatorType::Other,
+        };
         (initiator_type, self.url.clone())
     }
 }
 
 pub(crate) enum ElementStylesheetLoader<'a> {
-    Synchronous { element: &'a HTMLElement },
+    Synchronous { element: &'a Node },
     Asynchronous(AsynchronousStylesheetLoader),
 }
 
 impl<'a> ElementStylesheetLoader<'a> {
-    pub(crate) fn new(element: &'a HTMLElement) -> Self {
+    pub(crate) fn new(element: &'a Node) -> Self {
         ElementStylesheetLoader::Synchronous { element }
     }
 }
@@ -471,7 +506,7 @@ impl<'a> ElementStylesheetLoader<'a> {
 impl ElementStylesheetLoader<'_> {
     pub(crate) fn load_with_element(
         cx: &mut JSContext,
-        element: &HTMLElement,
+        element: &Node,
         source: StylesheetContextSource,
         media: Arc<Locked<MediaList>>,
         url: ServoUrl,
@@ -484,7 +519,12 @@ impl ElementStylesheetLoader<'_> {
             .map(|shadow_root| Trusted::new(&*shadow_root));
         let generation = element
             .downcast::<HTMLLinkElement>()
-            .map(HTMLLinkElement::get_request_generation_id);
+            .map(HTMLLinkElement::get_request_generation_id)
+            .or_else(|| {
+                element
+                    .downcast::<ProcessingInstruction>()
+                    .map(ProcessingInstruction::get_request_generation_id)
+            });
         let mut context = StylesheetContext {
             id: StylesheetContextId::next(),
             element: Trusted::new(element),
@@ -502,9 +542,8 @@ impl ElementStylesheetLoader<'_> {
         };
 
         let owner = element
-            .upcast::<Element>()
             .as_stylesheet_owner()
-            .expect("Stylesheet not loaded by <style> or <link> element!");
+            .expect("Stylesheet not loaded by <style>, <link> or xml-stylesheet!");
         let referrer_policy = owner.referrer_policy(cx);
         owner.increment_pending_loads_count();
 
@@ -520,7 +559,7 @@ impl ElementStylesheetLoader<'_> {
 
         // If element's media attribute's value matches the environment and
         // element is potentially render-blocking, then block rendering on element.
-        context.is_render_blocking = element.media_attribute_matches_media_environment() &&
+        context.is_render_blocking = owner.media_matches_environment() &&
             owner.potentially_render_blocking() &&
             document.allows_adding_render_blocking_elements();
         if context.is_render_blocking {
@@ -547,7 +586,7 @@ impl ElementStylesheetLoader<'_> {
     fn parse(
         self,
         listener: StylesheetContext,
-        element: &HTMLElement,
+        element: &Node,
         document: &Document,
         cx: &mut js::context::JSContext,
     ) {
@@ -679,12 +718,12 @@ impl StyleStylesheetLoader for ElementStylesheetLoader<'_> {
 }
 
 pub(crate) struct AsynchronousStylesheetLoader {
-    element: Trusted<HTMLElement>,
+    element: Trusted<Node>,
     task_source: SendableTaskSource,
 }
 
 impl AsynchronousStylesheetLoader {
-    pub(crate) fn new(element: &HTMLElement) -> Self {
+    pub(crate) fn new(element: &Node) -> Self {
         let window = element.owner_window();
         Self {
             element: Trusted::new(element),

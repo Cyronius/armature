@@ -34,7 +34,7 @@ use crate::dom::document::Document;
 use crate::dom::documentorshadowroot::StylesheetSource;
 use crate::dom::domtokenlist::DOMTokenList;
 use crate::dom::element::attributes::storage::AttrRef;
-use crate::dom::element::{AttributeMutation, Element, ElementCreator};
+use crate::dom::element::{AttributeMutation, ElementCreator};
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::medialist::MediaList;
 use crate::dom::node::virtualmethods::VirtualMethods;
@@ -248,13 +248,12 @@ impl HTMLStyleElement {
         &self,
         cx: &mut JSContext,
     ) -> Option<DomRoot<CSSStyleSheet>> {
-        let element = self.upcast::<Element>();
         self.get_stylesheet().map(|sheet| {
             self.cssom_stylesheet.or_init(|| {
                 CSSStyleSheet::new(
                     cx,
                     &self.owner_window(),
-                    Some(element),
+                    Some(self.upcast::<Node>()),
                     DOMString::from_static("text/css"),
                     None,
                     sheet,
@@ -314,7 +313,7 @@ impl HTMLStyleElement {
         self.clean_stylesheet_ownership(no_gc);
         if let Some(s) = self.stylesheet.safe_borrow_mut(no_gc).take() {
             self.stylesheet_list_owner()
-                .remove_stylesheet(StylesheetSource::Element(Dom::from_ref(self.upcast())), &s);
+                .remove_stylesheet(StylesheetSource::Node(Dom::from_ref(self.upcast())), &s);
             let _ = self
                 .stylesheetcontents_cache_key
                 .safe_borrow_mut(no_gc)
@@ -456,6 +455,11 @@ impl StylesheetOwner for HTMLStyleElement {
         if let Some(stylesheet) = self.get_cssom_stylesheet(cx) {
             stylesheet.set_origin_clean(origin_clean);
         }
+    }
+
+    fn media_matches_environment(&self) -> bool {
+        self.upcast::<HTMLElement>()
+            .media_attribute_matches_media_environment()
     }
 }
 

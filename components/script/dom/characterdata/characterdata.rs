@@ -95,6 +95,11 @@ impl CharacterData {
             let mutation = ChildrenMutation::ChangeText;
             vtable_for(&parent_node).children_changed(cx, &mutation);
         }
+
+        // An `xml-stylesheet` processing instruction loads its style sheet again.
+        if let Some(processing_instruction) = self.downcast::<ProcessingInstruction>() {
+            processing_instruction.data_changed(cx);
+        }
     }
 
     // Queue a MutationObserver record before changing the content.

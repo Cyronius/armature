@@ -273,8 +273,10 @@ pub(crate) fn handle_get_stylesheet_text(
             .stylesheet_at(cx, index as usize)?;
 
         // For inline, Prefer the original "authored" source from the owner node (e.g., <style> tag).
-        if let Some(node) = stylesheet.owner_node() {
-            let text = node.upcast::<Node>().GetTextContent().unwrap_or_default();
+        if let Some(node) = stylesheet.owner_node() &&
+            node.is::<Element>()
+        {
+            let text = node.GetTextContent().unwrap_or_default();
             if !text.is_empty() {
                 return Some(String::from(text));
             }

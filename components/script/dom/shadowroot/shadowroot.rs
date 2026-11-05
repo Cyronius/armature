@@ -211,7 +211,7 @@ impl ShadowRoot {
     pub(crate) fn add_owned_stylesheet(
         &self,
         no_gc: &NoGC,
-        owner_node: &Element,
+        owner_node: &Node,
         sheet: Arc<Stylesheet>,
     ) {
         let stylesheets = &mut self.author_styles.borrow_mut().stylesheets;
@@ -221,9 +221,7 @@ impl ShadowRoot {
             .iter()
             .find(|sheet_in_shadow| {
                 match &sheet_in_shadow.owner {
-                    StylesheetSource::Element(other_node) => owner_node
-                        .upcast::<Node>()
-                        .is_before(no_gc, other_node.upcast()),
+                    StylesheetSource::Node(other_node) => owner_node.is_before(no_gc, other_node),
                     // Non-constructed stylesheet should be ordered before the
                     // constructed ones.
                     StylesheetSource::Constructed(_) => true,
@@ -232,7 +230,7 @@ impl ShadowRoot {
             .cloned();
 
         DocumentOrShadowRoot::add_stylesheet(
-            StylesheetSource::Element(Dom::from_ref(owner_node)),
+            StylesheetSource::Node(Dom::from_ref(owner_node)),
             StylesheetSetRef::Author(stylesheets),
             sheet,
             insertion_point,

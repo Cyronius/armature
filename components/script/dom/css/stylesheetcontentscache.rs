@@ -15,6 +15,7 @@ use style::stylesheets::{AllowImportRules, CssRule, Origin, StylesheetContents, 
 use stylo_atoms::Atom;
 
 use crate::css::stylesheet_loader::ElementStylesheetLoader;
+use crate::dom::bindings::inheritance::Castable;
 use crate::dom::node::NodeTraits;
 use crate::dom::types::HTMLElement;
 
@@ -111,7 +112,7 @@ impl StylesheetContentsCache {
                             url_data,
                             Origin::Author,
                             shared_lock,
-                            Some(&ElementStylesheetLoader::new(element)),
+                            Some(&ElementStylesheetLoader::new(element.upcast())),
                             Some(element.owner_window().css_error_reporter()),
                             quirks_mode,
                             AllowImportRules::Yes,

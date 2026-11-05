@@ -72,11 +72,11 @@ use crate::scripting::fetching_options::ScriptFetchOptions;
 use crate::scripting::script_module::fetch_a_modulepreload_module;
 use crate::url::ensure_blob_referenced_by_url_is_kept_alive;
 
-#[derive(Clone, Copy, JSTraceable, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Default, JSTraceable, MallocSizeOf, PartialEq)]
 pub(crate) struct RequestGenerationId(u32);
 
 impl RequestGenerationId {
-    fn increment(self) -> RequestGenerationId {
+    pub(crate) fn increment(self) -> RequestGenerationId {
         RequestGenerationId(self.0 + 1)
     }
 }
@@ -177,7 +177,7 @@ impl HTMLLinkElement {
         if let Some(stylesheet) = self.stylesheet.safe_borrow_mut(no_gc).take() {
             let owner = self.stylesheet_list_owner();
             owner.remove_stylesheet(
-                StylesheetSource::Element(Dom::from_ref(self.upcast())),
+                StylesheetSource::Node(Dom::from_ref(self.upcast())),
                 &stylesheet,
             );
             self.clean_stylesheet_ownership();
@@ -196,7 +196,7 @@ impl HTMLLinkElement {
             .replace(new_stylesheet.clone())
         {
             owner.remove_stylesheet(
-                StylesheetSource::Element(Dom::from_ref(self.upcast())),
+                StylesheetSource::Node(Dom::from_ref(self.upcast())),
                 &old_stylesheet,
             );
         }
@@ -216,7 +216,7 @@ impl HTMLLinkElement {
                 CSSStyleSheet::new(
                     cx,
                     &self.owner_window(),
-                    Some(self.upcast::<Element>()),
+                    Some(self.upcast::<Node>()),
                     DOMString::from_static("text/css"),
                     Some(self.Href().into()),
                     sheet,
@@ -1146,6 +1146,11 @@ impl StylesheetOwner for HTMLLinkElement {
         if let Some(stylesheet) = self.get_cssom_stylesheet(cx) {
             stylesheet.set_origin_clean(origin_clean);
         }
+    }
+
+    fn media_matches_environment(&self) -> bool {
+        self.upcast::<HTMLElement>()
+            .media_attribute_matches_media_environment()
     }
 }
 

@@ -75,7 +75,6 @@ use stylo_atoms::Atom;
 use stylo_dom::ElementState;
 
 use crate::conversions::Convert;
-use crate::css::stylesheet_loader::StylesheetOwner;
 use crate::dom::RootedPromise;
 use crate::dom::accessors::AttrStrRef;
 use crate::dom::activation::Activatable;
@@ -149,7 +148,6 @@ use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmllabelelement::HTMLLabelElement;
 use crate::dom::html::htmllegendelement::HTMLLegendElement;
 use crate::dom::html::htmllielement::HTMLLIElement;
-use crate::dom::html::htmllinkelement::HTMLLinkElement;
 use crate::dom::html::htmlmarqueeelement::HTMLMarqueeElement;
 use crate::dom::html::htmlobjectelement::HTMLObjectElement;
 use crate::dom::html::htmlolistelement::HTMLOListElement;
@@ -157,7 +155,6 @@ use crate::dom::html::htmloutputelement::HTMLOutputElement;
 use crate::dom::html::htmlscriptelement::HTMLScriptElement;
 use crate::dom::html::htmlselectelement::HTMLSelectElement;
 use crate::dom::html::htmlslotelement::{HTMLSlotElement, Slottable};
-use crate::dom::html::htmlstyleelement::HTMLStyleElement;
 use crate::dom::html::htmltablecellelement::HTMLTableCellElement;
 use crate::dom::html::htmltablecolelement::HTMLTableColElement;
 use crate::dom::html::htmltableelement::HTMLTableElement;
@@ -5354,18 +5351,6 @@ impl Element {
             _ => None,
         };
         element.filter(|elem| elem.is_instance_activatable())
-    }
-
-    pub(crate) fn as_stylesheet_owner(&self) -> Option<&dyn StylesheetOwner> {
-        if let Some(s) = self.downcast::<HTMLStyleElement>() {
-            return Some(s as &dyn StylesheetOwner);
-        }
-
-        if let Some(l) = self.downcast::<HTMLLinkElement>() {
-            return Some(l as &dyn StylesheetOwner);
-        }
-
-        None
     }
 
     /// <https://html.spec.whatwg.org/multipage/#category-submit>

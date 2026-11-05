@@ -8,11 +8,13 @@ use script_bindings::root::DomRoot;
 use style::attr::AttrValue;
 
 use crate::dom::bindings::inheritance::{
-    Castable, DocumentFragmentTypeId, ElementTypeId, HTMLElementTypeId, HTMLMediaElementTypeId,
-    NodeTypeId, SVGElementTypeId, SVGGeometryElementTypeId, SVGGradientElementTypeId,
-    SVGGraphicsElementTypeId, SVGTextContentElementTypeId, SVGTextPositioningElementTypeId,
+    Castable, CharacterDataTypeId, DocumentFragmentTypeId, ElementTypeId, HTMLElementTypeId,
+    HTMLMediaElementTypeId, NodeTypeId, SVGElementTypeId, SVGGeometryElementTypeId,
+    SVGGradientElementTypeId, SVGGraphicsElementTypeId, SVGTextContentElementTypeId,
+    SVGTextPositioningElementTypeId,
 };
 use crate::dom::bindings::str::DOMString;
+use crate::dom::characterdata::processinginstruction::ProcessingInstruction;
 use crate::dom::document::Document;
 use crate::dom::documentfragment::DocumentFragment;
 use crate::dom::element::attributes::storage::AttrRef;
@@ -469,6 +471,9 @@ pub(crate) fn vtable_for(node: &Node) -> &dyn VirtualMethods {
         },
         NodeTypeId::DocumentFragment(_) => {
             node.downcast::<DocumentFragment>().unwrap() as &dyn VirtualMethods
+        },
+        NodeTypeId::CharacterData(CharacterDataTypeId::ProcessingInstruction) => {
+            node.downcast::<ProcessingInstruction>().unwrap() as &dyn VirtualMethods
         },
         _ => node as &dyn VirtualMethods,
     }

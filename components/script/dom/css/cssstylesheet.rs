@@ -36,10 +36,9 @@ use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::document::Document;
-use crate::dom::element::Element;
 use crate::dom::html::htmlstyleelement::HTMLStyleElement;
 use crate::dom::medialist::MediaList;
-use crate::dom::node::NodeTraits;
+use crate::dom::node::{Node, NodeTraits};
 use crate::dom::promise::RootedPromise;
 use crate::dom::types::Promise;
 use crate::dom::window::Window;
@@ -49,7 +48,7 @@ pub(crate) struct CSSStyleSheet {
     stylesheet: StyleSheet,
 
     /// <https://drafts.csswg.org/cssom/#concept-css-style-sheet-owner-node>
-    owner_node: MutNullableDom<Element>,
+    owner_node: MutNullableDom<Node>,
 
     /// <https://drafts.csswg.org/cssom/#ref-for-concept-css-style-sheet-css-rules>
     rule_list: MutNullableDom<CSSRuleList>,
@@ -86,7 +85,7 @@ pub(crate) struct CSSStyleSheet {
 
 impl CSSStyleSheet {
     fn new_inherited(
-        owner: Option<&Element>,
+        owner: Option<&Node>,
         type_: DOMString,
         href: Option<DOMString>,
         stylesheet: Arc<StyleStyleSheet>,
@@ -109,7 +108,7 @@ impl CSSStyleSheet {
     pub(crate) fn new(
         cx: &mut JSContext,
         window: &Window,
-        owner: Option<&Element>,
+        owner: Option<&Node>,
         type_: DOMString,
         href: Option<DOMString>,
         stylesheet: Arc<StyleStyleSheet>,
@@ -133,7 +132,7 @@ impl CSSStyleSheet {
         cx: &mut JSContext,
         window: &Window,
         proto: Option<HandleObject>,
-        owner: Option<&Element>,
+        owner: Option<&Node>,
         type_: DOMString,
         href: Option<DOMString>,
         stylesheet: Arc<StyleStyleSheet>,
@@ -195,7 +194,7 @@ impl CSSStyleSheet {
             .origin
     }
 
-    pub(crate) fn owner_node(&self) -> Option<DomRoot<Element>> {
+    pub(crate) fn owner_node(&self) -> Option<DomRoot<Node>> {
         self.owner_node.get()
     }
 
@@ -205,7 +204,7 @@ impl CSSStyleSheet {
         }
     }
 
-    pub(crate) fn set_owner_node(&self, value: Option<&Element>) {
+    pub(crate) fn set_owner_node(&self, value: Option<&Node>) {
         self.owner_node.set(value);
     }
 

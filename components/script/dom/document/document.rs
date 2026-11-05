@@ -4972,7 +4972,7 @@ impl Document {
     pub(crate) fn add_owned_stylesheet(
         &self,
         no_gc: &NoGC,
-        owner_node: &Element,
+        owner_node: &Node,
         sheet: Arc<Stylesheet>,
     ) {
         let insertion_point = {
@@ -4984,9 +4984,9 @@ impl Document {
                 .map(|(sheet, _origin)| sheet)
                 .find(|sheet_in_doc| {
                     match &sheet_in_doc.owner {
-                        StylesheetSource::Element(other_node) => owner_node
-                            .upcast::<Node>()
-                            .is_before(no_gc, other_node.upcast()),
+                        StylesheetSource::Node(other_node) => {
+                            owner_node.is_before(no_gc, other_node)
+                        },
                         // Non-constructed stylesheet should be ordered before the
                         // constructed ones.
                         StylesheetSource::Constructed(_) => true,
@@ -5004,7 +5004,7 @@ impl Document {
 
         let stylesheets = &mut *self.stylesheets.borrow_mut();
         DocumentOrShadowRoot::add_stylesheet(
-            StylesheetSource::Element(Dom::from_ref(owner_node)),
+            StylesheetSource::Node(Dom::from_ref(owner_node)),
             StylesheetSetRef::Document(stylesheets),
             sheet,
             insertion_point,

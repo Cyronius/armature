@@ -9,11 +9,12 @@ use script_bindings::reflector::Reflector;
 use xml5ever::local_name;
 
 use super::cssstylesheet::CSSStyleSheet;
-use crate::dom::Node;
 use crate::dom::bindings::codegen::Bindings::StyleSheetBinding::StyleSheetMethods;
+use crate::dom::bindings::codegen::UnionTypes::ElementOrProcessingInstruction;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::DOMString;
+use crate::dom::characterdata::processinginstruction::ProcessingInstruction;
 use crate::dom::element::Element;
 use crate::dom::medialist::MediaList;
 
@@ -46,9 +47,14 @@ impl StyleSheetMethods<crate::DomTypeHolder> for StyleSheet {
     }
 
     /// <https://drafts.csswg.org/cssom/#dom-stylesheet-ownernode>
-    fn GetOwnerNode(&self) -> Option<DomRoot<Element>> {
-        self.downcast::<CSSStyleSheet>()
-            .and_then(|s| s.owner_node())
+    fn GetOwnerNode(&self) -> Option<ElementOrProcessingInstruction> {
+        let owner_node = self.downcast::<CSSStyleSheet>()?.owner_node()?;
+        if let Some(processing_instruction) = owner_node.downcast::<ProcessingInstruction>() {
+            return Some(ElementOrProcessingInstruction::ProcessingInstruction(
+                DomRoot::from_ref(processing_instruction),
+            ));
+        }
+        DomRoot::downcast::<Element>(owner_node).map(ElementOrProcessingInstruction::Element)
     }
 
     /// <https://drafts.csswg.org/cssom/#dom-stylesheet-media>
@@ -59,12 +65,19 @@ impl StyleSheetMethods<crate::DomTypeHolder> for StyleSheet {
     /// <https://drafts.csswg.org/cssom/#dom-stylesheet-title>
     fn GetTitle(&self) -> Option<DOMString> {
         let css_style_sheet = self.downcast::<CSSStyleSheet>()?;
-        let owner_element = css_style_sheet.owner_node()?;
-        if !owner_element.upcast::<Node>().is_in_a_document_tree() {
+        let owner_node = css_style_sheet.owner_node()?;
+        if !owner_node.is_in_a_document_tree() {
             return None;
         }
 
-        let title_string = owner_element.get_attribute_string_value(&local_name!("title"))?;
+        // The title of a style sheet from an `xml-stylesheet` processing instruction
+        // is its `title` pseudo-attribute.
+        let title_string = match owner_node.downcast::<ProcessingInstruction>() {
+            Some(processing_instruction) => processing_instruction.stylesheet_title()?,
+            None => owner_node
+                .downcast::<Element>()?
+                .get_attribute_string_value(&local_name!("title"))?,
+        };
         if title_string.is_empty() {
             return None;
         }
