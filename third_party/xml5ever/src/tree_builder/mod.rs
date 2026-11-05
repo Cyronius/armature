@@ -420,6 +420,11 @@ where
             },
 
             tokenizer::Token::Doctype(d) => Token::Doctype(d),
+            // Armature (AX-003): The XML declaration (`<?xml version="1.0"?>`) looks like a
+            // processing instruction, but it is not one, and it creates no node.
+            tokenizer::Token::ProcessingInstruction(instruction) if &*instruction.target == "xml" => {
+                return ProcessResult::Continue;
+            },
             tokenizer::Token::ProcessingInstruction(instruction) => Token::Pi(instruction),
             tokenizer::Token::Tag(x) => Token::Tag(x),
             tokenizer::Token::Comment(x) => Token::Comment(x),

@@ -108,3 +108,11 @@ Each entry has this form (the check reads the `### AX-NNN` headings and the `Fil
   domparsing/DOMParser-parseFromString-xml-empty-nodes.html and domparsing/xml-parse-serialize-roundtrip.html.
 - Upstream: Could go upstream together with markup5ever AM-001. Adding a `Token` variant breaks code that matches
   tokens exhaustively, such as the `simple_xml_tokenizer` example, which this change updates.
+
+### AX-003: Do not create a node for the XML declaration
+- Files: `src/tree_builder/mod.rs`
+- Why: The tokenizer reads the XML declaration (`<?xml version="1.0" encoding="UTF-8"?>`) as a processing
+  instruction with the target `xml`, and the tree builder made it the first child of the document. It is not a
+  processing instruction, and browsers create no node for it, so `document.firstChild` of an XML document was wrong.
+  The tree builder now drops it. Affects dom/nodes/ProcessingInstruction-literal-1.xhtml.
+- Upstream: Could go upstream as is.
