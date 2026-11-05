@@ -184,7 +184,7 @@ impl ReplacedContents {
         if let Some(ref data_attribute_string) = node.as_typeless_object_with_data_attribute() &&
             let Some(url) = try_to_parse_image_data_url(data_attribute_string)
         {
-            return Self::from_image_url(node, context, &ComputedUrl::Valid(ServoArc::new(url)));
+            return Self::from_resolved_image_url(node, context, &ServoArc::new(url));
         }
 
         let (kind, natural_size) = {
@@ -372,9 +372,15 @@ impl ReplacedContents {
         context: &LayoutContext,
         image_url: &ComputedUrl,
     ) -> Option<Self> {
-        let ComputedUrl::Valid(image_url) = image_url else {
-            return None;
-        };
+        Self::from_resolved_image_url(node, context, image_url.url()?)
+    }
+
+    /// Creates replaced contents showing the image at `image_url`.
+    fn from_resolved_image_url(
+        node: ServoLayoutNode<'_>,
+        context: &LayoutContext,
+        image_url: &ServoArc<Url>,
+    ) -> Option<Self> {
         let (image, natural_size) = match context.image_resolver.get_or_request_image_or_meta(
             node.opaque(),
             image_url.clone().into(),

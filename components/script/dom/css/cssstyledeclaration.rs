@@ -11,7 +11,6 @@ use html5ever::local_name;
 use js::context::JSContext;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
 use servo_arc::Arc;
-use servo_url::ServoUrl;
 use style::attr::AttrValue;
 use style::properties::{
     Importance, LonghandId, PropertyDeclarationBlock, PropertyId, ShorthandId,
@@ -175,21 +174,25 @@ impl CSSStyleOwner {
         }
     }
 
-    fn base_url(&self) -> ServoUrl {
+    /// The URL data that values set through the declaration block resolve URLs with: the
+    /// document's base URL for an element's style, and the style sheet's URL data for a rule's
+    /// style.
+    fn url_data(&self) -> UrlExtraData {
         match *self {
             CSSStyleOwner::Null => {
                 unreachable!("Should never try to access base URL of CSStyleOwner::Null")
             },
-            CSSStyleOwner::Element(ref el) => el.owner_document().base_url(),
-            CSSStyleOwner::CSSRule(ref rule, _) => ServoUrl::from({
+            CSSStyleOwner::Element(ref el) => {
+                UrlExtraData(el.owner_document().base_url().get_arc())
+            },
+            CSSStyleOwner::CSSRule(ref rule, _) => {
                 let guard = rule.shared_lock().read();
                 rule.parent_stylesheet()
                     .style_stylesheet()
                     .contents(&guard)
                     .url_data
-                    .0
                     .clone()
-            }),
+            },
         }
     }
 }
@@ -364,7 +367,7 @@ impl CSSStyleDeclaration {
                 }
             },
         };
-        let base_url = UrlExtraData(self.owner.base_url().get_arc());
+        let base_url = self.owner.url_data();
         self.owner.mutate_associated_block(cx, |pdb, changed| {
             // Step 3. If value is the empty string, invoke removeProperty()
             // with property as argument and return.
@@ -622,7 +625,7 @@ impl CSSStyleDeclarationMethods<crate::DomTypeHolder> for CSSStyleDeclaration {
 
         let window = self.owner.window();
         let quirks_mode = window.Document().quirks_mode();
-        let base_url = UrlExtraData(self.owner.base_url().get_arc());
+        let base_url = self.owner.url_data();
         self.owner.mutate_associated_block(cx, |pdb, _changed| {
             // Step 3
             *pdb = parse_style_attribute(

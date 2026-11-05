@@ -4466,7 +4466,7 @@ impl ParseErrorReporter for CSSErrorReporter {
         if log_enabled!(log::Level::Info) {
             info!(
                 "Url:\t{}\n{}:{} {}",
-                url.0.as_str(),
+                url.as_str(),
                 location.line,
                 location.column,
                 error
@@ -4477,7 +4477,7 @@ impl ParseErrorReporter for CSSErrorReporter {
         #[cfg(feature = "devtools")]
         let _ = self.script_chan.send(ScriptThreadMessage::ReportCSSError(
             self.pipelineid,
-            url.0.to_string(),
+            url.as_str().to_owned(),
             location.line,
             location.column,
             error.to_string(),
