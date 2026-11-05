@@ -526,6 +526,8 @@ where
 
             tokenizer::TagToken(x) => Token::Tag(x),
             tokenizer::CommentToken(x) => Token::Comment(x),
+            // Armature (AH-004): Processing instruction tokens.
+            tokenizer::ProcessingInstructionToken(x) => Token::ProcessingInstruction(x),
             tokenizer::NullCharacterToken => Token::NullCharacter,
             tokenizer::EOFToken => Token::Eof,
 
@@ -1352,6 +1354,43 @@ where
         let target = html_elem(&open_elems);
         let comment = self.sink.create_comment(text);
         self.sink.append(target, AppendNode(comment));
+        ProcessResult::Done
+    }
+
+    // Armature (AH-004): Insert processing instructions where comments are inserted.
+    /// <https://html.spec.whatwg.org/#insert-a-processing-instruction>
+    fn append_processing_instruction(
+        &self,
+        processing_instruction: tokenizer::ProcessingInstruction,
+    ) -> ProcessResult<Handle> {
+        let node = self
+            .sink
+            .create_pi(processing_instruction.target, processing_instruction.data);
+        self.insert_appropriately(AppendNode(node), None);
+        ProcessResult::Done
+    }
+
+    fn append_processing_instruction_to_doc(
+        &self,
+        processing_instruction: tokenizer::ProcessingInstruction,
+    ) -> ProcessResult<Handle> {
+        let node = self
+            .sink
+            .create_pi(processing_instruction.target, processing_instruction.data);
+        self.sink.append(&self.doc_handle, AppendNode(node));
+        ProcessResult::Done
+    }
+
+    fn append_processing_instruction_to_html(
+        &self,
+        processing_instruction: tokenizer::ProcessingInstruction,
+    ) -> ProcessResult<Handle> {
+        let open_elems = self.open_elems.borrow();
+        let target = html_elem(&open_elems);
+        let node = self
+            .sink
+            .create_pi(processing_instruction.target, processing_instruction.data);
+        self.sink.append(target, AppendNode(node));
         ProcessResult::Done
     }
 

@@ -11,6 +11,8 @@
 
 use crate::tokenizer::states::RawKind;
 use crate::tokenizer::Tag;
+// Armature (AH-004): Processing instruction tokens.
+use crate::tokenizer::ProcessingInstruction;
 
 use crate::tendril::StrTendril;
 
@@ -74,6 +76,8 @@ pub(crate) enum SplitStatus {
 pub(crate) enum Token {
     Tag(Tag),
     Comment(StrTendril),
+    // Armature (AH-004): Processing instruction tokens.
+    ProcessingInstruction(ProcessingInstruction),
     Characters(SplitStatus, StrTendril),
     NullCharacter,
     Eof,

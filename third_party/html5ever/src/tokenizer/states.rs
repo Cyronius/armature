@@ -83,6 +83,17 @@ pub enum State {
     SelfClosingStartTag,
     /// <https://html.spec.whatwg.org/#bogus-comment-state>
     BogusComment,
+    // Armature (AH-004): Processing instruction states.
+    /// <https://html.spec.whatwg.org/#processing-instruction-open-state>
+    ProcessingInstructionOpen,
+    /// <https://html.spec.whatwg.org/#processing-instruction-target-state>
+    ProcessingInstructionTarget,
+    /// <https://html.spec.whatwg.org/#after-processing-instruction-target-state>
+    AfterProcessingInstructionTarget,
+    /// <https://html.spec.whatwg.org/#processing-instruction-data-state>
+    ProcessingInstructionData,
+    /// <https://html.spec.whatwg.org/#processing-instruction-questionable-state>
+    ProcessingInstructionQuestionable,
     /// <https://html.spec.whatwg.org/#markup-declaration-open-state>
     MarkupDeclarationOpen,
     /// <https://html.spec.whatwg.org/#comment-start-state>

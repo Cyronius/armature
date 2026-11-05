@@ -121,3 +121,15 @@ Each entry has this form (the check reads the `### AH-NNN` headings and the `Fil
   and other reftests that draw inline `<svg xmlns="http://www.w3.org/2000/svg">`, and XMLSerializer output for
   inline SVG and MathML.
 - Upstream: Could go upstream as is.
+
+### AH-004: Parse processing instructions
+- Files: `src/tokenizer/interface.rs`, `src/tokenizer/mod.rs`, `src/tokenizer/states.rs`, `src/tree_builder/mod.rs`, `src/tree_builder/rules.rs`, `src/tree_builder/types.rs`
+- Why: The HTML Standard now parses `<?target data?>` (and `<?target data>`) as a processing instruction instead of
+  a bogus comment (whatwg/html#12118 and #12653). The tokenizer gets the five processing instruction states and a
+  `ProcessingInstructionToken`; a target that does not start with an ASCII letter or `_`, contains other characters
+  than ASCII alphanumerics, `-` and `_`, or is `xml` or `xml-stylesheet` (in any case) still makes a bogus comment, and
+  an unterminated processing instruction at the end of the input is dropped. The tree builder inserts processing
+  instructions with `TreeSink::create_pi` wherever it inserts comments, as the spec does. Affects
+  html/syntax/parsing/html5lib_*.html (`processing-instructions`, `tests1` and `html5test-com`),
+  dom/nodes/processing-instruction-attributes.html and sanitizer-api/sanitizer-processing-instructions.html.
+- Upstream: Could go upstream as is. Adding a `Token` variant breaks code that matches tokens exhaustively.

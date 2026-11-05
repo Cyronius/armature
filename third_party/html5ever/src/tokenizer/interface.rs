@@ -17,7 +17,17 @@ use std::borrow::Cow;
 
 pub use self::TagKind::{EndTag, StartTag};
 pub use self::Token::{CharacterTokens, CommentToken, DoctypeToken, TagToken};
+// Armature (AH-004): Processing instruction tokens.
+pub use self::Token::ProcessingInstructionToken;
 pub use self::Token::{EOFToken, NullCharacterToken, ParseError};
+
+// Armature (AH-004): Processing instruction tokens.
+/// A processing instruction token, like `<?target data?>`.
+#[derive(PartialEq, Eq, Clone, Debug, Default)]
+pub struct ProcessingInstruction {
+    pub target: StrTendril,
+    pub data: StrTendril,
+}
 
 /// A `DOCTYPE` token.
 #[derive(PartialEq, Eq, Clone, Debug, Default)]
@@ -87,6 +97,9 @@ pub enum Token {
     TagToken(Tag),
     /// A comment like `<!-- foo -->`.
     CommentToken(StrTendril),
+    // Armature (AH-004): Processing instruction tokens.
+    /// A processing instruction like `<?target data?>`.
+    ProcessingInstructionToken(ProcessingInstruction),
     /// A sequence of characters.
     CharacterTokens(StrTendril),
     /// A `U+0000 NULL` character in the input.
