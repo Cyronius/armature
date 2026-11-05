@@ -82,6 +82,11 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   `StyleSheet.ownerNode` can be the processing instruction, and the sheet blocks scripts in documents parsed by the
   XML parser. Changing the data reloads the sheet and removing the node removes it. This fixes 4 subtests,
   among them `ProcessingInstruction-escapes-1.xhtml` and `xml-stylesheet-blocking.xhtml`.
+- **Referrer of style sheet resources**: images, fonts and imported style sheets that an external style sheet
+  refers to are fetched with the style sheet's URL as the referrer and the referrer policy of its response, as the
+  Referrer Policy spec requires (they used the document's). Stylo's URL data now carries that referrer (Stylo change
+  AS-501). This fixes 11 subtests in `referrer-policy/css-integration`; the SVG ones there still fail because Servo
+  does not fetch external SVG resources such as `fill: url(file.svg#paint)`.
 - **XML serialization**: `XMLSerializer`, `innerHTML` and `outerHTML` in XML documents, and the drawing of inline SVG
   now use an implementation of the [DOM Parsing](https://w3c.github.io/DOM-Parsing/#xml-serialization) XML
   serialization algorithm instead of xml5ever's serializer. It keeps namespaces with prefixes and `xmlns`
