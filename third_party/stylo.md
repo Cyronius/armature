@@ -246,3 +246,15 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   and `math-style`. Servo's layout ignores the value. Affects
   `mathml/relations/css-styling/parsing/math-shift-*.html`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-501: Carry the referrer of an external style sheet's fetches in its URL data
+- Files: `style/stylesheets/mod.rs`, `style/url/servo.rs`
+- Why: Resources that an external style sheet refers to (images, fonts and imported style sheets) must be fetched
+  with the style sheet's URL as the referrer and with the referrer policy of the style sheet's response, but Servo's
+  `UrlExtraData` held only the base URL, and `url()` values lost track of the style sheet they came from. Servo's
+  `UrlExtraData` is now a struct with the base URL and an optional `StylesheetReferrer` (URL and referrer policy
+  token), and `CssUrl` and `ComputedUrl::Valid` keep that referrer, so layout and the font loader can use it. A
+  function named `UrlExtraData` keeps the old tuple constructor working, with no referrer. Affects the image, font
+  and child style sheet tests in `referrer-policy/css-integration/`.
+- Upstream: Could go upstream (Gecko keeps the same information in its `URLExtraData`'s `ReferrerInfo`), but Servo's
+  AI policy currently prevents sending it.

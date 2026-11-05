@@ -7,6 +7,8 @@
 use crate::derives::*;
 use crate::parser::ParserContext;
 use crate::stylesheets::CorsMode;
+// Armature (AS-501): The referrer of the fetch of the URL.
+use crate::stylesheets::StylesheetReferrer;
 use crate::values::computed::{Context, ToComputedValue};
 use servo_arc::Arc;
 use std::fmt::{self, Write};
@@ -45,6 +47,12 @@ pub struct CssUrlData {
     /// The resolved value for the url, if valid.
     #[ignore_malloc_size_of = "Arc"]
     resolved: Option<Arc<Url>>,
+
+    /// Armature (AS-501): The referrer of the fetch of the URL, when it comes from an external
+    /// style sheet.
+    #[ignore_malloc_size_of = "Arc"]
+    #[value_info(skip)]
+    referrer: Option<Arc<StylesheetReferrer>>,
 }
 
 impl ToShmem for CssUrl {
@@ -76,12 +84,15 @@ impl CssUrl {
         // Per https://drafts.csswg.org/css-values-4/#url-empty
         // If the original url is empty, then the resolved url is considered invalid.
         let resolved = (!serialization.is_empty())
-            .then(|| context.url_data.0.join(&serialization))
+            // Armature (AS-501): `base` instead of `0`.
+            .then(|| context.url_data.base.join(&serialization))
             .and_then(Result::ok)
             .map(Arc::new);
         CssUrl(Arc::new(CssUrlData {
             original: Some(serialization),
             resolved: resolved,
+            // Armature (AS-501): Remember the style sheet's referrer.
+            referrer: context.url_data.referrer.clone(),
         }))
     }
 
@@ -107,6 +118,12 @@ impl CssUrl {
         self.resolved.as_ref()
     }
 
+    /// Armature (AS-501): Returns the referrer of the fetch of the URL, if it comes from an
+    /// external style sheet.
+    pub fn referrer(&self) -> Option<&Arc<StylesheetReferrer>> {
+        self.referrer.as_ref()
+    }
+
     /// Return the resolved url as string, or the empty string if it's invalid.
     ///
     /// TODO(emilio): Should we return the original one if needed?
@@ -123,6 +140,8 @@ impl CssUrl {
         CssUrl(Arc::new(CssUrlData {
             original: None,
             resolved: Some(url),
+            // Armature (AS-501)
+            referrer: None,
         }))
     }
 
@@ -134,6 +153,8 @@ impl CssUrl {
                 .then(|| ::url::Url::parse(url))
                 .and_then(Result::ok)
                 .map(Arc::new),
+            // Armature (AS-501)
+            referrer: None,
         }))
     }
 }
@@ -180,7 +201,8 @@ impl ToComputedValue for SpecifiedUrl {
     // but still return it as a ComputedUrl::Invalid
     fn to_computed_value(&self, _: &Context) -> Self::ComputedValue {
         match self.resolved {
-            Some(ref url) => ComputedUrl::Valid(url.clone()),
+            // Armature (AS-501): Keep the referrer.
+            Some(ref url) => ComputedUrl::Valid(url.clone(), self.referrer.clone()),
             None => match self.original {
                 Some(ref url) => ComputedUrl::Invalid(url.clone()),
                 None => {
@@ -192,13 +214,16 @@ impl ToComputedValue for SpecifiedUrl {
 
     fn from_computed_value(computed: &ComputedUrl) -> Self {
         let data = match *computed {
-            ComputedUrl::Valid(ref url) => CssUrlData {
+            // Armature (AS-501): Keep the referrer.
+            ComputedUrl::Valid(ref url, ref referrer) => CssUrlData {
                 original: None,
                 resolved: Some(url.clone()),
+                referrer: referrer.clone(),
             },
             ComputedUrl::Invalid(ref url) => CssUrlData {
                 original: Some(url.clone()),
                 resolved: None,
+                referrer: None,
             },
         };
         CssUrl(Arc::new(data))
@@ -211,14 +236,29 @@ pub enum ComputedUrl {
     /// The `url()` was invalid or it wasn't specified by the user.
     Invalid(#[ignore_malloc_size_of = "Arc"] Arc<String>),
     /// The resolved `url()` relative to the stylesheet URL.
-    Valid(#[ignore_malloc_size_of = "Arc"] Arc<Url>),
+    // Armature (AS-501): And the referrer of its fetch, when it comes from an external style
+    // sheet.
+    Valid(
+        #[ignore_malloc_size_of = "Arc"] Arc<Url>,
+        #[ignore_malloc_size_of = "Arc"] Option<Arc<StylesheetReferrer>>,
+    ),
 }
 
 impl ComputedUrl {
     /// Returns the resolved url if it was valid.
     pub fn url(&self) -> Option<&Arc<Url>> {
         match *self {
-            ComputedUrl::Valid(ref url) => Some(url),
+            // Armature (AS-501): `Valid` also has the referrer.
+            ComputedUrl::Valid(ref url, _) => Some(url),
+            _ => None,
+        }
+    }
+
+    /// Armature (AS-501): Returns the referrer of the fetch of the URL, if it comes from an
+    /// external style sheet.
+    pub fn referrer(&self) -> Option<&Arc<StylesheetReferrer>> {
+        match *self {
+            ComputedUrl::Valid(_, ref referrer) => referrer.as_ref(),
             _ => None,
         }
     }
@@ -230,7 +270,8 @@ impl ToCss for ComputedUrl {
         W: Write,
     {
         let string = match *self {
-            ComputedUrl::Valid(ref url) => url.as_str(),
+            // Armature (AS-501): `Valid` also has the referrer.
+            ComputedUrl::Valid(ref url, _) => url.as_str(),
             ComputedUrl::Invalid(ref invalid_string) => invalid_string,
         };
 

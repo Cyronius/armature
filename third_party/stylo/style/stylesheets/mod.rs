@@ -120,27 +120,66 @@ pub enum CorsMode {
 pub struct UrlExtraData(usize);
 
 /// Extra data that the backend may need to resolve url values.
+// Armature (AS-501): A struct with the base URL and the referrer of the fetches the style sheet
+// starts, instead of a tuple struct with only the base URL. The `UrlExtraData` function below keeps
+// the old constructor working.
 #[cfg(feature = "servo")]
 #[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq)]
-pub struct UrlExtraData(#[ignore_malloc_size_of = "Arc"] pub Arc<::url::Url>);
+pub struct UrlExtraData {
+    /// The URL that relative URLs resolve against.
+    #[ignore_malloc_size_of = "Arc"]
+    pub base: Arc<::url::Url>,
+    /// The referrer of fetches of the resources that the style sheet refers to (images, fonts and
+    /// imported style sheets), when the style sheet is an external one. `None` means that they
+    /// use the document's referrer and referrer policy.
+    #[ignore_malloc_size_of = "Arc"]
+    pub referrer: Option<Arc<StylesheetReferrer>>,
+}
+
+/// Armature (AS-501): Creates a `UrlExtraData` with the given base URL and no referrer, as the
+/// tuple struct constructor did.
+#[cfg(feature = "servo")]
+#[allow(non_snake_case)]
+pub fn UrlExtraData(base: Arc<::url::Url>) -> UrlExtraData {
+    UrlExtraData {
+        base,
+        referrer: None,
+    }
+}
+
+/// Armature (AS-501): The referrer and referrer policy of the fetches that an external style sheet
+/// starts. <https://w3c.github.io/webappsec-referrer-policy/#integration-with-css>
+#[cfg(feature = "servo")]
+#[derive(Clone, Debug, Deserialize, Eq, MallocSizeOf, PartialEq, Serialize)]
+pub struct StylesheetReferrer {
+    /// The URL of the style sheet.
+    #[ignore_malloc_size_of = "Arc"]
+    pub url: Arc<::url::Url>,
+    /// The referrer policy of the style sheet's response, as a referrer policy token (the empty
+    /// string when the response had none).
+    pub policy: String,
+}
 
 #[cfg(feature = "servo")]
 impl UrlExtraData {
     /// True if this URL scheme is chrome.
     pub fn chrome_rules_enabled(&self) -> bool {
-        self.0.scheme() == "chrome"
+        // Armature (AS-501): `base` instead of `0`.
+        self.base.scheme() == "chrome"
     }
 
     /// Get the interior Url as a string.
     pub fn as_str(&self) -> &str {
-        self.0.as_str()
+        // Armature (AS-501): `base` instead of `0`.
+        self.base.as_str()
     }
 }
 
 #[cfg(feature = "servo")]
 impl From<::url::Url> for UrlExtraData {
     fn from(url: ::url::Url) -> Self {
-        Self(Arc::new(url))
+        // Armature (AS-501): `UrlExtraData` is no longer a tuple struct.
+        UrlExtraData(Arc::new(url))
     }
 }
 
