@@ -70,6 +70,12 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   parsing rules for SVG `script` end tags and self-closing `<script/>` in SVG, which upstream had not implemented,
   tell Servo about every element the parser closes, and give the `xmlns` attribute of inline SVG and MathML no
   prefix (it had the empty prefix, so its `name` was `":xmlns"`).
+- **Processing instructions in HTML**: the HTML parser now parses `<?target data?>` into a `ProcessingInstruction`
+  node, following the HTML Standard's new tokenizer states (it used to make a bogus comment; `<?xml ...>`,
+  `<?xml-stylesheet ...>` and invalid targets still do). This fixes all 83 `processing-instructions` html5lib tree
+  construction subtests in each of the three html5lib test files, 12 more html5lib subtests, the 20 parser subtests of
+  the `ProcessingInstruction` attributes test, and 52 Sanitizer API subtests. The XML parser no longer creates a
+  `ProcessingInstruction` node for the XML declaration (`<?xml version="1.0"?>`).
 - **XML serialization**: `XMLSerializer`, `innerHTML` and `outerHTML` in XML documents, and the drawing of inline SVG
   now use an implementation of the [DOM Parsing](https://w3c.github.io/DOM-Parsing/#xml-serialization) XML
   serialization algorithm instead of xml5ever's serializer. It keeps namespaces with prefixes and `xmlns`
@@ -97,7 +103,8 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 - One Observable subtest still fails: `when()` in a detached document, because ordinary event listeners still run in
   detached documents.
-- 20 `ProcessingInstruction` subtests need the HTML parser to produce processing instructions (html5ever).
+- `ProcessingInstruction-escapes-1.xhtml` needs `xml-stylesheet` processing instructions to load style sheets
+  (`ProcessingInstruction.sheet`).
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
   expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
   contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
