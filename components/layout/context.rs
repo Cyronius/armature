@@ -19,10 +19,12 @@ use net_traits::request::InternalRequest;
 use parking_lot::{Mutex, RwLock};
 use pixels::RasterImage;
 use script::layout_dom::ServoLayoutNode;
+use servo_arc::Arc as ServoArc;
 use servo_base::id::PainterId;
 use servo_url::{ImmutableOrigin, ServoUrl};
 use style::context::SharedStyleContext;
 use style::dom::OpaqueNode;
+use style::stylesheets::StylesheetReferrer;
 use style::values::computed::color::Color;
 use style::values::computed::image::{Gradient, Image};
 use style_traits::DevicePixel;
@@ -163,6 +165,7 @@ impl ImageResolver {
         &self,
         node: OpaqueNode,
         url: ServoUrl,
+        referrer: Option<&ServoArc<StylesheetReferrer>>,
         destination: LayoutImageDestination,
         is_internal_request: InternalRequest,
     ) -> LayoutImageCacheResult {
@@ -192,7 +195,7 @@ impl ImageResolver {
             // Not yet requested - request image or metadata from the cache
             ImageCacheResult::ReadyForRequest(id) => {
                 let image = PendingImage {
-                    state: PendingImageState::Unrequested(url),
+                    state: PendingImageState::Unrequested(url, referrer.cloned()),
                     node: node.into(),
                     id,
                     origin: self.origin.clone(),
@@ -220,6 +223,7 @@ impl ImageResolver {
         &self,
         node: OpaqueNode,
         url: ServoUrl,
+        referrer: Option<&ServoArc<StylesheetReferrer>>,
         destination: LayoutImageDestination,
         is_internal_request: InternalRequest,
     ) -> Result<CachedImage, ResolveImageError> {
@@ -227,8 +231,13 @@ impl ImageResolver {
             return cached_image.clone();
         }
 
-        let result =
-            self.get_or_request_image_or_meta(node, url.clone(), destination, is_internal_request);
+        let result = self.get_or_request_image_or_meta(
+            node,
+            url.clone(),
+            referrer,
+            destination,
+            is_internal_request,
+        );
         match result {
             LayoutImageCacheResult::DataAvailable(img_or_meta) => match img_or_meta {
                 ImageOrMetadataAvailable::ImageAvailable { image, .. } => {
@@ -321,11 +330,13 @@ impl ImageResolver {
                 //
                 // FIXME: It feels like this should take into account the pseudo
                 // element and not just the node.
+                let referrer = image_url.referrer();
                 let image_url = image_url.url().ok_or(ResolveImageError::InvalidUrl)?;
                 let node = node.ok_or(ResolveImageError::MissingNode)?;
                 let image = self.get_cached_image_for_url(
                     node,
                     image_url.clone().into(),
+                    referrer,
                     LayoutImageDestination::DisplayListBuilding,
                     InternalRequest::No,
                 )?;

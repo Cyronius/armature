@@ -77,7 +77,7 @@ use style::properties::style_structs::Font;
 use style::properties::{ComputedValues, PropertyId};
 use style::selector_parser::{PseudoElement, RestyleDamage, Snapshot};
 use style::str::char_is_whitespace;
-use style::stylesheets::{DocumentStyleSheet, Stylesheet};
+use style::stylesheets::{DocumentStyleSheet, Stylesheet, StylesheetReferrer};
 use style::stylist::Stylist;
 #[cfg(debug_assertions)]
 use style::thread_state::{self, ThreadState};
@@ -210,7 +210,9 @@ unsafe impl Send for TrustedNodeAddress {}
 /// Whether the pending image needs to be fetched or is waiting on an existing fetch.
 #[derive(Debug)]
 pub enum PendingImageState {
-    Unrequested(ServoUrl),
+    /// The image still needs to be fetched, from this URL, with the referrer of the external
+    /// style sheet that refers to it, if any.
+    Unrequested(ServoUrl, Option<ServoArc<StylesheetReferrer>>),
     PendingResponse,
 }
 

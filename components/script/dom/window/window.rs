@@ -3947,9 +3947,10 @@ impl Window {
             let id = image.id;
             let node = unsafe { from_untrusted_node_address(image.node) };
 
-            if let PendingImageState::Unrequested(ref url) = image.state {
+            if let PendingImageState::Unrequested(ref url, ref referrer) = image.state {
                 fetch_image_for_layout(
                     url.clone(),
+                    referrer.as_deref(),
                     &node,
                     id,
                     image.is_internal_request,

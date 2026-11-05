@@ -6,14 +6,17 @@
 
 use std::sync::LazyLock;
 
+use net_traits::ReferrerPolicy;
+use net_traits::request::Referrer;
 use style::context::QuirksMode;
 use style::error_reporting::ParseErrorReporter;
 use style::parser::ParserContext;
-use style::stylesheets::{CssRuleType, Origin, UrlExtraData};
+use style::stylesheets::{CssRuleType, Origin, StylesheetReferrer, UrlExtraData};
 use style_traits::ParsingMode;
 use url::Url;
 
 use crate::dom::document::Document;
+use crate::dom::globalscope::GlobalScope;
 
 pub(crate) static ANONYMOUS_CONTENT_URL_DATA: LazyLock<UrlExtraData> =
     LazyLock::new(|| Url::parse("about:blank").unwrap().into());
@@ -84,4 +87,21 @@ pub(crate) fn parser_context_for_anonymous_content<'a>(
         None,
         /* attr_taint = */ Default::default(),
     )
+}
+
+/// The referrer and referrer policy of a fetch of a resource that a style sheet refers to. For a
+/// resource of an external style sheet, these are the style sheet's URL and the referrer policy of
+/// its response; otherwise, those of the global.
+/// <https://w3c.github.io/webappsec-referrer-policy/#integration-with-css>
+pub(crate) fn stylesheet_referrer(
+    global: &GlobalScope,
+    referrer: Option<&StylesheetReferrer>,
+) -> (Referrer, ReferrerPolicy) {
+    match referrer {
+        Some(referrer) => (
+            Referrer::ReferrerUrl(referrer.url.clone().into()),
+            ReferrerPolicy::from(referrer.policy.as_str()),
+        ),
+        None => (global.get_referrer(), ReferrerPolicy::EmptyString),
+    }
 }

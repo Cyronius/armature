@@ -26,10 +26,12 @@ use style::media_queries::MediaList;
 use style::shared_lock::{Locked, SharedRwLock};
 use style::stylesheets::import_rule::{ImportLayer, ImportSheet, ImportSupportsCondition};
 use style::stylesheets::{
-    ImportRule, Origin, Stylesheet, StylesheetLoader as StyleStylesheetLoader, UrlExtraData,
+    ImportRule, Origin, Stylesheet, StylesheetLoader as StyleStylesheetLoader, StylesheetReferrer,
+    UrlExtraData,
 };
 use style::values::CssUrl;
 
+use crate::css::css::stylesheet_referrer;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::reflector::DomGlobal;
@@ -94,7 +96,8 @@ pub(crate) enum StylesheetContextSource {
     LinkElement,
     /// The style sheet of an `xml-stylesheet` processing instruction.
     ProcessingInstruction,
-    Import(Arc<Locked<ImportRule>>),
+    /// An `@import` rule, and the referrer of the external style sheet that contains it, if any.
+    Import(Arc<Locked<ImportRule>>, Option<Arc<StylesheetReferrer>>),
 }
 
 /// The context required for asynchronously loading an external stylesheet.
@@ -184,10 +187,21 @@ impl StylesheetContext {
             .as_ref()
             .expect("Should never call parse without metadata.");
 
+        // <https://w3c.github.io/webappsec-referrer-policy/#integration-with-css>
+        // The resources this style sheet refers to are fetched with its URL as the referrer, and
+        // with the referrer policy of its response.
+        let url_data = UrlExtraData {
+            base: metadata.final_url.get_arc(),
+            referrer: Some(Arc::new(StylesheetReferrer {
+                url: metadata.final_url.get_arc(),
+                policy: ReferrerPolicy::parse_header_for_response(&metadata.headers).to_string(),
+            })),
+        };
+
         let _span = profile_traits::trace_span!("ParseStylesheet").entered();
         Arc::new(Stylesheet::from_bytes(
             &self.data,
-            UrlExtraData(metadata.final_url.get_arc()),
+            url_data,
             metadata.charset.as_deref(),
             // The CSS environment encoding is the result of running the following steps: [CSSSYNTAX]
             // If el has a charset attribute, get an encoding from that attribute's value. If that succeeds, return the resulting encoding. [ENCODING]
@@ -329,7 +343,7 @@ impl StylesheetContext {
                 }
                 processing_instruction.set_stylesheet(cx.no_gc(), stylesheet);
             },
-            StylesheetContextSource::Import(import_rule) => {
+            StylesheetContextSource::Import(import_rule, _) => {
                 let mut guard = document.style_shared_author_lock().write();
                 import_rule.write_with(&mut guard).stylesheet = ImportSheet::Sheet(stylesheet);
             },
@@ -544,7 +558,7 @@ impl ElementStylesheetLoader<'_> {
         let owner = element
             .as_stylesheet_owner()
             .expect("Stylesheet not loaded by <style>, <link> or xml-stylesheet!");
-        let referrer_policy = owner.referrer_policy(cx);
+        let owner_referrer_policy = owner.referrer_policy(cx);
         owner.increment_pending_loads_count();
 
         // Final steps of https://html.spec.whatwg.org/multipage/#update-a-style-block
@@ -568,13 +582,20 @@ impl ElementStylesheetLoader<'_> {
 
         // https://html.spec.whatwg.org/multipage/#default-fetch-and-process-the-linked-resource
         let global = element.global();
+        // An `@import` rule of an external style sheet uses the style sheet's referrer.
+        let (referrer, referrer_policy) = match &context.source {
+            StylesheetContextSource::Import(_, Some(referrer)) => {
+                stylesheet_referrer(&global, Some(referrer))
+            },
+            _ => (global.get_referrer(), owner_referrer_policy),
+        };
         let request = create_a_potential_cors_request(
             Some(document.webview_id()),
             url.clone(),
             Destination::Style,
             cors_setting,
             None,
-            global.get_referrer(),
+            referrer,
         )
         .with_global_scope(&global)
         .referrer_policy(referrer_policy)
@@ -654,6 +675,7 @@ impl StyleStylesheetLoader for ElementStylesheetLoader<'_> {
             }));
         }
 
+        let referrer = url.referrer().cloned();
         let resolved_url = match url.url().cloned() {
             Some(url) => url,
             None => {
@@ -677,7 +699,7 @@ impl StyleStylesheetLoader for ElementStylesheetLoader<'_> {
 
         // TODO (mrnayak) : Whether we should use the original loader's CORS
         // setting? Fix this when spec has more details.
-        let source = StylesheetContextSource::Import(import_rule.clone());
+        let source = StylesheetContextSource::Import(import_rule.clone(), referrer);
 
         match self {
             ElementStylesheetLoader::Synchronous { element } => {

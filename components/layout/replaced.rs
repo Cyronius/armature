@@ -27,6 +27,7 @@ use style::logical_geometry::{LogicalAxis, WritingMode};
 use style::properties::{ComputedValues, StyleBuilder};
 use style::rule_cache::RuleCacheConditions;
 use style::rule_tree::RuleCascadeFlags;
+use style::stylesheets::StylesheetReferrer;
 use style::stylesheets::container_rule::ContainerSizeQuery;
 use style::url::ComputedUrl;
 use style::values::CSSFloat;
@@ -184,7 +185,7 @@ impl ReplacedContents {
         if let Some(ref data_attribute_string) = node.as_typeless_object_with_data_attribute() &&
             let Some(url) = try_to_parse_image_data_url(data_attribute_string)
         {
-            return Self::from_resolved_image_url(node, context, &ServoArc::new(url));
+            return Self::from_resolved_image_url(node, context, &ServoArc::new(url), None);
         }
 
         let (kind, natural_size) = {
@@ -326,6 +327,7 @@ impl ReplacedContents {
                 .get_cached_image_for_url(
                     node.opaque(),
                     svg_source,
+                    None,
                     LayoutImageDestination::BoxTreeConstruction,
                     InternalRequest::Yes,
                 )
@@ -372,18 +374,21 @@ impl ReplacedContents {
         context: &LayoutContext,
         image_url: &ComputedUrl,
     ) -> Option<Self> {
-        Self::from_resolved_image_url(node, context, image_url.url()?)
+        Self::from_resolved_image_url(node, context, image_url.url()?, image_url.referrer())
     }
 
-    /// Creates replaced contents showing the image at `image_url`.
+    /// Creates replaced contents showing the image at `image_url`, which is fetched with the
+    /// referrer of the external style sheet that refers to it, if any.
     fn from_resolved_image_url(
         node: ServoLayoutNode<'_>,
         context: &LayoutContext,
         image_url: &ServoArc<Url>,
+        referrer: Option<&ServoArc<StylesheetReferrer>>,
     ) -> Option<Self> {
         let (image, natural_size) = match context.image_resolver.get_or_request_image_or_meta(
             node.opaque(),
             image_url.clone().into(),
+            referrer,
             LayoutImageDestination::BoxTreeConstruction,
             InternalRequest::No,
         ) {

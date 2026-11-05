@@ -14,7 +14,9 @@ use net_traits::image_cache::{ImageCache, PendingImageId};
 use net_traits::request::{Destination, InternalRequest, RequestBuilder, RequestId};
 use net_traits::{FetchMetadata, FetchResponseMsg, NetworkError, ResourceFetchTiming};
 use servo_url::ServoUrl;
+use style::stylesheets::StylesheetReferrer;
 
+use crate::css::css::stylesheet_referrer;
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::csp::{GlobalCspReporting, Violation};
 use crate::dom::document::Document;
@@ -101,15 +103,19 @@ impl ResourceTimingListener for LayoutImageContext {
     }
 }
 
+/// Fetch an image that layout needs, for `node`. `referrer` is the referrer of the external style
+/// sheet that refers to the image, if any.
 pub(crate) fn fetch_image_for_layout(
     url: ServoUrl,
+    referrer: Option<&StylesheetReferrer>,
     node: &Node,
     id: PendingImageId,
     is_internal_request: InternalRequest,
     cache: Arc<dyn ImageCache>,
 ) {
-    fetch_image_into_cache(
+    fetch_image_into_cache_with_referrer(
         url,
+        referrer,
         node,
         id,
         is_internal_request,
@@ -129,6 +135,26 @@ pub(crate) fn fetch_image_into_cache(
     cache: Arc<dyn ImageCache>,
     initiator_type: InitiatorType,
 ) {
+    fetch_image_into_cache_with_referrer(
+        url,
+        None,
+        node,
+        id,
+        is_internal_request,
+        cache,
+        initiator_type,
+    );
+}
+
+fn fetch_image_into_cache_with_referrer(
+    url: ServoUrl,
+    referrer: Option<&StylesheetReferrer>,
+    node: &Node,
+    id: PendingImageId,
+    is_internal_request: InternalRequest,
+    cache: Arc<dyn ImageCache>,
+    initiator_type: InitiatorType,
+) {
     let document = node.owner_document();
     let context = LayoutImageContext {
         id,
@@ -139,14 +165,16 @@ pub(crate) fn fetch_image_into_cache(
     };
 
     let global = node.owner_global();
+    let (referrer, referrer_policy) = stylesheet_referrer(&global, referrer);
     let request = RequestBuilder::new(
         Some(document.webview_id()),
         UrlWithBlobClaim::from_url_without_having_claimed_blob(url.clone()),
-        global.get_referrer(),
+        referrer,
     )
     .destination(Destination::Image)
     .is_internal_request(is_internal_request)
-    .with_global_scope(&global);
+    .with_global_scope(&global)
+    .referrer_policy(referrer_policy);
 
     // Even though https://github.com/w3c/csswg-drafts/issues/1088 has not been resolved,
     // if we don't make this blocking we experience a lot of flakiness in WPT tests. These

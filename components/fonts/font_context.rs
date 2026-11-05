@@ -27,7 +27,8 @@ use net_traits::request::{
     ServiceWorkersMode,
 };
 use net_traits::{
-    CoreResourceThread, FetchResponseMsg, ResourceFetchTiming, ResourceThreads, fetch_async,
+    CoreResourceThread, FetchResponseMsg, ReferrerPolicy, ResourceFetchTiming, ResourceThreads,
+    fetch_async,
 };
 use paint_api::CrossProcessPaintApi;
 use parking_lot::{Mutex, RwLock};
@@ -1306,11 +1307,25 @@ impl RemoteWebFontDownloader {
             return;
         }
 
+        // <https://w3c.github.io/webappsec-referrer-policy/#integration-with-css>
+        // A font of an external style sheet is fetched with the style sheet's URL as the referrer,
+        // and with the referrer policy of the style sheet's response.
+        let (referrer, referrer_policy) = match url_source.url.referrer() {
+            Some(referrer) => (
+                Referrer::ReferrerUrl(referrer.url.clone().into()),
+                ReferrerPolicy::from(referrer.policy.as_str()),
+            ),
+            None => (
+                Referrer::ReferrerUrl(document_context.document_url.clone()),
+                ReferrerPolicy::EmptyString,
+            ),
+        };
         let request = RequestBuilder::new(
             webview_id,
             UrlWithBlobClaim::from_url_without_having_claimed_blob(url.clone().into()),
-            Referrer::ReferrerUrl(document_context.document_url.clone()),
+            referrer,
         )
+        .referrer_policy(referrer_policy)
         .destination(Destination::Font)
         .mode(RequestMode::CorsMode)
         .credentials_mode(CredentialsMode::CredentialsSameOrigin)
