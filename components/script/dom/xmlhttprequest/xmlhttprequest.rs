@@ -17,8 +17,6 @@ use data_url::mime::Mime;
 use dom_struct::dom_struct;
 use encoding_rs::{Encoding, UTF_8};
 use headers::{ContentLength, ContentType, HeaderMapExt};
-use html5ever::serialize;
-use html5ever::serialize::SerializeOpts;
 use http::Method;
 use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use hyper_serde::Serde;
@@ -72,7 +70,6 @@ use crate::dom::node::Node;
 use crate::dom::performance::performanceresourcetiming::InitiatorType;
 use crate::dom::progressevent::ProgressEvent;
 use crate::dom::servoparser::ServoParser;
-use crate::dom::servoparser::html::HtmlSerialize;
 use crate::dom::stream::readablestream::ReadableStream;
 use crate::dom::window::Window;
 use crate::dom::workerglobalscope::WorkerGlobalScope;
@@ -625,7 +622,14 @@ impl XMLHttpRequestMethods<crate::DomTypeHolder> for XMLHttpRequest {
         // Step 4 (first half)
         let mut extracted_or_serialized = match data {
             Some(DocumentOrXMLHttpRequestBodyInit::Document(ref doc)) => {
-                let bytes = Vec::from(&*serialize_document(doc)?.as_bytes(cx.no_gc()));
+                // > Set this's request body to body, serialized, converted, and UTF-8 encoded.
+                // "Serialized" is the fragment serializing algorithm, given false for require
+                // well-formed: the HTML serialization for an HTML document, the XML
+                // serialization otherwise.
+                let serialized = doc
+                    .upcast::<Node>()
+                    .fragment_serialization_algorithm(cx, false)?;
+                let bytes = Vec::from(&*serialized.as_bytes(cx.no_gc()));
                 let content_type = if doc.is_html_document() {
                     "text/html;charset=UTF-8"
                 } else {
@@ -1769,27 +1773,6 @@ impl XHRTimeoutCallback {
             );
         }
     }
-}
-
-fn serialize_document(doc: &Document) -> Fallible<DOMString> {
-    let mut writer = vec![];
-    if serialize(
-        &mut writer,
-        &HtmlSerialize::new(doc.upcast::<Node>()),
-        SerializeOpts::default(),
-    )
-    .is_err()
-    {
-        return Err(Error::InvalidState(Some(
-            "Could not serialize document".into(),
-        )));
-    };
-    let Ok(string) = String::from_utf8(writer) else {
-        return Err(Error::InvalidState(Some(
-            "Could not serialize document".into(),
-        )));
-    };
-    Ok(DOMString::from(string))
 }
 
 /// Returns whether `bs` is a `field-value`, as defined by

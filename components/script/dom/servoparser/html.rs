@@ -9,7 +9,7 @@ use std::io;
 
 use html5ever::buffer_queue::BufferQueue;
 use html5ever::serialize::TraversalScope::IncludeNode;
-use html5ever::serialize::{AttrRef, Serialize, Serializer, TraversalScope};
+use html5ever::serialize::{AttrRef, Serializer, TraversalScope};
 use html5ever::tokenizer::{Tokenizer as HtmlTokenizer, TokenizerOpts};
 use html5ever::tree_builder::{QuirksMode as HTML5EverQuirksMode, TreeBuilder, TreeBuilderOpts};
 use html5ever::{QualName, local_name, ns};
@@ -365,27 +365,4 @@ pub(crate) fn serialize_html_fragment<S: Serializer>(
     }
 
     Ok(())
-}
-
-pub(crate) struct HtmlSerialize<'a> {
-    node: &'a Node,
-}
-
-impl<'a> HtmlSerialize<'a> {
-    pub(crate) fn new(node: &'a Node) -> HtmlSerialize<'a> {
-        HtmlSerialize { node }
-    }
-}
-
-impl Serialize for HtmlSerialize<'_> {
-    #[expect(unsafe_code)]
-    fn serialize<S>(&self, serializer: &mut S, traversal_scope: TraversalScope) -> io::Result<()>
-    where
-        S: Serializer,
-    {
-        // TODO: https://github.com/servo/servo/issues/42839
-        let mut cx = unsafe { temp_cx() };
-        let cx = &mut cx;
-        serialize_html_fragment(cx, self.node, serializer, traversal_scope, false, vec![])
-    }
 }
