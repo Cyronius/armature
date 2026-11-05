@@ -76,6 +76,12 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   construction subtests in each of the three html5lib test files, 12 more html5lib subtests, the 20 parser subtests of
   the `ProcessingInstruction` attributes test, and 52 Sanitizer API subtests. The XML parser no longer creates a
   `ProcessingInstruction` node for the XML declaration (`<?xml version="1.0"?>`).
+- **`xml-stylesheet` processing instructions**: `<?xml-stylesheet href="..."?>` in the prolog of a document now loads
+  and applies its style sheet, as CSSOM requires: its pseudo-attributes (`href`, `type`, `media`, `title`,
+  `alternate`, with character references) are parsed, `ProcessingInstruction.sheet` returns the sheet,
+  `StyleSheet.ownerNode` can be the processing instruction, and the sheet blocks scripts in documents parsed by the
+  XML parser. Changing the data reloads the sheet and removing the node removes it. This fixes 4 subtests,
+  among them `ProcessingInstruction-escapes-1.xhtml` and `xml-stylesheet-blocking.xhtml`.
 - **XML serialization**: `XMLSerializer`, `innerHTML` and `outerHTML` in XML documents, and the drawing of inline SVG
   now use an implementation of the [DOM Parsing](https://w3c.github.io/DOM-Parsing/#xml-serialization) XML
   serialization algorithm instead of xml5ever's serializer. It keeps namespaces with prefixes and `xmlns`
@@ -103,8 +109,9 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 - One Observable subtest still fails: `when()` in a detached document, because ordinary event listeners still run in
   detached documents.
-- `ProcessingInstruction-escapes-1.xhtml` needs `xml-stylesheet` processing instructions to load style sheets
-  (`ProcessingInstruction.sheet`).
+- `xml-stylesheet` processing instructions do not yet react when inserting or removing the document element moves
+  them into or out of the prolog, and style sheets still decode with UTF-8 as the fallback instead of the document's
+  encoding (one `css-syntax/charset` subtest).
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
   expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
   contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
