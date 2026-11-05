@@ -77,7 +77,8 @@ so this work is not intended for, and has not been sent to, upstream Servo.
   their public and system IDs, and makes `innerHTML`/`outerHTML` throw `InvalidStateError` for markup that would not
   be well-formed. 48 failing subtests and 14 reftests now pass in `domparsing`, `html/syntax`, the
   `ProcessingInstruction` tests and the SVG tests, among them inline SVG `<image>` elements with `data:` URLs that
-  contain `<`. Inline SVG `<use>` also follows `xlink:href`.
+  contain `<`. Inline SVG `<use>` also follows `xlink:href`. `XMLHttpRequest.send()` with an XML document uses it
+  too (it used the HTML serializer), which fixes 4 `xhr` subtests.
 - **Vendored xml5ever**: the XML parser is vendored in `third_party/xml5ever/` with a change log
   (`third_party/xml5ever.md`), checked by `./mach test-tidy` like the other vendored copies. Parsed XML documents now
   keep their namespace declarations (`xmlns`, `xmlns:p`) as attributes, in source order, which fixes 10 more
