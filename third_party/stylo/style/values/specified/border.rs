@@ -184,11 +184,14 @@ impl ToComputedValue for LineWidth {
 
     #[inline]
     fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
+        // Armature (AS-502): The keywords are absolute lengths, so like other absolute
+        // lengths they are multiplied by the effective zoom.
+        let keyword = |px: f32| Au::from_f32_px(context.builder.effective_zoom.zoom(px));
         match *self {
             // https://drafts.csswg.org/css-backgrounds-3/#line-width
-            Self::Thin => Au::from_px(1),
-            Self::Medium => Au::from_px(3),
-            Self::Thick => Au::from_px(5),
+            Self::Thin => keyword(1.),
+            Self::Medium => keyword(3.),
+            Self::Thick => keyword(5.),
             Self::Length(ref length) => Au::from_f32_px(length.to_computed_value(context).px()),
         }
     }

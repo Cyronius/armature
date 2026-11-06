@@ -258,3 +258,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   and child style sheet tests in `referrer-policy/css-integration/`.
 - Upstream: Could go upstream (Gecko keeps the same information in its `URLExtraData`'s `ReferrerInfo`), but Servo's
   AI policy currently prevents sending it.
+
+### AS-502: Zoom the line width keywords
+- Files: `style/values/specified/border.rs`
+- Why: `thin`, `medium` and `thick` compute to 1px, 3px and 5px, absolute lengths that, like any other, are
+  multiplied by the element's effective zoom. They were not, so with `zoom: 10` a `thin` border was drawn 1px wide
+  and `getComputedStyle()`, which divides by the zoom, returned `0.1px`. Affects
+  `css/css-viewport/zoom/computed-{border,outline,column-rule}-width-keywords.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
