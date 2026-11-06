@@ -8,6 +8,83 @@ Servo project.
 Servo's [AI usage policy](https://book.servo.org/policy/ai-usage.html) does not accept AI-generated contributions,
 so this work is not intended for, and has not been sent to, upstream Servo.
 
+## Conformance
+
+Measured on 5 November 2026 by running the web-platform-tests that Armature runs (the 60,957 tests selected by
+`tests/wpt/include.ini`) with two builds on the same machine: upstream Servo at the commit Armature forked from
+(`90c3f623175`, 30 October 2026) and Armature at `29904a1afdb`. As on [wpt.fyi](https://wpt.fyi/), each test counts
+once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. In
+total Armature passes 44,875 more subtests than upstream Servo (2,086,093 against 2,041,218).
+
+| Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
+|---|--:|--:|--:|--:|--:|
+| CSS | 28,730 | 67.3% | 69.1% | +1.8 | +11,348 |
+| HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,040 |
+| WebGL conformance | 2,939 | 40.5% | 40.5% | -0.1 | -24 |
+| Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
+| SVG | 1,411 | 24.9% | 35.9% | +11.0 | +968 |
+| Encoding | 1,345 | 98.3% | 98.3% | +0.0 | +9 |
+| Servo-specific tests | 1,229 | 75.6% | 75.6% | +0.0 | +0 |
+| Fetch | 957 | 66.6% | 66.8% | +0.2 | +47 |
+| Content Security Policy | 918 | 79.7% | 80.0% | +0.3 | +10 |
+| Editing | 860 | 49.8% | 51.4% | +1.6 | +8,857 |
+| DOM | 845 | 76.3% | 84.9% | +8.7 | +2,098 |
+| IndexedDB | 820 | 57.3% | 57.4% | +0.1 | +1 |
+| WebSockets | 799 | 67.9% | 68.1% | +0.1 | +1 |
+| MathML | 624 | 46.1% | 46.5% | +0.4 | +41 |
+| WebAssembly | 615 | 65.4% | 65.4% | +0.0 | +0 |
+| XMLHttpRequest | 440 | 92.1% | 92.3% | +0.2 | +4 |
+| Mixed Content | 388 | 87.4% | 87.4% | +0.0 | +0 |
+| Shadow DOM | 366 | 67.3% | 67.3% | +0.0 | +0 |
+| Web Audio | 355 | 58.6% | 58.9% | +0.3 | +1 |
+| Workers | 336 | 91.8% | 92.1% | +0.3 | +1 |
+| Web Crypto | 334 | 97.5% | 99.4% | +1.9 | +2,036 |
+| Streams | 317 | 91.6% | 94.1% | +2.4 | +320 |
+| Trusted Types | 249 | 86.7% | 89.0% | +2.4 | +77 |
+| Custom Elements | 203 | 76.1% | 79.0% | +2.9 | +153 |
+| Upgrade Insecure Requests | 197 | 73.0% | 72.5% | -0.5 | -6 |
+| DOM Parsing | 94 | 43.5% | 48.8% | +5.3 | +51 |
+| Compression Streams | 78 | 70.3% | 73.7% | +3.5 | +63 |
+| Clipboard | 61 | 25.7% | 27.4% | +1.6 | +1 |
+| Web Animations | 47 | 14.9% | 11.9% | -3.0 | -49 |
+| Focus | 43 | 63.3% | 60.9% | -2.3 | -4 |
+| Scroll-driven Animations | 17 | 21.8% | 100.0% | +78.2 | +372 |
+| Everything else | 3,604 | 69.6% | 69.6% | +0.1 | +448 |
+| **Total** | **60,957** | **66.8%** | **68.4%** | **+1.6** | **+44,875** |
+
+The CSS gains come mostly from Stylo features that Armature enables. These are the CSS modules that gained the most:
+
+| CSS module | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
+|---|--:|--:|--:|--:|--:|
+| `css-backgrounds` | 875 | 65.2% | 78.1% | +13.0 | +119 |
+| `selectors` | 833 | 70.0% | 78.9% | +8.9 | +769 |
+| `css-transforms` | 933 | 70.4% | 76.0% | +5.6 | +62 |
+| `motion` | 46 | 20.7% | 83.3% | +62.6 | +3,761 |
+| `css-fonts` | 559 | 66.0% | 70.9% | +4.9 | +859 |
+| `css-scroll-snap` | 28 | 25.0% | 92.9% | +67.9 | +350 |
+| `css-text-decor` | 366 | 40.7% | 45.2% | +4.5 | +459 |
+| `css-writing-modes` | 1,247 | 30.1% | 31.4% | +1.3 | +78 |
+| `css-ui` | 1,077 | 89.6% | 91.0% | +1.4 | +577 |
+| `css-masking` | 222 | 53.7% | 60.7% | +7.0 | +261 |
+| `css-text` | 1,983 | 72.3% | 73.1% | +0.8 | +406 |
+| `CSS2` | 6,322 | 93.1% | 93.3% | +0.2 | +13 |
+| `filter-effects` | 397 | 51.9% | 55.1% | +3.1 | +91 |
+| `css-conditional` | 468 | 50.4% | 52.7% | +2.3 | +27 |
+| `css-multicol` | 31 | 53.5% | 82.6% | +29.0 | +50 |
+
+Notes on the numbers:
+
+- Both builds ran the same tests, including the CSS directories that Armature added to `include.ini` and upstream
+  Servo skips. Tests that set a preference only Armature has (Observable, popovers, `ProcessingInstruction`
+  attributes, ARIA reflection) error on the upstream build, whose engine lacks those features anyway.
+- The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 250 tests, so the scores
+  should be close to what Servo's CI would measure.
+- Areas that went down: in Web Animations, keyframes now read `offset` as the CSS `offset` shorthand (enabled for
+  motion paths) instead of the keyframe offset, which breaks about 50 subtests. A dozen CSS reftests and subtests
+  involving `zoom`, subgrid line names and `skew()` broke when the Stylo preferences were enabled. The other small
+  drops in the table (WebGL, Upgrade Insecure Requests, Focus) come from tests that time out or fail intermittently
+  when the whole suite runs, and score the same for both builds when run alone.
+
 ## What has been done
 
 - **WICG [Observable API](https://wicg.github.io/observable/)**, behind the `dom_observable_enabled` preference
