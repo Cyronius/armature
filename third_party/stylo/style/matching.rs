@@ -755,12 +755,30 @@ trait PrivateMatchMethods: TElement {
             );
         }
 
+        // Armature (AS-506): Resolve the keyframes of script animations against the new style,
+        // before transitions, which do not start for the properties they animate.
+        if pseudo_element.is_none() && !animation_set.script_animations.is_empty() {
+            let mut resolver = StyleResolverForElement::new(
+                *self,
+                context,
+                RuleInclusion::All,
+                PseudoElementResolution::IfApplicable,
+            );
+            animation_set.resolve_script_animations(
+                *self,
+                &shared_context,
+                new_values,
+                &mut resolver,
+            );
+        }
+
         animation_set.update_transitions_for_new_style(
             might_need_transitions_update,
             &shared_context,
             old_values.as_ref(),
             after_change_style.as_ref().unwrap_or(new_values),
         );
+
 
         // This should change the computed values in the style, so we don't need
         // to mark this set as dirty.

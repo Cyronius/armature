@@ -19,8 +19,8 @@ use crate::properties::longhands::animation_direction::computed_value::single_va
 use crate::properties::longhands::animation_fill_mode::computed_value::single_value::T as AnimationFillMode;
 use crate::properties::longhands::animation_play_state::computed_value::single_value::T as AnimationPlayState;
 use crate::properties::{
-    ComputedValues, Importance, LonghandId, PropertyDeclarationBlock, PropertyDeclarationId,
-    PropertyDeclarationIdSet,
+    ComputedValues, Importance, LonghandId, OwnedPropertyDeclarationId, PropertyDeclarationBlock,
+    PropertyDeclarationId, PropertyDeclarationIdSet,
 };
 use crate::rule_tree::{CascadeLevel, CascadeOrigin, RuleCascadeFlags};
 use crate::selector_parser::PseudoElement;
@@ -30,7 +30,7 @@ use crate::stylesheets::keyframes_rule::{KeyframesAnimation, KeyframesStep, Keyf
 use crate::stylesheets::layer_rule::LayerOrder;
 use crate::values::animated::{Animate, Procedure};
 use crate::values::computed::TimingFunction;
-use crate::values::generics::easing::BeforeFlag;
+use crate::values::generics::easing::{BeforeFlag, TimingKeyword};
 use crate::values::specified::TransitionBehavior;
 use debug_unreachable::debug_unreachable;
 use parking_lot::RwLock;
@@ -1184,6 +1184,10 @@ pub struct ElementAnimationSet {
     /// The transitions for this element.
     pub transitions: Vec<Transition>,
 
+    /// Armature (AS-506): The animations created by script for this element, in
+    /// composite order.
+    pub script_animations: Vec<ScriptAnimation>,
+
     /// Whether or not this ElementAnimationSet has had animations or transitions
     /// which have been added, removed, or had their state changed.
     pub dirty: bool,
@@ -1241,7 +1245,8 @@ impl ElementAnimationSet {
     /// Whether this `ElementAnimationSet` is empty, which means it doesn't
     /// hold any animations in any state.
     pub fn is_empty(&self) -> bool {
-        self.animations.is_empty() && self.transitions.is_empty()
+        // Armature (AS-506): Also count script animations.
+        self.animations.is_empty() && self.transitions.is_empty() && self.script_animations.is_empty()
     }
 
     /// Whether or not this state needs animation ticks for its transitions
@@ -1254,6 +1259,11 @@ impl ElementAnimationSet {
                 .transitions
                 .iter()
                 .any(|transition| transition.state.needs_to_be_ticked())
+            // Armature (AS-506): Also count script animations.
+            || self
+                .script_animations
+                .iter()
+                .any(|animation| animation.needs_ticks)
     }
 
     /// The number of running animations and transitions for this `ElementAnimationSet`.
@@ -1266,6 +1276,12 @@ impl ElementAnimationSet {
                 .transitions
                 .iter()
                 .filter(|transition| transition.state.needs_to_be_ticked())
+                .count()
+            // Armature (AS-506): Also count script animations.
+            + self
+                .script_animations
+                .iter()
+                .filter(|animation| animation.needs_ticks)
                 .count()
     }
 
@@ -1330,7 +1346,11 @@ impl ElementAnimationSet {
         }
 
         // We convert old values into `before-change-style` here.
-        if self.has_active_transition() || self.has_active_animation() {
+        // Armature (AS-506): Also apply the current values of script animations.
+        if self.has_active_transition()
+            || self.has_active_animation()
+            || !self.script_animations.is_empty()
+        {
             self.apply_active_animations(context, &mut before_change_style);
         }
 
@@ -1598,7 +1618,12 @@ impl ElementAnimationSet {
     /// Generate a `AnimationValueMap` for this `ElementAnimationSet`'s
     /// active animations at the given time value.
     pub fn get_value_map_for_active_animations(&self, now: f64) -> Option<AnimationValueMap> {
-        if !self.has_active_animation() {
+        // Armature (AS-506): Script animations are composited after CSS animations.
+        let has_script_effects = self
+            .script_animations
+            .iter()
+            .any(|animation| animation.has_effect());
+        if !self.has_active_animation() && !has_script_effects {
             return None;
         }
 
@@ -1606,8 +1631,405 @@ impl ElementAnimationSet {
         for animation in &self.animations {
             animation.get_property_declaration_at_time(now, &mut map);
         }
+        for animation in &self.script_animations {
+            animation.sample(&mut map);
+        }
 
+        if map.is_empty() && !self.has_active_animation() {
+            return None;
+        }
         Some(map)
+    }
+}
+
+// Armature (AS-506): Animations created by script through the Web Animations API. Script
+// owns their timing and hands style the keyframes and the iteration progress to sample at;
+// style resolves the keyframe values against the element's style and interpolates them.
+
+/// A keyframe of an animation created by script.
+#[derive(Clone, Debug, MallocSizeOf)]
+pub struct ScriptKeyframe {
+    /// The computed keyframe offset, usually between 0 and 1.
+    pub offset: f64,
+    /// The easing function used from this keyframe to the next one.
+    pub timing_function: TimingFunction,
+    /// The keyframe-specific composite operation, or `None` to use the effect's.
+    pub composite: Option<AnimationComposition>,
+    /// The property declarations of this keyframe.
+    #[ignore_malloc_size_of = "Arc"]
+    pub declarations: Arc<PropertyDeclarationBlock>,
+}
+
+/// The values of one property in the keyframes of a script animation, resolved
+/// against the style of the element.
+#[derive(Clone, Debug)]
+struct ResolvedScriptProperty {
+    id: OwnedPropertyDeclarationId,
+    /// The value of the property without any animation.
+    base_value: AnimationValue,
+    /// The index of each keyframe that sets this property, with its value.
+    keyframes: Vec<(usize, AnimationValue)>,
+}
+
+/// The style-relevant state of an animation created by script.
+#[derive(Clone, Debug, MallocSizeOf)]
+pub struct ScriptAnimation {
+    /// The identifier that script gave this animation. Animations with lower
+    /// identifiers are composited first.
+    pub id: u64,
+    /// The keyframes of the effect of this animation, in order.
+    #[ignore_malloc_size_of = "Arc"]
+    pub keyframes: Arc<Vec<ScriptKeyframe>>,
+    /// The composite operation of the effect.
+    pub composite: AnimationComposition,
+    /// The iteration progress of the effect, or `None` if it is not in effect.
+    pub iteration_progress: Option<f64>,
+    /// The before flag used to evaluate step easing functions.
+    pub before_flag: bool,
+    /// Whether the animation is running, so the document needs animation ticks.
+    pub needs_ticks: bool,
+    /// The keyframe values, once resolved against the style of the element.
+    #[ignore_malloc_size_of = "Contains AnimationValues"]
+    resolved: Option<Vec<ResolvedScriptProperty>>,
+}
+
+impl ScriptAnimation {
+    /// Create the state of a script animation.
+    pub fn new(
+        id: u64,
+        keyframes: Arc<Vec<ScriptKeyframe>>,
+        composite: AnimationComposition,
+        iteration_progress: Option<f64>,
+        before_flag: bool,
+        needs_ticks: bool,
+    ) -> Self {
+        Self {
+            id,
+            keyframes,
+            composite,
+            iteration_progress,
+            before_flag,
+            needs_ticks,
+            resolved: None,
+        }
+    }
+
+    /// Resolve the values of the keyframes against `base_style`, the style of the
+    /// element without animations.
+    fn resolve<E>(
+        &mut self,
+        element: E,
+        context: &SharedStyleContext,
+        base_style: &Arc<ComputedValues>,
+        resolver: &mut StyleResolverForElement<E>,
+    ) where
+        E: TElement,
+    {
+        let mut properties: Vec<ResolvedScriptProperty> = Vec::new();
+        for (index, keyframe) in self.keyframes.iter().enumerate() {
+            let mut step = IntermediateComputedKeyframe::new(keyframe.offset);
+            for declaration in keyframe.declarations.normal_declaration_iter() {
+                if let PropertyDeclarationId::Longhand(id) = declaration.id() {
+                    if id == LonghandId::Display || !id.is_animatable() {
+                        continue;
+                    }
+                }
+                step.declarations.push(
+                    declaration.to_physical(base_style.writing_mode),
+                    Importance::Normal,
+                );
+            }
+            if !step.declarations.any_normal() {
+                continue;
+            }
+
+            let ids: Vec<OwnedPropertyDeclarationId> = step
+                .declarations
+                .property_ids()
+                .iter()
+                .map(|id| id.to_owned())
+                .collect();
+            let style = step.resolve_style(element, context, base_style, resolver);
+            for id in ids {
+                let Some(value) = AnimationValue::from_computed_values(id.as_borrowed(), &style)
+                else {
+                    continue;
+                };
+                match properties.iter_mut().find(|property| property.id == id) {
+                    Some(property) => property.keyframes.push((index, value)),
+                    None => {
+                        let Some(base_value) =
+                            AnimationValue::from_computed_values(id.as_borrowed(), base_style)
+                        else {
+                            continue;
+                        };
+                        properties.push(ResolvedScriptProperty {
+                            id,
+                            base_value,
+                            keyframes: vec![(index, value)],
+                        });
+                    },
+                }
+            }
+        }
+        self.resolved = Some(properties);
+    }
+
+    /// Whether this animation may contribute values to the style of its element.
+    fn has_effect(&self) -> bool {
+        self.iteration_progress.is_some()
+    }
+
+    /// Add the values of this animation to `map`, compositing them with the values
+    /// already there or with the values of the element without animations.
+    ///
+    /// <https://drafts.csswg.org/web-animations-1/#the-effect-value-of-a-keyframe-effect>
+    fn sample(&self, map: &mut AnimationValueMap) {
+        let (Some(progress), Some(resolved)) = (self.iteration_progress, self.resolved.as_ref())
+        else {
+            return;
+        };
+        let before_flag = || {
+            if self.before_flag {
+                BeforeFlag::Set
+            } else {
+                BeforeFlag::Unset
+            }
+        };
+        let linear = TimingFunction::Keyword(TimingKeyword::Linear);
+
+        struct PropertyKeyframe<'a> {
+            offset: f64,
+            timing_function: &'a TimingFunction,
+            composite: AnimationComposition,
+            value: &'a AnimationValue,
+        }
+
+        for property in resolved {
+            let underlying_value = map
+                .get(&property.id)
+                .cloned()
+                .unwrap_or_else(|| property.base_value.clone());
+
+            // Step 1-4. The keyframes that set this property, with neutral keyframes,
+            // whose value is the underlying value, at offsets 0 and 1 if missing.
+            let mut keyframes: Vec<PropertyKeyframe> = Vec::with_capacity(property.keyframes.len() + 2);
+            let neutral = |offset| PropertyKeyframe {
+                offset,
+                timing_function: &linear,
+                composite: AnimationComposition::Replace,
+                value: &underlying_value,
+            };
+            if !property
+                .keyframes
+                .iter()
+                .any(|(index, _)| self.keyframes[*index].offset == 0.)
+            {
+                keyframes.push(neutral(0.));
+            }
+            for (index, value) in property.keyframes.iter() {
+                let keyframe = &self.keyframes[*index];
+                keyframes.push(PropertyKeyframe {
+                    offset: keyframe.offset,
+                    timing_function: &keyframe.timing_function,
+                    composite: keyframe.composite.unwrap_or(self.composite),
+                    value,
+                });
+            }
+            if !property
+                .keyframes
+                .iter()
+                .any(|(index, _)| self.keyframes[*index].offset == 1.)
+            {
+                keyframes.push(neutral(1.));
+            }
+
+            // Step 5-6. The interval endpoints.
+            let count_at = |offset: f64| keyframes.iter().filter(|k| k.offset == offset).count();
+            let endpoints: (usize, Option<usize>) = if progress < 0. && count_at(0.) > 1 {
+                (0, None)
+            } else if progress >= 1. && count_at(1.) > 1 {
+                (keyframes.len() - 1, None)
+            } else {
+                let start = keyframes
+                    .iter()
+                    .rposition(|k| k.offset <= progress && k.offset < 1.)
+                    .unwrap_or_else(|| {
+                        keyframes
+                            .iter()
+                            .rposition(|k| k.offset == 0.)
+                            .unwrap_or(0)
+                    });
+                let end = (start + 1).min(keyframes.len() - 1);
+                (start, (end != start).then_some(end))
+            };
+
+            // Step 7. Composite the endpoint values with the underlying value.
+            let composite = |keyframe: &PropertyKeyframe| -> AnimationValue {
+                composite_animation_value(
+                    &underlying_value,
+                    keyframe.value.clone(),
+                    keyframe.composite,
+                )
+            };
+            let start = &keyframes[endpoints.0];
+            let start_value = composite(start);
+
+            // Step 8. With a single endpoint, its value is the result.
+            let Some(end_index) = endpoints.1 else {
+                map.insert(property.id.clone(), start_value);
+                continue;
+            };
+            let end = &keyframes[end_index];
+            let end_value = composite(end);
+
+            // Step 9-12. Interpolate between the endpoints.
+            let distance = if end.offset == start.offset {
+                0.
+            } else {
+                (progress - start.offset) / (end.offset - start.offset)
+            };
+            let transformed_distance =
+                start
+                    .timing_function
+                    .calculate_output(distance, before_flag(), 1e-7);
+            let value = start_value
+                .animate(
+                    &end_value,
+                    Procedure::Interpolate {
+                        progress: transformed_distance,
+                    },
+                )
+                .unwrap_or_else(|()| {
+                    if transformed_distance < 0.5 {
+                        start_value.clone()
+                    } else {
+                        end_value.clone()
+                    }
+                });
+            map.insert(property.id.clone(), value);
+        }
+    }
+}
+
+/// The style of `style`'s element without the declarations of its animations.
+fn style_without_animations<E>(
+    context: &SharedStyleContext,
+    style: &Arc<ComputedValues>,
+    resolver: &mut StyleResolverForElement<E>,
+) -> Arc<ComputedValues>
+where
+    E: TElement,
+{
+    let mut important_rules_changed = false;
+    let Some(rules) = context.stylist.rule_tree().update_rule_at_level(
+        CascadeLevel::new(CascadeOrigin::Animations),
+        LayerOrder::root(),
+        None,
+        style.rules(),
+        &context.guards,
+        &mut important_rules_changed,
+    ) else {
+        return style.clone();
+    };
+    let inputs = CascadeInputs {
+        rules: Some(rules),
+        visited_rules: style.visited_rules().cloned(),
+        flags: style.flags.for_cascade_inputs(),
+        included_cascade_flags: RuleCascadeFlags::empty(),
+    };
+    resolver
+        .cascade_style_and_visited_with_default_parents(inputs)
+        .0
+}
+
+impl ElementAnimationSet {
+    /// Add the state of a script animation, or update it if the set already has it.
+    pub fn update_script_animation(&mut self, animation: ScriptAnimation) {
+        match self
+            .script_animations
+            .binary_search_by_key(&animation.id, |existing| existing.id)
+        {
+            Ok(index) => {
+                let existing = &mut self.script_animations[index];
+                let resolved = if Arc::ptr_eq(&existing.keyframes, &animation.keyframes) {
+                    existing.resolved.take()
+                } else {
+                    None
+                };
+                *existing = animation;
+                existing.resolved = resolved;
+            },
+            Err(index) => self.script_animations.insert(index, animation),
+        }
+        self.dirty = true;
+    }
+
+    /// Whether a script animation that is in effect sets the given property.
+    fn is_animated_by_script(&self, property: &PropertyDeclarationId) -> bool {
+        self.script_animations.iter().any(|animation| {
+            animation.has_effect()
+                && animation.resolved.as_ref().is_some_and(|resolved| {
+                    resolved
+                        .iter()
+                        .any(|resolved| resolved.id.as_borrowed() == *property)
+                })
+        })
+    }
+
+    /// Remove the state of a script animation. Returns whether the set had it.
+    pub fn remove_script_animation(&mut self, id: u64) -> bool {
+        let length = self.script_animations.len();
+        self.script_animations.retain(|animation| animation.id != id);
+        let removed = self.script_animations.len() != length;
+        self.dirty |= removed;
+        removed
+    }
+
+    /// Resolve the keyframes of the script animations against `style`, the new
+    /// style of the element.
+    pub fn resolve_script_animations<E>(
+        &mut self,
+        element: E,
+        context: &SharedStyleContext,
+        style: &Arc<ComputedValues>,
+        resolver: &mut StyleResolverForElement<E>,
+    ) where
+        E: TElement,
+    {
+        if self.script_animations.is_empty() {
+            return;
+        }
+        let base_style = style_without_animations(context, style, resolver);
+        for animation in self.script_animations.iter_mut() {
+            animation.resolve(element, context, &base_style, resolver);
+        }
+        self.dirty = true;
+    }
+}
+
+impl DocumentAnimationSet {
+    /// Add or update the state of a script animation for the given key.
+    pub fn update_script_animation(&self, key: AnimationSetKey, animation: ScriptAnimation) {
+        self.sets
+            .write()
+            .entry(key)
+            .or_default()
+            .update_script_animation(animation);
+    }
+
+    /// Remove the state of a script animation for the given key. Returns whether
+    /// there was one.
+    pub fn remove_script_animation(&self, key: &AnimationSetKey, id: u64) -> bool {
+        let mut sets = self.sets.write();
+        let Some(set) = sets.get_mut(key) else {
+            return false;
+        };
+        let removed = set.remove_script_animation(id);
+        if set.is_empty() {
+            sets.remove(key);
+        }
+        removed
     }
 }
 
@@ -1680,7 +2102,12 @@ impl DocumentAnimationSet {
         self.sets
             .read()
             .get(key)
-            .is_some_and(|set| set.has_active_animation() || set.has_active_transition())
+            // Armature (AS-506): Also count script animations.
+            .is_some_and(|set| {
+                set.has_active_animation()
+                    || set.has_active_transition()
+                    || !set.script_animations.is_empty()
+            })
     }
 
     /// Return a locked PropertyDeclarationBlock with animation values for the given
@@ -1791,6 +2218,12 @@ pub fn start_transitions_if_applicable(
             .as_borrowed()
             .to_physical(new_style.writing_mode);
         if properties_that_transition.contains(physical_property) {
+            continue;
+        }
+
+        // Armature (AS-506): The values of script animations are in both the before-change
+        // and the after-change style, so their properties do not transition.
+        if animation_state.is_animated_by_script(&physical_property) {
             continue;
         }
 

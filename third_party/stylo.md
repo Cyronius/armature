@@ -298,3 +298,17 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   value with the zoom. Affects `css/css-viewport/zoom/computed-initial.html`, `border-width.html` and the
   `*-width-keywords.html` reftests there.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-506: Apply animations created by script through the Web Animations API
+- Files: `style/servo/animation.rs`, `style/matching.rs`
+- Why: Servo's animation sets held only CSS animations and transitions, so an animation created with
+  `Element.animate()` or `new Animation()` could not change the style of its target. Each element's
+  `ElementAnimationSet` now also holds `ScriptAnimation`s: the keyframes of the effect and the iteration progress
+  that script computes from the animation's timing. When the element is restyled, style resolves the keyframe
+  values against the element's style without animations, and when the animation rule is built it computes the
+  effect value as the Web Animations specification describes: neutral keyframes at offsets 0 and 1, interval
+  endpoints, the keyframe's easing function and its composite operation (`replace`, `add` or `accumulate`), on top
+  of CSS animations and earlier script animations. Elements with script animations do not share styles. Affects
+  the "Web Animations" and "Compositing Web Animations" subtests of the `*-interpolation.html` and
+  `*-composition.html` tests throughout `css/`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
