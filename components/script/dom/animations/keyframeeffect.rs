@@ -39,7 +39,7 @@ use script_bindings::str::DOMString;
 use style::parser::ParserContext;
 use style::properties::generated::PropertyDeclaration;
 use style::properties::{
-    Importance, LonghandId, NonCustomPropertyId, PropertyDeclarationBlock, PropertyId,
+    Importance, NonCustomPropertyId, PropertyDeclarationBlock, PropertyId,
     SourcePropertyDeclaration,
 };
 use style::stylesheets::CssRuleType;
@@ -521,16 +521,9 @@ fn parse_single_property_declaration(
 fn lookup_css_property_by_idl_attribute_name(attribute_name: &str) -> Option<NonCustomPropertyId> {
     // TODO: Step 1. If property follows the <custom-property-name> production, return property.
 
-    // Step 2. If property refers to the CSS float property, return the string "cssFloat".
-    if attribute_name == "cssFloat" {
-        return Some(LonghandId::Float.into());
-    }
-
-    // Step 3. If property refers to the CSS offset property, return the string "cssOffset".
-    // NOTE: "offset" is not supported yet.
-
-    // Step 4. Otherwise, return the result of applying the CSS property to IDL attribute algorithm
-    // [CSSOM] to property.
+    // Steps 2 to 4 are in `animation_property_name_to_idl_attribute_name`, which maps
+    // `float` to "cssFloat" and `offset` to "cssOffset", so "float" and "offset" (the
+    // keyframe offset) never name a property here.
     static IDL_ATTRIBUTE_TO_ANIMATED_PROPERTY_LOOKUP_TABLE: LazyLock<
         FxHashMap<String, NonCustomPropertyId>,
     > = LazyLock::new(|| {
@@ -561,6 +554,20 @@ fn lookup_css_property_by_idl_attribute_name(attribute_name: &str) -> Option<Non
 /// Panics when the property name is empty or consists only of `-` characters.
 /// In general it is assumed that `property_name` is a CSS property.
 fn animation_property_name_to_idl_attribute_name(property_name: &str) -> String {
+    // TODO: Step 1. If property follows the <custom-property-name> production, return property.
+
+    // Step 2. If property refers to the CSS float property, return the string "cssFloat".
+    if property_name == "float" {
+        return "cssFloat".to_owned();
+    }
+
+    // Step 3. If property refers to the CSS offset property, return the string "cssOffset".
+    if property_name == "offset" {
+        return "cssOffset".to_owned();
+    }
+
+    // Step 4. Otherwise, return the result of applying the CSS property to IDL attribute
+    // algorithm [CSSOM] to property.
     let mut idl_attribute_name = String::with_capacity(property_name.len());
 
     let mut chunks = property_name.split('-');
