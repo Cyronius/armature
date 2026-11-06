@@ -12,9 +12,10 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 Measured on 5 November 2026 by running the web-platform-tests that Armature runs (the 60,957 tests selected by
 `tests/wpt/include.ini`) with two builds on the same machine: upstream Servo at the commit Armature forked from
-(`90c3f623175`, 30 October 2026) and Armature at `29904a1afdb`. As on [wpt.fyi](https://wpt.fyi/), each test counts
-once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. In
-total Armature passes 44,875 more subtests than upstream Servo (2,086,093 against 2,041,218).
+(`90c3f623175`, 30 October 2026) and Armature at `29904a1afdb` (the Web Animations row was measured again on 6
+November, after a fix). As on [wpt.fyi](https://wpt.fyi/), each test counts once, with partial credit for the share of
+its subtests that pass; the last column counts individual subtests. In total Armature passes 44,925 more subtests than
+upstream Servo (2,086,143 against 2,041,218).
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
@@ -46,11 +47,11 @@ total Armature passes 44,875 more subtests than upstream Servo (2,086,093 agains
 | DOM Parsing | 94 | 43.5% | 48.8% | +5.3 | +51 |
 | Compression Streams | 78 | 70.3% | 73.7% | +3.5 | +63 |
 | Clipboard | 61 | 25.7% | 27.4% | +1.6 | +1 |
-| Web Animations | 47 | 14.9% | 11.9% | -3.0 | -49 |
+| Web Animations | 47 | 14.9% | 14.9% | +0.0 | +1 |
 | Focus | 43 | 63.3% | 60.9% | -2.3 | -4 |
 | Scroll-driven Animations | 17 | 21.8% | 100.0% | +78.2 | +372 |
 | Everything else | 3,604 | 69.6% | 69.6% | +0.1 | +448 |
-| **Total** | **60,957** | **66.8%** | **68.4%** | **+1.6** | **+44,875** |
+| **Total** | **60,957** | **66.8%** | **68.4%** | **+1.6** | **+44,925** |
 
 The CSS gains come mostly from Stylo features that Armature enables. These are the CSS modules that gained the most:
 
@@ -79,11 +80,10 @@ Notes on the numbers:
   attributes, ARIA reflection) error on the upstream build, whose engine lacks those features anyway.
 - The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 250 tests, so the scores
   should be close to what Servo's CI would measure.
-- Areas that went down: in Web Animations, keyframes now read `offset` as the CSS `offset` shorthand (enabled for
-  motion paths) instead of the keyframe offset, which breaks about 50 subtests. A dozen CSS reftests and subtests
-  involving `zoom`, subgrid line names and `skew()` broke when the Stylo preferences were enabled. The other small
-  drops in the table (WebGL, Upgrade Insecure Requests, Focus) come from tests that time out or fail intermittently
-  when the whole suite runs, and score the same for both builds when run alone.
+- Areas that went down: a dozen CSS reftests and subtests involving `zoom`, subgrid line names and `skew()` broke when
+  the Stylo preferences were enabled. The other small drops in the table (WebGL, Upgrade Insecure Requests, Focus)
+  come from tests that time out or fail intermittently when the whole suite runs, and score the same for both builds
+  when run alone.
 
 ## What has been done
 
