@@ -51,7 +51,10 @@ def main():
         kind: {
             p.name: {"pref": getattr(p, "servo_pref")}
             for prop in properties_list
-            if prop.enabled_in_content()
+            # Armature (AS-503): A property that is enabled in chrome only but has a Servo
+            # preference is enabled in content when the preference is set (see
+            # `enabled_for_all_content`), so CSSStyleDeclaration needs its attribute too.
+            if prop.enabled_in_content() or prop.experimental("servo")
             for p in [prop] + prop.aliases
         }
         for kind, properties_list in [

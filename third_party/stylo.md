@@ -266,3 +266,13 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   and `getComputedStyle()`, which divides by the zoom, returned `0.1px`. Affects
   `css/css-viewport/zoom/computed-{border,outline,column-rule}-width-keywords.html`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-503: List the properties that a Servo preference enables in content in css-properties.json
+- Files: `style/properties/build.py`, `style/properties/properties.mako.rs`
+- Why: `css-properties.json`, from which Servo generates the attributes of `CSSStyleDeclaration`, listed only the
+  properties with `enabled_in = "content"`. But a property that is enabled only in chrome and has a `servo_pref`
+  (only `zoom` today) is enabled in content when that preference is set, so it could be used in style sheets but
+  `"zoom" in getComputedStyle(element)` was false and `element.style.zoom` did nothing. The
+  `css_properties_accessors!` macro, which Servo implements those attributes with, now lists the same properties.
+  Affects `css/css-viewport/zoom/parsing/zoom-computed.html` and the other tests that use `style.zoom`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.

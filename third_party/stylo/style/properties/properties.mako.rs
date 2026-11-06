@@ -2839,7 +2839,8 @@ macro_rules! css_properties_accessors {
         $macro_name! {
             % for kind, props in [("Longhand", data.longhands), ("Shorthand", data.shorthands)]:
                 % for property in props:
-                    % if property.enabled_in_content():
+                    ## Armature (AS-503): Match the properties listed in css-properties.json.
+                    % if property.enabled_in_content() or property.experimental(engine):
                         % for prop in [property] + property.aliases:
                             % if '-' in prop.name:
                                 [${prop.ident.capitalize()}, Set${prop.ident.capitalize()},
