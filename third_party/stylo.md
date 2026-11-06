@@ -276,3 +276,14 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `css_properties_accessors!` macro, which Servo implements those attributes with, now lists the same properties.
   Affects `css/css-viewport/zoom/parsing/zoom-computed.html` and the other tests that use `style.zoom`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-504: Treat more property types that contain lengths as zoom dependent
+- Files: `style/properties/data.py`
+- Why: When an element's effective zoom differs from its parent's, an explicitly inherited (`inherit`) value of a
+  zoom-dependent property is recomputed so that it stays the same length; other properties copy the parent's
+  zoomed value, which then shows up divided by the new zoom. Only types in a fixed list counted as zoom dependent,
+  and the check failed for types written with a module path (`length::NonNegativeLengthPercentageOrNormal`). The
+  check now ignores the module path and lists the other types that contain lengths (border radii, `flex-basis`,
+  grid tracks, background and mask sizes and positions, images, basic shapes, `translate`, `transform-origin`,
+  `perspective` and others). Affects `css/css-viewport/zoom/explicit-inherit/all-length-properties.html`.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.

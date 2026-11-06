@@ -507,7 +507,38 @@ class Longhand(Property):
         if not self.predefined_type:
             return False
         # TODO: Get this from SpecifiedValueInfo or so instead; see bug 1887627.
-        return self.predefined_type in {
+        # Armature (AS-504): Ignore the module path of the type (such as in
+        # `length::NonNegativeLengthPercentageOrNormal`), and include more types that contain
+        # lengths, so that explicitly inheriting them across a zoom change keeps their value.
+        predefined_type = self.predefined_type.split("::")[-1]
+        if predefined_type in {
+            "AnimationRangeEnd",
+            "AnimationRangeStart",
+            "BackgroundSize",
+            "BaselineShift",
+            "BorderCornerRadius",
+            "BorderImageWidth",
+            "BorderSideOffset",
+            "ClipPath",
+            "ClipRectOrAuto",
+            "ContainIntrinsicSize",
+            "FlexBasis",
+            "GridTemplateComponent",
+            "HorizontalPosition",
+            "Image",
+            "ImplicitGridTracks",
+            "OffsetPath",
+            "OffsetPosition",
+            "OverflowClipMargin",
+            "Perspective",
+            "ShapeOutside",
+            "TransformOrigin",
+            "Translate",
+            "VerticalPosition",
+            "ViewTimelineInset",
+        }:
+            return True
+        return predefined_type in {
             "BorderSideWidth",
             "BorderSpacing",
             "BoxShadow",
