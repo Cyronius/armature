@@ -56,6 +56,19 @@ pub mod ${property.ident} {
                         % if not property.style_struct.inherited:
                             declaration.debug_crash("Unexpected initial or unset for non-inherited property");
                         % else:
+                            % if property.is_zoom_dependent() and not property.vector and property.initial_value:
+                            // Armature (AS-505): The initial value is unzoomed, so compute it again
+                            // from its specified value, which multiplies its lengths by the zoom.
+                            if !context.builder.effective_zoom.is_one() {
+                                let specified = get_initial_specified_value();
+                                % if property.boxed:
+                                let specified = Box::new(specified);
+                                % endif
+                                let decl = PropertyDeclaration::${property.camel_case}(specified);
+                                unsafe { cascade_property(&decl, context) };
+                                return;
+                            }
+                            % endif
                             context.builder.reset_${property.ident}();
                         % endif
                     },

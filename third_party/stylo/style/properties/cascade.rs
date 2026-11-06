@@ -805,6 +805,8 @@ pub(crate) struct Cascade<'a> {
     seen: SeenSet<'a>,
     reverted: RevertedSet,
     author_or_user_specified: LonghandIdSet,
+    // Armature (AS-505): Reset properties that were set to `initial` or `unset`.
+    reset_to_initial: LonghandIdSet,
     declarations_to_apply_unless_overridden: DeclarationsToApplyUnlessOverriden,
     may_have_custom_property_cycles: bool,
     references_from_non_custom_properties: NonCustomReferenceMap<Vec<Arc<UnparsedValue>>>,
@@ -824,6 +826,7 @@ impl<'a> Cascade<'a> {
             ignore_colors,
             seen: Default::default(),
             author_or_user_specified: Default::default(),
+            reset_to_initial: Default::default(),
             reverted: Default::default(),
             declarations_to_apply_unless_overridden: Default::default(),
             may_have_custom_property_cycles: false,
@@ -841,6 +844,7 @@ impl<'a> Cascade<'a> {
             ignore_colors: false,
             seen: Default::default(),
             author_or_user_specified: Default::default(),
+            reset_to_initial: Default::default(),
             reverted: Default::default(),
             declarations_to_apply_unless_overridden: Default::default(),
             may_have_custom_property_cycles: false,
@@ -1062,6 +1066,55 @@ impl<'a> Cascade<'a> {
         if !context.builder.effective_zoom_for_inheritance.is_one() {
             self.recompute_zoom_dependent_inherited_lengths(context);
         }
+
+        // Armature (AS-505)
+        if !context.builder.effective_zoom.is_one() {
+            self.zoom_initial_line_widths(context, properties_to_apply);
+        }
+    }
+
+    /// Armature (AS-505): The initial value of the line width properties, `medium`, is a
+    /// non-zero absolute length, so it is multiplied by the effective zoom like any other
+    /// length. The initial values in the default style are unzoomed, so give the line
+    /// widths that are not set, or set to `initial` or `unset`, their zoomed initial value.
+    #[cold]
+    fn zoom_initial_line_widths(
+        &self,
+        context: &mut computed::Context,
+        properties_to_apply: &LonghandIdSet,
+    ) {
+        use crate::properties::longhands;
+        let line_widths = [
+            (LonghandId::BorderTopWidth, PropertyDeclaration::BorderTopWidth(
+                longhands::border_top_width::get_initial_specified_value(),
+            )),
+            (LonghandId::BorderRightWidth, PropertyDeclaration::BorderRightWidth(
+                longhands::border_right_width::get_initial_specified_value(),
+            )),
+            (LonghandId::BorderBottomWidth, PropertyDeclaration::BorderBottomWidth(
+                longhands::border_bottom_width::get_initial_specified_value(),
+            )),
+            (LonghandId::BorderLeftWidth, PropertyDeclaration::BorderLeftWidth(
+                longhands::border_left_width::get_initial_specified_value(),
+            )),
+            (LonghandId::OutlineWidth, PropertyDeclaration::OutlineWidth(
+                longhands::outline_width::get_initial_specified_value(),
+            )),
+            (LonghandId::ColumnRuleWidth, PropertyDeclaration::ColumnRuleWidth(
+                longhands::column_rule_width::get_initial_specified_value(),
+            )),
+        ];
+        for (longhand_id, declaration) in line_widths {
+            if !properties_to_apply.contains(longhand_id) ||
+                (self.seen.longhands.contains(longhand_id) &&
+                    !self.reset_to_initial.contains(longhand_id))
+            {
+                continue;
+            }
+            unsafe {
+                self.do_apply_declaration(context, longhand_id, &declaration);
+            }
+        }
     }
 
     #[cold]
@@ -1146,6 +1199,16 @@ impl<'a> Cascade<'a> {
             },
             None => false,
         };
+
+        // Armature (AS-505)
+        if !longhand_id.inherited() &&
+            matches!(
+                declaration.get_css_wide_keyword(),
+                Some(CSSWideKeyword::Initial | CSSWideKeyword::Unset)
+            )
+        {
+            self.reset_to_initial.insert(longhand_id);
+        }
 
         self.seen.longhands.insert(longhand_id);
         if origin != CascadeOrigin::UA {

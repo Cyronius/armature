@@ -287,3 +287,14 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   grid tracks, background and mask sizes and positions, images, basic shapes, `translate`, `transform-origin`,
   `perspective` and others). Affects `css/css-viewport/zoom/explicit-inherit/all-length-properties.html`.
 - Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
+
+### AS-505: Zoom the initial values of the line widths and of inherited zoom-dependent properties
+- Files: `style/properties/cascade.rs`, `style/properties/helpers.mako.rs`
+- Why: Initial values come from the default style, unzoomed. That is right for zero lengths, but `medium`, the
+  initial line width of the border, outline and column rule widths, is 3px, which an element with `zoom: 10` should
+  draw 30px wide. The cascade now gives those six longhands their initial value again, computed with the zoom,
+  when they are not set or are set to `initial` or `unset` on an element whose effective zoom is not 1. Inherited
+  zoom-dependent properties set to `initial` (`font-size`, `stroke-width`) likewise compute their initial specified
+  value with the zoom. Affects `css/css-viewport/zoom/computed-initial.html`, `border-width.html` and the
+  `*-width-keywords.html` reftests there.
+- Upstream: Could go upstream as is, but Servo's AI policy currently prevents sending it.
