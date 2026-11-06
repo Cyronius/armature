@@ -192,23 +192,57 @@ pub fn process_node_scroll_area_request(
         return Rect::zero();
     };
 
-    let rect = match requested_node {
+    let (rect, zoom) = match requested_node {
         Some(node) => node
             .fragments_for_pseudo(None)
             .first()
-            .map(|fragment| fragment.scrolling_area(layout_thread))
-            .unwrap_or_default(),
-        None => tree
-            .scrollable_overflow()
-            .union(&tree.initial_containing_block),
+            .map(|fragment| {
+                (
+                    fragment.scrolling_area(layout_thread),
+                    effective_zoom_of_fragment(fragment),
+                )
+            })
+            .unwrap_or((Default::default(), 1.0)),
+        None => (
+            tree.scrollable_overflow()
+                .union(&tree.initial_containing_block),
+            1.0,
+        ),
     };
 
-    Rect::new(
+    // The scrolling area of an element is in unzoomed CSS pixels.
+    // See <https://drafts.csswg.org/css-viewport/#zoom-om>.
+    let rect = Rect::new(
         rect.origin.map(Au::to_f32_px),
         rect.size.to_vector().map(Au::to_f32_px).to_size(),
+    ) / zoom;
+
+    // Round the size by itself rather than rounding the edges, so that `scrollWidth` of
+    // an element without overflow equals its `clientWidth` when its edges are fractional.
+    Rect::new(rect.origin.round(), rect.size.round()).to_i32()
+}
+
+/// The effective zoom of the element that generated `fragment`, which is what the
+/// geometry that CSSOM View exposes for that element is divided by.
+/// See <https://drafts.csswg.org/css-viewport/#zoom-om>.
+fn effective_zoom_of_fragment(fragment: &Fragment) -> f32 {
+    fragment
+        .retrieve_box_fragment()
+        .map_or(1.0, |box_fragment| {
+            box_fragment.style().effective_zoom.value()
+        })
+}
+
+/// Divides `rect` by `zoom`, to turn zoomed lengths into unzoomed ones.
+fn unzoom_rect(rect: Rect<Au, CSSPixel>, zoom: f32) -> Rect<Au, CSSPixel> {
+    if zoom == 1.0 {
+        return rect;
+    }
+    let unzoom = |length: Au| Au::from_f32_px(length.to_f32_px() / zoom);
+    Rect::new(
+        Point2D::new(unzoom(rect.origin.x), unzoom(rect.origin.y)),
+        Size2D::new(unzoom(rect.size.width), unzoom(rect.size.height)),
     )
-    .round()
-    .to_i32()
 }
 
 /// Return the resolved value of property for a given (pseudo)element.
@@ -683,6 +717,9 @@ pub fn process_offset_parent_query(
     // > 1. If the element is the HTML body element or does not have any associated CSS
     //      layout box return zero and terminate this algorithm.
     let fragment = node.fragments_for_pseudo(None).first().cloned()?;
+    // The offset values of an element are in unzoomed CSS pixels: they are divided by the
+    // effective zoom of the element. See <https://drafts.csswg.org/css-viewport/#zoom-om>.
+    let zoom = effective_zoom_of_fragment(&fragment);
     let mut border_box =
         fragment.cumulative_box_area_rect(BoxAreaType::Border, layout_thread.into())?;
     let cumulative_sticky_offsets = fragment
@@ -703,7 +740,7 @@ pub fn process_offset_parent_query(
     let Some(offset_parent_fragment) = offset_parent_fragments(node) else {
         return Some(OffsetParentResponse {
             node_address: None,
-            rect: border_box,
+            rect: unzoom_rect(border_box, zoom),
         });
     };
 
@@ -764,7 +801,7 @@ pub fn process_offset_parent_query(
 
     Some(OffsetParentResponse {
         node_address: parent_fragment.base.tag.map(|tag| tag.node.into()),
-        rect: border_box,
+        rect: unzoom_rect(border_box, zoom),
     })
 }
 

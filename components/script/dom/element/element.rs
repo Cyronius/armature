@@ -1062,6 +1062,15 @@ impl Element {
             .map(|data| data.element_data.borrow().styles.primary().clone())
     }
 
+    /// The effective zoom of this element, which the scroll position and the other geometry
+    /// that CSSOM View exposes in unzoomed CSS pixels are divided by. This does not force a
+    /// reflow, so callers must make sure that style is up to date.
+    /// See <https://drafts.csswg.org/css-viewport/#zoom-om>.
+    pub(crate) fn effective_zoom_without_reflow(&self) -> f32 {
+        self.style_without_reflow()
+            .map_or(1.0, |style| style.effective_zoom.value())
+    }
+
     pub(crate) fn is_styled(&self) -> bool {
         self.style_data.borrow().is_some()
     }
@@ -2736,6 +2745,23 @@ impl Element {
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-element-scroll>
+    /// Scroll this element to the position `x`,`y` given in unzoomed CSS pixels, as the
+    /// scrolling methods of CSSOM View take them, by multiplying it by the effective zoom.
+    /// See <https://drafts.csswg.org/css-viewport/#zoom-om>.
+    fn scroll_to_unzoomed_position(
+        &self,
+        cx: &mut JSContext,
+        window: &Window,
+        x: f32,
+        y: f32,
+        behavior: ScrollBehavior,
+    ) {
+        let zoom = self
+            .style()
+            .map_or(1.0, |style| style.effective_zoom.value());
+        window.scroll_an_element(cx, self, x * zoom, y * zoom, behavior);
+    }
+
     pub(crate) fn scroll(&self, cx: &mut JSContext, x: f64, y: f64, behavior: ScrollBehavior) {
         // Step 1.2. Normalize non-finite values for left and top dictionary members of
         // options, if present.
@@ -2809,7 +2835,7 @@ impl Element {
         // the behavior dictionary member of options. Let scrollPromise be the Promise
         // returned from this step.
         // TODO: Implement the promise and smooth scroll behavior.
-        window.scroll_an_element(cx, self, x, y, behavior);
+        self.scroll_to_unzoomed_position(cx, &window, x, y, behavior);
 
         // Step 12. Return scrollPromise.
         // TODO: Implement the promise and smooth scroll behavior.
@@ -3540,8 +3566,9 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
 
         // Step 9. Return the y-coordinate of the scrolling area at the alignment point
         // with the top of the padding edge of the element.
+        // The scroll position is in unzoomed CSS pixels.
         let point = window.scroll_offset_query(node);
-        point.y.abs() as f64
+        (point.y.abs() / self.effective_zoom_without_reflow()) as f64
     }
 
     // https://drafts.csswg.org/cssom-view/#dom-element-scrolltop
@@ -3603,7 +3630,8 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
 
         // Step 11. Scroll the element to scrollLeft,y, with the scroll behavior being
         // "auto".
-        window.scroll_an_element(cx, self, self.ScrollLeft() as f32, y, behavior);
+        let x = self.ScrollLeft() as f32;
+        self.scroll_to_unzoomed_position(cx, &window, x, y, behavior);
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-element-scrollleft>
@@ -3654,8 +3682,9 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
 
         // Step 9. Return the x-coordinate of the scrolling area at the alignment point
         // with the left of the padding edge of the element.
+        // The scroll position is in unzoomed CSS pixels.
         let point = window.scroll_offset_query(node);
-        point.x.abs() as f64
+        (point.x.abs() / self.effective_zoom_without_reflow()) as f64
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-element-scrollleft>
@@ -3716,7 +3745,8 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
 
         // Step 11. Scroll the element to x,scrollTop, with the scroll behavior being
         // "auto".
-        window.scroll_an_element(cx, self, x, self.ScrollTop() as f32, behavior);
+        let y = self.ScrollTop() as f32;
+        self.scroll_to_unzoomed_position(cx, &window, x, y, behavior);
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview>

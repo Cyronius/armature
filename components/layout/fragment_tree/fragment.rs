@@ -333,10 +333,13 @@ impl Fragment {
             rect
         };
 
+        // The client rect is in unzoomed CSS pixels, so it is divided by the effective
+        // zoom of the element. See <https://drafts.csswg.org/css-viewport/#zoom-om>.
+        let zoom = fragment.style().effective_zoom.value();
         let rect = Rect::new(
             Point2D::new(rect.origin.x.to_f32_px(), rect.origin.y.to_f32_px()),
             Size2D::new(rect.size.width.to_f32_px(), rect.size.height.to_f32_px()),
-        );
+        ) / zoom;
         rect.round().to_i32()
     }
 
