@@ -42,7 +42,7 @@ use style::stylesheets::{CssRuleType, Origin, UrlExtraData};
 use style::stylist::RuleInclusion;
 use style::traversal::resolve_style;
 use style::values::computed::transform::Matrix3D;
-use style::values::computed::{Float, Size};
+use style::values::computed::{Float, Length, Size};
 use style::values::generics::font::LineHeight;
 use style::values::generics::position::AspectRatio;
 use style::values::specified::GenericGridTemplateComponent;
@@ -351,6 +351,18 @@ pub fn process_resolved_style_request(
     // properties we might need to walk the Fragment tree to figure those out. We always
     // fall back to returning the computed value.
 
+    // The lengths below come from the computed style or from layout, which include the
+    // effective zoom of the element, but resolved values are unzoomed.
+    // See <https://drafts.csswg.org/css-viewport/#zoom-om>.
+    let effective_zoom = style.effective_zoom;
+    let unzoom_au = |length: Au| {
+        if effective_zoom.is_one() {
+            return length;
+        }
+        Au::from_f32_px(effective_zoom.unzoom(length.to_f32_px()))
+    };
+    let unzoom_length = |length: Length| Length::new(effective_zoom.unzoom(length.px()));
+
     // For line height, the resolved value is the computed value if it
     // is "normal" and the used value otherwise.
     if longhand_id == LonghandId::LineHeight {
@@ -360,8 +372,8 @@ pub fn process_resolved_style_request(
             // There could be a fragment, but it's only interesting for `min-width` and `min-height`,
             // so just pass None.
             LineHeight::Normal => computed_style(None),
-            LineHeight::Number(value) => (font_size * value.0).to_css_string(),
-            LineHeight::Length(value) => value.0.to_css_string(),
+            LineHeight::Number(value) => unzoom_length(font_size * value.0).to_css_string(),
+            LineHeight::Length(value) => unzoom_length(value.0).to_css_string(),
         };
     }
 
@@ -387,10 +399,10 @@ pub fn process_resolved_style_request(
             )
         {
             match longhand_id {
-                LonghandId::Top => return insets.top.to_css_string(),
-                LonghandId::Right => return insets.right.to_css_string(),
-                LonghandId::Bottom => return insets.bottom.to_css_string(),
-                LonghandId::Left => return insets.left.to_css_string(),
+                LonghandId::Top => return insets.top.map(unzoom_au).to_css_string(),
+                LonghandId::Right => return insets.right.map(unzoom_au).to_css_string(),
+                LonghandId::Bottom => return insets.bottom.map(unzoom_au).to_css_string(),
+                LonghandId::Left => return insets.left.map(unzoom_au).to_css_string(),
                 _ => unreachable!("Should be impossible by matches! above"),
             }
         }
@@ -447,7 +459,7 @@ pub fn process_resolved_style_request(
                 .map(|fragment| fragment.padding)
                 .unwrap_or_default()
         });
-        match longhand_id {
+        let used_value = match longhand_id {
             LonghandId::Width if resolved_size_should_be_used_value(fragment) => {
                 content_rect.size.width
             },
@@ -463,8 +475,8 @@ pub fn process_resolved_style_request(
             LonghandId::PaddingLeft => padding.left,
             LonghandId::PaddingRight => padding.right,
             _ => return computed_style(Some(fragment)),
-        }
-        .to_css_string()
+        };
+        unzoom_au(used_value).to_css_string()
     };
 
     node.fragments_for_pseudo(*pseudo)
