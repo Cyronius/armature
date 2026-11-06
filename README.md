@@ -10,80 +10,81 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 ## Conformance
 
-Measured on 5 November 2026 by running the web-platform-tests that Armature runs (the 60,957 tests selected by
+Measured on 6 November 2026 by running the web-platform-tests that Armature runs (the 61,100 tests selected by
 `tests/wpt/include.ini`) with two builds on the same machine: upstream Servo at the commit Armature forked from
-(`90c3f623175`, 30 October 2026) and Armature at `29904a1afdb` (the Web Animations row was measured again on 6
-November, after a fix). As on [wpt.fyi](https://wpt.fyi/), each test counts once, with partial credit for the share of
-its subtests that pass; the last column counts individual subtests. In total Armature passes 44,925 more subtests than
-upstream Servo (2,086,143 against 2,041,218).
+(`90c3f623175`, 30 October 2026) and Armature at `c9538341bdf`. As on [wpt.fyi](https://wpt.fyi/), each test counts
+once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. In
+total Armature passes 45,472 more subtests than upstream Servo (2,086,935 against 2,041,463).
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| CSS | 28,730 | 67.3% | 69.1% | +1.8 | +11,348 |
-| HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,040 |
-| WebGL conformance | 2,939 | 40.5% | 40.5% | -0.1 | -24 |
+| CSS | 28,873 | 67.1% | 69.3% | +2.2 | +11,723 |
+| HTML | 10,253 | 66.8% | 68.1% | +1.3 | +18,041 |
+| WebGL conformance | 2,939 | 40.5% | 40.5% | +0.0 | +2 |
 | Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
-| SVG | 1,411 | 24.9% | 35.9% | +11.0 | +968 |
+| SVG | 1,411 | 24.9% | 36.0% | +11.1 | +969 |
 | Encoding | 1,345 | 98.3% | 98.3% | +0.0 | +9 |
-| Servo-specific tests | 1,229 | 75.6% | 75.6% | +0.0 | +0 |
+| Servo-specific tests | 1,229 | 75.6% | 75.7% | +0.1 | +5 |
 | Fetch | 957 | 66.6% | 66.8% | +0.2 | +47 |
-| Content Security Policy | 918 | 79.7% | 80.0% | +0.3 | +10 |
+| Content Security Policy | 918 | 79.6% | 79.9% | +0.3 | +3 |
 | Editing | 860 | 49.8% | 51.4% | +1.6 | +8,857 |
-| DOM | 845 | 76.3% | 84.9% | +8.7 | +2,098 |
-| IndexedDB | 820 | 57.3% | 57.4% | +0.1 | +1 |
-| WebSockets | 799 | 67.9% | 68.1% | +0.1 | +1 |
-| MathML | 624 | 46.1% | 46.5% | +0.4 | +41 |
+| DOM | 845 | 76.4% | 84.9% | +8.5 | +2,096 |
+| IndexedDB | 820 | 57.4% | 57.3% | -0.1 | -1 |
+| WebSockets | 799 | 68.1% | 68.1% | +0.0 | +0 |
+| MathML | 624 | 45.8% | 46.0% | +0.2 | +38 |
 | WebAssembly | 615 | 65.4% | 65.4% | +0.0 | +0 |
-| XMLHttpRequest | 440 | 92.1% | 92.3% | +0.2 | +4 |
-| Mixed Content | 388 | 87.4% | 87.4% | +0.0 | +0 |
+| XMLHttpRequest | 440 | 92.1% | 92.1% | -0.0 | +2 |
+| Mixed Content | 388 | 87.6% | 87.4% | -0.1 | -1 |
 | Shadow DOM | 366 | 67.3% | 67.3% | +0.0 | +0 |
-| Web Audio | 355 | 58.6% | 58.9% | +0.3 | +1 |
-| Workers | 336 | 91.8% | 92.1% | +0.3 | +1 |
+| Web Audio | 355 | 58.9% | 58.9% | +0.0 | +0 |
+| Workers | 336 | 92.1% | 92.1% | +0.0 | +0 |
 | Web Crypto | 334 | 97.5% | 99.4% | +1.9 | +2,036 |
-| Streams | 317 | 91.6% | 94.1% | +2.4 | +320 |
-| Trusted Types | 249 | 86.7% | 89.0% | +2.4 | +77 |
+| Streams | 317 | 91.3% | 94.1% | +2.7 | +421 |
+| Trusted Types | 249 | 86.3% | 89.1% | +2.8 | +79 |
 | Custom Elements | 203 | 76.1% | 79.0% | +2.9 | +153 |
-| Upgrade Insecure Requests | 197 | 73.0% | 72.5% | -0.5 | -6 |
-| DOM Parsing | 94 | 43.5% | 48.8% | +5.3 | +51 |
-| Compression Streams | 78 | 70.3% | 73.7% | +3.5 | +63 |
-| Clipboard | 61 | 25.7% | 27.4% | +1.6 | +1 |
+| Upgrade Insecure Requests | 197 | 74.1% | 73.1% | -1.0 | -12 |
+| DOM Parsing | 94 | 43.5% | 48.8% | +5.2 | +51 |
+| Compression Streams | 78 | 70.2% | 73.7% | +3.5 | +63 |
+| Clipboard | 61 | 25.8% | 27.4% | +1.6 | +1 |
 | Web Animations | 47 | 14.9% | 14.9% | +0.0 | +1 |
-| Focus | 43 | 63.3% | 60.9% | -2.3 | -4 |
-| Scroll-driven Animations | 17 | 21.8% | 100.0% | +78.2 | +372 |
-| Everything else | 3,604 | 69.6% | 69.6% | +0.1 | +448 |
-| **Total** | **60,957** | **66.8%** | **68.4%** | **+1.6** | **+44,925** |
+| Focus | 43 | 63.2% | 60.9% | -2.3 | -4 |
+| Scroll-driven Animations | 17 | 21.6% | 100.0% | +78.4 | +372 |
+| Everything else | 3,604 | 69.5% | 69.6% | +0.1 | +510 |
+| **Total** | **61,100** | **66.7%** | **68.4%** | **+1.7** | **+45,472** |
 
 The CSS gains come mostly from Stylo features that Armature enables. These are the CSS modules that gained the most:
 
 | CSS module | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| `css-backgrounds` | 875 | 65.2% | 78.1% | +13.0 | +119 |
+| `css-backgrounds` | 875 | 65.3% | 78.3% | +13.0 | +119 |
+| `css-viewport` | 143 | 25.5% | 83.3% | +57.8 | +341 |
 | `selectors` | 833 | 70.0% | 78.9% | +8.9 | +769 |
 | `css-transforms` | 933 | 70.4% | 76.0% | +5.6 | +62 |
-| `motion` | 46 | 20.7% | 83.3% | +62.6 | +3,761 |
-| `css-fonts` | 559 | 66.0% | 70.9% | +4.9 | +859 |
+| `motion` | 46 | 20.6% | 83.2% | +62.6 | +3,761 |
+| `css-fonts` | 559 | 66.0% | 70.9% | +4.9 | +860 |
 | `css-scroll-snap` | 28 | 25.0% | 92.9% | +67.9 | +350 |
-| `css-text-decor` | 366 | 40.7% | 45.2% | +4.5 | +459 |
+| `CSS2` | 6,322 | 93.1% | 93.3% | +0.3 | +11 |
+| `css-text-decor` | 366 | 40.7% | 45.2% | +4.5 | +474 |
 | `css-writing-modes` | 1,247 | 30.1% | 31.4% | +1.3 | +78 |
-| `css-ui` | 1,077 | 89.6% | 91.0% | +1.4 | +577 |
-| `css-masking` | 222 | 53.7% | 60.7% | +7.0 | +261 |
-| `css-text` | 1,983 | 72.3% | 73.1% | +0.8 | +406 |
-| `CSS2` | 6,322 | 93.1% | 93.3% | +0.2 | +13 |
+| `css-ui` | 1,077 | 89.6% | 91.0% | +1.5 | +577 |
+| `css-masking` | 222 | 53.8% | 60.7% | +7.0 | +261 |
+| `css-text` | 1,983 | 72.3% | 73.0% | +0.7 | +405 |
 | `filter-effects` | 397 | 51.9% | 55.1% | +3.1 | +91 |
-| `css-conditional` | 468 | 50.4% | 52.7% | +2.3 | +27 |
-| `css-multicol` | 31 | 53.5% | 82.6% | +29.0 | +50 |
+| `css-syntax` | 52 | 75.1% | 96.2% | +21.2 | +11 |
+| `css-conditional` | 468 | 50.4% | 52.7% | +2.3 | +28 |
 
 Notes on the numbers:
 
 - Both builds ran the same tests, including the CSS directories that Armature added to `include.ini` and upstream
   Servo skips. Tests that set a preference only Armature has (Observable, popovers, `ProcessingInstruction`
   attributes, ARIA reflection) error on the upstream build, whose engine lacks those features anyway.
-- The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 250 tests, so the scores
+- The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 200 tests, so the scores
   should be close to what Servo's CI would measure.
-- Areas that went down: a dozen CSS reftests and subtests involving `zoom`, subgrid line names and `skew()` broke when
-  the Stylo preferences were enabled. The other small drops in the table (WebGL, Upgrade Insecure Requests, Focus)
-  come from tests that time out or fail intermittently when the whole suite runs, and score the same for both builds
-  when run alone.
+- Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
+  it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
+  are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
+  both the test and the reference. The other small drops in the table (IndexedDB, Upgrade Insecure Requests, Focus)
+  come from tests that time out or fail intermittently when the whole suite runs.
 
 ## What has been done
 
@@ -182,6 +183,20 @@ Notes on the numbers:
   (`third_party/markup5ever.md`). A new `TreeSink` method lets the XML parser create CDATA sections, which it used to
   turn into text: `DOMParser` now produces `CDATASection` nodes (also empty ones), and CDATA sections survive a parse
   and serialize round trip, which fixes 14 `domparsing` subtests.
+- **CSS `zoom`**: the `zoom` property, which Stylo supports and Armature enables, now works with the CSSOM.
+  `element.style.zoom` and `getComputedStyle(element).zoom` exist (Stylo change AS-503); the client, offset and scroll
+  geometry of an element (`clientWidth`, `offsetTop`, `scrollWidth`, `scrollTop`, `scrollTo()` and the rest) and the
+  lengths that `getComputedStyle()` takes from layout are in unzoomed CSS pixels, as the CSS Viewport spec requires;
+  and Stylo now zooms the `thin`/`medium`/`thick` line widths, the initial values of the line widths, `font-size` and
+  `stroke-width`, and explicitly inherited lengths of many more properties (AS-502, AS-504 and AS-505). The `css-
+  viewport` tests, which are mostly about zoom, now run: 143 tests, of which 83% pass.
+- **Style sheet encoding**: an external style sheet without a byte order mark, an `@charset` rule or a charset in its
+  `Content-Type` is decoded with its environment encoding (the `charset` attribute of its `<link>` or pseudo-attribute
+  of its `xml-stylesheet` processing instruction, and otherwise the document's encoding) instead of UTF-8. This fixes
+  all 11 failing `css-syntax/charset` tests and 4 `CSS2/syntax` tests.
+- **Keyframe offsets**: in keyframes given to `element.animate()` and `KeyframeEffect`, `offset` is the keyframe
+  offset again and the CSS `offset` property is `cssOffset`, as the Web Animations spec says (enabling the motion path
+  properties had made `offset` name the CSS property, which broke about 50 subtests).
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -191,9 +206,9 @@ Notes on the numbers:
 
 - One Observable subtest still fails: `when()` in a detached document, because ordinary event listeners still run in
   detached documents.
-- `xml-stylesheet` processing instructions do not yet react when inserting or removing the document element moves
-  them into or out of the prolog, and style sheets still decode with UTF-8 as the fallback instead of the document's
-  encoding (one `css-syntax/charset` subtest).
+- `xml-stylesheet` processing instructions do not yet react when inserting or removing the document element moves them
+  into or out of the prolog, and a style sheet loaded by `@import` falls back to the document's encoding instead of
+  the encoding of the style sheet that imports it.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
   expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
   contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
@@ -208,7 +223,10 @@ Notes on the numbers:
 - Not enabled from Stylo: anchor positioning, `@scope`, `@starting-style`, `@page` margin rules, custom media,
   `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
-  `resize` has no resize handles, and `Element.animate()` is missing, so many CSS animation subtests still fail.
+  `resize` has no resize handles, and `subgrid` is parsed but not laid out.
+- The Web Animations API is mostly missing: `Animation` has no playback control (`play()`, `pause()`, `currentTime`)
+  and script animations do not affect style, so it stays disabled and about 10,000 interpolation subtests in the CSS
+  tests, which animate with `element.animate()`, still fail.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
   draws `<image>` elements whose `href` is a `data:` URL. SVG `<style>` in SVG documents and SMIL animation are also
