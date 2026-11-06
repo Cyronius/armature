@@ -5190,6 +5190,7 @@ impl Document {
         self.animation_manager
             .update_for_new_timeline_value(&self.window, current_timeline_value);
         self.maybe_mark_animating_nodes_as_dirty(cx.no_gc());
+        self.animation_manager.update_script_animations(cx);
 
         // > 3. Perform a microtask checkpoint.
         self.window().perform_a_microtask_checkpoint(cx);
@@ -5197,6 +5198,8 @@ impl Document {
         // Steps 4 through 7 occur inside `send_pending_events().`
         self.animation_manager()
             .send_pending_events(self.window(), cx);
+        self.animation_manager()
+            .send_playback_events(self.window(), cx);
     }
 
     pub(crate) fn set_has_pending_animated_image_update(&self) {

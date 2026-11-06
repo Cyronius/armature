@@ -4,6 +4,7 @@
 
 use cssparser::Parser;
 use dom_struct::dom_struct;
+use js::context::JSContext;
 use script_bindings::cell::DomRefCell;
 use script_bindings::codegen::GenericBindings::AnimationEffectBinding::{
     AnimationEffectMethods, ComputedEffectTiming, EffectTiming, FillMode, OptionalEffectTiming,
@@ -13,17 +14,19 @@ use script_bindings::codegen::GenericBindings::WindowBinding::WindowMethods;
 use script_bindings::error::{Error, Fallible};
 use script_bindings::num::Finite;
 use script_bindings::reflector::Reflector;
-use script_bindings::root::Dom;
+use script_bindings::root::{Dom, DomRoot};
 use script_bindings::str::DOMString;
 use style::parser::Parse;
 use style::stylesheets::CssRuleType;
-use style::values::generics::easing::TimingKeyword;
+use style::values::generics::easing::{BeforeFlag, TimingKeyword};
 use style::values::specified::TimingFunction;
 use style_traits::{ParsingMode, ToCss};
 
 use crate::css::css::parser_context_for_document;
 use crate::dom::Window;
+use crate::dom::animation::Animation;
 use crate::dom::bindings::codegen::UnionTypes::UnrestrictedDoubleOrString;
+use crate::dom::bindings::root::MutNullableDom;
 
 /// <https://drafts.csswg.org/web-animations-1/#animationeffect>
 #[dom_struct]
@@ -34,6 +37,30 @@ pub(crate) struct AnimationEffect {
     window: Dom<Window>,
 
     specified_timing_properties: DomRefCell<SpecifiedTimingProperties>,
+
+    /// <https://drafts.csswg.org/web-animations-1/#animation-effect-associated-animation>
+    associated_animation: MutNullableDom<Animation>,
+}
+
+/// <https://drafts.csswg.org/web-animations-1/#animation-effect-phases-and-states>
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum EffectPhase {
+    Before,
+    Active,
+    After,
+}
+
+/// The results of the timing calculations of an animation effect at some local time.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct EffectTimes {
+    /// <https://drafts.csswg.org/web-animations-1/#active-time>
+    pub(crate) active_time: Option<f64>,
+    /// <https://drafts.csswg.org/web-animations-1/#current-iteration>
+    pub(crate) current_iteration: Option<f64>,
+    /// <https://drafts.csswg.org/web-animations-1/#iteration-progress>
+    pub(crate) iteration_progress: Option<f64>,
+    /// <https://drafts.csswg.org/web-animations-1/#before-flag>
+    pub(crate) before_flag: bool,
 }
 
 #[derive(Clone, JSTraceable, MallocSizeOf)]
@@ -83,11 +110,174 @@ impl AnimationEffect {
                 playback_direction: PlaybackDirection::Normal,
                 easing_function: TimingFunction::Keyword(TimingKeyword::Linear),
             }),
+            associated_animation: Default::default(),
         }
     }
 
     pub(crate) fn window(&self) -> &Window {
         &self.window
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#animation-effect-associated-animation>
+    pub(crate) fn associated_animation(&self) -> Option<DomRoot<Animation>> {
+        self.associated_animation.get()
+    }
+
+    pub(crate) fn set_associated_animation(&self, animation: Option<&Animation>) {
+        self.associated_animation.set(animation);
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#active-duration>
+    pub(crate) fn active_duration(&self) -> f64 {
+        let timing = self.specified_timing_properties.borrow();
+        let iteration_duration = timing.iteration_duration.computed_value();
+        // > The active duration is calculated as follows:
+        // > active duration = iteration duration × iteration count
+        // > If either the iteration duration or iteration count are zero, the active duration is zero.
+        if iteration_duration == 0.0 || timing.iteration_count == 0.0 {
+            return 0.0;
+        }
+        iteration_duration * timing.iteration_count
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#end-time>
+    pub(crate) fn end_time(&self) -> f64 {
+        let (start_delay, end_delay) = {
+            let timing = self.specified_timing_properties.borrow();
+            (*timing.start_delay, *timing.end_delay)
+        };
+        // > The end time of an animation effect is the result of evaluating
+        // > max(start delay + active duration + end delay, 0).
+        (start_delay + self.active_duration() + end_delay).max(0.0)
+    }
+
+    /// Calculate the phase, active time, current iteration and iteration progress of this
+    /// effect for a local time, when its animation plays at `playback_rate`.
+    ///
+    /// <https://drafts.csswg.org/web-animations-1/#core-animation-model-calculations>
+    pub(crate) fn compute_timing(
+        &self,
+        local_time: Option<f64>,
+        playback_rate: f64,
+    ) -> EffectTimes {
+        let end_time = self.end_time();
+        let active_duration = self.active_duration();
+        let timing = self.specified_timing_properties.borrow();
+        let start_delay = *timing.start_delay;
+        let iteration_duration = timing.iteration_duration.computed_value();
+        let iteration_count = timing.iteration_count;
+        let iteration_start = *timing.iteration_start;
+
+        let Some(local_time) = local_time else {
+            return EffectTimes::default();
+        };
+
+        // <https://drafts.csswg.org/web-animations-1/#animation-effect-phases-and-states>
+        let before_active_boundary_time = start_delay.min(end_time).max(0.0);
+        let active_after_boundary_time = (start_delay + active_duration).min(end_time).max(0.0);
+        let backwards = playback_rate < 0.0;
+        let phase = if local_time < before_active_boundary_time ||
+            (backwards && local_time == before_active_boundary_time)
+        {
+            EffectPhase::Before
+        } else if local_time > active_after_boundary_time ||
+            (!backwards && local_time == active_after_boundary_time)
+        {
+            EffectPhase::After
+        } else {
+            EffectPhase::Active
+        };
+
+        // <https://drafts.csswg.org/web-animations-1/#calculating-the-active-time>
+        // > fill mode auto: For keyframe effects, behave as if none.
+        let fill_mode = timing.fill_mode;
+        let fills_backwards = matches!(fill_mode, FillMode::Backwards | FillMode::Both);
+        let fills_forwards = matches!(fill_mode, FillMode::Forwards | FillMode::Both);
+        let active_time = match phase {
+            EffectPhase::Before => fills_backwards.then(|| (local_time - start_delay).max(0.0)),
+            EffectPhase::Active => Some(local_time - start_delay),
+            EffectPhase::After => {
+                fills_forwards.then(|| (local_time - start_delay).min(active_duration).max(0.0))
+            },
+        };
+        let Some(active_time) = active_time else {
+            return EffectTimes::default();
+        };
+
+        // <https://drafts.csswg.org/web-animations-1/#calculating-the-overall-progress>
+        let overall_progress = if iteration_duration == 0.0 {
+            if phase == EffectPhase::Before {
+                iteration_start
+            } else {
+                iteration_start + iteration_count
+            }
+        } else {
+            active_time / iteration_duration + iteration_start
+        };
+
+        // <https://drafts.csswg.org/web-animations-1/#calculating-the-simple-iteration-progress>
+        let mut simple_iteration_progress = if overall_progress.is_infinite() {
+            iteration_start % 1.0
+        } else {
+            overall_progress % 1.0
+        };
+        if simple_iteration_progress == 0.0 &&
+            matches!(phase, EffectPhase::Active | EffectPhase::After) &&
+            active_time == active_duration &&
+            iteration_count != 0.0
+        {
+            simple_iteration_progress = 1.0;
+        }
+
+        // <https://drafts.csswg.org/web-animations-1/#calculating-the-current-iteration>
+        let current_iteration = if phase == EffectPhase::After && iteration_count.is_infinite() {
+            f64::INFINITY
+        } else if simple_iteration_progress == 1.0 {
+            overall_progress.floor() - 1.0
+        } else {
+            overall_progress.floor()
+        };
+
+        // <https://drafts.csswg.org/web-animations-1/#calculating-the-directed-progress>
+        let forwards = match timing.playback_direction {
+            PlaybackDirection::Normal => true,
+            PlaybackDirection::Reverse => false,
+            PlaybackDirection::Alternate | PlaybackDirection::Alternate_reverse => {
+                let mut d = current_iteration;
+                if timing.playback_direction == PlaybackDirection::Alternate_reverse {
+                    d += 1.0;
+                }
+                d.is_infinite() || d % 2.0 == 0.0
+            },
+        };
+        let directed_progress = if forwards {
+            simple_iteration_progress
+        } else {
+            1.0 - simple_iteration_progress
+        };
+
+        // <https://drafts.csswg.org/web-animations-1/#calculating-the-transformed-progress>
+        let before_flag = (phase == EffectPhase::Before && forwards) ||
+            (phase == EffectPhase::After && !forwards);
+        let transformed_progress = timing
+            .easing_function
+            .to_computed_value_without_context()
+            .calculate_output(
+                directed_progress,
+                if before_flag {
+                    BeforeFlag::Set
+                } else {
+                    BeforeFlag::Unset
+                },
+                1e-7,
+            );
+
+        EffectTimes {
+            active_time: Some(active_time),
+            current_iteration: Some(current_iteration),
+            iteration_progress: Some(transformed_progress),
+            before_flag,
+        }
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#update-the-timing-properties-of-an-animation-effect>
@@ -240,6 +430,18 @@ impl AnimationEffectMethods<crate::DomTypeHolder> for AnimationEffect {
     /// <https://drafts.csswg.org/web-animations-1/#dom-animationeffect-getcomputedtiming>
     fn GetComputedTiming(&self) -> ComputedEffectTiming {
         // > Returns the calculated timing properties for this animation effect.
+        // > localTime: The local time of the animation effect, its associated
+        // > animation's current time, or null if it has none.
+        let animation = self.associated_animation.get();
+        let local_time = animation
+            .as_ref()
+            .and_then(|animation| animation.current_time());
+        let playback_rate = animation
+            .as_ref()
+            .map_or(1.0, |animation| animation.playback_rate());
+        let times = self.compute_timing(local_time, playback_rate);
+        let end_time = self.end_time();
+        let active_duration = self.active_duration();
         let specified_timing_properties = self.specified_timing_properties.borrow();
 
         // > while getTiming() can return the string auto, getComputedTiming() must return a number
@@ -274,20 +476,23 @@ impl AnimationEffectMethods<crate::DomTypeHolder> for AnimationEffect {
                 iterationStart: specified_timing_properties.iteration_start,
                 iterations: specified_timing_properties.iteration_count,
             },
-            // FIXME: These are just placeholder values
-            endTime: None,
-            activeDuration: None,
-            localTime: None,
-            progress: None,
-            currentIteration: None,
+            endTime: Some(end_time),
+            activeDuration: Some(active_duration),
+            localTime: Some(local_time.map(Finite::wrap)),
+            progress: Some(times.iteration_progress.map(Finite::wrap)),
+            currentIteration: Some(times.current_iteration),
         }
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animationeffect-updatetiming>
-    fn UpdateTiming(&self, timing: &OptionalEffectTiming) -> Fallible<()> {
+    fn UpdateTiming(&self, cx: &mut JSContext, timing: &OptionalEffectTiming) -> Fallible<()> {
         // > Updates the specified timing properties of this animation effect by performing the procedure
         // > to update the timing properties of an animation effect passing the timing parameter as input.
-        self.update_the_timing_properties(timing)
+        self.update_the_timing_properties(timing)?;
+        if let Some(animation) = self.associated_animation.get() {
+            animation.effect_timing_changed(cx);
+        }
+        Ok(())
     }
 }
 

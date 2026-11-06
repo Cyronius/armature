@@ -5,15 +5,15 @@
 // https://drafts.csswg.org/web-animations-1/#keyframeeffect
 [Exposed=Window, Pref="dom_web_animations_enabled"]
 interface KeyframeEffect : AnimationEffect {
-  constructor(Element?       target,
-              object?        keyframes,
-              optional (unrestricted double or KeyframeEffectOptions) options = {});
+  [Throws] constructor(Element?       target,
+                       object?        keyframes,
+                       optional (unrestricted double or KeyframeEffectOptions) options = {});
 //   constructor(KeyframeEffect source);
-//   attribute Element?           target;
+   attribute Element?           target;
 //   attribute CSSOMString?       pseudoElement;
-//   attribute CompositeOperation composite;
+   attribute CompositeOperation composite;
    [Throws] sequence<object> getKeyframes();
-   undefined        setKeyframes(object? keyframes);
+   [Throws] undefined        setKeyframes(object? keyframes);
 };
 
 // https://drafts.csswg.org/web-animations-1/#dictdef-keyframeeffectoptions
@@ -28,9 +28,11 @@ enum CompositeOperationOrAuto { "replace", "add", "accumulate", "auto" };
 
 // Necessary for https://drafts.csswg.org/web-animations-1/#process-a-keyframe-like-object
 dictionary BasePropertyIndexedKeyframe {
-//   (double? or sequence<double?>)                         offset = [];
-//   (DOMString or sequence<DOMString>)                     easing = [];
-//   (CompositeOperationOrAuto or sequence<CompositeOperationOrAuto>) composite = [];
+  // Servo's bindings support neither nullable union members nor `[]` as a default value,
+  // so `offset` is a nullable union and a missing member stands for `[]`.
+  (double or sequence<double?>)?                         offset;
+  (DOMString or sequence<DOMString>)                     easing;
+  (CompositeOperationOrAuto or sequence<CompositeOperationOrAuto>) composite;
 };
 dictionary BaseKeyframe {
    double?                  offset = null;

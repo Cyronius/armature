@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use cssparser::ToCss;
 use embedder_traits::{AnimationState as AnimationsPresentState, UntrustedNodeAddress};
-use js::context::NoGC;
+use js::context::{JSContext, NoGC};
 use layout_api::AnimatingImages;
 use libc::c_void;
 use paint_api::ImageUpdate;
@@ -30,11 +30,14 @@ use style::animation::{
 };
 use style::dom::OpaqueNode;
 use style::selector_parser::PseudoElement;
+use stylo_atoms::Atom;
 use timers::TimerId;
 
 use crate::dom::NodeFlags;
 use crate::dom::animationevent::AnimationEvent;
+use crate::dom::animationplaybackevent::AnimationPlaybackEvent;
 use crate::dom::bindings::codegen::Bindings::AnimationEventBinding::AnimationEventInit;
+use crate::dom::bindings::codegen::Bindings::AnimationPlaybackEventBinding::AnimationPlaybackEventInit;
 use crate::dom::bindings::codegen::Bindings::EventBinding::EventInit;
 use crate::dom::bindings::codegen::Bindings::TransitionEventBinding::TransitionEventInit;
 use crate::dom::bindings::inheritance::Castable;
@@ -45,6 +48,7 @@ use crate::dom::bindings::trace::NoTrace;
 use crate::dom::event::Event;
 use crate::dom::node::{Node, NodeDamage, NodeTraits, from_untrusted_node_address};
 use crate::dom::transitionevent::TransitionEvent;
+use crate::dom::types::Animation as DomAnimation;
 use crate::dom::window::Window;
 use crate::event_loop::script_thread::with_script_thread;
 
@@ -83,6 +87,25 @@ pub(crate) struct AnimationManager {
     /// The [`TimerId`] of the currently scheduled animated image update callback.
     #[no_trace]
     image_callback_timer_id: Cell<Option<TimerId>>,
+
+    /// The animations created by script that have pending tasks or that may affect style,
+    /// which are updated at every animation frame.
+    script_animations: DomRefCell<Vec<Dom<DomAnimation>>>,
+
+    /// The `finish` and `cancel` events of animations created by script, waiting to be
+    /// dispatched.
+    pending_playback_events: DomRefCell<Vec<PendingPlaybackEvent>>,
+}
+
+/// A queued `AnimationPlaybackEvent`.
+#[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+struct PendingPlaybackEvent {
+    animation: Dom<DomAnimation>,
+    #[no_trace]
+    event_type: Atom,
+    current_time: Option<f64>,
+    timeline_time: Option<f64>,
 }
 
 impl AnimationManager {
@@ -96,7 +119,89 @@ impl AnimationManager {
             pending_events: Default::default(),
             timeline_value_at_last_dirty: Cell::new(0.0),
             image_callback_timer_id: Default::default(),
+            script_animations: Default::default(),
+            pending_playback_events: Default::default(),
         }
+    }
+
+    /// Queue an `AnimationPlaybackEvent` for an animation created by script.
+    pub(crate) fn queue_playback_event(
+        &self,
+        animation: &DomAnimation,
+        event_type: Atom,
+        current_time: Option<f64>,
+        timeline_time: Option<f64>,
+    ) {
+        self.pending_playback_events
+            .borrow_mut()
+            .push(PendingPlaybackEvent {
+                animation: Dom::from_ref(animation),
+                event_type,
+                current_time,
+                timeline_time,
+            });
+    }
+
+    /// Dispatch the queued `AnimationPlaybackEvent`s, as part of
+    /// <https://drafts.csswg.org/web-animations-1/#update-animations-and-send-events>.
+    pub(crate) fn send_playback_events(&self, window: &Window, cx: &mut js::context::JSContext) {
+        let events: Vec<(DomRoot<DomAnimation>, Atom, Option<f64>, Option<f64>)> = self
+            .pending_playback_events
+            .borrow_mut()
+            .drain(..)
+            .map(|event| {
+                (
+                    event.animation.as_rooted(),
+                    event.event_type,
+                    event.current_time,
+                    event.timeline_time,
+                )
+            })
+            .collect();
+        for (animation, event_type, current_time, timeline_time) in events {
+            let init = AnimationPlaybackEventInit {
+                parent: EventInit {
+                    bubbles: false,
+                    cancelable: false,
+                    composed: false,
+                },
+                currentTime: current_time.and_then(Finite::new),
+                timelineTime: timeline_time.and_then(Finite::new),
+            };
+            AnimationPlaybackEvent::new(cx, window, event_type, &init)
+                .upcast::<Event>()
+                .fire(cx, animation.upcast());
+        }
+    }
+
+    /// Add an animation created by script to the animations updated at every animation frame.
+    pub(crate) fn register_script_animation(&self, animation: &DomAnimation) {
+        self.script_animations
+            .borrow_mut()
+            .push(Dom::from_ref(animation));
+    }
+
+    /// Run the pending tasks of the animations created by script and update the style of
+    /// their targets, as part of <https://drafts.csswg.org/web-animations-1/#update-animations-and-send-events>.
+    pub(crate) fn update_script_animations(&self, cx: &mut JSContext) {
+        let animations: Vec<DomRoot<DomAnimation>> = self
+            .script_animations
+            .borrow_mut()
+            .drain(..)
+            .map(|animation| animation.as_rooted())
+            .collect();
+        if animations.is_empty() {
+            return;
+        }
+        let kept: Vec<DomRoot<DomAnimation>> = animations
+            .into_iter()
+            .filter(|animation| animation.update_for_animation_frame(cx))
+            .collect();
+        // Animations registered while updating come after the ones that were already registered.
+        self.script_animations.borrow_mut().splice(
+            0..0,
+            kept.iter().map(|animation| Dom::from_ref(&**animation)),
+        );
     }
 
     pub(crate) fn animating_images(&self) -> Arc<RwLock<AnimatingImages>> {
