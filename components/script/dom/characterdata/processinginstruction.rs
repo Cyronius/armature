@@ -115,6 +115,12 @@ impl ProcessingInstruction {
             .map(|(_, value)| value)
     }
 
+    /// The `charset` pseudo-attribute of this processing instruction, which gives the
+    /// environment encoding of its style sheet.
+    pub(crate) fn stylesheet_charset(&self) -> Option<String> {
+        self.xml_stylesheet_attribute("charset")
+    }
+
     /// The title of this processing instruction's style sheet: its `title` pseudo-attribute.
     pub(crate) fn stylesheet_title(&self) -> Option<String> {
         self.xml_stylesheet_attribute("title")

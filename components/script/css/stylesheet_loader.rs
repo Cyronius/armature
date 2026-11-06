@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytes::{Bytes, BytesMut};
 use cssparser::SourceLocation;
-use encoding_rs::UTF_8;
+use encoding_rs::Encoding;
+use html5ever::local_name;
 use js::context::JSContext;
 use net_traits::mime_classifier::MimeClassifier;
 use net_traits::request::{CorsSettings, Destination, RequestId};
@@ -177,6 +178,7 @@ impl StylesheetContext {
 
     fn parse(
         &self,
+        environment_encoding: &'static Encoding,
         quirks_mode: QuirksMode,
         shared_lock: SharedRwLock,
         css_error_reporter: &CSSErrorReporter,
@@ -203,12 +205,7 @@ impl StylesheetContext {
             &self.data,
             url_data,
             metadata.charset.as_deref(),
-            // The CSS environment encoding is the result of running the following steps: [CSSSYNTAX]
-            // If el has a charset attribute, get an encoding from that attribute's value. If that succeeds, return the resulting encoding. [ENCODING]
-            // Otherwise, return the document's character encoding. [DOM]
-            //
-            // TODO: Need to implement encoding http://dev.w3.org/csswg/css-syntax/#environment-encoding
-            Some(UTF_8),
+            Some(environment_encoding),
             Origin::Author,
             self.media.clone(),
             shared_lock,
@@ -614,11 +611,17 @@ impl ElementStylesheetLoader<'_> {
         let shared_lock = document.style_shared_author_lock().clone();
         let quirks_mode = document.quirks_mode();
         let window = element.owner_window();
+        let environment_encoding = environment_encoding(&listener.source, element, document);
 
         match self {
             ElementStylesheetLoader::Synchronous { .. } => {
-                let stylesheet =
-                    listener.parse(quirks_mode, shared_lock, window.css_error_reporter(), self);
+                let stylesheet = listener.parse(
+                    environment_encoding,
+                    quirks_mode,
+                    shared_lock,
+                    window.css_error_reporter(),
+                    self,
+                );
                 listener.do_post_parse_tasks(true, stylesheet, cx);
             },
             ElementStylesheetLoader::Asynchronous(asynchronous_loader) => {
@@ -631,8 +634,13 @@ impl ElementStylesheetLoader<'_> {
 
                 let parse_stylesheet = move || {
                     let loader = ElementStylesheetLoader::Asynchronous(asynchronous_loader);
-                    let stylesheet =
-                        listener.parse(quirks_mode, shared_lock, &css_error_reporter, loader);
+                    let stylesheet = listener.parse(
+                        environment_encoding,
+                        quirks_mode,
+                        shared_lock,
+                        &css_error_reporter,
+                        loader,
+                    );
 
                     task_source.queue(
                         task!(finish_parsing_of_stylesheet_on_main_thread: move |cx| {
@@ -650,6 +658,44 @@ impl ElementStylesheetLoader<'_> {
             },
         };
     }
+}
+
+/// The environment encoding of an external style sheet, which decodes it when neither its
+/// response, nor a byte order mark, nor an `@charset` rule gives its encoding:
+/// <https://drafts.csswg.org/css-syntax/#environment-encoding>.
+fn environment_encoding(
+    source: &StylesheetContextSource,
+    element: &Node,
+    document: &Document,
+) -> &'static Encoding {
+    // > If el has a charset attribute, get an encoding from that attribute's value. If that
+    // > succeeds, return the resulting encoding.
+    //
+    // The `charset` pseudo-attribute of an `xml-stylesheet` processing instruction works
+    // the same way.
+    let charset = match source {
+        StylesheetContextSource::LinkElement => element.downcast::<Element>().map(|element| {
+            element
+                .get_string_attribute(&local_name!("charset"))
+                .to_string()
+        }),
+        StylesheetContextSource::ProcessingInstruction => element
+            .downcast::<ProcessingInstruction>()
+            .and_then(ProcessingInstruction::stylesheet_charset),
+        // TODO: The environment encoding of an imported style sheet is the encoding of the
+        // style sheet that imports it, which is only known once that is decoded. Until it
+        // is recorded, use the document's encoding, which is what that style sheet falls
+        // back to.
+        StylesheetContextSource::Import(..) => None,
+    };
+    if let Some(encoding) =
+        charset.and_then(|charset| Encoding::for_label(charset.trim().as_bytes()))
+    {
+        return encoding;
+    }
+
+    // > Otherwise, return the document's character encoding.
+    document.encoding()
 }
 
 impl StyleStylesheetLoader for ElementStylesheetLoader<'_> {
