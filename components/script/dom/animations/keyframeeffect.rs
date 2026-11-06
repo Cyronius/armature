@@ -86,6 +86,11 @@ pub(crate) struct KeyframeEffect {
     /// <https://drafts.csswg.org/web-animations-1/#effect-composite-operation>
     composite: Cell<CompositeOperation>,
 
+    /// <https://drafts.csswg.org/web-animations-1/#effect-target-target-pseudo-selector>
+    ///
+    /// Style does not support animations of pseudo-elements created by script yet.
+    target_pseudo_selector: DomRefCell<Option<DOMString>>,
+
     /// The keyframes in the form that style uses, built when first needed after the
     /// keyframes change.
     #[no_trace]
@@ -100,6 +105,7 @@ impl KeyframeEffect {
             target_element: Default::default(),
             keyframes: Default::default(),
             composite: Cell::new(CompositeOperation::Replace),
+            target_pseudo_selector: Default::default(),
             keyframes_for_style: Default::default(),
         }
     }
@@ -117,7 +123,13 @@ impl KeyframeEffect {
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#effect-target-target-element>
-    pub(crate) fn target(&self) -> Option<DomRoot<Element>> {
+    /// The element whose style this effect changes. Effects that target a pseudo-element
+    /// change no style, since style does not support animations of pseudo-elements created
+    /// by script.
+    pub(crate) fn target_for_style(&self) -> Option<DomRoot<Element>> {
+        if self.target_pseudo_selector.borrow().is_some() {
+            return None;
+        }
         self.target_element.get()
     }
 
@@ -254,6 +266,9 @@ impl KeyframeEffectMethods<crate::DomTypeHolder> for KeyframeEffect {
         if let UnrestrictedDoubleOrKeyframeEffectOptions::KeyframeEffectOptions(options) = &options
         {
             effect.composite.set(options.composite);
+            // Step 3. Set the target pseudo-selector from the pseudoElement member of options.
+            *effect.target_pseudo_selector.borrow_mut() =
+                normalize_pseudo_selector(options.pseudoElement.clone())?;
         }
 
         // Step 7. Initialize the set of keyframes by performing the procedure defined for setKeyframes()
@@ -272,6 +287,22 @@ impl KeyframeEffectMethods<crate::DomTypeHolder> for KeyframeEffect {
     fn SetTarget(&self, cx: &mut JSContext, target: Option<&Element>) {
         self.target_element.set(target);
         self.effect_changed(cx);
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#dom-keyframeeffect-pseudoelement>
+    fn GetPseudoElement(&self) -> Option<DOMString> {
+        self.target_pseudo_selector.borrow().clone()
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#dom-keyframeeffect-pseudoelement>
+    fn SetPseudoElement(
+        &self,
+        cx: &mut JSContext,
+        pseudo_element: Option<DOMString>,
+    ) -> Fallible<()> {
+        *self.target_pseudo_selector.borrow_mut() = normalize_pseudo_selector(pseudo_element)?;
+        self.effect_changed(cx);
+        Ok(())
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-keyframeeffect-composite>
@@ -864,6 +895,28 @@ fn parse_property_values(
             parse_single_property_declaration(property_id, &value.str(), &mut parser_context)
         })
         .collect()
+}
+
+/// Check a target pseudo-selector: null, or a pseudo-element selector. The legacy
+/// single-colon forms of `:before`, `:after`, `:first-letter` and `:first-line` are
+/// turned into their double-colon forms.
+///
+/// <https://drafts.csswg.org/web-animations-1/#dom-keyframeeffect-pseudoelement>
+fn normalize_pseudo_selector(selector: Option<DOMString>) -> Fallible<Option<DOMString>> {
+    let Some(selector) = selector else {
+        return Ok(None);
+    };
+    let string = selector.str().to_string();
+    if matches!(
+        &*string,
+        ":before" | ":after" | ":first-letter" | ":first-line"
+    ) {
+        return Ok(Some(DOMString::from(format!(":{string}"))));
+    }
+    if string.len() > 2 && string.starts_with("::") {
+        return Ok(Some(selector));
+    }
+    Err(Error::Syntax(None))
 }
 
 /// Parse an easing function, as for the `easing` member of `EffectTiming`.

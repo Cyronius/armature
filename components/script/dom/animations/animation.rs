@@ -1015,7 +1015,7 @@ impl Animation {
         let keyframe_effect = effect
             .as_ref()
             .and_then(|effect| effect.downcast::<KeyframeEffect>());
-        let target = keyframe_effect.and_then(|effect| effect.target());
+        let target = keyframe_effect.and_then(|effect| effect.target_for_style());
 
         let global = self.global();
         let document = global.as_window().Document();

@@ -10,7 +10,7 @@ interface KeyframeEffect : AnimationEffect {
                        optional (unrestricted double or KeyframeEffectOptions) options = {});
 //   constructor(KeyframeEffect source);
    attribute Element?           target;
-//   attribute CSSOMString?       pseudoElement;
+   [SetterThrows] attribute CSSOMString?       pseudoElement;
    attribute CompositeOperation composite;
    [Throws] sequence<object> getKeyframes();
    [Throws] undefined        setKeyframes(object? keyframes);
