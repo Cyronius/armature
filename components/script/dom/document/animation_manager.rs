@@ -20,6 +20,7 @@ use paint_api::ImageUpdate;
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
 use script_bindings::cell::DomRefCell;
+use script_bindings::codegen::GenericBindings::AnimationBinding::AnimationReplaceState;
 use script_bindings::codegen::GenericBindings::AnimationEffectBinding::{
     FillMode, PlaybackDirection,
 };
@@ -33,6 +34,7 @@ use style::animation::{
     KeyframesIterationState, Transition,
 };
 use style::dom::OpaqueNode;
+use style::properties::PropertyDeclarationIdSet;
 use style::properties::longhands::animation_direction::computed_value::single_value::T as AnimationDirection;
 use style::properties::longhands::animation_fill_mode::computed_value::single_value::T as AnimationFillMode;
 use style::selector_parser::PseudoElement;
@@ -351,6 +353,16 @@ impl AnimationManager {
         self.handle_animation_presence_or_pending_events_change(window);
     }
 
+    /// The animations that are updated at every animation frame, which include every
+    /// animation that applies an effect to style.
+    pub(crate) fn registered_animations(&self) -> Vec<DomRoot<DomAnimation>> {
+        self.script_animations
+            .borrow()
+            .iter()
+            .map(|animation| animation.as_rooted())
+            .collect()
+    }
+
     /// Add an animation created by script to the animations updated at every animation frame.
     pub(crate) fn register_script_animation(&self, animation: &DomAnimation) {
         self.script_animations
@@ -364,7 +376,77 @@ impl AnimationManager {
         self.has_changed_animations.set(false);
         self.updating_animations.set(true);
         self.update_script_animations_inner(cx);
+        self.remove_replaced_animations(cx);
         self.updating_animations.set(false);
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#remove-replaced-animations>
+    fn remove_replaced_animations(&self, cx: &mut JSContext) {
+        // > For every animation, animation, that has an associated animation effect whose
+        // > effect target is a descendant of doc, and is replaceable, and has a replace
+        // > state of active, and for which there exists for each target property of every
+        // > animation effect associated with animation, an animation effect associated with
+        // > a replaceable animation with a higher composite order than animation that
+        // > includes the same target property, perform the following steps.
+        let mut replaceable: Vec<(DomRoot<DomAnimation>, DomRoot<Element>)> = self
+            .script_animations
+            .borrow()
+            .iter()
+            .filter_map(|animation| {
+                let animation = animation.as_rooted();
+                let target = animation.replaceable_target()?;
+                Some((animation, target))
+            })
+            .collect();
+        if replaceable.len() < 2 {
+            return;
+        }
+        replaceable.sort_by(|(a, _), (b, _)| a.composite_order(b, cx.no_gc()));
+
+        let mut by_target: Vec<(DomRoot<Element>, Vec<DomRoot<DomAnimation>>)> = Vec::new();
+        for (animation, target) in replaceable {
+            match by_target
+                .iter_mut()
+                .find(|(other_target, _)| *other_target == target)
+            {
+                Some((_, animations)) => animations.push(animation),
+                None => by_target.push((target, vec![animation])),
+            }
+        }
+
+        let mut removed = Vec::new();
+        for (target, animations) in by_target {
+            if animations.len() < 2 {
+                continue;
+            }
+            // Logical properties are replaced by the physical properties that they map to
+            // in the writing mode of the target.
+            let Some(style) = target.style() else {
+                continue;
+            };
+            let writing_mode = style.writing_mode;
+            let mut covered = PropertyDeclarationIdSet::default();
+            for animation in animations.iter().rev() {
+                let Some(properties) = animation.target_properties(writing_mode) else {
+                    continue;
+                };
+                if animation.replace_state() == AnimationReplaceState::Active &&
+                    covered.contains_all(&properties)
+                {
+                    removed.push(animation.clone());
+                } else {
+                    for property in properties.iter() {
+                        covered.insert(property);
+                    }
+                }
+            }
+        }
+
+        // Queue all the remove events before any of them is dispatched, in composite order.
+        removed.sort_by(|a, b| a.composite_order(b, cx.no_gc()));
+        for animation in removed {
+            animation.remove_replaced(cx);
+        }
     }
 
     /// Note that script changed an animation outside of an animation frame, so that an

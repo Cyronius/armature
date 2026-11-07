@@ -45,12 +45,13 @@ use script_bindings::root::DomRoot;
 use script_bindings::str::DOMString;
 use servo_arc::Arc;
 use style::animation::ScriptKeyframe;
+use style::logical_geometry::WritingMode;
 use style::parser::{Parse, ParserContext};
 use style::properties::generated::PropertyDeclaration;
 use style::properties::longhands::animation_composition::computed_value::single_value::T as AnimationComposition;
 use style::properties::{
-    Importance, NonCustomPropertyId, PropertyDeclarationBlock, PropertyId,
-    SourcePropertyDeclaration,
+    Importance, NonCustomPropertyId, PropertyDeclarationBlock, PropertyDeclarationId,
+    PropertyDeclarationIdSet, PropertyId, SourcePropertyDeclaration,
 };
 use style::stylesheets::CssRuleType;
 use style::values::computed::TimingFunction as ComputedTimingFunction;
@@ -210,6 +211,33 @@ impl KeyframeEffect {
         );
         *cached = Some(keyframes.clone());
         keyframes
+    }
+
+    /// The [target properties](https://drafts.csswg.org/web-animations-1/#target-property)
+    /// of this effect, as physical longhands and custom properties, with logical properties
+    /// mapped to physical ones by the writing mode of the target. Returns `None` when the
+    /// keyframes come from style.
+    pub(crate) fn target_properties(
+        &self,
+        writing_mode: WritingMode,
+    ) -> Option<PropertyDeclarationIdSet> {
+        if self.css_keyframes.get() {
+            return None;
+        }
+        let mut properties = PropertyDeclarationIdSet::default();
+        for keyframe in self.keyframes.borrow().iter() {
+            for declaration in &keyframe.declarations {
+                for (declaration, _) in declaration.block.declaration_importance_iter() {
+                    match declaration.id() {
+                        PropertyDeclarationId::Longhand(longhand) => properties.insert(
+                            PropertyDeclarationId::Longhand(longhand.to_physical(writing_mode)),
+                        ),
+                        id => properties.insert(id),
+                    };
+                }
+            }
+        }
+        Some(properties)
     }
 
     /// Note that the keyframes, target or composite operation of this effect changed, so

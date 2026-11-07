@@ -8,11 +8,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use cssparser::ToCss;
 use dom_struct::dom_struct;
+use html5ever::ns;
 use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
 use layout_api::QueryMsg;
 use script_bindings::cell::DomRefCell;
-use script_bindings::codegen::GenericBindings::AnimationBinding::AnimationPlayState;
+use script_bindings::codegen::GenericBindings::AnimationBinding::{
+    AnimationPlayState, AnimationReplaceState,
+};
 use script_bindings::codegen::GenericBindings::DocumentBinding::DocumentMethods;
 use script_bindings::codegen::GenericBindings::KeyframeEffectBinding::CompositeOperationOrAuto;
 use script_bindings::codegen::GenericBindings::WindowBinding::WindowMethods;
@@ -22,7 +25,9 @@ use script_bindings::num::Finite;
 use script_bindings::reflector::reflect_dom_object_with_proto;
 use script_bindings::root::DomRoot;
 use script_bindings::str::DOMString;
+use servo_arc::Arc as ServoArc;
 use style::animation::{AnimationSetKey, AnimationState, ScriptAnimation, ScriptTiming};
+use style::properties::ComputedValues;
 use style::properties::animated_properties::AnimationValue;
 use style::properties::longhands::animation_composition::computed_value::single_value::T as AnimationComposition;
 use style::selector_parser::PseudoElement;
@@ -32,7 +37,10 @@ use stylo_atoms::Atom;
 use crate::dom::animationeffect::{AnimationEffect, CssEffectTiming, EffectPhase, overridden};
 use crate::dom::bindings::codegen::Bindings::AnimationBinding::AnimationMethods;
 use crate::dom::bindings::reflector::DomGlobal;
-use crate::dom::bindings::root::MutNullableDom;
+use crate::dom::bindings::root::{Dom, MutNullableDom};
+use crate::dom::css::cssstyledeclaration::{
+    CSSModificationAccess, CSSStyleDeclaration, CSSStyleOwner,
+};
 use crate::dom::cssanimation::CSSAnimation;
 use crate::dom::csstransition::CSSTransition;
 use crate::dom::document::animation_manager::TransitionOrAnimationEventType;
@@ -42,7 +50,7 @@ use crate::dom::globalscope::GlobalScope;
 use crate::dom::keyframeeffect::{KeyframeEffect, animation_property_name_to_idl_attribute_name};
 use crate::dom::node::{Node, NodeDamage, NodeFlags};
 use crate::dom::promise::{Promise, RootedPromise, TracedPromise};
-use crate::dom::types::AnimationTimeline;
+use crate::dom::types::{AnimationTimeline, DocumentTimeline};
 use crate::dom::window::Window;
 
 /// The source of the identifiers that order animations created by script in the
@@ -124,6 +132,9 @@ pub(crate) struct Animation {
 
     /// The effect that style created for a CSS animation or transition.
     css_effect: MutNullableDom<KeyframeEffect>,
+
+    /// <https://drafts.csswg.org/web-animations-1/#animation-replace-state>
+    replace_state: Cell<AnimationReplaceState>,
 }
 
 /// The phase of a CSS animation or transition, used to dispatch its events.
@@ -191,6 +202,7 @@ impl Animation {
             css: Default::default(),
             owning_element: Default::default(),
             css_effect: Default::default(),
+            replace_state: Cell::new(AnimationReplaceState::Active),
         }
     }
 
@@ -1049,6 +1061,137 @@ impl Animation {
         Ok(())
     }
 
+    /// The style entry of this animation for `commitStyles()`, in which an effect that is
+    /// exactly at the end of its active interval is in effect. Returns `None` when the entry
+    /// would be the same as the one that style has, unless `force` is true.
+    fn style_animation_for_commit(&self, force: bool) -> Option<ScriptAnimation> {
+        let effect = self.associated_effect.get()?;
+        let keyframe_effect = effect.downcast::<KeyframeEffect>()?;
+        if self.play_state() == AnimationPlayState::Idle && !self.is_pending() {
+            return None;
+        }
+        let playback_rate = self.playback_rate.get();
+        let times = effect.compute_timing_with_endpoint(self.current_time(), playback_rate, true);
+        let iteration_progress = times.active_time.and(times.iteration_progress);
+        let style_times = effect.compute_timing(self.current_time(), playback_rate);
+        if !force &&
+            iteration_progress == style_times.active_time.and(style_times.iteration_progress)
+        {
+            return None;
+        }
+        Some(ScriptAnimation::new(
+            self.unique_id,
+            keyframe_effect.keyframes_for_style(),
+            keyframe_effect.composite_for_style(),
+            iteration_progress,
+            times.before_flag,
+            false,
+        ))
+    }
+
+    /// The style of `target` computed without the effects of `higher`, the animations
+    /// above this one in the composite order, and with the given style entries of
+    /// `endpoint_animations`, for `commitStyles()`. Style computes the effect stack, so the
+    /// style entries of the target are changed while it is computed, and then restored.
+    fn style_for_partial_effect_stack(
+        &self,
+        cx: &mut JSContext,
+        target: &Element,
+        higher: &[DomRoot<Animation>],
+        endpoint_animations: Vec<(DomRoot<Animation>, ScriptAnimation)>,
+    ) -> Option<ServoArc<ComputedValues>> {
+        let global = self.global();
+        let document = global.as_window().Document();
+        let sets = document.animation_manager().sets();
+        let node = target.upcast::<Node>();
+        let key = AnimationSetKey::new_for_non_pseudo(node.to_opaque());
+
+        for other in higher {
+            sets.remove_script_animation(&key, other.unique_id);
+        }
+        let mut changed: Vec<DomRoot<Animation>> = higher.to_vec();
+        for (animation, style_animation) in endpoint_animations {
+            sets.update_script_animation(key.clone(), style_animation);
+            changed.push(animation);
+        }
+        node.dirty(cx.no_gc(), NodeDamage::Style);
+        let style = target.style();
+
+        // Restore the style of the target.
+        for animation in changed {
+            sets.remove_script_animation(&key, animation.unique_id);
+            animation.style_target.set(None);
+            animation.last_style_sample.set(None);
+            animation.update_style(cx);
+        }
+        node.dirty(cx.no_gc(), NodeDamage::Style);
+        style
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#replaceable-animation>
+    ///
+    /// Returns the target of the effect when this animation is replaceable. Removed animations
+    /// are left out, since they are no longer part of the effect stack.
+    pub(crate) fn replaceable_target(&self) -> Option<DomRoot<Element>> {
+        // > The existence of the animation is not prescribed by markup. That is, it is not
+        // > a CSS animation with an owning element, nor a CSS transition with an owning
+        // > element.
+        if self.css.borrow().is_some() && self.has_owning_element() {
+            return None;
+        }
+        // > The animation's play state is finished.
+        if self.play_state() != AnimationPlayState::Finished {
+            return None;
+        }
+        if self.replace_state.get() == AnimationReplaceState::Removed {
+            return None;
+        }
+        // > The animation is associated with a monotonically increasing timeline.
+        if !self
+            .timeline
+            .get()
+            .is_some_and(|timeline| timeline.is::<DocumentTimeline>())
+        {
+            return None;
+        }
+        // > The animation has an associated effect, which is in effect and has an effect
+        // > target.
+        if !self.is_in_effect() {
+            return None;
+        }
+        let effect = self.associated_effect.get()?;
+        effect.downcast::<KeyframeEffect>()?.target_for_style()
+    }
+
+    /// The target properties of the associated effect, resolved with `writing_mode`.
+    pub(crate) fn target_properties(
+        &self,
+        writing_mode: style::logical_geometry::WritingMode,
+    ) -> Option<style::properties::PropertyDeclarationIdSet> {
+        self.associated_effect
+            .get()?
+            .downcast::<KeyframeEffect>()?
+            .target_properties(writing_mode)
+    }
+
+    pub(crate) fn replace_state(&self) -> AnimationReplaceState {
+        self.replace_state.get()
+    }
+
+    /// Steps 1 to 6 of <https://drafts.csswg.org/web-animations-1/#remove-replaced-animations>
+    /// for this animation.
+    pub(crate) fn remove_replaced(&self, cx: &mut JSContext) {
+        // Step 1. Set animation's replace state to removed.
+        self.replace_state.set(AnimationReplaceState::Removed);
+        self.update_style(cx);
+
+        // Steps 2 to 6. Create an AnimationPlaybackEvent, removeEvent, whose type is remove,
+        // currentTime is the current time of animation and timelineTime is the current time
+        // of its timeline, and append it to the pending animation event queue of its
+        // document for timing.
+        self.queue_playback_event(Atom::from("remove"), self.current_time());
+    }
+
     /// Add this animation to the list of animations that its document updates at every
     /// animation frame.
     fn register_with_document(&self) {
@@ -1114,6 +1257,10 @@ impl Animation {
 
     /// <https://drafts.csswg.org/web-animations-1/#relevant-animation>
     pub(crate) fn is_relevant(&self) -> bool {
+        // Removed animations are not returned by `getAnimations()`.
+        if self.replace_state.get() == AnimationReplaceState::Removed {
+            return false;
+        }
         let Some(effect) = self.associated_effect.get() else {
             return false;
         };
@@ -1195,8 +1342,13 @@ impl Animation {
         };
 
         let play_state = self.play_state();
-        if play_state == AnimationPlayState::Idle && !self.is_pending() {
-            // An idle animation has no effect.
+        let removed = self.replace_state.get() == AnimationReplaceState::Removed;
+        if removed || (play_state == AnimationPlayState::Idle && !self.is_pending()) {
+            // An idle animation has no effect, and a removed animation is not part of the
+            // effect stack.
+            if removed {
+                self.register_with_document();
+            }
             if old_target.is_some() {
                 let node = target.upcast::<Node>();
                 animations.remove_script_animation(
@@ -2040,6 +2192,142 @@ impl AnimationMethods<crate::DomTypeHolder> for Animation {
 
     // <https://drafts.csswg.org/web-animations-1/#dom-animation-oncancel>
     event_handler!(cancel, GetOncancel, SetOncancel);
+
+    // <https://drafts.csswg.org/web-animations-1/#dom-animation-onremove>
+    event_handler!(remove, GetOnremove, SetOnremove);
+
+    /// <https://drafts.csswg.org/web-animations-1/#dom-animation-replacestate>
+    fn ReplaceState(&self) -> AnimationReplaceState {
+        self.replace_state.get()
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#dom-animation-commitstyles>
+    fn CommitStyles(&self, cx: &mut JSContext) -> ErrorResult {
+        // Step 1. Let targets be the set of all effect targets for animation effects
+        // associated with animation.
+        let Some(effect) = self.associated_effect.get() else {
+            return Ok(());
+        };
+        let Some(keyframe_effect) = effect.downcast::<KeyframeEffect>() else {
+            return Ok(());
+        };
+        let Some(target) =
+            crate::dom::bindings::codegen::Bindings::KeyframeEffectBinding::KeyframeEffectMethods::GetTarget(keyframe_effect)
+        else {
+            return Ok(());
+        };
+
+        // Step 2. For each target in targets:
+        // Step 2.1. If target is not an element capable of having a style attribute (for
+        // example, it is a pseudo-element or is an element in a document format for which
+        // style attributes are not defined) throw a "NoModificationAllowedError" DOMException
+        // and abort these steps.
+        if keyframe_effect.target_pseudo_selector().is_some() ||
+            !matches!(*target.namespace(), ns!(html) | ns!(svg) | ns!(mathml))
+        {
+            return Err(Error::NoModificationAllowed(Some(
+                "The target of the effect cannot have a style attribute".into(),
+            )));
+        }
+
+        // Step 2.2. If, after applying any pending style changes, target is not being
+        // rendered, throw an "InvalidStateError" DOMException and abort these steps.
+        let node = target.upcast::<Node>();
+        let style = target.style();
+        if !node.is_connected() ||
+            style.is_none() ||
+            !node.is_being_rendered_or_delegates_rendering(None)
+        {
+            return Err(Error::InvalidState(Some(
+                "The target of the effect is not being rendered".into(),
+            )));
+        }
+
+        // Steps 2.5.1 to 2.5.4. Calculate the result of the effect stack for the targeted
+        // properties, without the effects of animations that are higher in the composite
+        // order than animation, and with the effects of animation even when it was removed.
+        let global = self.global();
+        let document = global.as_window().Document();
+        let manager = document.animation_manager();
+        let higher: Vec<DomRoot<Animation>> = manager
+            .registered_animations()
+            .into_iter()
+            .filter(|other| {
+                other.style_target.get().as_deref() == Some(&*target) &&
+                    other.css.borrow().is_none() &&
+                    self.composite_order(other, cx.no_gc()) == CmpOrdering::Less
+            })
+            .collect();
+        // Animations that are exactly at the end of their active interval count as in
+        // effect, so that the final value of a finished animation that does not fill is
+        // committed. The effects of this animation and of the animations below it that
+        // differ in that way are added to the style of the target.
+        let mut endpoint_animations: Vec<(DomRoot<Animation>, ScriptAnimation)> = manager
+            .registered_animations()
+            .into_iter()
+            .filter(|other| {
+                other.style_target.get().as_deref() == Some(&*target) &&
+                    other.css.borrow().is_none() &&
+                    self.composite_order(other, cx.no_gc()) == CmpOrdering::Greater
+            })
+            .filter_map(|other| {
+                let animation = other.style_animation_for_commit(false)?;
+                Some((other, animation))
+            })
+            .collect();
+        let removed = self.replace_state.get() == AnimationReplaceState::Removed;
+        if let Some(animation) = self.style_animation_for_commit(removed) {
+            endpoint_animations.push((DomRoot::from_ref(self), animation));
+        }
+        let style = if higher.is_empty() && endpoint_animations.is_empty() {
+            // The style of the target already has the right effect stack.
+            style
+        } else {
+            self.style_for_partial_effect_stack(cx, &target, &higher, endpoint_animations)
+        };
+
+        let Some(style) = style else {
+            return Err(Error::InvalidState(Some(
+                "The target of the effect is not being rendered".into(),
+            )));
+        };
+        // Step 2.4. Let targeted properties be the set of physical longhand properties that
+        // are a target property for at least one animation effect associated with animation
+        // whose effect target is target.
+        let Some(properties) = keyframe_effect.target_properties(style.writing_mode) else {
+            return Ok(());
+        };
+        let declarations: Vec<_> = properties
+            .iter()
+            .filter_map(|property| AnimationValue::from_computed_values(property, &style))
+            .map(|value| value.uncompute())
+            .collect();
+
+        // Step 2.3. Let inline style be the result of getting the CSS declaration block
+        // corresponding to target's style attribute.
+        // Step 2.5.5. Set a CSS declaration of property for effect value in inline style.
+        // Step 2.6. Update style attribute for inline style.
+        let inline_style = CSSStyleDeclaration::new(
+            cx,
+            global.as_window(),
+            CSSStyleOwner::Element(Dom::from_ref(&*target)),
+            None,
+            CSSModificationAccess::ReadWrite,
+        );
+        inline_style.set_declarations(cx, declarations);
+        Ok(())
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#dom-animation-persist>
+    fn Persist(&self, cx: &mut JSContext) {
+        // > Sets this animation's replace state to persisted.
+        if self.replace_state.replace(AnimationReplaceState::Persisted) ==
+            AnimationReplaceState::Removed
+        {
+            self.last_style_sample.set(None);
+            self.update_style(cx);
+        }
+    }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-animation>
     fn Constructor(

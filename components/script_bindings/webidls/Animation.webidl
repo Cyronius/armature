@@ -16,23 +16,26 @@ interface Animation : EventTarget {
               attribute double?                  currentTime;
               attribute double                   playbackRate;
   readonly attribute AnimationPlayState       playState;
-  // readonly attribute AnimationReplaceState    replaceState;
+  readonly attribute AnimationReplaceState    replaceState;
   readonly attribute boolean                  pending;
   readonly attribute Promise<Animation>       ready;
   readonly attribute Promise<Animation>       finished;
               attribute EventHandler             onfinish;
               attribute EventHandler             oncancel;
-  //          attribute EventHandler             onremove;
+              attribute EventHandler             onremove;
   undefined cancel();
   [Throws] undefined finish();
   [Throws] undefined play();
   [Throws] undefined pause();
   undefined updatePlaybackRate(double playbackRate);
   [Throws] undefined reverse();
-  // undefined persist();
-  // [CEReactions]
-  // undefined commitStyles();
+  undefined persist();
+  [CEReactions, Throws]
+  undefined commitStyles();
 };
 
 // https://drafts.csswg.org/web-animations-1/#the-animationplaystate-enumeration
 enum AnimationPlayState { "idle", "running", "paused", "finished" };
+
+// https://drafts.csswg.org/web-animations-1/#the-animationreplacestate-enumeration
+enum AnimationReplaceState { "active", "removed", "persisted" };

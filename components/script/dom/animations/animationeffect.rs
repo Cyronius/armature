@@ -238,6 +238,19 @@ impl AnimationEffect {
         local_time: Option<f64>,
         playback_rate: f64,
     ) -> EffectTimes {
+        self.compute_timing_with_endpoint(local_time, playback_rate, false)
+    }
+
+    /// Like [`Self::compute_timing`], but when `inclusive_endpoint` is true an effect whose
+    /// local time is exactly at the end of its active interval, in the playback direction,
+    /// is in its active phase. `commitStyles()` commits the final value of a finished
+    /// animation that does not fill this way, as other engines do.
+    pub(crate) fn compute_timing_with_endpoint(
+        &self,
+        local_time: Option<f64>,
+        playback_rate: f64,
+        inclusive_endpoint: bool,
+    ) -> EffectTimes {
         let end_time = self.end_time();
         let active_duration = self.active_duration();
         let timing = self.specified_timing_properties.borrow();
@@ -259,11 +272,11 @@ impl AnimationEffect {
         let active_after_boundary_time = (start_delay + active_duration).min(end_time).max(0.0);
         let backwards = playback_rate < 0.0;
         let phase = if local_time < before_active_boundary_time ||
-            (backwards && local_time == before_active_boundary_time)
+            (backwards && !inclusive_endpoint && local_time == before_active_boundary_time)
         {
             EffectPhase::Before
         } else if local_time > active_after_boundary_time ||
-            (!backwards && local_time == active_after_boundary_time)
+            (!backwards && !inclusive_endpoint && local_time == active_after_boundary_time)
         {
             EffectPhase::After
         } else {

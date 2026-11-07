@@ -13,7 +13,7 @@ use script_bindings::reflector::{Reflector, reflect_dom_object};
 use servo_arc::Arc;
 use style::attr::AttrValue;
 use style::properties::{
-    Importance, LonghandId, PropertyDeclarationBlock, PropertyId, ShorthandId,
+    Importance, LonghandId, PropertyDeclaration, PropertyDeclarationBlock, PropertyId, ShorthandId,
     SourcePropertyDeclaration, parse_one_declaration_into, parse_style_attribute,
 };
 use style::selector_parser::PseudoElement;
@@ -235,6 +235,28 @@ fn remove_property(decls: &mut PropertyDeclarationBlock, id: &PropertyId) -> boo
 }
 
 impl CSSStyleDeclaration {
+    /// Set `declarations` in this declaration block as one change, as
+    /// [`Animation.commitStyles()`](https://drafts.csswg.org/web-animations-1/#dom-animation-commitstyles)
+    /// does.
+    pub(crate) fn set_declarations(
+        &self,
+        cx: &mut JSContext,
+        declarations: Vec<PropertyDeclaration>,
+    ) {
+        self.owner.mutate_associated_block(cx, |pdb, changed| {
+            *changed = false;
+            for declaration in declarations {
+                let source = SourcePropertyDeclaration::with_one(declaration);
+                let mut updates = Default::default();
+                if pdb.prepare_for_update(&source, Importance::Normal, &mut updates) {
+                    let mut source = source;
+                    pdb.update(source.drain(), Importance::Normal, &mut updates);
+                    *changed = true;
+                }
+            }
+        });
+    }
+
     #[cfg_attr(crown, expect(crown::unrooted_must_root))]
     pub(crate) fn new_inherited(
         owner: CSSStyleOwner,
