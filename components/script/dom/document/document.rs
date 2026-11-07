@@ -7111,8 +7111,14 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
             })
     }
 
-    fn ElementFromPoint(&self, x: Finite<f64>, y: Finite<f64>) -> Option<DomRoot<Element>> {
+    fn ElementFromPoint(
+        &self,
+        cx: &mut JSContext,
+        x: Finite<f64>,
+        y: Finite<f64>,
+    ) -> Option<DomRoot<Element>> {
         self.document_or_shadow_root.element_from_point(
+            cx,
             self.upcast(),
             x,
             y,
@@ -7122,8 +7128,14 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-document-elementsfrompoint>
-    fn ElementsFromPoint(&self, x: Finite<f64>, y: Finite<f64>) -> Vec<DomRoot<Element>> {
+    fn ElementsFromPoint(
+        &self,
+        cx: &mut JSContext,
+        x: Finite<f64>,
+        y: Finite<f64>,
+    ) -> Vec<DomRoot<Element>> {
         self.document_or_shadow_root.elements_from_point(
+            cx,
             self.upcast(),
             x,
             y,

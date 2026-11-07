@@ -13,7 +13,6 @@ use crate::dom::bindings::num::Finite;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
 use crate::dom::dompoint::DOMPoint;
-use crate::dom::element::Element;
 use crate::dom::node::NodeTraits;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svggeometry;
@@ -73,10 +72,7 @@ impl SVGGeometryElementMethods<crate::DomTypeHolder> for SVGGeometryElement {
         };
         let point = kurbo::Point::new(point.x, point.y);
         let winding = geometry.winding(point);
-        let even_odd = self.upcast::<Element>().style().is_some_and(|style| {
-            style.get_inherited_svg().fill_rule ==
-                style::values::generics::basic_shape::FillRule::Evenodd
-        });
+        let even_odd = svggeometry::computed_value(self.upcast(), "fill-rule") == "evenodd";
         if even_odd {
             winding % 2 != 0
         } else {
@@ -89,10 +85,10 @@ impl SVGGeometryElementMethods<crate::DomTypeHolder> for SVGGeometryElement {
         let Some(geometry) = self.geometry(cx) else {
             return false;
         };
-        let stroke_width = self
-            .upcast::<Element>()
-            .style()
-            .map_or(1.0, |style| svggeometry::stroke_width(&style));
+        let stroke_width = svggeometry::computed_value(self.upcast(), "stroke-width")
+            .trim_end_matches("px")
+            .parse::<f64>()
+            .unwrap_or(1.0);
         geometry.distance_to_outline(kurbo::Point::new(point.x, point.y)) <= stroke_width / 2.0
     }
 

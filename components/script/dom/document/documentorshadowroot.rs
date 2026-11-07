@@ -31,7 +31,10 @@ use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
 use crate::dom::css::stylesheetlist::StyleSheetListOwner;
 use crate::dom::customelementregistry::CustomElementRegistry;
 use crate::dom::element::Element;
+use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::{self, Node};
+use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::svggeometry;
 use crate::dom::types::{CSSStyleSheet, EventTarget, ShadowRoot};
 use crate::dom::window::Window;
 
@@ -168,6 +171,7 @@ impl DocumentOrShadowRoot {
     #[expect(unsafe_code)]
     pub(crate) fn element_from_point(
         &self,
+        cx: &mut JSContext,
         this: &Node,
         x: Finite<f64>,
         y: Finite<f64>,
@@ -198,6 +202,7 @@ impl DocumentOrShadowRoot {
         // layout has run and any OpaqueNodes that no longer refer to real nodes are gone.
         let address = UntrustedNodeAddress(result.node.0 as *const c_void);
         let node = unsafe { node::from_untrusted_node_address(address) };
+        let node = svg_hit_test(cx, node, x, y);
 
         self.retarget_hit_test_result(this, &node)
     }
@@ -206,6 +211,7 @@ impl DocumentOrShadowRoot {
     #[expect(unsafe_code)]
     pub(crate) fn elements_from_point(
         &self,
+        cx: &mut JSContext,
         this: &Node,
         x: Finite<f64>,
         y: Finite<f64>,
@@ -235,17 +241,33 @@ impl DocumentOrShadowRoot {
             .window
             .elements_from_point_query(flags, LayoutPoint::new(x, y));
 
-        let mut elements: Vec<_> = result
+        let nodes: Vec<DomRoot<Node>> = result
             .items
             .iter()
-            .flat_map(|result| {
+            .map(|result| {
                 // SAFETY: This is safe because `Self::query_elements_from_point` has ensured that
                 // layout has run and any OpaqueNodes that no longer refer to real nodes are gone.
                 let address = UntrustedNodeAddress(result.node.0 as *const c_void);
-                let node = unsafe { node::from_untrusted_node_address(address) };
-                self.retarget_hit_test_result(this, &node)
+                unsafe { node::from_untrusted_node_address(address) }
             })
             .collect();
+        let mut elements = Vec::new();
+        for node in nodes {
+            // An element inside an `svg` element comes before it, with its ancestors.
+            let hit = svg_hit_test(cx, node.clone(), x, y);
+            if hit != node {
+                let chain: Vec<DomRoot<Node>> = hit
+                    .inclusive_ancestors(ShadowIncluding::No)
+                    .take_while(|ancestor| *ancestor != node)
+                    .collect();
+                elements.extend(
+                    chain
+                        .iter()
+                        .filter_map(|ancestor| self.retarget_hit_test_result(this, ancestor)),
+                );
+            }
+            elements.extend(self.retarget_hit_test_result(this, &node));
+        }
 
         // Now remove consecutive duplicates. This isn't in the specification, but it
         // follows browser behavior. See https://github.com/w3c/csswg-drafts/issues/556.
@@ -455,5 +477,17 @@ impl DocumentOrShadowRoot {
         rooted_vec!(let mut incoming_stylesheets <- adopted_stylesheets.iter().cloned());
         incoming_stylesheets.remove(index as usize);
         Self::set_adopted_stylesheets(adopted_stylesheets, &incoming_stylesheets, owner)
+    }
+}
+
+/// When `node` is an outermost `svg` element, which layout hit tests as one replaced box,
+/// the element inside it at the point `(x, y)` of the viewport, or else `node`.
+fn svg_hit_test(cx: &mut JSContext, node: DomRoot<Node>, x: f32, y: f32) -> DomRoot<Node> {
+    let Some(svg) = node.downcast::<SVGElement>() else {
+        return node;
+    };
+    match svggeometry::hit_test_svg(cx, svg, kurbo::Point::new(x as f64, y as f64)) {
+        Some(hit) => DomRoot::upcast(hit),
+        None => node,
     }
 }

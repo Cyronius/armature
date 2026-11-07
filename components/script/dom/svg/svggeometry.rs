@@ -235,6 +235,10 @@ pub(crate) fn element_transform(element: &SVGElement) -> Affine {
 }
 
 /// Whether `element` does not take part in rendering because of its `display`.
+///
+/// The computed style of the elements inside an `svg` element always has `display: none`
+/// in Servo, which does not lay them out, so this looks at the `display` presentation
+/// attribute and at the `style` attribute instead.
 fn is_display_none(element: &SVGElement) -> bool {
     let element = element.upcast::<Element>();
     if element
@@ -244,8 +248,14 @@ fn is_display_none(element: &SVGElement) -> bool {
         return true;
     }
     element
-        .style()
-        .is_some_and(|style| style.get_box().display == style::values::computed::Display::None)
+        .get_attribute_string_value_with_namespace(&ns!(), &local_name!("style"))
+        .is_some_and(|value| {
+            value.split(';').any(|declaration| {
+                let mut parts = declaration.splitn(2, ':');
+                parts.next().is_some_and(|name| name.trim() == "display") &&
+                    parts.next().is_some_and(|value| value.trim() == "none")
+            })
+        })
 }
 
 /// The bounding box of `element` in its user space, which does not include its own
@@ -525,18 +535,6 @@ fn screen_offset(cx: &mut JSContext, svg: &SVGElement) -> Affine {
     ))
 }
 
-/// The computed `stroke-width` of an element, in user units.
-pub(crate) fn stroke_width(style: &style::properties::ComputedValues) -> f64 {
-    match &style.get_inherited_svg().stroke_width {
-        style::values::generics::svg::SVGLength::LengthPercentage(length) => length
-            .0
-            .resolve(style::values::computed::Length::new(0.0))
-            .px()
-            as f64,
-        _ => 1.0,
-    }
-}
-
 /// Whether `element` is a basic shape or a path.
 pub(crate) fn shape_geometry_kind(element: &SVGElement) -> bool {
     matches!(
@@ -564,4 +562,197 @@ pub(crate) fn transform_to_user_space_of(element: &SVGElement, ancestor: &SVGEle
         }
     }
     transform
+}
+
+/// The computed value of the property `name` of `element`, serialized. Elements inside an
+/// `svg` element may not have been styled by layout, so this uses a style query, which
+/// styles them when needed.
+pub(crate) fn computed_value(element: &SVGElement, name: &str) -> String {
+    let Ok(property) = style::properties::PropertyId::parse_enabled_for_all_content(name) else {
+        return String::new();
+    };
+    let node = element.upcast::<Node>();
+    String::from(node.owner_window().resolved_style_query(
+        node.to_trusted_node_address(),
+        None,
+        property,
+    ))
+}
+
+/// Whether the point `point`, in the user space of `element`, hits it, given what its
+/// `pointer-events`, `visibility`, `fill` and `stroke` make sensitive.
+///
+/// <https://svgwg.org/svg2-draft/interact.html#PointerEventsProperty>
+fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool {
+    // Find out where the point is relative to the geometry first, which is cheap, so that
+    // style is only queried for the elements near the point.
+    let local_name = element.upcast::<Element>().local_name().clone();
+    let is_text = matches!(
+        local_name,
+        local_name!("text") | local_name!("tspan") | local_name!("textPath")
+    );
+    let geometry = if is_text || local_name == local_name!("image") {
+        None
+    } else {
+        let Some(geometry) = shape_geometry(cx, element) else {
+            return false;
+        };
+        Some(geometry)
+    };
+    let in_box = if is_text {
+        crate::dom::svg::svgtext::element_characters(cx, element)
+            .iter()
+            .any(|character| character.extent().contains(point))
+    } else if geometry.is_none() {
+        bounding_box(cx, element).is_some_and(|bbox| bbox.contains(point))
+    } else {
+        false
+    };
+    let (winding, distance) = match &geometry {
+        Some(geometry) => (geometry.winding(point), geometry.distance_to_outline(point)),
+        None => (0, f64::INFINITY),
+    };
+    // Strokes wider than this are not considered.
+    const MAXIMUM_HALF_STROKE_WIDTH: f64 = 50.0;
+    let in_bounding_box = geometry
+        .as_ref()
+        .is_some_and(|geometry| geometry.bounding_box().contains(point));
+    if !in_box && winding == 0 && distance > MAXIMUM_HALF_STROKE_WIDTH && !in_bounding_box {
+        return false;
+    }
+
+    let pointer_events = computed_value(element, "pointer-events").to_ascii_lowercase();
+    if pointer_events == "none" {
+        return false;
+    }
+    let visible = computed_value(element, "visibility") == "visible";
+    let fill_painted = computed_value(element, "fill") != "none";
+    let stroke_painted = computed_value(element, "stroke") != "none";
+    let (use_visibility, fill_sensitive, stroke_sensitive) = match pointer_events.as_str() {
+        "visiblefill" => (true, true, false),
+        "visiblestroke" => (true, false, true),
+        "visible" => (true, true, true),
+        "painted" => (false, fill_painted, stroke_painted),
+        "fill" => (false, true, false),
+        "stroke" => (false, false, true),
+        "all" | "bounding-box" => (false, true, true),
+        // `auto` and `visiblePainted`.
+        _ => (true, fill_painted, stroke_painted),
+    };
+    if use_visibility && !visible {
+        return false;
+    }
+    if geometry.is_none() {
+        return in_box &&
+            (fill_sensitive || stroke_sensitive || local_name == local_name!("image"));
+    }
+    if pointer_events == "bounding-box" {
+        return in_bounding_box;
+    }
+    if fill_sensitive && winding != 0 {
+        let inside = if computed_value(element, "fill-rule") == "evenodd" {
+            winding % 2 != 0
+        } else {
+            true
+        };
+        if inside {
+            return true;
+        }
+    }
+    if stroke_sensitive {
+        let stroke_width = computed_value(element, "stroke-width")
+            .trim_end_matches("px")
+            .parse::<f64>()
+            .unwrap_or(1.0);
+        if stroke_width > 0.0 && distance <= stroke_width / 2.0 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether `element` is inside an element whose content is never rendered directly, like
+/// `defs` or `clipPath`, or is not displayed.
+fn is_never_rendered(element: &SVGElement) -> bool {
+    element
+        .upcast::<Node>()
+        .inclusive_ancestors(crate::dom::iterators::ShadowIncluding::No)
+        .filter_map(DomRoot::downcast::<SVGElement>)
+        .any(|ancestor| {
+            matches!(
+                ancestor.upcast::<Element>().local_name(),
+                &local_name!("defs") |
+                    &local_name!("clipPath") |
+                    &local_name!("mask") |
+                    &local_name!("marker") |
+                    &local_name!("pattern") |
+                    &local_name!("symbol") |
+                    &local_name!("linearGradient") |
+                    &local_name!("radialGradient") |
+                    &local_name!("filter")
+            ) || is_display_none(&ancestor)
+        })
+}
+
+/// Hit test the content of the outermost `svg` element `svg` at `point`, in the coordinates
+/// of the viewport. Layout treats the `svg` element as one replaced box, so its hit test
+/// result is refined here into the topmost graphics element under the point.
+pub(crate) fn hit_test_svg(
+    cx: &mut JSContext,
+    svg: &SVGElement,
+    point: Point,
+) -> Option<DomRoot<SVGElement>> {
+    if !is_outermost_svg(svg) {
+        return None;
+    }
+    let candidates: Vec<DomRoot<SVGElement>> = svg
+        .upcast::<Node>()
+        .traverse_preorder(crate::dom::iterators::ShadowIncluding::No)
+        .skip(1)
+        .filter_map(DomRoot::downcast::<SVGElement>)
+        .filter(|element| {
+            shape_geometry_kind(element) ||
+                matches!(
+                    element.upcast::<Element>().local_name(),
+                    &local_name!("text") | &local_name!("image") | &local_name!("use")
+                )
+        })
+        .collect();
+    // Later elements are painted on top of earlier ones.
+    for element in candidates.iter().rev() {
+        if is_never_rendered(element) {
+            continue;
+        }
+        let transform = current_transform(cx, element, true);
+        if element.upcast::<Element>().local_name() == &local_name!("use") {
+            let Some(referenced) = referenced_element(cx.no_gc(), element) else {
+                continue;
+            };
+            if !shape_geometry_kind(&referenced) {
+                continue;
+            }
+            let x = length(
+                cx,
+                element,
+                local_name!("x"),
+                SVGLengthDirection::Horizontal,
+            );
+            let y = length(cx, element, local_name!("y"), SVGLengthDirection::Vertical);
+            let transform = transform * Affine::translate((x, y)) * element_transform(&referenced);
+            if transform.determinant() == 0.0 {
+                continue;
+            }
+            if hits_element(cx, &referenced, transform.inverse() * point) {
+                return Some(element.clone());
+            }
+            continue;
+        }
+        if transform.determinant() == 0.0 {
+            continue;
+        }
+        if hits_element(cx, element, transform.inverse() * point) {
+            return Some(element.clone());
+        }
+    }
+    None
 }

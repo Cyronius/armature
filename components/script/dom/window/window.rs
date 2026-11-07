@@ -186,6 +186,8 @@ use crate::dom::selection_range::RootedSelectionBoundary;
 use crate::dom::serviceworker::cachestorage::CacheStorage;
 use crate::dom::shadowroot::shadowroot::ShadowRoot;
 use crate::dom::storage::Storage;
+use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::svggeometry;
 #[cfg(feature = "bluetooth")]
 use crate::dom::testrunner::TestRunner;
 use crate::dom::trustedtypes::trustedtypepolicyfactory::TrustedTypePolicyFactory;
@@ -3437,10 +3439,12 @@ impl Window {
 
     pub(crate) fn hit_test_from_input_event(
         &self,
+        cx: &mut JSContext,
         flags: HitTestFlags,
         input_event: &ConstellationInputEvent,
     ) -> Option<HitTestResult> {
         self.hit_test_from_point_in_viewport(
+            cx,
             flags,
             input_event.hit_test_result.as_ref()?.point_in_viewport,
         )
@@ -3449,6 +3453,7 @@ impl Window {
     #[expect(unsafe_code)]
     pub(crate) fn hit_test_from_point_in_viewport(
         &self,
+        cx: &mut JSContext,
         flags: HitTestFlags,
         point_in_frame: Point2D<f32, CSSPixel>,
     ) -> Option<HitTestResult> {
@@ -3464,8 +3469,19 @@ impl Window {
             let address = UntrustedNodeAddress(node.0 as *const c_void);
             unsafe { from_untrusted_node_address(address) }
         };
+        let mut node = from_opaque_node(item.node);
+        // Layout treats an `svg` element as one replaced box: find the element inside it.
+        if let Some(svg) = node.downcast::<SVGElement>() &&
+            let Some(hit) = svggeometry::hit_test_svg(
+                cx,
+                svg,
+                kurbo::Point::new(point_in_frame.x as f64, point_in_frame.y as f64),
+            )
+        {
+            node = DomRoot::upcast(hit);
+        }
         Some(HitTestResult {
-            node: from_opaque_node(item.node),
+            node,
             dom_position_for_selection: result.dom_position_for_selection.map(|(node, offset)| {
                 RootedSelectionBoundary::new_with_utf32_offset(from_opaque_node(node), offset)
             }),

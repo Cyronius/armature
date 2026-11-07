@@ -523,7 +523,7 @@ impl DocumentEventHandler {
             if let Some(hit_test_result) =
                 self.most_recent_mousemove_point.get().and_then(|point| {
                     self.window
-                        .hit_test_from_point_in_viewport(HitTestFlags::empty(), point)
+                        .hit_test_from_point_in_viewport(cx, HitTestFlags::empty(), point)
                 })
             {
                 let mouse_out_event = MouseEvent::new_for_platform_motion_event(
@@ -671,9 +671,9 @@ impl DocumentEventHandler {
         // with the actual element under the pointer. Boundary events for hover
         // transitions are suppressed while pointer capture is active: per spec,
         // pointer events are retargeted to the capture element.
-        let Some(hit_test_result) = self
-            .window
-            .hit_test_from_input_event(hit_test_flags, input_event)
+        let Some(hit_test_result) =
+            self.window
+                .hit_test_from_input_event(cx, hit_test_flags, input_event)
         else {
             return;
         };
@@ -906,15 +906,16 @@ impl DocumentEventHandler {
         }
     }
 
-    pub(crate) fn handle_refresh_cursor(&self) {
+    pub(crate) fn handle_refresh_cursor(&self, cx: &mut JSContext) {
         let Some(most_recent_mousemove_point) = self.most_recent_mousemove_point.get() else {
             return;
         };
 
-        let Some(hit_test_result) = self
-            .window
-            .hit_test_from_point_in_viewport(HitTestFlags::empty(), most_recent_mousemove_point)
-        else {
+        let Some(hit_test_result) = self.window.hit_test_from_point_in_viewport(
+            cx,
+            HitTestFlags::empty(),
+            most_recent_mousemove_point,
+        ) else {
             return;
         };
 
@@ -994,7 +995,9 @@ impl DocumentEventHandler {
             HitTestFlags::empty()
         };
         // Ignore all incoming events without a hit test.
-        let Some(hit_test_result) = self.window.hit_test_from_input_event(flags, input_event)
+        let Some(hit_test_result) = self
+            .window
+            .hit_test_from_input_event(cx, flags, input_event)
         else {
             return;
         };
@@ -1402,7 +1405,9 @@ impl DocumentEventHandler {
     ) -> InputEventResult {
         let flags = HitTestFlags::empty();
         // Ignore all incoming events without a hit test.
-        let Some(hit_test_result) = self.window.hit_test_from_input_event(flags, input_event)
+        let Some(hit_test_result) = self
+            .window
+            .hit_test_from_input_event(cx, flags, input_event)
         else {
             self.update_active_touch_points_when_early_return(event);
             return Default::default();
@@ -1890,7 +1895,9 @@ impl DocumentEventHandler {
     ) -> InputEventResult {
         // Ignore all incoming events without a hit test.
         let flags = HitTestFlags::empty();
-        let Some(hit_test_result) = self.window.hit_test_from_input_event(flags, input_event)
+        let Some(hit_test_result) = self
+            .window
+            .hit_test_from_input_event(cx, flags, input_event)
         else {
             return Default::default();
         };
