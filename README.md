@@ -12,68 +12,69 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 Measured on 6 November 2026 by running the web-platform-tests that Armature runs (the 61,100 tests selected by
 `tests/wpt/include.ini`) with two builds on the same machine: upstream Servo at the commit Armature forked from
-(`90c3f623175`, 30 October 2026) and Armature at `22ab3aafaf0`. As on [wpt.fyi](https://wpt.fyi/), each test counts
+(`90c3f623175`, 30 October 2026) and Armature at `e2d5d03b104`. As on [wpt.fyi](https://wpt.fyi/), each test counts
 once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. In
-total Armature passes 56,064 more subtests than upstream Servo (2,097,527 against 2,041,463).
+total Armature passes 56,623 more subtests than upstream Servo (2,098,086 against 2,041,463).
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| CSS | 28,873 | 67.1% | 69.8% | +2.7 | +21,724 |
-| HTML | 10,253 | 66.8% | 68.1% | +1.3 | +18,042 |
-| WebGL conformance | 2,939 | 40.5% | 40.5% | -0.0 | -81 |
+| CSS | 28,873 | 67.1% | 70.2% | +3.1 | +22,193 |
+| HTML | 10,253 | 66.8% | 68.1% | +1.3 | +18,043 |
+| WebGL conformance | 2,939 | 40.5% | 40.4% | -0.0 | -18 |
 | Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
-| SVG | 1,411 | 24.9% | 36.3% | +11.4 | +1,185 |
+| SVG | 1,411 | 24.9% | 36.5% | +11.5 | +1,187 |
 | Encoding | 1,345 | 98.3% | 98.3% | +0.0 | +9 |
-| Servo-specific tests | 1,229 | 75.6% | 75.6% | +0.0 | +4 |
-| Fetch | 957 | 66.6% | 66.9% | +0.3 | +47 |
+| Servo-specific tests | 1,229 | 75.6% | 75.4% | -0.2 | +1 |
+| Fetch | 957 | 66.6% | 66.9% | +0.4 | +29 |
 | Content Security Policy | 918 | 79.6% | 79.9% | +0.2 | +6 |
 | Editing | 860 | 49.8% | 51.4% | +1.6 | +8,857 |
-| DOM | 845 | 76.4% | 85.7% | +9.3 | +2,104 |
-| IndexedDB | 820 | 57.4% | 57.4% | +0.0 | +0 |
-| WebSockets | 799 | 68.1% | 68.1% | +0.0 | +0 |
-| MathML | 624 | 45.8% | 46.1% | +0.3 | +44 |
+| DOM | 845 | 76.4% | 85.8% | +9.4 | +2,107 |
+| IndexedDB | 820 | 57.4% | 57.3% | -0.1 | -1 |
+| WebSockets | 799 | 68.1% | 67.9% | -0.1 | -1 |
+| MathML | 624 | 45.8% | 46.4% | +0.6 | +46 |
 | WebAssembly | 615 | 65.4% | 65.4% | +0.0 | +0 |
-| XMLHttpRequest | 440 | 92.1% | 92.3% | +0.2 | +4 |
+| XMLHttpRequest | 440 | 92.1% | 91.7% | -0.5 | -10 |
 | Mixed Content | 388 | 87.6% | 87.4% | -0.1 | -1 |
 | Shadow DOM | 366 | 67.3% | 67.3% | +0.0 | +0 |
 | Web Audio | 355 | 58.9% | 58.9% | +0.0 | +0 |
-| Workers | 336 | 92.1% | 92.1% | +0.0 | +0 |
+| Workers | 336 | 92.1% | 91.8% | -0.3 | -1 |
 | Web Crypto | 334 | 97.5% | 99.4% | +1.9 | +2,036 |
-| Streams | 317 | 91.3% | 93.8% | +2.4 | +416 |
+| Streams | 317 | 91.3% | 94.1% | +2.7 | +421 |
 | Trusted Types | 249 | 86.3% | 89.1% | +2.8 | +79 |
 | Custom Elements | 203 | 76.1% | 79.0% | +2.9 | +153 |
-| Upgrade Insecure Requests | 197 | 74.1% | 73.6% | -0.5 | -2 |
+| Upgrade Insecure Requests | 197 | 74.1% | 74.1% | +0.0 | +0 |
 | DOM Parsing | 94 | 43.5% | 48.8% | +5.2 | +51 |
 | Compression Streams | 78 | 70.2% | 73.7% | +3.5 | +63 |
 | Clipboard | 61 | 25.8% | 27.4% | +1.6 | +1 |
-| Web Animations | 47 | 14.9% | 56.6% | +41.8 | +423 |
+| Web Animations | 47 | 14.9% | 64.6% | +49.8 | +472 |
 | Focus | 43 | 63.2% | 60.9% | -2.3 | -4 |
 | Scroll-driven Animations | 17 | 21.6% | 100.0% | +78.4 | +372 |
-| Everything else | 3,604 | 69.5% | 69.6% | +0.1 | +521 |
-| **Total** | **61,100** | **66.7%** | **68.7%** | **+2.0** | **+56,064** |
+| Everything else | 3,604 | 69.5% | 69.6% | +0.1 | +522 |
+| **Total** | **61,100** | **66.7%** | **68.9%** | **+2.3** | **+56,623** |
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
-interpolation tests throughout `css/` use. These are the CSS modules that gained the most:
+interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
+`css-animations` and `css-transitions` test. These are the CSS modules that gained the most:
 
 | CSS module | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| `css-backgrounds` | 875 | 65.3% | 80.3% | +15.0 | +1,414 |
-| `css-viewport` | 143 | 25.5% | 83.5% | +58.0 | +388 |
-| `css-transforms` | 933 | 70.4% | 78.5% | +8.1 | +1,435 |
+| `css-backgrounds` | 875 | 65.3% | 83.2% | +17.9 | +1,440 |
+| `css-transforms` | 933 | 70.4% | 80.0% | +9.6 | +1,449 |
+| `css-viewport` | 143 | 25.5% | 82.8% | +57.3 | +387 |
 | `selectors` | 833 | 70.0% | 78.9% | +8.9 | +769 |
+| `css-animations` | 209 | 55.7% | 84.7% | +29.0 | +628 |
 | `motion` | 46 | 20.6% | 97.4% | +76.8 | +4,844 |
-| `css-fonts` | 559 | 66.0% | 71.7% | +5.7 | +1,568 |
+| `css-transitions` | 144 | 59.7% | 83.2% | +23.4 | +331 |
+| `css-fonts` | 559 | 66.0% | 71.7% | +5.7 | +1,564 |
 | `css-ui` | 1,077 | 89.6% | 91.7% | +2.1 | +848 |
-| `css-text` | 1,983 | 72.3% | 73.4% | +1.1 | +756 |
+| `css-text` | 1,983 | 72.3% | 73.4% | +1.1 | +755 |
 | `css-scroll-snap` | 28 | 25.0% | 92.9% | +67.9 | +350 |
 | `CSS2` | 6,322 | 93.1% | 93.4% | +0.3 | +231 |
+| `filter-effects` | 397 | 51.9% | 56.4% | +4.4 | +628 |
 | `css-masking` | 222 | 53.8% | 61.6% | +7.9 | +263 |
 | `css-text-decor` | 366 | 40.7% | 45.4% | +4.7 | +667 |
-| `css-animations` | 209 | 55.7% | 63.5% | +7.8 | +385 |
-| `css-writing-modes` | 1,247 | 30.1% | 31.4% | +1.3 | +78 |
-| `filter-effects` | 397 | 51.9% | 55.8% | +3.9 | +626 |
-| `css-sizing` | 760 | 67.7% | 69.3% | +1.6 | +1,206 |
-| `css-grid` | 2,516 | 49.1% | 49.6% | +0.5 | +887 |
+| `css-writing-modes` | 1,247 | 30.1% | 31.4% | +1.3 | +77 |
+| `css-properties-values-api` | 124 | 35.9% | 48.8% | +12.9 | +66 |
 
 Notes on the numbers:
 
@@ -85,8 +86,10 @@ Notes on the numbers:
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
-  both the test and the reference. The other small drops in the table (WebGL, Upgrade Insecure Requests, Focus)
-  come from tests that crash, time out or fail intermittently when the whole suite runs.
+  both the test and the reference. The other small drops in the table (WebGL, XMLHttpRequest, Focus and a few
+  single tests) come from tests that crash, time out or fail intermittently when the whole suite runs. Three
+  Servo-specific animation tests now fail because they expect an infinitely repeating animation to show its last
+  frame, not its first, exactly at the end of an iteration, which the Web Animations timing model does not do.
 
 ## What has been done
 
@@ -208,6 +211,18 @@ Notes on the numbers:
   `accumulate`) over CSS animations (AS-506). The "Web Animations" and "Compositing Web Animations" subtests of the
   interpolation tests throughout `css/` went from about 12,100 failing to about 2,300, and `web-animations/interfaces`
   from 625 failing subtests to 211.
+- **`CSSAnimation`, `CSSTransition` and `getAnimations()`**: CSS animations and transitions are now `CSSAnimation`
+  and `CSSTransition` objects that `Document`, `ShadowRoot` and `Element.getAnimations()` return in composite order,
+  so script can pause, seek, reverse, finish or cancel them and read their timing and keyframes
+  (`KeyframeEffect.getKeyframes()`). Script times them with the same playback model as other animations; Stylo
+  still generates them from the computed values and samples them at the progress script gives it (AS-507).
+  `animation-play-state` and the `animation-*` properties keep applying until script overrides them with `play()`,
+  `pause()` or `updateTiming()`, and their events (`animationstart`, `animationiteration`, `animationend`,
+  `animationcancel`, `transitionrun`, `transitionstart`, `transitionend` and `transitioncancel`) follow the
+  phase changes of CSS Animations 2 and CSS Transitions 2, sorted by their scheduled time, and carry the animation
+  in `animation`. Animations with a zero duration now exist and fire their events. `css-animations` went from 63.5%
+  to 84.7% and `css-transitions` from 60.9% to 83.2%, and the animated reftests that wait for
+  `document.getAnimations()[0].ready` now run instead of timing out.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -235,10 +250,12 @@ Notes on the numbers:
   `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `subgrid` is parsed but not laid out.
-- Web Animations: `getAnimations()` is missing (about 280 CSS test files use it, mostly to inspect CSS animations,
-  which have no `CSSAnimation` objects yet), animations of pseudo-elements created by script have no effect, and
-  `iterationComposite`, replacing and removing animations (`persist()`, `onremove`) and `commitStyles()` are not
-  implemented. Container query units in keyframes are not supported, as in style sheets.
+- Web Animations: animations of pseudo-elements created by script have no effect, and `iterationComposite`,
+  replacing and removing animations (`persist()`, `onremove`) and `commitStyles()` are not implemented, nor the
+  `pseudoElement` option of `getAnimations()`. A `CSSAnimation` per repeated name in `animation-name` is missing
+  (Stylo matches animations by name), `getKeyframes()` does not keep keyframes that share an offset but not an easing
+  apart and shows additive keyframe values already added, and a finished `CSSTransition` cannot be replayed once
+  style has dropped it. Container query units in keyframes are not supported, as in style sheets.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
   draws `<image>` elements whose `href` is a `data:` URL. SVG `<style>` in SVG documents and SMIL animation are also
