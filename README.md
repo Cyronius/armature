@@ -10,86 +10,87 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 ## Conformance
 
-Measured on 6 November 2026 by running the web-platform-tests that Armature runs (the 61,100 tests selected by
+Measured on 7 November 2026 by running the web-platform-tests that Armature runs (the 61,548 tests selected by
 `tests/wpt/include.ini`) with two builds on the same machine: upstream Servo at the commit Armature forked from
-(`90c3f623175`, 30 October 2026) and Armature at `e2d5d03b104`. As on [wpt.fyi](https://wpt.fyi/), each test counts
+(`90c3f623175`, 30 October 2026) and Armature at `568f69bdeac`. As on [wpt.fyi](https://wpt.fyi/), each test counts
 once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. In
-total Armature passes 56,623 more subtests than upstream Servo (2,098,086 against 2,041,463).
+total Armature passes 63,085 more subtests than upstream Servo (2,087,693 against 2,024,608).
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| CSS | 28,873 | 67.1% | 70.2% | +3.1 | +22,193 |
-| HTML | 10,253 | 66.8% | 68.1% | +1.3 | +18,043 |
-| WebGL conformance | 2,939 | 40.5% | 40.4% | -0.0 | -18 |
+| CSS | 29,164 | 67.0% | 70.5% | +3.4 | +23,261 |
+| HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,030 |
+| WebGL conformance | 2,939 | 40.5% | 40.5% | +0.0 | -118 |
 | Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
-| SVG | 1,411 | 24.9% | 36.5% | +11.5 | +1,187 |
+| SVG | 1,411 | 24.9% | 46.7% | +21.8 | +3,658 |
 | Encoding | 1,345 | 98.3% | 98.3% | +0.0 | +9 |
-| Servo-specific tests | 1,229 | 75.6% | 75.4% | -0.2 | +1 |
-| Fetch | 957 | 66.6% | 66.9% | +0.4 | +29 |
-| Content Security Policy | 918 | 79.6% | 79.9% | +0.2 | +6 |
+| Servo-specific tests | 1,229 | 75.6% | 75.6% | -0.0 | +4 |
+| Fetch | 957 | 66.6% | 66.8% | +0.2 | +47 |
+| Content Security Policy | 918 | 79.5% | 80.0% | +0.5 | +10 |
 | Editing | 860 | 49.8% | 51.4% | +1.6 | +8,857 |
-| DOM | 845 | 76.4% | 85.8% | +9.4 | +2,107 |
-| IndexedDB | 820 | 57.4% | 57.3% | -0.1 | -1 |
-| WebSockets | 799 | 68.1% | 67.9% | -0.1 | -1 |
-| MathML | 624 | 45.8% | 46.4% | +0.6 | +46 |
-| WebAssembly | 615 | 65.4% | 65.4% | +0.0 | +0 |
-| XMLHttpRequest | 440 | 92.1% | 91.7% | -0.5 | -10 |
+| DOM | 845 | 76.3% | 85.9% | +9.6 | +2,107 |
+| IndexedDB | 820 | 57.4% | 57.4% | +0.0 | +0 |
+| WebSockets | 799 | 68.1% | 68.1% | +0.0 | +0 |
+| MathML | 624 | 45.6% | 46.8% | +1.2 | +40 |
+| WebAssembly | 615 | 65.3% | 65.4% | +0.0 | +1 |
+| XMLHttpRequest | 440 | 92.1% | 92.3% | +0.3 | +5 |
 | Mixed Content | 388 | 87.6% | 87.4% | -0.1 | -1 |
 | Shadow DOM | 366 | 67.3% | 67.3% | +0.0 | +0 |
 | Web Audio | 355 | 58.9% | 58.9% | +0.0 | +0 |
-| Workers | 336 | 92.1% | 91.8% | -0.3 | -1 |
+| Workers | 336 | 91.8% | 92.1% | +0.3 | +1 |
 | Web Crypto | 334 | 97.5% | 99.4% | +1.9 | +2,036 |
-| Streams | 317 | 91.3% | 94.1% | +2.7 | +421 |
-| Trusted Types | 249 | 86.3% | 89.1% | +2.8 | +79 |
-| Custom Elements | 203 | 76.1% | 79.0% | +2.9 | +153 |
-| Upgrade Insecure Requests | 197 | 74.1% | 74.1% | +0.0 | +0 |
+| Streams | 317 | 91.6% | 94.1% | +2.4 | +320 |
+| Trusted Types | 249 | 86.7% | 89.2% | +2.6 | +85 |
+| Web Animations | 204 | 27.6% | 86.7% | +59.1 | +3,479 |
+| Custom Elements | 203 | 76.1% | 79.5% | +3.4 | +156 |
+| Upgrade Insecure Requests | 197 | 73.6% | 73.1% | -0.5 | -6 |
 | DOM Parsing | 94 | 43.5% | 48.8% | +5.2 | +51 |
 | Compression Streams | 78 | 70.2% | 73.7% | +3.5 | +63 |
 | Clipboard | 61 | 25.8% | 27.4% | +1.6 | +1 |
-| Web Animations | 47 | 14.9% | 64.6% | +49.8 | +472 |
-| Focus | 43 | 63.2% | 60.9% | -2.3 | -4 |
+| Focus | 43 | 60.9% | 60.9% | +0.0 | +0 |
 | Scroll-driven Animations | 17 | 21.6% | 100.0% | +78.4 | +372 |
-| Everything else | 3,604 | 69.5% | 69.6% | +0.1 | +522 |
-| **Total** | **61,100** | **66.7%** | **68.9%** | **+2.3** | **+56,623** |
+| Everything else | 3,604 | 69.5% | 69.6% | +0.1 | +606 |
+| **Total** | **61,548** | **66.5%** | **69.4%** | **+2.8** | **+63,085** |
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
-`css-animations` and `css-transitions` test. These are the CSS modules that gained the most:
+`css-animations` and `css-transitions` test. These are the CSS modules with the most subtests newly passing:
 
 | CSS module | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| `css-backgrounds` | 875 | 65.3% | 83.2% | +17.9 | +1,440 |
-| `css-transforms` | 933 | 70.4% | 80.0% | +9.6 | +1,449 |
-| `css-viewport` | 143 | 25.5% | 82.8% | +57.3 | +387 |
-| `selectors` | 833 | 70.0% | 78.9% | +8.9 | +769 |
-| `css-animations` | 209 | 55.7% | 84.7% | +29.0 | +628 |
 | `motion` | 46 | 20.6% | 97.4% | +76.8 | +4,844 |
-| `css-transitions` | 144 | 59.7% | 83.2% | +23.4 | +331 |
-| `css-fonts` | 559 | 66.0% | 71.7% | +5.7 | +1,564 |
+| `css-fonts` | 559 | 66.0% | 71.7% | +5.7 | +1,551 |
+| `css-transforms` | 933 | 70.4% | 80.2% | +9.8 | +1,410 |
+| `css-shapes` | 70 | 33.1% | 89.3% | +56.1 | +1,357 |
+| `css-backgrounds` | 875 | 65.3% | 83.2% | +17.9 | +1,294 |
+| `css-sizing` | 760 | 67.7% | 69.3% | +1.6 | +1,205 |
+| `filter-effects` | 397 | 51.7% | 56.8% | +5.2 | +1,116 |
+| `css-grid` | 2,516 | 49.1% | 49.6% | +0.5 | +887 |
 | `css-ui` | 1,077 | 89.6% | 91.7% | +2.1 | +848 |
-| `css-text` | 1,983 | 72.3% | 73.4% | +1.1 | +755 |
+| `css-borders` | 296 | 21.9% | 23.3% | +1.4 | +770 |
+| `css-text` | 1,983 | 72.3% | 73.4% | +1.1 | +750 |
+| `selectors` | 833 | 70.0% | 78.9% | +8.9 | +710 |
+| `css-text-decor` | 366 | 40.7% | 45.4% | +4.7 | +682 |
+| `css-animations` | 209 | 55.7% | 84.7% | +29.0 | +614 |
+| `css-multicol` | 171 | 88.7% | 95.8% | +7.0 | +554 |
+| `css-lists` | 225 | 55.2% | 59.5% | +4.3 | +511 |
 | `css-scroll-snap` | 28 | 25.0% | 92.9% | +67.9 | +350 |
-| `CSS2` | 6,322 | 93.1% | 93.4% | +0.3 | +231 |
-| `filter-effects` | 397 | 51.9% | 56.4% | +4.4 | +628 |
-| `css-masking` | 222 | 53.8% | 61.6% | +7.9 | +263 |
-| `css-text-decor` | 366 | 40.7% | 45.4% | +4.7 | +667 |
-| `css-writing-modes` | 1,247 | 30.1% | 31.4% | +1.3 | +77 |
-| `css-properties-values-api` | 124 | 35.9% | 48.8% | +12.9 | +66 |
 
 Notes on the numbers:
 
-- Both builds ran the same tests, including the CSS directories that Armature added to `include.ini` and upstream
-  Servo skips. Tests that set a preference only Armature has (Observable, popovers, `ProcessingInstruction`
-  attributes, ARIA reflection) error on the upstream build, whose engine lacks those features anyway.
-- The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 200 tests, so the scores
-  should be close to what Servo's CI would measure.
+- Both builds ran the same tests, including the directories that Armature added to `include.ini` and upstream
+  Servo skips (all of `web-animations`, and CSS directories whose properties Armature enables). Tests that set a
+  preference only Armature has (Observable, popovers, `ProcessingInstruction` attributes, ARIA reflection) error on
+  the upstream build, whose engine lacks those features anyway.
+- The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 450 tests, most of them
+  WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
+  Servo's CI would measure.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
-  both the test and the reference. The other small drops in the table (WebGL, XMLHttpRequest, Focus and a few
-  single tests) come from tests that crash, time out or fail intermittently when the whole suite runs. Three
-  Servo-specific animation tests now fail because they expect an infinitely repeating animation to show its last
-  frame, not its first, exactly at the end of an iteration, which the Web Animations timing model does not do.
+  both the test and the reference. The other small drops in the table (WebGL, where one test with 122 subtests
+  crashed in this run, Upgrade Insecure Requests, Mixed Content and a few single tests) come from tests that crash,
+  time out or fail intermittently when the whole suite runs.
 
 ## What has been done
 
@@ -223,6 +224,31 @@ Notes on the numbers:
   in `animation`. Animations with a zero duration now exist and fire their events. `css-animations` went from 63.5%
   to 84.7% and `css-transitions` from 60.9% to 83.2%, and the animated reftests that wait for
   `document.getAnimations()[0].ready` now run instead of timing out.
+- **Replaced animations, `persist()` and `commitStyles()`**: every update of the animations of a document removes the
+  finished animations whose effects later animations fully cover (comparing physical longhands, so logical properties
+  and shorthands count), which sets their `replaceState` to `removed`, takes them out of style and
+  `getAnimations()`, and fires `remove` events after the `finish` events. `persist()` brings one back, and
+  `commitStyles()` writes the result of the effect stack up to the animation into the `style` attribute as one
+  change, counting animations exactly at the end of their active interval as filling, as other engines do. All of
+  `web-animations/` now runs (it was mostly skipped), and the Web Animations area went from 64.6% to 86.7%.
+- **The SVG DOM**, which had almost no members: the animated value types (`SVGAnimatedLength`, `-Number`,
+  `-Integer`, `-Boolean`, `-Enumeration`, `-String`, `-Angle`, `-Rect`, `-PreserveAspectRatio`, `-LengthList`,
+  `-NumberList` and `-TransformList`) with `SVGLength`, `SVGAngle`, `SVGNumber`, `SVGPreserveAspectRatio`,
+  `SVGTransform` and the list interfaces, which reflect their attributes and synchronize their items with them as
+  SVG 2 specifies; the attributes of every element interface (shapes, gradients, patterns, markers, filters, text,
+  `href`, `viewBox`, `preserveAspectRatio`, `points`, `transform`, `requiredExtensions`, `systemLanguage` and the
+  hyperlink members of `<a>`); 39 element interfaces that were missing (filters and their primitives, `clipPath`,
+  `mask`, `marker`, `foreignObject`, `textPath`, `style`, `view`, `switch`, `title`, `desc`, `metadata`, `mpath`);
+  and `getBBox()`, `getCTM()`, `getScreenCTM()`, `getTotalLength()`, `getPointAtLength()`, `isPointInFill()`,
+  `isPointInStroke()` and the character methods of text elements (`getNumberOfChars()`, `getExtentOfChar()` and
+  so on). Servo draws SVG with resvg, so layout knows nothing about SVG geometry; these compute it from the attributes
+  (with kurbo) and, for text, from the fonts. Lengths convert between all the units of CSS, resolving font-relative
+  ones with the metrics of the element's font. `<style>` elements in SVG now apply their style sheets, every
+  presentation attribute of SVG 2 maps to its property, and hit testing (`elementFromPoint()` and the targets of
+  mouse events) finds the shape under the point inside an `svg` element, which layout treats as one box. The SVG
+  area went from 36.5% to 49.2% before hit testing (the table above was measured earlier still, at 46.7%), and hit
+  testing, with the SVG values of `pointer-events` that Stylo now builds for Servo (AS-508), makes about 4,700 more
+  subtests pass.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -250,16 +276,17 @@ Notes on the numbers:
   `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `subgrid` is parsed but not laid out.
-- Web Animations: animations of pseudo-elements created by script have no effect, and `iterationComposite`,
-  replacing and removing animations (`persist()`, `onremove`) and `commitStyles()` are not implemented, nor the
-  `pseudoElement` option of `getAnimations()`. A `CSSAnimation` per repeated name in `animation-name` is missing
+- Web Animations: animations of pseudo-elements created by script have no effect, and `iterationComposite` is not
+  implemented, nor the `pseudoElement` option of `getAnimations()`. `commitStyles()` of an animation below others
+  briefly recomputes the style of the target without them, which can start transitions. A `CSSAnimation` per repeated name in `animation-name` is missing
   (Stylo matches animations by name), `getKeyframes()` does not keep keyframes that share an offset but not an easing
   apart and shows additive keyframe values already added, and a finished `CSSTransition` cannot be replayed once
   style has dropped it. Container query units in keyframes are not supported, as in style sheets.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
-  draws `<image>` elements whose `href` is a `data:` URL. SVG `<style>` in SVG documents and SMIL animation are also
-  missing.
+  draws `<image>` elements whose `href` is a `data:` URL. SMIL animation (`SVGAnimationElement`) is missing, so
+  `animVal` is always `baseVal`. The geometry methods use attributes, not the CSS geometry properties, and text is
+  measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
