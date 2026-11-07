@@ -19,7 +19,7 @@ use crate::dom::svg::svgtypes::{
     svg_uri_reference,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEImageElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEImageElement>
 #[dom_struct]
 pub(crate) struct SVGFEImageElement {
     svgelement: SVGElement,
@@ -70,7 +70,7 @@ impl SVGFEImageElementMethods<crate::DomTypeHolder> for SVGFEImageElement {
 
     svg_animated_string!(CrossOrigin, "crossOrigin", "crossorigin");
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 
     // <https://svgwg.org/svg2-draft/types.html#__svg__SVGURIReference__href>

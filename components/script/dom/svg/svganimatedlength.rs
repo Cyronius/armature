@@ -74,9 +74,15 @@ impl SVGAnimatedLength {
 
     /// The base value, parsed from the content attribute.
     pub(crate) fn base_value(&self) -> SVGLengthValue {
+        // Negative values of the lengths that cannot be negative are invalid.
+        let non_negative = matches!(
+            &*self.attribute,
+            "width" | "height" | "r" | "rx" | "ry" | "fr" | "markerWidth" | "markerHeight"
+        );
         self.element
             .svg_attribute(&self.attribute)
             .and_then(|value| SVGLengthValue::parse(&value))
+            .filter(|value| !non_negative || value.value >= 0.0)
             .unwrap_or(self.initial)
     }
 

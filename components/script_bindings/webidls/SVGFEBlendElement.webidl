@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEBlendElement
+// https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEBlendElement
 [Exposed=Window]
 interface SVGFEBlendElement : SVGElement {
   const unsigned short SVG_FEBLEND_MODE_UNKNOWN = 0;

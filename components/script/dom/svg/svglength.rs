@@ -13,17 +13,16 @@ use script_bindings::str::DOMString;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::SVGLengthBinding::SVGLengthMethods;
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
-use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::num::Finite;
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
-use crate::dom::element::Element;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::node::NodeTraits;
 use crate::dom::svg::svganimatedlength::SVGAnimatedLength;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svglengthlist::SVGLengthList;
 use crate::dom::svg::svgtypes::{
-    INITIAL_FONT_SIZE, NoLengthContext, SVGLengthContext, SVGLengthDirection, SVGLengthValue,
+    INITIAL_FONT_SIZE, NoLengthContext, SVGFontMetric, SVGLengthContext, SVGLengthDirection,
+    SVGLengthValue,
 };
 
 /// Where the value of an [`SVGLength`] lives.
@@ -320,6 +319,17 @@ pub(crate) fn resolve_length(
     value.to_user_units(cx, &context).unwrap_or(0.0)
 }
 
+/// `value`, a length of an attribute of `element`, in user units.
+pub(crate) fn resolve_value(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    value: SVGLengthValue,
+    direction: SVGLengthDirection,
+) -> f32 {
+    let context = ElementLengthContext { element, direction };
+    value.to_user_units(cx, &context).unwrap_or(0.0)
+}
+
 /// The context of a length that reflects an attribute of `element`.
 struct ElementLengthContext<'a> {
     element: &'a SVGElement,
@@ -331,18 +341,35 @@ impl SVGLengthContext for ElementLengthContext<'_> {
         // An element that is not rendered has no style; use the initial font size then.
         Some(
             self.element
-                .upcast::<Element>()
-                .style()
+                .inherited_style()
                 .map_or(INITIAL_FONT_SIZE, |style| {
                     style.get_font().font_size.computed_size().px()
                 }),
         )
     }
 
-    fn x_height(&self, cx: &mut JSContext) -> Option<f32> {
-        // Without access to the metrics of the font, use the common approximation of half
-        // the font size.
-        Some(self.font_size(cx)? / 2.0)
+    fn font_metric(&self, _: &mut JSContext, metric: SVGFontMetric) -> Option<f32> {
+        let Some(style) = self.element.inherited_style() else {
+            return Some(metric.fallback(INITIAL_FONT_SIZE));
+        };
+        let font = style.clone_font();
+        let font_size = font.font_size.computed_size();
+        let window = self.element.owner_window();
+        let font_context = window.font_context();
+        let font_group = font_context.font_group_with_size(font, font_size.into());
+        let metrics = font_group
+            .first(&font_context)
+            .map(|font| font.metrics().clone());
+        let value = metrics.and_then(|metrics| match metric {
+            SVGFontMetric::XHeight => Some(metrics.x_height).filter(|value| value.0 != 0),
+            SVGFontMetric::ZeroAdvance => metrics.zero_horizontal_advance,
+            SVGFontMetric::IdeographicAdvance => metrics.ic_horizontal_advance,
+            SVGFontMetric::CapHeight => Some(metrics.ascent),
+        });
+        Some(value.map_or_else(
+            || metric.fallback(font_size.px()),
+            |value| value.to_f32_px(),
+        ))
     }
 
     fn root_font_size(&self, _: &mut JSContext) -> Option<f32> {

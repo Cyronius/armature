@@ -15,7 +15,7 @@ use crate::dom::svg::svgtypes::{
     svg_animated_enumeration, svg_animated_number, svg_animated_number_list,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGComponentTransferFunctionElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGComponentTransferFunctionElement>
 #[dom_struct]
 pub(crate) struct SVGComponentTransferFunctionElement {
     svgelement: SVGElement,

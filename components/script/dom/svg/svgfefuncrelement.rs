@@ -14,7 +14,7 @@ use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svgcomponenttransferfunctionelement::SVGComponentTransferFunctionElement;
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEFuncRElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEFuncRElement>
 #[dom_struct]
 pub(crate) struct SVGFEFuncRElement {
     svgcomponenttransferfunctionelement: SVGComponentTransferFunctionElement,

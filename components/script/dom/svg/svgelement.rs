@@ -13,7 +13,7 @@ use script_bindings::reflector::DomObject;
 use script_bindings::str::DOMString;
 use style::attr::AttrValue;
 use style::parser::ParserContext;
-use style::properties::{PropertyDeclaration, PropertyId, longhands};
+use style::properties::{PropertyDeclaration, PropertyId, SourcePropertyDeclaration, longhands};
 use style::stylesheets::{CssRuleType, Origin, UrlExtraData};
 use style::values::generics::NonNegative;
 use style::values::specified;
@@ -31,6 +31,7 @@ use crate::dom::document::Document;
 use crate::dom::document::focus::FocusableArea;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
+use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::focus::FocusTrigger;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{Node, NodeTraits};
@@ -87,6 +88,70 @@ struct SVGAnimatedPropertyEntry {
     name: &'static str,
     property: SVGAnimatedProperty,
 }
+
+/// The presentation attributes that every SVG element maps to the property with the same
+/// name. The geometry properties are only mapped on the elements that they apply to.
+///
+/// <https://svgwg.org/svg2-draft/styling.html#PresentationAttributes>
+const PRESENTATION_ATTRIBUTES: &[&str] = &[
+    "alignment-baseline",
+    "baseline-shift",
+    "clip-path",
+    "clip-rule",
+    "color",
+    "color-interpolation",
+    "color-interpolation-filters",
+    "cursor",
+    "direction",
+    "display",
+    "dominant-baseline",
+    "fill",
+    "fill-opacity",
+    "fill-rule",
+    "filter",
+    "flood-color",
+    "flood-opacity",
+    "font-family",
+    "font-size",
+    "font-size-adjust",
+    "font-stretch",
+    "font-style",
+    "font-variant",
+    "font-weight",
+    "image-rendering",
+    "letter-spacing",
+    "lighting-color",
+    "marker-end",
+    "marker-mid",
+    "marker-start",
+    "mask",
+    "mask-type",
+    "opacity",
+    "overflow",
+    "paint-order",
+    "pointer-events",
+    "shape-rendering",
+    "stop-color",
+    "stop-opacity",
+    "stroke",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "stroke-opacity",
+    "stroke-width",
+    "text-anchor",
+    "text-decoration",
+    "text-overflow",
+    "text-rendering",
+    "unicode-bidi",
+    "vector-effect",
+    "visibility",
+    "white-space",
+    "word-spacing",
+    "writing-mode",
+];
 
 #[dom_struct]
 pub(crate) struct SVGElement {
@@ -457,6 +522,18 @@ impl SVGElement {
         self.animated_string(cx, "href", local_name!("href"))
     }
 
+    /// The computed style of this element, or when style has not computed it (as for some
+    /// elements inside an `svg` element, which layout does not traverse), that of its
+    /// nearest ancestor that has one, for the properties that are inherited.
+    pub(crate) fn inherited_style(
+        &self,
+    ) -> Option<servo_arc::Arc<style::properties::ComputedValues>> {
+        self.upcast::<Node>()
+            .inclusive_ancestors(ShadowIncluding::No)
+            .filter_map(DomRoot::downcast::<Element>)
+            .find_map(|element| element.style())
+    }
+
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGElement__viewportElement>
     ///
     /// The nearest ancestor `svg` element, which establishes the viewport of this one.
@@ -497,51 +574,23 @@ impl VirtualMethods for SVGElement {
     }
 
     fn attribute_affects_presentational_hints(&self, attr: AttrRef<'_>) -> bool {
-        matches!(
-            attr.local_name(),
-            &local_name!("fill") |
-                &local_name!("fill-opacity") |
-                &local_name!("fill-rule") |
-                &local_name!("stroke") |
-                &local_name!("stroke-width") |
-                &local_name!("stroke-linecap") |
-                &local_name!("stroke-linejoin") |
-                &local_name!("stroke-dasharray") |
-                &local_name!("stroke-dashoffset") |
-                &local_name!("stroke-miterlimit") |
-                &local_name!("stroke-opacity") |
-                &local_name!("clip-rule") |
-                &local_name!("color-interpolation") |
-                &local_name!("color-interpolation-filters") |
-                &local_name!("flood-color") |
-                &local_name!("flood-opacity") |
-                &local_name!("lighting-color") |
-                &local_name!("marker-start") |
-                &local_name!("marker-mid") |
-                &local_name!("marker-end") |
-                &local_name!("paint-order") |
-                &local_name!("shape-rendering") |
-                &local_name!("stop-color") |
-                &local_name!("stop-opacity") |
-                &local_name!("text-anchor") |
-                &local_name!("vector-effect") |
-                &local_name!("display") |
-                &local_name!("visibility") |
-                &local_name!("opacity") |
+        (attr.namespace() == &ns!() && PRESENTATION_ATTRIBUTES.contains(&&**attr.local_name())) ||
+            matches!(
+                attr.local_name(),
                 &local_name!("cx") |
-                &local_name!("cy") |
-                &local_name!("r") |
-                &local_name!("rx") |
-                &local_name!("ry") |
-                &local_name!("x") |
-                &local_name!("y") |
-                &local_name!("width") |
-                &local_name!("height") |
-                &local_name!("d")
-        ) || self
-            .super_type()
-            .unwrap()
-            .attribute_affects_presentational_hints(attr)
+                    &local_name!("cy") |
+                    &local_name!("r") |
+                    &local_name!("rx") |
+                    &local_name!("ry") |
+                    &local_name!("x") |
+                    &local_name!("y") |
+                    &local_name!("width") |
+                    &local_name!("height") |
+                    &local_name!("d")
+            ) ||
+            self.super_type()
+                .unwrap()
+                .attribute_affects_presentational_hints(attr)
     }
 }
 
@@ -695,7 +744,7 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         let url_data = UrlExtraData(document.url_for_layout().get_arc());
         let parsing_mode =
             ParsingMode::ALLOW_UNITLESS_LENGTH | ParsingMode::ALLOW_ALL_NUMERIC_VALUES;
-        let parser_context = ParserContext::new(
+        let mut parser_context = ParserContext::new(
             Origin::Author,
             &url_data,
             Some(CssRuleType::Style),
@@ -707,181 +756,9 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
             Default::default(),
         );
 
-        self.parse_svg_attribute(
-            &parser_context,
-            "fill",
-            longhands::fill::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "fill-opacity",
-            longhands::fill_opacity::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "fill-rule",
-            longhands::fill_rule::parse_declared,
-            push,
-        );
-
-        self.parse_svg_attribute(
-            &parser_context,
-            "stroke",
-            longhands::stroke::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stroke-width",
-            longhands::stroke_width::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stroke-linecap",
-            longhands::stroke_linecap::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stroke-linejoin",
-            longhands::stroke_linejoin::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stroke-dasharray",
-            longhands::stroke_dasharray::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stroke-dashoffset",
-            longhands::stroke_dashoffset::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stroke-miterlimit",
-            longhands::stroke_miterlimit::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stroke-opacity",
-            longhands::stroke_opacity::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "clip-rule",
-            longhands::clip_rule::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "color-interpolation",
-            longhands::color_interpolation::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "color-interpolation-filters",
-            longhands::color_interpolation_filters::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "flood-color",
-            longhands::flood_color::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "flood-opacity",
-            longhands::flood_opacity::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "lighting-color",
-            longhands::lighting_color::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "marker-start",
-            longhands::marker_start::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "marker-mid",
-            longhands::marker_mid::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "marker-end",
-            longhands::marker_end::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "paint-order",
-            longhands::paint_order::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "shape-rendering",
-            longhands::shape_rendering::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stop-color",
-            longhands::stop_color::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "stop-opacity",
-            longhands::stop_opacity::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "text-anchor",
-            longhands::text_anchor::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "vector-effect",
-            longhands::vector_effect::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "display",
-            longhands::display::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "visibility",
-            longhands::visibility::parse_declared,
-            push,
-        );
-        self.parse_svg_attribute(
-            &parser_context,
-            "opacity",
-            longhands::opacity::parse_declared,
-            push,
-        );
+        for name in PRESENTATION_ATTRIBUTES {
+            self.parse_presentation_attribute(&mut parser_context, name, push);
+        }
 
         // Parse geometry attributes based on element type
         // <circle>: https://svgwg.org/svg2-draft/shapes.html#CircleElement
@@ -955,6 +832,41 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
                         push(property);
                     }
                 }
+            }
+        }
+    }
+
+    /// Map the presentation attribute `name`, which has the name of its property, to a
+    /// declaration of the property.
+    fn parse_presentation_attribute(
+        self,
+        parser_context: &mut ParserContext,
+        name: &str,
+        push: &mut impl FnMut(PropertyDeclaration),
+    ) {
+        let element = self.upcast::<Element>();
+        let Some(value) = element.get_attr_val_for_layout(&ns!(), &LocalName::from(name)) else {
+            return;
+        };
+        // A presentation attribute does nothing when its property is disabled by a preference.
+        let Ok(property_id) = PropertyId::parse_enabled_for_all_content(name) else {
+            return;
+        };
+        let mut declarations = SourcePropertyDeclaration::default();
+        let mut parser = cssparser::Parser::new(value);
+        if parser
+            .parse_entirely(|parser| {
+                PropertyDeclaration::parse_into(
+                    &mut declarations,
+                    property_id,
+                    parser_context,
+                    parser,
+                )
+            })
+            .is_ok()
+        {
+            for declaration in declarations.drain().declarations {
+                push(declaration);
             }
         }
     }

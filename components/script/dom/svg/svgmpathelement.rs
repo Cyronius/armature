@@ -16,7 +16,7 @@ use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::svg_uri_reference;
 
-/// <https://svgwg.org/specs/animations/#InterfaceSVGMPathElement>
+/// <https://w3c.github.io/svgwg/specs/animations/#InterfaceSVGMPathElement>
 #[dom_struct]
 pub(crate) struct SVGMPathElement {
     svgelement: SVGElement,

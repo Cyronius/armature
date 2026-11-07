@@ -17,7 +17,7 @@ use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::{SVGLengthValue, svg_animated_enumeration, svg_animated_length};
 use crate::dom::svg::svgunittypes::UNIT_TYPE_KEYWORDS;
 
-/// <https://drafts.fxtf.org/css-masking/#InterfaceSVGMaskElement>
+/// <https://w3c.github.io/fxtf-drafts/css-masking-1/#InterfaceSVGMaskElement>
 #[dom_struct]
 pub(crate) struct SVGMaskElement {
     svgelement: SVGElement,

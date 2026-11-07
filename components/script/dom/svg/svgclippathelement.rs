@@ -17,7 +17,7 @@ use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::{svg_animated_enumeration, svg_animated_transform_list};
 use crate::dom::svg::svgunittypes::UNIT_TYPE_KEYWORDS;
 
-/// <https://drafts.fxtf.org/css-masking/#InterfaceSVGClipPathElement>
+/// <https://w3c.github.io/fxtf-drafts/css-masking-1/#InterfaceSVGClipPathElement>
 #[dom_struct]
 pub(crate) struct SVGClipPathElement {
     svgelement: SVGElement,

@@ -18,7 +18,7 @@ use crate::dom::svg::svgtypes::{
     svg_animated_number, svg_animated_string, svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEOffsetElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEOffsetElement>
 #[dom_struct]
 pub(crate) struct SVGFEOffsetElement {
     svgelement: SVGElement,
@@ -69,6 +69,6 @@ impl SVGFEOffsetElementMethods<crate::DomTypeHolder> for SVGFEOffsetElement {
     svg_animated_number!(Dx, "dx", "dx", Whole, 0.0);
     svg_animated_number!(Dy, "dy", "dy", Whole, 0.0);
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

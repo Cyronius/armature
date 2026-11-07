@@ -19,7 +19,7 @@ use crate::dom::svg::svgtypes::{
     svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEColorMatrixElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEColorMatrixElement>
 #[dom_struct]
 pub(crate) struct SVGFEColorMatrixElement {
     svgelement: SVGElement,
@@ -82,6 +82,6 @@ impl SVGFEColorMatrixElementMethods<crate::DomTypeHolder> for SVGFEColorMatrixEl
         1
     );
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

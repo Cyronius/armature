@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+use std::cell::Cell;
+
 use atomic_refcell::AtomicRefCell;
 use base64::Engine as _;
 use cssparser::Parser;
 use dom_struct::dom_struct;
+use euclid::default::Transform3D;
 use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
@@ -16,22 +19,31 @@ use style::parser::ParserContext;
 use style::stylesheets::Origin;
 use style::values::specified::LengthPercentage;
 use style_traits::ParsingMode;
+use stylo_atoms::Atom;
 use uuid::Uuid;
 
 use crate::dom::bindings::codegen::Bindings::DOMMatrixBinding::DOMMatrix2DInit;
+use crate::dom::bindings::codegen::Bindings::DOMRectReadOnlyBinding::DOMRectReadOnlyMethods;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
+use crate::dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::codegen::Bindings::SVGSVGElementBinding::SVGSVGElementMethods;
+use crate::dom::bindings::codegen::Bindings::SelectionBinding::SelectionMethods;
 use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::inheritance::Castable;
-use crate::dom::bindings::root::{DomRoot, LayoutDom};
+use crate::dom::bindings::num::Finite;
+use crate::dom::bindings::root::{DomRoot, LayoutDom, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
+use crate::dom::dommatrix::DOMMatrix;
 use crate::dom::dommatrixreadonly::dommatrix2dinit_to_matrix;
 use crate::dom::dompoint::DOMPoint;
+use crate::dom::domrect::DOMRect;
+use crate::dom::domrectreadonly::DOMRectReadOnly;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::iterators::ShadowIncluding;
+use crate::dom::node::nodelist::NodeList;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{
     ChildrenMutation, CloneChildrenFlag, Node, NodeDamage, NodeTraits, UnbindContext,
@@ -57,6 +69,10 @@ pub(crate) struct SVGSVGElement {
     // on each layout and must be invalidated when the subtree changes.
     #[no_trace]
     cached_serialized_data_url: AtomicRefCell<Option<Result<ServoUrl, ()>>>,
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__currentScale>
+    current_scale: Cell<f32>,
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__currentTranslate>
+    current_translate: MutNullableDom<DOMPoint>,
 }
 
 impl SVGSVGElement {
@@ -69,6 +85,8 @@ impl SVGSVGElement {
             svggraphicselement: SVGGraphicsElement::new_inherited(local_name, prefix, document),
             uuid: Uuid::new_v4(),
             cached_serialized_data_url: Default::default(),
+            current_scale: Cell::new(1.0),
+            current_translate: Default::default(),
         }
     }
 
@@ -232,6 +250,67 @@ impl SVGSVGElement {
     }
 }
 
+impl SVGSVGElement {
+    /// Whether the bounding box of `element`, in the user space of this element, intersects
+    /// `rect`, or with `enclosure`, lies inside it.
+    fn check_element(
+        &self,
+        cx: &mut JSContext,
+        element: &SVGElement,
+        rect: &DOMRectReadOnly,
+        enclosure: bool,
+    ) -> bool {
+        let Some(bbox) = svggeometry::bounding_box(cx, element) else {
+            return false;
+        };
+        let transform = svggeometry::transform_to_user_space_of(element, self.upcast());
+        let bbox = transform.transform_rect_bbox(bbox);
+        let rect = kurbo::Rect::new(
+            rect.X(),
+            rect.Y(),
+            rect.X() + rect.Width(),
+            rect.Y() + rect.Height(),
+        );
+        if enclosure {
+            rect.contains_rect(bbox)
+        } else {
+            rect.intersect(bbox).area() > 0.0 ||
+                (bbox.area() == 0.0 && rect.intersect(bbox) == bbox)
+        }
+    }
+
+    /// The graphics elements below this one, or below `reference_element`, that intersect
+    /// or lie inside `rect`.
+    fn element_list(
+        &self,
+        cx: &mut JSContext,
+        rect: &DOMRectReadOnly,
+        reference_element: Option<&SVGElement>,
+        enclosure: bool,
+    ) -> DomRoot<NodeList> {
+        let root = reference_element.map_or(self.upcast::<Node>(), |element| element.upcast());
+        let candidates: Vec<DomRoot<SVGElement>> = root
+            .traverse_preorder(ShadowIncluding::No)
+            .skip(1)
+            .filter_map(DomRoot::downcast::<SVGElement>)
+            .filter(|element| {
+                svggeometry::shape_geometry_kind(element) ||
+                    matches!(
+                        element.upcast::<Element>().local_name(),
+                        &local_name!("text") | &local_name!("image") | &local_name!("use")
+                    )
+            })
+            .collect();
+        let mut matching = Vec::new();
+        for candidate in candidates {
+            if self.check_element(cx, &candidate, rect, enclosure) {
+                matching.push(DomRoot::upcast::<Node>(candidate));
+            }
+        }
+        NodeList::new_simple_list(cx, &self.owner_window(), matching.into_iter())
+    }
+}
+
 impl<'dom> LayoutDom<'dom, SVGSVGElement> {
     pub(crate) fn data(self) -> SVGElementData<'dom> {
         let svg_id = self.unsafe_get().uuid;
@@ -377,6 +456,107 @@ impl SVGSVGElementMethods<crate::DomTypeHolder> for SVGSVGElement {
     fn CreateSVGNumber(&self, cx: &mut JSContext) -> DomRoot<SVGNumber> {
         SVGNumber::new_detached(cx, &self.owner_global())
     }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__currentScale>
+    fn CurrentScale(&self) -> Finite<f32> {
+        Finite::wrap(self.current_scale.get())
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__currentScale>
+    fn SetCurrentScale(&self, _cx: &mut JSContext, value: Finite<f32>) {
+        self.current_scale.set(*value);
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__currentTranslate>
+    fn CurrentTranslate(&self, cx: &mut JSContext) -> DomRoot<DOMPoint> {
+        if let Some(point) = self.current_translate.get() {
+            return point;
+        }
+        let point = DOMPoint::new(cx, &self.owner_global(), 0.0, 0.0, 0.0, 1.0);
+        self.current_translate.set(Some(&point));
+        point
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__getIntersectionList>
+    fn GetIntersectionList(
+        &self,
+        cx: &mut JSContext,
+        rect: &DOMRectReadOnly,
+        reference_element: Option<&SVGElement>,
+    ) -> DomRoot<NodeList> {
+        self.element_list(cx, rect, reference_element, false)
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__getEnclosureList>
+    fn GetEnclosureList(
+        &self,
+        cx: &mut JSContext,
+        rect: &DOMRectReadOnly,
+        reference_element: Option<&SVGElement>,
+    ) -> DomRoot<NodeList> {
+        self.element_list(cx, rect, reference_element, true)
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__checkIntersection>
+    fn CheckIntersection(
+        &self,
+        cx: &mut JSContext,
+        element: &SVGElement,
+        rect: &DOMRectReadOnly,
+    ) -> bool {
+        self.check_element(cx, element, rect, false)
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__checkEnclosure>
+    fn CheckEnclosure(
+        &self,
+        cx: &mut JSContext,
+        element: &SVGElement,
+        rect: &DOMRectReadOnly,
+    ) -> bool {
+        self.check_element(cx, element, rect, true)
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__deselectAll>
+    fn DeselectAll(&self, cx: &mut JSContext) {
+        if let Some(selection) = self.owner_document().GetSelection(cx) {
+            selection.RemoveAllRanges(cx.no_gc());
+        }
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGMatrix>
+    fn CreateSVGMatrix(&self, cx: &mut JSContext) -> DomRoot<DOMMatrix> {
+        DOMMatrix::new(cx, &self.owner_global(), true, Transform3D::identity())
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGRect>
+    fn CreateSVGRect(&self, cx: &mut JSContext) -> DomRoot<DOMRect> {
+        DOMRect::new(cx, &self.owner_global(), 0.0, 0.0, 0.0, 0.0)
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__getElementById>
+    fn GetElementById(&self, element_id: DOMString) -> Option<DomRoot<Element>> {
+        let id = Atom::from(element_id.str().as_ref());
+        self.upcast::<Node>()
+            .traverse_preorder(ShadowIncluding::No)
+            .skip(1)
+            .filter_map(DomRoot::downcast::<Element>)
+            .find(|element| element.Id().str().as_ref() == &*id)
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__suspendRedraw>
+    fn SuspendRedraw(&self, _max_wait_milliseconds: u32) -> u32 {
+        1
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__unsuspendRedraw>
+    fn UnsuspendRedraw(&self, _suspend_handle_id: u32) {}
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__unsuspendRedrawAll>
+    fn UnsuspendRedrawAll(&self) {}
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__forceRedraw>
+    fn ForceRedraw(&self) {}
 
     /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGAngle>
     fn CreateSVGAngle(&self, cx: &mut JSContext) -> DomRoot<SVGAngle> {

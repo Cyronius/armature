@@ -19,7 +19,7 @@ use crate::dom::svg::svgtypes::{
     svg_animated_number_list, svg_animated_string, svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEConvolveMatrixElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEConvolveMatrixElement>
 #[dom_struct]
 pub(crate) struct SVGFEConvolveMatrixElement {
     svgelement: SVGElement,
@@ -98,6 +98,6 @@ impl SVGFEConvolveMatrixElementMethods<crate::DomTypeHolder> for SVGFEConvolveMa
     );
     svg_animated_boolean!(PreserveAlpha, "preserveAlpha", "preserveAlpha");
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

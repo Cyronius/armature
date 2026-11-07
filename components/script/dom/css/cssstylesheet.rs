@@ -40,6 +40,7 @@ use crate::dom::html::htmlstyleelement::HTMLStyleElement;
 use crate::dom::medialist::MediaList;
 use crate::dom::node::{Node, NodeTraits};
 use crate::dom::promise::RootedPromise;
+use crate::dom::svg::svgstyleelement::SVGStyleElement;
 use crate::dom::types::Promise;
 use crate::dom::window::Window;
 
@@ -262,11 +263,11 @@ impl CSSStyleSheet {
             return;
         };
 
-        let Some(node) = node.downcast::<HTMLStyleElement>() else {
-            return;
-        };
-
-        node.will_modify_stylesheet(no_gc);
+        if let Some(node) = node.downcast::<HTMLStyleElement>() {
+            node.will_modify_stylesheet(no_gc);
+        } else if let Some(node) = node.downcast::<SVGStyleElement>() {
+            node.will_modify_stylesheet(no_gc);
+        }
     }
 
     pub(crate) fn update_style_stylesheet(

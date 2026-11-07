@@ -447,22 +447,33 @@ impl<T: HyperlinkElement + DerivedFrom<Element> + Castable + NodeTraits> Hyperli
         // Step 1. Set this element's url to null.
         *self.get_url().safe_borrow_mut(no_gc) = None;
 
-        let attribute = self
-            .upcast::<Element>()
-            .get_attribute_string_ref(&local_name!("href"));
+        let element = self.upcast::<Element>();
+        // The `a` element of SVG falls back to its `xlink:href` attribute.
+        // <https://svgwg.org/svg2-draft/linking.html#XLinkRefAttrs>
+        let value = element
+            .get_attribute_string_value_with_namespace(&ns!(), &local_name!("href"))
+            .or_else(|| {
+                (*element.namespace() == ns!(svg))
+                    .then(|| {
+                        element.get_attribute_string_value_with_namespace(
+                            &ns!(xlink),
+                            &local_name!("href"),
+                        )
+                    })
+                    .flatten()
+            });
 
         // Step 2. If this element's href content attribute is absent, then return.
-        let Some(attribute) = attribute else {
+        let Some(value) = value else {
             return;
         };
-        let attribute = attribute.as_attr_ref();
 
         let document = self.owner_document();
         let global = self.owner_global();
 
         // Step 3. Let url be the result of encoding-parsing a URL given this element's href content
         // attribute's value, relative to this element's node document.
-        let url = document.encoding_parse_a_url(&attribute.value());
+        let url = document.encoding_parse_a_url(&value);
 
         // Step 4. If url is not failure, then set this element's url to url.
         if let Ok(url) = url {

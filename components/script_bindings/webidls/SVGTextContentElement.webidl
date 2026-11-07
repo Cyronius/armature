@@ -12,13 +12,13 @@ interface SVGTextContentElement : SVGGraphicsElement {
   [SameObject] readonly attribute SVGAnimatedLength textLength;
   [SameObject] readonly attribute SVGAnimatedEnumeration lengthAdjust;
 
-  // long getNumberOfChars();
-  // float getComputedTextLength();
-  // float getSubStringLength(unsigned long charnum, unsigned long nchars);
-  // DOMPoint getStartPositionOfChar(unsigned long charnum);
-  // DOMPoint getEndPositionOfChar(unsigned long charnum);
-  // DOMRect getExtentOfChar(unsigned long charnum);
-  // float getRotationOfChar(unsigned long charnum);
-  // long getCharNumAtPosition(optional DOMPointInit point = {});
-  // undefined selectSubString(unsigned long charnum, unsigned long nchars);
+  long getNumberOfChars();
+  float getComputedTextLength();
+  [Throws] float getSubStringLength(unsigned long charnum, unsigned long nchars);
+  [Throws] DOMPoint getStartPositionOfChar(unsigned long charnum);
+  [Throws] DOMPoint getEndPositionOfChar(unsigned long charnum);
+  [Throws] DOMRect getExtentOfChar(unsigned long charnum);
+  [Throws] float getRotationOfChar(unsigned long charnum);
+  long getCharNumAtPosition(optional DOMPointInit point = {});
+  [Throws] undefined selectSubString(unsigned long charnum, unsigned long nchars);
 };

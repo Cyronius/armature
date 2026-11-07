@@ -18,7 +18,7 @@ use crate::dom::svg::svgtypes::{
     svg_animated_number, svg_animated_string, svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEDiffuseLightingElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEDiffuseLightingElement>
 #[dom_struct]
 pub(crate) struct SVGFEDiffuseLightingElement {
     svgelement: SVGElement,
@@ -89,6 +89,6 @@ impl SVGFEDiffuseLightingElementMethods<crate::DomTypeHolder> for SVGFEDiffuseLi
         0.0
     );
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

@@ -118,6 +118,7 @@ use crate::dom::pointerevent::{PointerEvent, PointerId};
 use crate::dom::raredata::NodeRareData;
 use crate::dom::servoparser::serialize_html_fragment;
 use crate::dom::shadowroot::shadowroot::{IsUserAgentWidget, ShadowRoot};
+use crate::dom::svg::svgstyleelement::SVGStyleElement;
 use crate::dom::text::Text;
 use crate::dom::traversal::LightDomNoGcTraversal;
 use crate::dom::types::{CDATASection, KeyboardEvent, ProcessingInstruction};
@@ -2078,6 +2079,8 @@ impl Node {
             node.get_cssom_stylesheet(cx)
         } else if let Some(node) = self.downcast::<HTMLLinkElement>() {
             node.get_cssom_stylesheet(cx)
+        } else if let Some(node) = self.downcast::<SVGStyleElement>() {
+            node.get_cssom_stylesheet(cx)
         } else if let Some(node) = self.downcast::<ProcessingInstruction>() {
             node.get_cssom_stylesheet(cx)
         } else {
@@ -2094,6 +2097,10 @@ impl Node {
 
         if let Some(l) = self.downcast::<HTMLLinkElement>() {
             return Some(l as &dyn StylesheetOwner);
+        }
+
+        if let Some(s) = self.downcast::<SVGStyleElement>() {
+            return Some(s as &dyn StylesheetOwner);
         }
 
         if let Some(pi) = self.downcast::<ProcessingInstruction>() {

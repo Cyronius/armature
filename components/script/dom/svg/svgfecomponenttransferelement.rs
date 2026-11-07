@@ -16,7 +16,7 @@ use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::{svg_animated_string, svg_filter_primitive_standard_attributes};
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEComponentTransferElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEComponentTransferElement>
 #[dom_struct]
 pub(crate) struct SVGFEComponentTransferElement {
     svgelement: SVGElement,
@@ -65,6 +65,6 @@ impl VirtualMethods for SVGFEComponentTransferElement {
 impl SVGFEComponentTransferElementMethods<crate::DomTypeHolder> for SVGFEComponentTransferElement {
     svg_animated_string!(In1, "in1", "in");
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

@@ -11,33 +11,33 @@ interface SVGSVGElement : SVGGraphicsElement {
   [SameObject] readonly attribute SVGAnimatedLength width;
   [SameObject] readonly attribute SVGAnimatedLength height;
 
-  //attribute float currentScale;
-  //[SameObject] readonly attribute DOMPointReadOnly currentTranslate;
+  attribute float currentScale;
+  [SameObject] readonly attribute DOMPoint currentTranslate;
 
-  //NodeList getIntersectionList(DOMRectReadOnly rect, SVGElement? referenceElement);
-  //NodeList getEnclosureList(DOMRectReadOnly rect, SVGElement? referenceElement);
-  //boolean checkIntersection(SVGElement element, DOMRectReadOnly rect);
-  //boolean checkEnclosure(SVGElement element, DOMRectReadOnly rect);
+  NodeList getIntersectionList(DOMRectReadOnly rect, SVGElement? referenceElement);
+  NodeList getEnclosureList(DOMRectReadOnly rect, SVGElement? referenceElement);
+  boolean checkIntersection(SVGElement element, DOMRectReadOnly rect);
+  boolean checkEnclosure(SVGElement element, DOMRectReadOnly rect);
 
-  //void deselectAll();
+  undefined deselectAll();
 
   [NewObject] SVGNumber createSVGNumber();
   [NewObject] SVGLength createSVGLength();
   [NewObject] SVGAngle createSVGAngle();
   [NewObject] DOMPoint createSVGPoint();
-  //DOMMatrix createSVGMatrix();
-  //DOMRect createSVGRect();
+  [NewObject] DOMMatrix createSVGMatrix();
+  [NewObject] DOMRect createSVGRect();
   [NewObject] SVGTransform createSVGTransform();
   [NewObject, Throws] SVGTransform createSVGTransformFromMatrix(optional DOMMatrix2DInit matrix = {});
 
-  //Element getElementById(DOMString elementId);
+  Element? getElementById(DOMString elementId);
 
   // Deprecated methods that have no effect when called,
   // but which are kept for compatibility reasons.
-  //unsigned long suspendRedraw(unsigned long maxWaitMilliseconds);
-  //void unsuspendRedraw(unsigned long suspendHandleID);
-  //void unsuspendRedrawAll();
-  //void forceRedraw();
+  unsigned long suspendRedraw(unsigned long maxWaitMilliseconds);
+  undefined unsuspendRedraw(unsigned long suspendHandleID);
+  undefined unsuspendRedrawAll();
+  undefined forceRedraw();
 };
 
 //SVGSVGElement includes SVGZoomAndPan;

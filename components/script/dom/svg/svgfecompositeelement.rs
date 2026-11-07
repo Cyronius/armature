@@ -19,7 +19,7 @@ use crate::dom::svg::svgtypes::{
     svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFECompositeElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFECompositeElement>
 #[dom_struct]
 pub(crate) struct SVGFECompositeElement {
     svgelement: SVGElement,
@@ -87,6 +87,6 @@ impl SVGFECompositeElementMethods<crate::DomTypeHolder> for SVGFECompositeElemen
     svg_animated_number!(K3, "k3", "k3", Whole, 0.0);
     svg_animated_number!(K4, "k4", "k4", Whole, 0.0);
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

@@ -28,11 +28,14 @@ const LENGTH_UNIT_VW: u16 = 13;
 const LENGTH_UNIT_VH: u16 = 14;
 const LENGTH_UNIT_VMIN: u16 = 15;
 const LENGTH_UNIT_VMAX: u16 = 16;
+const LENGTH_UNIT_CH: u16 = 17;
+const LENGTH_UNIT_IC: u16 = 18;
+const LENGTH_UNIT_CAP: u16 = 19;
 
 /// The unit suffixes of the length units, indexed by unit code.
-const LENGTH_UNITS: [&str; 17] = [
+const LENGTH_UNITS: [&str; 20] = [
     "", "", "%", "em", "ex", "px", "cm", "mm", "in", "pt", "pc", "q", "rem", "vw", "vh", "vmin",
-    "vmax",
+    "vmax", "ch", "ic", "cap",
 ];
 
 /// The direction in which a length is measured, which decides what a percentage is a
@@ -114,9 +117,12 @@ impl SVGLengthValue {
             SVG_LENGTHTYPE_PT => 4.0 / 3.0,
             SVG_LENGTHTYPE_PC => 16.0,
             SVG_LENGTHTYPE_EMS => context.font_size(cx)?,
-            SVG_LENGTHTYPE_EXS => context.x_height(cx)?,
+            SVG_LENGTHTYPE_EXS => context.font_metric(cx, SVGFontMetric::XHeight)?,
             SVG_LENGTHTYPE_PERCENTAGE => context.viewport_length(cx)? / 100.0,
             LENGTH_UNIT_Q => 96.0 / 101.6,
+            LENGTH_UNIT_CH => context.font_metric(cx, SVGFontMetric::ZeroAdvance)?,
+            LENGTH_UNIT_IC => context.font_metric(cx, SVGFontMetric::IdeographicAdvance)?,
+            LENGTH_UNIT_CAP => context.font_metric(cx, SVGFontMetric::CapHeight)?,
             LENGTH_UNIT_REM => context.root_font_size(cx)?,
             LENGTH_UNIT_VW => context.window_viewport_size(cx)?.0 / 100.0,
             LENGTH_UNIT_VH => context.window_viewport_size(cx)?.1 / 100.0,
@@ -171,12 +177,33 @@ impl std::fmt::Display for SVGLengthValue {
     }
 }
 
+/// The metrics of the first available font that the font-relative units refer to.
+///
+/// <https://drafts.csswg.org/css-values/#font-relative-lengths>
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum SVGFontMetric {
+    XHeight,
+    ZeroAdvance,
+    IdeographicAdvance,
+    CapHeight,
+}
+
+impl SVGFontMetric {
+    /// The value to use when the font does not have the metric, as in CSS.
+    pub(crate) fn fallback(self, font_size: f32) -> f32 {
+        match self {
+            Self::XHeight | Self::ZeroAdvance => font_size / 2.0,
+            Self::IdeographicAdvance | Self::CapHeight => font_size,
+        }
+    }
+}
+
 /// What is needed to convert relative lengths to user units.
 pub(crate) trait SVGLengthContext {
     /// The computed font size, for `em`.
     fn font_size(&self, cx: &mut JSContext) -> Option<f32>;
-    /// The x-height of the first available font, for `ex`.
-    fn x_height(&self, cx: &mut JSContext) -> Option<f32>;
+    /// A metric of the first available font, for `ex`, `ch`, `ic` and `cap`.
+    fn font_metric(&self, cx: &mut JSContext, metric: SVGFontMetric) -> Option<f32>;
     /// The size of the viewport in the direction of the length, for percentages.
     fn viewport_length(&self, cx: &mut JSContext) -> Option<f32>;
     /// The computed font size of the root element, for `rem`.
@@ -199,8 +226,8 @@ impl SVGLengthContext for NoLengthContext {
     fn font_size(&self, _: &mut JSContext) -> Option<f32> {
         Some(INITIAL_FONT_SIZE)
     }
-    fn x_height(&self, _: &mut JSContext) -> Option<f32> {
-        Some(INITIAL_FONT_SIZE / 2.0)
+    fn font_metric(&self, _: &mut JSContext, metric: SVGFontMetric) -> Option<f32> {
+        Some(metric.fallback(INITIAL_FONT_SIZE))
     }
     fn viewport_length(&self, _: &mut JSContext) -> Option<f32> {
         Some(100.0)
@@ -503,7 +530,7 @@ pub(crate) use svg_animated_boolean;
 
 /// Define the members of the `SVGFilterPrimitiveStandardAttributes` mixin.
 ///
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
 macro_rules! svg_filter_primitive_standard_attributes {
     () => {
         crate::dom::svg::svgtypes::svg_animated_length!(

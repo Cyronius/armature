@@ -18,7 +18,7 @@ use crate::dom::svg::svgtypes::{
     svg_animated_enumeration, svg_animated_string, svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEBlendElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEBlendElement>
 #[dom_struct]
 pub(crate) struct SVGFEBlendElement {
     svgelement: SVGElement,
@@ -92,6 +92,6 @@ impl SVGFEBlendElementMethods<crate::DomTypeHolder> for SVGFEBlendElement {
         1
     );
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

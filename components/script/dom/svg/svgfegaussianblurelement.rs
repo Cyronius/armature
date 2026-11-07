@@ -19,7 +19,7 @@ use crate::dom::svg::svgtypes::{
     svg_filter_primitive_standard_attributes, svg_set_std_deviation,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEGaussianBlurElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEGaussianBlurElement>
 #[dom_struct]
 pub(crate) struct SVGFEGaussianBlurElement {
     svgelement: SVGElement,
@@ -77,7 +77,7 @@ impl SVGFEGaussianBlurElementMethods<crate::DomTypeHolder> for SVGFEGaussianBlur
         3
     );
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
     svg_set_std_deviation!();
 }

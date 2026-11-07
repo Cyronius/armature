@@ -9,8 +9,8 @@ interface SVGUseElement : SVGGraphicsElement {
   [SameObject] readonly attribute SVGAnimatedLength y;
   [SameObject] readonly attribute SVGAnimatedLength width;
   [SameObject] readonly attribute SVGAnimatedLength height;
-  //[SameObject] readonly attribute SVGElement? instanceRoot;
-  //[SameObject] readonly attribute SVGElement? animatedInstanceRoot;
+  [SameObject] readonly attribute SVGElement? instanceRoot;
+  [SameObject] readonly attribute SVGElement? animatedInstanceRoot;
 };
 
 SVGUseElement includes SVGURIReference;

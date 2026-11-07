@@ -16,7 +16,7 @@ use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::svg_filter_primitive_standard_attributes;
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEMergeElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEMergeElement>
 #[dom_struct]
 pub(crate) struct SVGFEMergeElement {
     svgelement: SVGElement,
@@ -63,6 +63,6 @@ impl VirtualMethods for SVGFEMergeElement {
 }
 
 impl SVGFEMergeElementMethods<crate::DomTypeHolder> for SVGFEMergeElement {
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

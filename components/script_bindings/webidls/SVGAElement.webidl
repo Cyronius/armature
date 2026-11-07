@@ -14,6 +14,20 @@ interface SVGAElement : SVGGraphicsElement {
   [CEReactions] attribute DOMString type;
 
   [CEReactions] attribute DOMString referrerPolicy;
+
+  // The members of HTMLHyperlinkElementUtils other than href, which is the href of
+  // SVGURIReference.
+  // <https://svgwg.org/svg2-draft/linking.html#InterfaceSVGAElement>
+  readonly attribute USVString origin;
+  [CEReactions] attribute USVString protocol;
+  [CEReactions] attribute USVString username;
+  [CEReactions] attribute USVString password;
+  [CEReactions] attribute USVString host;
+  [CEReactions] attribute USVString hostname;
+  [CEReactions] attribute USVString port;
+  [CEReactions] attribute USVString pathname;
+  [CEReactions] attribute USVString search;
+  [CEReactions] attribute USVString hash;
 };
 
 SVGAElement includes SVGURIReference;

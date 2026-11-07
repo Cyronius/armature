@@ -19,7 +19,7 @@ use crate::dom::svg::svgtypes::{
     svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEMorphologyElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEMorphologyElement>
 #[dom_struct]
 pub(crate) struct SVGFEMorphologyElement {
     svgelement: SVGElement,
@@ -77,6 +77,6 @@ impl SVGFEMorphologyElementMethods<crate::DomTypeHolder> for SVGFEMorphologyElem
     svg_animated_number!(RadiusX, "radiusX", "radius", First, 0.0);
     svg_animated_number!(RadiusY, "radiusY", "radius", Second, 0.0);
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

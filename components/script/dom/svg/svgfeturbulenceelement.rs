@@ -19,7 +19,7 @@ use crate::dom::svg::svgtypes::{
     svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFETurbulenceElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFETurbulenceElement>
 #[dom_struct]
 pub(crate) struct SVGFETurbulenceElement {
     svgelement: SVGElement,
@@ -97,6 +97,6 @@ impl SVGFETurbulenceElementMethods<crate::DomTypeHolder> for SVGFETurbulenceElem
         2
     );
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }

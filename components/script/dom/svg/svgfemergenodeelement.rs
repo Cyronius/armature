@@ -16,7 +16,7 @@ use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::svg_animated_string;
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEMergeNodeElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEMergeNodeElement>
 #[dom_struct]
 pub(crate) struct SVGFEMergeNodeElement {
     svgelement: SVGElement,

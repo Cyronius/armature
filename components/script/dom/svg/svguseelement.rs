@@ -12,6 +12,7 @@ use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
+use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
 use crate::dom::svg::svgtypes::{SVGLengthValue, svg_animated_length, svg_uri_reference};
 
@@ -54,6 +55,19 @@ impl VirtualMethods for SVGUseElement {
 }
 
 impl SVGUseElementMethods<crate::DomTypeHolder> for SVGUseElement {
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGUseElement__instanceRoot>
+    ///
+    /// Servo does not create the shadow tree of `use` elements: it copies the referenced
+    /// element when it serializes the SVG for rendering. So there is no instance root.
+    fn GetInstanceRoot(&self) -> Option<crate::dom::bindings::root::DomRoot<SVGElement>> {
+        None
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGUseElement__animatedInstanceRoot>
+    fn GetAnimatedInstanceRoot(&self) -> Option<crate::dom::bindings::root::DomRoot<SVGElement>> {
+        None
+    }
+
     svg_animated_length!(X, "x", Horizontal, SVGLengthValue::number(0.0));
     svg_animated_length!(Y, "y", Vertical, SVGLengthValue::number(0.0));
     svg_animated_length!(Width, "width", Horizontal, SVGLengthValue::number(0.0));

@@ -16,7 +16,7 @@ use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::svg_animated_number;
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFESpotLightElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFESpotLightElement>
 #[dom_struct]
 pub(crate) struct SVGFESpotLightElement {
     svgelement: SVGElement,

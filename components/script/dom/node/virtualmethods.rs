@@ -91,6 +91,7 @@ use crate::dom::svg::svgradialgradientelement::SVGRadialGradientElement;
 use crate::dom::svg::svgrectelement::SVGRectElement;
 use crate::dom::svg::svgscriptelement::SVGScriptElement;
 use crate::dom::svg::svgstopelement::SVGStopElement;
+use crate::dom::svg::svgstyleelement::SVGStyleElement;
 use crate::dom::svg::svgsvgelement::SVGSVGElement;
 use crate::dom::svg::svgsymbolelement::SVGSymbolElement;
 use crate::dom::svg::svgtextelement::SVGTextElement;
@@ -459,6 +460,9 @@ pub(crate) fn vtable_for(node: &Node) -> &dyn VirtualMethods {
         NodeTypeId::Element(ElementTypeId::SVGElement(SVGElementTypeId::SVGGraphicsElement(
             SVGGraphicsElementTypeId::SVGAElement,
         ))) => node.downcast::<SVGAElement>().unwrap() as &dyn VirtualMethods,
+        NodeTypeId::Element(ElementTypeId::SVGElement(SVGElementTypeId::SVGStyleElement)) => {
+            node.downcast::<SVGStyleElement>().unwrap() as &dyn VirtualMethods
+        },
         // The other SVG elements, which only have the virtual methods of SVGElement.
         NodeTypeId::Element(ElementTypeId::SVGElement(_)) => {
             node.downcast::<SVGElement>().unwrap() as &dyn VirtualMethods

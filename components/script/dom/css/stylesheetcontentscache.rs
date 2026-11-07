@@ -17,7 +17,7 @@ use stylo_atoms::Atom;
 use crate::css::stylesheet_loader::ElementStylesheetLoader;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::node::NodeTraits;
-use crate::dom::types::HTMLElement;
+use crate::dom::types::Element;
 
 const MAX_LENGTH_OF_TEXT_INSERTED_INTO_TABLE: usize = 1024;
 const UNIQUE_OWNED: usize = 2;
@@ -86,7 +86,7 @@ impl StylesheetContentsCache {
         shared_lock: &SharedRwLock,
         url_data: UrlExtraData,
         quirks_mode: QuirksMode,
-        element: &HTMLElement,
+        element: &Element,
     ) -> (
         Option<StylesheetContentsCacheKey>,
         ServoArc<StylesheetContents>,

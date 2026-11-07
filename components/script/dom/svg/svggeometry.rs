@@ -258,6 +258,25 @@ pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<R
     }
     let local_name = element.upcast::<Element>().local_name().clone();
     match local_name {
+        local_name!("text") | local_name!("tspan") | local_name!("textPath") => {
+            // Text that is not displayed has no geometry.
+            let hidden = element
+                .upcast::<Node>()
+                .inclusive_ancestors(crate::dom::iterators::ShadowIncluding::No)
+                .filter_map(DomRoot::downcast::<SVGElement>)
+                .any(|ancestor| is_display_none(&ancestor));
+            if hidden {
+                return Some(Rect::ZERO);
+            }
+            let characters = crate::dom::svg::svgtext::element_characters(cx, element);
+            Some(
+                characters
+                    .iter()
+                    .map(|character| character.extent())
+                    .reduce(|union, extent| union.union(extent))
+                    .unwrap_or_default(),
+            )
+        },
         local_name!("use") => {
             let x = length(
                 cx,
@@ -516,4 +535,33 @@ pub(crate) fn stroke_width(style: &style::properties::ComputedValues) -> f64 {
             as f64,
         _ => 1.0,
     }
+}
+
+/// Whether `element` is a basic shape or a path.
+pub(crate) fn shape_geometry_kind(element: &SVGElement) -> bool {
+    matches!(
+        element.upcast::<Element>().local_name(),
+        &local_name!("rect") |
+            &local_name!("circle") |
+            &local_name!("ellipse") |
+            &local_name!("line") |
+            &local_name!("polyline") |
+            &local_name!("polygon") |
+            &local_name!("path")
+    )
+}
+
+/// The transform from the user space of `element` to the user space of its ancestor
+/// `ancestor`.
+pub(crate) fn transform_to_user_space_of(element: &SVGElement, ancestor: &SVGElement) -> Affine {
+    let mut transform = element_transform(element);
+    for node in element.upcast::<Node>().ancestors() {
+        if &*node == ancestor.upcast::<Node>() {
+            break;
+        }
+        if let Some(svg_element) = node.downcast::<SVGElement>() {
+            transform = element_transform(svg_element) * transform;
+        }
+    }
+    transform
 }

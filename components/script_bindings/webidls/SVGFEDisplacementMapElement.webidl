@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEDisplacementMapElement
+// https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEDisplacementMapElement
 [Exposed=Window]
 interface SVGFEDisplacementMapElement : SVGElement {
   const unsigned short SVG_CHANNEL_UNKNOWN = 0;

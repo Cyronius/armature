@@ -19,7 +19,7 @@ use crate::dom::svg::svgtypes::{
     svg_filter_primitive_standard_attributes,
 };
 
-/// <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFEDisplacementMapElement>
+/// <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFEDisplacementMapElement>
 #[dom_struct]
 pub(crate) struct SVGFEDisplacementMapElement {
     svgelement: SVGElement,
@@ -84,6 +84,6 @@ impl SVGFEDisplacementMapElementMethods<crate::DomTypeHolder> for SVGFEDisplacem
         4
     );
 
-    // <https://drafts.fxtf.org/filter-effects/#InterfaceSVGFilterPrimitiveStandardAttributes>
+    // <https://w3c.github.io/fxtf-drafts/filter-effects-1/#InterfaceSVGFilterPrimitiveStandardAttributes>
     svg_filter_primitive_standard_attributes!();
 }
