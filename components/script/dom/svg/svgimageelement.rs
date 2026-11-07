@@ -14,6 +14,7 @@ use net_traits::image_cache::{
 use net_traits::request::InternalRequest;
 use style::attr::AttrValue;
 
+use crate::dom::bindings::codegen::Bindings::SVGImageElementBinding::SVGImageElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::root::DomRoot;
@@ -26,6 +27,9 @@ use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{BindContext, Node, NodeTraits};
 use crate::dom::performance::performanceresourcetiming::InitiatorType;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
+use crate::dom::svg::svgtypes::{
+    SVGLengthValue, svg_animated_length, svg_preserve_aspect_ratio, svg_uri_reference,
+};
 use crate::dom::window::layout_image::fetch_image_into_cache;
 
 /// <https://svgwg.org/svg2-draft/embedded.html#Placement>
@@ -232,4 +236,16 @@ impl VirtualMethods for SVGImageElement {
                 .parse_plain_attribute(name, value),
         }
     }
+}
+
+impl SVGImageElementMethods<crate::DomTypeHolder> for SVGImageElement {
+    svg_preserve_aspect_ratio!();
+
+    svg_animated_length!(X, "x", Horizontal, SVGLengthValue::number(0.0));
+    svg_animated_length!(Y, "y", Vertical, SVGLengthValue::number(0.0));
+    svg_animated_length!(Width, "width", Horizontal, SVGLengthValue::number(0.0));
+    svg_animated_length!(Height, "height", Vertical, SVGLengthValue::number(0.0));
+
+    // <https://svgwg.org/svg2-draft/types.html#__svg__SVGURIReference__href>
+    svg_uri_reference!();
 }

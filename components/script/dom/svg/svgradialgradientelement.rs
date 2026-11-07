@@ -6,12 +6,14 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use js::rust::HandleObject;
 
+use crate::dom::bindings::codegen::Bindings::SVGRadialGradientElementBinding::SVGRadialGradientElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svggradientelement::SVGGradientElement;
+use crate::dom::svg::svgtypes::{SVGLengthValue, svg_animated_length};
 
 #[dom_struct]
 pub(crate) struct SVGRadialGradientElement {
@@ -51,4 +53,13 @@ impl VirtualMethods for SVGRadialGradientElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<SVGGradientElement>() as &dyn VirtualMethods)
     }
+}
+
+impl SVGRadialGradientElementMethods<crate::DomTypeHolder> for SVGRadialGradientElement {
+    svg_animated_length!(Cx, "cx", Horizontal, SVGLengthValue::percentage(50.0));
+    svg_animated_length!(Cy, "cy", Vertical, SVGLengthValue::percentage(50.0));
+    svg_animated_length!(R, "r", Other, SVGLengthValue::percentage(50.0));
+    svg_animated_length!(Fx, "fx", Horizontal, SVGLengthValue::percentage(50.0));
+    svg_animated_length!(Fy, "fy", Vertical, SVGLengthValue::percentage(50.0));
+    svg_animated_length!(Fr, "fr", Other, SVGLengthValue::percentage(0.0));
 }

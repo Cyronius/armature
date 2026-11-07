@@ -5,16 +5,16 @@
 // https://svgwg.org/svg2-draft/linking.html#InterfaceSVGAElement
 [Exposed=Window]
 interface SVGAElement : SVGGraphicsElement {
-  //[SameObject] readonly attribute SVGAnimatedString target;
-  //attribute DOMString download;
-  //attribute USVString ping;
-  //attribute DOMString rel;
-  //[SameObject, PutForwards=value] readonly attribute DOMTokenList relList;
-  //attribute DOMString hreflang;
-  //attribute DOMString type;
+  [SameObject] readonly attribute SVGAnimatedString target;
+  [CEReactions] attribute DOMString download;
+  [CEReactions] attribute USVString ping;
+  [CEReactions] attribute DOMString rel;
+  [SameObject, PutForwards=value] readonly attribute DOMTokenList relList;
+  [CEReactions] attribute DOMString hreflang;
+  [CEReactions] attribute DOMString type;
 
-  //attribute DOMString referrerPolicy;
+  [CEReactions] attribute DOMString referrerPolicy;
 };
 
-// SVGAElement includes SVGURIReference;
+SVGAElement includes SVGURIReference;
 // SVGAElement includes HTMLHyperlinkElementUtils;

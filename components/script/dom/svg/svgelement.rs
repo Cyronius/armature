@@ -6,8 +6,10 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::JSContext;
 use js::rust::HandleObject;
+use script_bindings::cell::DomRefCell;
 use script_bindings::codegen::GenericBindings::ElementBinding::ScrollLogicalPosition;
 use script_bindings::codegen::GenericBindings::WindowBinding::ScrollBehavior;
+use script_bindings::reflector::DomObject;
 use script_bindings::str::DOMString;
 use style::attr::AttrValue;
 use style::parser::ParserContext;
@@ -32,18 +34,66 @@ use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::node::focus::FocusTrigger;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{Node, NodeTraits};
+use crate::dom::svg::svganimatedangle::SVGAnimatedAngle;
+use crate::dom::svg::svganimatedboolean::SVGAnimatedBoolean;
+use crate::dom::svg::svganimatedenumeration::{SVGAnimatedEnumeration, SVGEnumerationKeywords};
+use crate::dom::svg::svganimatedinteger::SVGAnimatedInteger;
+use crate::dom::svg::svganimatedlength::SVGAnimatedLength;
+use crate::dom::svg::svganimatedlengthlist::SVGAnimatedLengthList;
+use crate::dom::svg::svganimatednumber::{SVGAnimatedNumber, SVGNumberPart};
+use crate::dom::svg::svganimatednumberlist::SVGAnimatedNumberList;
+use crate::dom::svg::svganimatedpreserveaspectratio::SVGAnimatedPreserveAspectRatio;
+use crate::dom::svg::svganimatedrect::SVGAnimatedRect;
+use crate::dom::svg::svganimatedstring::SVGAnimatedString;
+use crate::dom::svg::svganimatedtransformlist::SVGAnimatedTransformList;
 use crate::dom::svg::svgcircleelement::SVGCircleElement;
 use crate::dom::svg::svgellipseelement::SVGEllipseElement;
 use crate::dom::svg::svgimageelement::SVGImageElement;
 use crate::dom::svg::svgpathelement::SVGPathElement;
+use crate::dom::svg::svgpointlist::SVGPointList;
 use crate::dom::svg::svgrectelement::SVGRectElement;
+use crate::dom::svg::svgstringlist::SVGStringList;
 use crate::dom::svg::svgsvgelement::SVGSVGElement;
+use crate::dom::svg::svgtypes::{SVGLengthDirection, SVGLengthValue};
 use crate::dom::window::scrolling_box::{ScrollAxisState, ScrollRequirement};
+
+/// An object of the SVG DOM that reflects an attribute of an element, like an
+/// `SVGAnimatedLength`, which the element keeps so that its IDL attribute always returns
+/// the same object.
+#[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+enum SVGAnimatedProperty {
+    Angle(Dom<SVGAnimatedAngle>),
+    Boolean(Dom<SVGAnimatedBoolean>),
+    Enumeration(Dom<SVGAnimatedEnumeration>),
+    Integer(Dom<SVGAnimatedInteger>),
+    Length(Dom<SVGAnimatedLength>),
+    LengthList(Dom<SVGAnimatedLengthList>),
+    Number(Dom<SVGAnimatedNumber>),
+    NumberList(Dom<SVGAnimatedNumberList>),
+    PointList(Dom<SVGPointList>),
+    PreserveAspectRatio(Dom<SVGAnimatedPreserveAspectRatio>),
+    Rect(Dom<SVGAnimatedRect>),
+    String(Dom<SVGAnimatedString>),
+    StringList(Dom<SVGStringList>),
+    TransformList(Dom<SVGAnimatedTransformList>),
+}
+
+#[derive(JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+struct SVGAnimatedPropertyEntry {
+    /// The name of the IDL attribute.
+    #[ignore_malloc_size_of = "static"]
+    name: &'static str,
+    property: SVGAnimatedProperty,
+}
 
 #[dom_struct]
 pub(crate) struct SVGElement {
     element: Element,
     style_decl: MutNullableDom<CSSStyleDeclaration>,
+    /// The objects of the SVG DOM that reflect the attributes of this element.
+    animated_properties: DomRefCell<Vec<SVGAnimatedPropertyEntry>>,
 }
 
 impl SVGElement {
@@ -64,6 +114,7 @@ impl SVGElement {
         SVGElement {
             element: Element::new_inherited_with_state(state, tag_name, ns!(svg), prefix, document),
             style_decl: Default::default(),
+            animated_properties: Default::default(),
         }
     }
 
@@ -84,6 +135,336 @@ impl SVGElement {
 
     fn as_element(&self) -> &Element {
         self.upcast::<Element>()
+    }
+
+    /// The value of the attribute `name`, which has no namespace. SVG attribute names may
+    /// have upper case letters.
+    pub(crate) fn svg_attribute(&self, name: &LocalName) -> Option<String> {
+        self.as_element()
+            .get_attribute_string_value_with_namespace(&ns!(), name)
+    }
+
+    /// Set the attribute `name`, which has no namespace, to `value`.
+    pub(crate) fn set_svg_attribute(&self, cx: &mut JSContext, name: &LocalName, value: String) {
+        let element = self.as_element();
+        let value = element.parse_attribute(&ns!(), name, DOMString::from(value));
+        element.set_attribute_with_namespace(cx, name.clone(), value, name.clone(), ns!(), None);
+    }
+
+    /// The object that the IDL attribute `name` returns, which `create` creates the first
+    /// time.
+    fn animated_property<T: DomObject>(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        get: impl Fn(&SVGAnimatedProperty) -> Option<DomRoot<T>>,
+        create: impl FnOnce(&mut JSContext) -> DomRoot<T>,
+        wrap: impl FnOnce(&T) -> SVGAnimatedProperty,
+    ) -> DomRoot<T> {
+        if let Some(property) = self
+            .animated_properties
+            .borrow()
+            .iter()
+            .find(|entry| entry.name == name)
+            .and_then(|entry| get(&entry.property))
+        {
+            return property;
+        }
+        let object = create(cx);
+        self.animated_properties
+            .borrow_mut()
+            .push(SVGAnimatedPropertyEntry {
+                name,
+                property: wrap(&object),
+            });
+        object
+    }
+
+    /// The `SVGAnimatedLength` of the IDL attribute `name`, which reflects the attribute
+    /// `attribute`.
+    pub(crate) fn animated_length(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+        direction: SVGLengthDirection,
+        initial: SVGLengthValue,
+    ) -> DomRoot<SVGAnimatedLength> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::Length(length) => Some(length.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedLength::new(cx, self, attribute, direction, initial),
+            |object| SVGAnimatedProperty::Length(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedNumber` of the IDL attribute `name`.
+    pub(crate) fn animated_number(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+        part: SVGNumberPart,
+        initial: f32,
+    ) -> DomRoot<SVGAnimatedNumber> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::Number(number) => Some(number.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedNumber::new(cx, self, attribute, part, initial),
+            |object| SVGAnimatedProperty::Number(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedInteger` of the IDL attribute `name`.
+    pub(crate) fn animated_integer(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+        part: SVGNumberPart,
+        initial: i32,
+    ) -> DomRoot<SVGAnimatedInteger> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::Integer(integer) => Some(integer.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedInteger::new(cx, self, attribute, part, initial),
+            |object| SVGAnimatedProperty::Integer(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedEnumeration` of the IDL attribute `name`.
+    pub(crate) fn animated_enumeration(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+        keywords: SVGEnumerationKeywords,
+        initial: u16,
+    ) -> DomRoot<SVGAnimatedEnumeration> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::Enumeration(enumeration) => Some(enumeration.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedEnumeration::new(cx, self, attribute, keywords, initial),
+            |object| SVGAnimatedProperty::Enumeration(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedBoolean` of the IDL attribute `name`.
+    pub(crate) fn animated_boolean(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+    ) -> DomRoot<SVGAnimatedBoolean> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::Boolean(boolean) => Some(boolean.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedBoolean::new(cx, self, attribute),
+            |object| SVGAnimatedProperty::Boolean(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedString` of the IDL attribute `name`.
+    pub(crate) fn animated_string(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+    ) -> DomRoot<SVGAnimatedString> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::String(string) => Some(string.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedString::new(cx, self, attribute),
+            |object| SVGAnimatedProperty::String(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedNumberList` of the IDL attribute `name`.
+    pub(crate) fn animated_number_list(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+    ) -> DomRoot<SVGAnimatedNumberList> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::NumberList(list) => Some(list.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedNumberList::new(cx, self, attribute),
+            |object| SVGAnimatedProperty::NumberList(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedLengthList` of the IDL attribute `name`.
+    pub(crate) fn animated_length_list(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+        direction: SVGLengthDirection,
+    ) -> DomRoot<SVGAnimatedLengthList> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::LengthList(list) => Some(list.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedLengthList::new(cx, self, attribute, direction),
+            |object| SVGAnimatedProperty::LengthList(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGStringList` of the IDL attribute `name`, which reflects the attribute with
+    /// the same name.
+    pub(crate) fn string_list(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        comma_separated: bool,
+    ) -> DomRoot<SVGStringList> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::StringList(list) => Some(list.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGStringList::new(cx, self, LocalName::from(name), comma_separated),
+            |object| SVGAnimatedProperty::StringList(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `points` (or with `read_only`, the `animatedPoints`) of a polyline or polygon.
+    ///
+    /// <https://svgwg.org/svg2-draft/shapes.html#InterfaceSVGAnimatedPoints>
+    pub(crate) fn point_list(&self, cx: &mut JSContext, read_only: bool) -> DomRoot<SVGPointList> {
+        let name = if read_only {
+            "animatedPoints"
+        } else {
+            "points"
+        };
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::PointList(list) => Some(list.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGPointList::new(cx, self, read_only),
+            |object| SVGAnimatedProperty::PointList(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedTransformList` of the IDL attribute `name`.
+    pub(crate) fn animated_transform_list(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+    ) -> DomRoot<SVGAnimatedTransformList> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::TransformList(list) => Some(list.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedTransformList::new(cx, self, attribute),
+            |object| SVGAnimatedProperty::TransformList(Dom::from_ref(object)),
+        )
+    }
+
+    /// The `SVGAnimatedAngle` of the IDL attribute `name`.
+    pub(crate) fn animated_angle(
+        &self,
+        cx: &mut JSContext,
+        name: &'static str,
+        attribute: LocalName,
+    ) -> DomRoot<SVGAnimatedAngle> {
+        self.animated_property(
+            cx,
+            name,
+            |property| match property {
+                SVGAnimatedProperty::Angle(angle) => Some(angle.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedAngle::new(cx, self, attribute),
+            |object| SVGAnimatedProperty::Angle(Dom::from_ref(object)),
+        )
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGFitToViewBox__viewBox>
+    pub(crate) fn view_box(&self, cx: &mut JSContext) -> DomRoot<SVGAnimatedRect> {
+        self.animated_property(
+            cx,
+            "viewBox",
+            |property| match property {
+                SVGAnimatedProperty::Rect(rect) => Some(rect.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedRect::new(cx, self, local_name!("viewBox")),
+            |object| SVGAnimatedProperty::Rect(Dom::from_ref(object)),
+        )
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGFitToViewBox__preserveAspectRatio>
+    pub(crate) fn preserve_aspect_ratio(
+        &self,
+        cx: &mut JSContext,
+    ) -> DomRoot<SVGAnimatedPreserveAspectRatio> {
+        self.animated_property(
+            cx,
+            "preserveAspectRatio",
+            |property| match property {
+                SVGAnimatedProperty::PreserveAspectRatio(value) => Some(value.as_rooted()),
+                _ => None,
+            },
+            |cx| SVGAnimatedPreserveAspectRatio::new(cx, self),
+            |object| SVGAnimatedProperty::PreserveAspectRatio(Dom::from_ref(object)),
+        )
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGURIReference__href>
+    pub(crate) fn href(&self, cx: &mut JSContext) -> DomRoot<SVGAnimatedString> {
+        self.animated_string(cx, "href", local_name!("href"))
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGElement__viewportElement>
+    ///
+    /// The nearest ancestor `svg` element, which establishes the viewport of this one.
+    pub(crate) fn viewport_element(&self) -> Option<DomRoot<SVGSVGElement>> {
+        self.upcast::<Node>()
+            .ancestors()
+            .take_while(|ancestor| ancestor.is::<SVGElement>())
+            .find_map(DomRoot::downcast::<SVGSVGElement>)
     }
 }
 
@@ -165,6 +546,21 @@ impl VirtualMethods for SVGElement {
 }
 
 impl SVGElementMethods<crate::DomTypeHolder> for SVGElement {
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGElement__className>
+    fn ClassName(&self, cx: &mut JSContext) -> DomRoot<SVGAnimatedString> {
+        self.animated_string(cx, "className", local_name!("class"))
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGElement__ownerSVGElement>
+    fn GetOwnerSVGElement(&self) -> Option<DomRoot<SVGSVGElement>> {
+        self.viewport_element()
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGElement__viewportElement>
+    fn GetViewportElement(&self) -> Option<DomRoot<SVGElement>> {
+        self.viewport_element().map(DomRoot::upcast)
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#the-style-attribute>
     fn Style(&self, cx: &mut JSContext) -> DomRoot<CSSStyleDeclaration> {
         self.style_decl.or_init(|| {

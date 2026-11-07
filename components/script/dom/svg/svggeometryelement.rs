@@ -6,10 +6,19 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use stylo_dom::ElementState;
 
+use crate::dom::bindings::codegen::Bindings::DOMPointBinding::DOMPointInit;
+use crate::dom::bindings::codegen::Bindings::SVGGeometryElementBinding::SVGGeometryElementMethods;
 use crate::dom::bindings::inheritance::Castable;
+use crate::dom::bindings::num::Finite;
+use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
+use crate::dom::dompoint::DOMPoint;
+use crate::dom::element::Element;
+use crate::dom::node::NodeTraits;
 use crate::dom::node::virtualmethods::VirtualMethods;
+use crate::dom::svg::svggeometry;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
+use crate::dom::svg::svgtypes::svg_animated_number;
 
 #[dom_struct]
 pub(crate) struct SVGGeometryElement {
@@ -48,4 +57,64 @@ impl VirtualMethods for SVGGeometryElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<SVGGraphicsElement>() as &dyn VirtualMethods)
     }
+}
+
+impl SVGGeometryElement {
+    fn geometry(&self, cx: &mut js::context::JSContext) -> Option<svggeometry::SVGShapeGeometry> {
+        svggeometry::shape_geometry(cx, self.upcast())
+    }
+}
+
+impl SVGGeometryElementMethods<crate::DomTypeHolder> for SVGGeometryElement {
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGGeometryElement__isPointInFill>
+    fn IsPointInFill(&self, cx: &mut js::context::JSContext, point: &DOMPointInit) -> bool {
+        let Some(geometry) = self.geometry(cx) else {
+            return false;
+        };
+        let point = kurbo::Point::new(point.x, point.y);
+        let winding = geometry.winding(point);
+        let even_odd = self.upcast::<Element>().style().is_some_and(|style| {
+            style.get_inherited_svg().fill_rule ==
+                style::values::generics::basic_shape::FillRule::Evenodd
+        });
+        if even_odd {
+            winding % 2 != 0
+        } else {
+            winding != 0
+        }
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGGeometryElement__isPointInStroke>
+    fn IsPointInStroke(&self, cx: &mut js::context::JSContext, point: &DOMPointInit) -> bool {
+        let Some(geometry) = self.geometry(cx) else {
+            return false;
+        };
+        let stroke_width = self
+            .upcast::<Element>()
+            .style()
+            .map_or(1.0, |style| svggeometry::stroke_width(&style));
+        geometry.distance_to_outline(kurbo::Point::new(point.x, point.y)) <= stroke_width / 2.0
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGGeometryElement__getTotalLength>
+    fn GetTotalLength(&self, cx: &mut js::context::JSContext) -> Finite<f32> {
+        let length = self
+            .geometry(cx)
+            .map_or(0.0, |geometry| geometry.total_length());
+        Finite::wrap(length as f32)
+    }
+
+    /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGGeometryElement__getPointAtLength>
+    fn GetPointAtLength(
+        &self,
+        cx: &mut js::context::JSContext,
+        distance: Finite<f32>,
+    ) -> DomRoot<DOMPoint> {
+        let point = self.geometry(cx).map_or(kurbo::Point::ZERO, |geometry| {
+            geometry.point_at_length(*distance as f64)
+        });
+        DOMPoint::new(cx, &self.owner_global(), point.x, point.y, 0.0, 1.0)
+    }
+
+    svg_animated_number!(PathLength, "pathLength", "pathLength", Whole, 0.0);
 }

@@ -7,14 +7,14 @@
 interface SVGGradientElement : SVGElement {
 
   // Spread Method Types
-  //const unsigned short SVG_SPREADMETHOD_UNKNOWN = 0;
-  //const unsigned short SVG_SPREADMETHOD_PAD = 1;
-  //const unsigned short SVG_SPREADMETHOD_REFLECT = 2;
-  //const unsigned short SVG_SPREADMETHOD_REPEAT = 3;
+  const unsigned short SVG_SPREADMETHOD_UNKNOWN = 0;
+  const unsigned short SVG_SPREADMETHOD_PAD = 1;
+  const unsigned short SVG_SPREADMETHOD_REFLECT = 2;
+  const unsigned short SVG_SPREADMETHOD_REPEAT = 3;
 
-  //[SameObject] readonly attribute SVGAnimatedEnumeration gradientUnits;
-  //[SameObject] readonly attribute SVGAnimatedTransformList gradientTransform;
-  //[SameObject] readonly attribute SVGAnimatedEnumeration spreadMethod;
+  [SameObject] readonly attribute SVGAnimatedEnumeration gradientUnits;
+  [SameObject] readonly attribute SVGAnimatedTransformList gradientTransform;
+  [SameObject] readonly attribute SVGAnimatedEnumeration spreadMethod;
 };
 
-//SVGGradientElement includes SVGURIReference;
+SVGGradientElement includes SVGURIReference;

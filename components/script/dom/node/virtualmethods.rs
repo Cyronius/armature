@@ -459,7 +459,8 @@ pub(crate) fn vtable_for(node: &Node) -> &dyn VirtualMethods {
         NodeTypeId::Element(ElementTypeId::SVGElement(SVGElementTypeId::SVGGraphicsElement(
             SVGGraphicsElementTypeId::SVGAElement,
         ))) => node.downcast::<SVGAElement>().unwrap() as &dyn VirtualMethods,
-        NodeTypeId::Element(ElementTypeId::SVGElement(SVGElementTypeId::SVGElement)) => {
+        // The other SVG elements, which only have the virtual methods of SVGElement.
+        NodeTypeId::Element(ElementTypeId::SVGElement(_)) => {
             node.downcast::<SVGElement>().unwrap() as &dyn VirtualMethods
         },
         NodeTypeId::Element(ElementTypeId::Element) => {

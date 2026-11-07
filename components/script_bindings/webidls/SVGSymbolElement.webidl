@@ -7,4 +7,4 @@
 interface SVGSymbolElement : SVGGraphicsElement {
 };
 
-//SVGSymbolElement includes SVGFitToViewBox;
+SVGSymbolElement includes SVGFitToViewBox;

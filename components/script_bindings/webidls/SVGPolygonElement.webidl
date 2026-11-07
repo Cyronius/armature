@@ -7,4 +7,4 @@
 interface SVGPolygonElement : SVGGeometryElement {
 };
 
-// SVGPolygonElement includes SVGAnimatedPoints;
+SVGPolygonElement includes SVGAnimatedPoints;

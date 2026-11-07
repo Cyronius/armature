@@ -23,16 +23,20 @@ use crate::dom::bindings::codegen::UnionTypes::StringOrUnrestrictedDoubleSequenc
 use crate::dom::bindings::error;
 use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::inheritance::Castable;
-use crate::dom::bindings::root::DomRoot;
+use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::dommatrixreadonly::{
     DOMMatrixReadOnly, dommatrixinit_to_matrix, entries_to_matrix, transform_to_matrix,
 };
 use crate::dom::globalscope::GlobalScope;
+use crate::dom::svg::svgtransform::SVGTransform;
 use crate::dom::window::Window;
 
 #[dom_struct]
 pub(crate) struct DOMMatrix {
     parent: DOMMatrixReadOnly,
+    /// For the matrix of an `SVGTransform`, the transform, which changes into a matrix
+    /// transform when script changes the matrix.
+    svg_transform: MutNullableDom<SVGTransform>,
 }
 
 #[expect(non_snake_case)]
@@ -61,6 +65,28 @@ impl DOMMatrix {
     pub(crate) fn new_inherited(is2D: bool, matrix: Transform3D<f64>) -> Self {
         DOMMatrix {
             parent: DOMMatrixReadOnly::new_inherited(is2D, matrix),
+            svg_transform: Default::default(),
+        }
+    }
+
+    /// Make this the matrix of `transform`.
+    pub(crate) fn set_svg_transform(&self, transform: &SVGTransform) {
+        self.svg_transform.set(Some(transform));
+    }
+
+    /// Change a component of the matrix with `set`, unless it belongs to a read-only
+    /// `SVGTransform`, and tell an `SVGTransform` that owns it.
+    fn set_component(&self, cx: &mut JSContext, set: impl FnOnce(&DOMMatrixReadOnly)) {
+        let transform = self.svg_transform.get();
+        if transform
+            .as_ref()
+            .is_some_and(|transform| transform.is_read_only())
+        {
+            return;
+        }
+        set(self.upcast::<DOMMatrixReadOnly>());
+        if let Some(transform) = transform {
+            transform.matrix_changed(cx);
         }
     }
 
@@ -161,8 +187,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m11>
-    fn SetM11(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m11(value);
+    fn SetM11(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m11(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m12>
@@ -171,8 +197,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m12>
-    fn SetM12(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m12(value);
+    fn SetM12(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m12(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m13>
@@ -201,8 +227,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m21>
-    fn SetM21(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m21(value);
+    fn SetM21(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m21(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m22>
@@ -211,8 +237,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m22>
-    fn SetM22(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m22(value);
+    fn SetM22(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m22(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m23>
@@ -281,8 +307,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m41>
-    fn SetM41(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m41(value);
+    fn SetM41(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m41(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m42>
@@ -291,8 +317,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m42>
-    fn SetM42(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m42(value);
+    fn SetM42(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m42(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-m43>
@@ -321,8 +347,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-a>
-    fn SetA(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m11(value);
+    fn SetA(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m11(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-b>
@@ -331,8 +357,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-b>
-    fn SetB(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m12(value);
+    fn SetB(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m12(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-c>
@@ -341,8 +367,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-c>
-    fn SetC(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m21(value);
+    fn SetC(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m21(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-d>
@@ -351,8 +377,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-d>
-    fn SetD(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m22(value);
+    fn SetD(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m22(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-e>
@@ -361,8 +387,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-e>
-    fn SetE(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m41(value);
+    fn SetE(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m41(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-f>
@@ -371,8 +397,8 @@ impl DOMMatrixMethods<crate::DomTypeHolder> for DOMMatrix {
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrixreadonly-f>
-    fn SetF(&self, value: f64) {
-        self.upcast::<DOMMatrixReadOnly>().set_m42(value);
+    fn SetF(&self, cx: &mut JSContext, value: f64) {
+        self.set_component(cx, |matrix| matrix.set_m42(value));
     }
 
     /// <https://drafts.csswg.org/geometry-1/#dom-dommatrix-multiplyself>

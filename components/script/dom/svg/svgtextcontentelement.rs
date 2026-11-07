@@ -6,10 +6,12 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use stylo_dom::ElementState;
 
+use crate::dom::bindings::codegen::Bindings::SVGTextContentElementBinding::SVGTextContentElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::document::Document;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
+use crate::dom::svg::svgtypes::{SVGLengthValue, svg_animated_enumeration, svg_animated_length};
 
 #[dom_struct]
 pub(crate) struct SVGTextContentElement {
@@ -48,4 +50,20 @@ impl VirtualMethods for SVGTextContentElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<SVGGraphicsElement>() as &dyn VirtualMethods)
     }
+}
+
+impl SVGTextContentElementMethods<crate::DomTypeHolder> for SVGTextContentElement {
+    svg_animated_length!(
+        TextLength,
+        "textLength",
+        Horizontal,
+        SVGLengthValue::number(0.0)
+    );
+    svg_animated_enumeration!(
+        LengthAdjust,
+        "lengthAdjust",
+        "lengthAdjust",
+        &[("spacing", 1), ("spacingAndGlyphs", 2)],
+        1
+    );
 }

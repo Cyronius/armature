@@ -5,10 +5,12 @@
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 
+use crate::dom::bindings::codegen::Bindings::SVGTextPositioningElementBinding::SVGTextPositioningElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::document::Document;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svgtextcontentelement::SVGTextContentElement;
+use crate::dom::svg::svgtypes::{svg_animated_length_list, svg_animated_number_list};
 
 #[dom_struct]
 pub(crate) struct SVGTextPositioningElement {
@@ -31,4 +33,12 @@ impl VirtualMethods for SVGTextPositioningElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<SVGTextContentElement>() as &dyn VirtualMethods)
     }
+}
+
+impl SVGTextPositioningElementMethods<crate::DomTypeHolder> for SVGTextPositioningElement {
+    svg_animated_length_list!(X, "x", Horizontal);
+    svg_animated_length_list!(Y, "y", Vertical);
+    svg_animated_length_list!(Dx, "dx", Horizontal);
+    svg_animated_length_list!(Dy, "dy", Vertical);
+    svg_animated_number_list!(Rotate, "rotate", "rotate");
 }

@@ -6,12 +6,14 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use js::rust::HandleObject;
 
+use crate::dom::bindings::codegen::Bindings::SVGCircleElementBinding::SVGCircleElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svggeometryelement::SVGGeometryElement;
+use crate::dom::svg::svgtypes::{SVGLengthValue, svg_animated_length};
 
 #[dom_struct]
 pub(crate) struct SVGCircleElement {
@@ -51,4 +53,10 @@ impl VirtualMethods for SVGCircleElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<SVGGeometryElement>() as &dyn VirtualMethods)
     }
+}
+
+impl SVGCircleElementMethods<crate::DomTypeHolder> for SVGCircleElement {
+    svg_animated_length!(Cx, "cx", Horizontal, SVGLengthValue::number(0.0));
+    svg_animated_length!(Cy, "cy", Vertical, SVGLengthValue::number(0.0));
+    svg_animated_length!(R, "r", Other, SVGLengthValue::number(0.0));
 }

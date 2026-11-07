@@ -18,12 +18,17 @@ use style::values::specified::LengthPercentage;
 use style_traits::ParsingMode;
 use uuid::Uuid;
 
+use crate::dom::bindings::codegen::Bindings::DOMMatrixBinding::DOMMatrix2DInit;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
+use crate::dom::bindings::codegen::Bindings::SVGSVGElementBinding::SVGSVGElementMethods;
+use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{DomRoot, LayoutDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
+use crate::dom::dommatrixreadonly::dommatrix2dinit_to_matrix;
+use crate::dom::dompoint::DOMPoint;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::iterators::ShadowIncluding;
@@ -31,7 +36,16 @@ use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{
     ChildrenMutation, CloneChildrenFlag, Node, NodeDamage, NodeTraits, UnbindContext,
 };
+use crate::dom::svg::svgangle::SVGAngle;
+use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::svggeometry;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
+use crate::dom::svg::svglength::SVGLength;
+use crate::dom::svg::svgnumber::SVGNumber;
+use crate::dom::svg::svgtransform::{SVGTransform, SVGTransformValue};
+use crate::dom::svg::svgtypes::{
+    SVGLengthValue, parse_number, split_list, svg_animated_length, svg_fit_to_view_box,
+};
 
 #[dom_struct]
 pub(crate) struct SVGSVGElement {
@@ -191,6 +205,33 @@ impl SVGSVGElement {
     }
 }
 
+impl SVGSVGElement {
+    /// The size of the viewport that this element establishes, in user units: the size of
+    /// its `viewBox`, or else the size of its box.
+    pub(crate) fn viewport_size(&self, cx: &mut JSContext) -> Option<(f32, f32)> {
+        let view_box = self
+            .upcast::<SVGElement>()
+            .svg_attribute(&local_name!("viewBox"))
+            .and_then(|value| {
+                let numbers = split_list(&value)?
+                    .into_iter()
+                    .map(parse_number)
+                    .collect::<Option<Vec<f32>>>()?;
+                match numbers.as_slice() {
+                    [_, _, width, height] if *width >= 0.0 && *height >= 0.0 => {
+                        Some((*width, *height))
+                    },
+                    _ => None,
+                }
+            });
+        if view_box.is_some() {
+            return view_box;
+        }
+        let (width, height) = svggeometry::svg_viewport_size(cx, self.upcast());
+        Some((width as f32, height as f32))
+    }
+}
+
 impl<'dom> LayoutDom<'dom, SVGSVGElement> {
     pub(crate) fn data(self) -> SVGElementData<'dom> {
         let svg_id = self.unsafe_get().uuid;
@@ -311,5 +352,73 @@ impl VirtualMethods for SVGSVGElement {
             .task_manager()
             .dom_manipulation_task_source()
             .queue_simple_event(self.upcast(), atom!("load"));
+    }
+}
+
+impl SVGSVGElementMethods<crate::DomTypeHolder> for SVGSVGElement {
+    svg_fit_to_view_box!();
+
+    svg_animated_length!(X, "x", Horizontal, SVGLengthValue::number(0.0));
+    svg_animated_length!(Y, "y", Vertical, SVGLengthValue::number(0.0));
+    svg_animated_length!(
+        Width,
+        "width",
+        Horizontal,
+        SVGLengthValue::percentage(100.0)
+    );
+    svg_animated_length!(
+        Height,
+        "height",
+        Vertical,
+        SVGLengthValue::percentage(100.0)
+    );
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGNumber>
+    fn CreateSVGNumber(&self, cx: &mut JSContext) -> DomRoot<SVGNumber> {
+        SVGNumber::new_detached(cx, &self.owner_global())
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGAngle>
+    fn CreateSVGAngle(&self, cx: &mut JSContext) -> DomRoot<SVGAngle> {
+        SVGAngle::new_detached(cx, &self.owner_global())
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGPoint>
+    fn CreateSVGPoint(&self, cx: &mut JSContext) -> DomRoot<DOMPoint> {
+        DOMPoint::new(cx, &self.owner_global(), 0.0, 0.0, 0.0, 1.0)
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGTransform>
+    fn CreateSVGTransform(&self, cx: &mut JSContext) -> DomRoot<SVGTransform> {
+        SVGTransform::new(
+            cx,
+            &self.owner_global(),
+            SVGTransformValue::matrix(kurbo::Affine::IDENTITY),
+            None,
+            false,
+        )
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGTransformFromMatrix>
+    fn CreateSVGTransformFromMatrix(
+        &self,
+        cx: &mut JSContext,
+        matrix: &DOMMatrix2DInit,
+    ) -> Fallible<DomRoot<SVGTransform>> {
+        let matrix = dommatrix2dinit_to_matrix(matrix)?;
+        Ok(SVGTransform::new(
+            cx,
+            &self.owner_global(),
+            SVGTransformValue::matrix(kurbo::Affine::new([
+                matrix.m11, matrix.m12, matrix.m21, matrix.m22, matrix.m31, matrix.m32,
+            ])),
+            None,
+            false,
+        ))
+    }
+
+    /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGLength>
+    fn CreateSVGLength(&self, cx: &mut JSContext) -> DomRoot<SVGLength> {
+        SVGLength::new_detached(cx, &self.owner_global())
     }
 }

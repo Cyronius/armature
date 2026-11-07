@@ -6,12 +6,14 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix};
 use js::rust::HandleObject;
 
+use crate::dom::bindings::codegen::Bindings::SVGSymbolElementBinding::SVGSymbolElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
+use crate::dom::svg::svgtypes::svg_fit_to_view_box;
 
 #[dom_struct]
 pub(crate) struct SVGSymbolElement {
@@ -51,4 +53,8 @@ impl VirtualMethods for SVGSymbolElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<SVGGraphicsElement>() as &dyn VirtualMethods)
     }
+}
+
+impl SVGSymbolElementMethods<crate::DomTypeHolder> for SVGSymbolElement {
+    svg_fit_to_view_box!();
 }

@@ -6,10 +6,10 @@
 [Exposed=Window]
 interface SVGSVGElement : SVGGraphicsElement {
 
-  //[SameObject] readonly attribute SVGAnimatedLength x;
-  //[SameObject] readonly attribute SVGAnimatedLength y;
-  //[SameObject] readonly attribute SVGAnimatedLength width;
-  //[SameObject] readonly attribute SVGAnimatedLength height;
+  [SameObject] readonly attribute SVGAnimatedLength x;
+  [SameObject] readonly attribute SVGAnimatedLength y;
+  [SameObject] readonly attribute SVGAnimatedLength width;
+  [SameObject] readonly attribute SVGAnimatedLength height;
 
   //attribute float currentScale;
   //[SameObject] readonly attribute DOMPointReadOnly currentTranslate;
@@ -21,14 +21,14 @@ interface SVGSVGElement : SVGGraphicsElement {
 
   //void deselectAll();
 
-  //SVGNumber createSVGNumber();
-  //SVGLength createSVGLength();
-  //SVGAngle createSVGAngle();
-  //DOMPoint createSVGPoint();
+  [NewObject] SVGNumber createSVGNumber();
+  [NewObject] SVGLength createSVGLength();
+  [NewObject] SVGAngle createSVGAngle();
+  [NewObject] DOMPoint createSVGPoint();
   //DOMMatrix createSVGMatrix();
   //DOMRect createSVGRect();
-  //SVGTransform createSVGTransform();
-  //SVGTransform createSVGTransformFromMatrix(DOMMatrixReadOnly matrix);
+  [NewObject] SVGTransform createSVGTransform();
+  [NewObject, Throws] SVGTransform createSVGTransformFromMatrix(optional DOMMatrix2DInit matrix = {});
 
   //Element getElementById(DOMString elementId);
 
@@ -40,6 +40,7 @@ interface SVGSVGElement : SVGGraphicsElement {
   //void forceRedraw();
 };
 
-//SVGSVGElement includes SVGFitToViewBox;
 //SVGSVGElement includes SVGZoomAndPan;
 //SVGSVGElement includes WindowEventHandlers;
+
+SVGSVGElement includes SVGFitToViewBox;

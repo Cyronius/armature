@@ -90,13 +90,46 @@ use crate::dom::htmlmarqueeelement::HTMLMarqueeElement;
 use crate::dom::mathmlelement::MathMLElement;
 use crate::dom::svg::svgaelement::SVGAElement;
 use crate::dom::svg::svgcircleelement::SVGCircleElement;
+use crate::dom::svg::svgclippathelement::SVGClipPathElement;
 use crate::dom::svg::svgdefselement::SVGDefsElement;
+use crate::dom::svg::svgdescelement::SVGDescElement;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgellipseelement::SVGEllipseElement;
+use crate::dom::svg::svgfeblendelement::SVGFEBlendElement;
+use crate::dom::svg::svgfecolormatrixelement::SVGFEColorMatrixElement;
+use crate::dom::svg::svgfecomponenttransferelement::SVGFEComponentTransferElement;
+use crate::dom::svg::svgfecompositeelement::SVGFECompositeElement;
+use crate::dom::svg::svgfeconvolvematrixelement::SVGFEConvolveMatrixElement;
+use crate::dom::svg::svgfediffuselightingelement::SVGFEDiffuseLightingElement;
+use crate::dom::svg::svgfedisplacementmapelement::SVGFEDisplacementMapElement;
+use crate::dom::svg::svgfedistantlightelement::SVGFEDistantLightElement;
+use crate::dom::svg::svgfedropshadowelement::SVGFEDropShadowElement;
+use crate::dom::svg::svgfefloodelement::SVGFEFloodElement;
+use crate::dom::svg::svgfefuncaelement::SVGFEFuncAElement;
+use crate::dom::svg::svgfefuncbelement::SVGFEFuncBElement;
+use crate::dom::svg::svgfefuncgelement::SVGFEFuncGElement;
+use crate::dom::svg::svgfefuncrelement::SVGFEFuncRElement;
+use crate::dom::svg::svgfegaussianblurelement::SVGFEGaussianBlurElement;
+use crate::dom::svg::svgfeimageelement::SVGFEImageElement;
+use crate::dom::svg::svgfemergeelement::SVGFEMergeElement;
+use crate::dom::svg::svgfemergenodeelement::SVGFEMergeNodeElement;
+use crate::dom::svg::svgfemorphologyelement::SVGFEMorphologyElement;
+use crate::dom::svg::svgfeoffsetelement::SVGFEOffsetElement;
+use crate::dom::svg::svgfepointlightelement::SVGFEPointLightElement;
+use crate::dom::svg::svgfespecularlightingelement::SVGFESpecularLightingElement;
+use crate::dom::svg::svgfespotlightelement::SVGFESpotLightElement;
+use crate::dom::svg::svgfetileelement::SVGFETileElement;
+use crate::dom::svg::svgfeturbulenceelement::SVGFETurbulenceElement;
+use crate::dom::svg::svgfilterelement::SVGFilterElement;
+use crate::dom::svg::svgforeignobjectelement::SVGForeignObjectElement;
 use crate::dom::svg::svggelement::SVGGElement;
 use crate::dom::svg::svgimageelement::SVGImageElement;
 use crate::dom::svg::svglineargradientelement::SVGLinearGradientElement;
 use crate::dom::svg::svglineelement::SVGLineElement;
+use crate::dom::svg::svgmarkerelement::SVGMarkerElement;
+use crate::dom::svg::svgmaskelement::SVGMaskElement;
+use crate::dom::svg::svgmetadataelement::SVGMetadataElement;
+use crate::dom::svg::svgmpathelement::SVGMPathElement;
 use crate::dom::svg::svgpathelement::SVGPathElement;
 use crate::dom::svg::svgpatternelement::SVGPatternElement;
 use crate::dom::svg::svgpolygonelement::SVGPolygonElement;
@@ -106,10 +139,14 @@ use crate::dom::svg::svgrectelement::SVGRectElement;
 use crate::dom::svg::svgscriptelement::SVGScriptElement;
 use crate::dom::svg::svgstopelement::SVGStopElement;
 use crate::dom::svg::svgsvgelement::SVGSVGElement;
+use crate::dom::svg::svgswitchelement::SVGSwitchElement;
 use crate::dom::svg::svgsymbolelement::SVGSymbolElement;
 use crate::dom::svg::svgtextelement::SVGTextElement;
+use crate::dom::svg::svgtextpathelement::SVGTextPathElement;
+use crate::dom::svg::svgtitleelement::SVGTitleElement;
 use crate::dom::svg::svgtspanelement::SVGTSpanElement;
 use crate::dom::svg::svguseelement::SVGUseElement;
+use crate::dom::svg::svgviewelement::SVGViewElement;
 use crate::event_loop::script_thread::ScriptThread;
 use crate::realms::enter_auto_realm;
 
@@ -156,6 +193,43 @@ fn create_svg_element(
         local_name!("text") => make!(SVGTextElement),
         local_name!("tspan") => make!(SVGTSpanElement),
         local_name!("use") => make!(SVGUseElement),
+        local_name!("clipPath") => make!(SVGClipPathElement),
+        local_name!("mask") => make!(SVGMaskElement),
+        local_name!("marker") => make!(SVGMarkerElement),
+        local_name!("filter") => make!(SVGFilterElement),
+        local_name!("foreignObject") => make!(SVGForeignObjectElement),
+        local_name!("textPath") => make!(SVGTextPathElement),
+        local_name!("view") => make!(SVGViewElement),
+        local_name!("switch") => make!(SVGSwitchElement),
+        local_name!("desc") => make!(SVGDescElement),
+        local_name!("title") => make!(SVGTitleElement),
+        local_name!("metadata") => make!(SVGMetadataElement),
+        local_name!("mpath") => make!(SVGMPathElement),
+        local_name!("feBlend") => make!(SVGFEBlendElement),
+        local_name!("feColorMatrix") => make!(SVGFEColorMatrixElement),
+        local_name!("feComponentTransfer") => make!(SVGFEComponentTransferElement),
+        local_name!("feFuncR") => make!(SVGFEFuncRElement),
+        local_name!("feFuncG") => make!(SVGFEFuncGElement),
+        local_name!("feFuncB") => make!(SVGFEFuncBElement),
+        local_name!("feFuncA") => make!(SVGFEFuncAElement),
+        local_name!("feComposite") => make!(SVGFECompositeElement),
+        local_name!("feConvolveMatrix") => make!(SVGFEConvolveMatrixElement),
+        local_name!("feDiffuseLighting") => make!(SVGFEDiffuseLightingElement),
+        local_name!("feDistantLight") => make!(SVGFEDistantLightElement),
+        local_name!("fePointLight") => make!(SVGFEPointLightElement),
+        local_name!("feSpotLight") => make!(SVGFESpotLightElement),
+        local_name!("feDisplacementMap") => make!(SVGFEDisplacementMapElement),
+        local_name!("feDropShadow") => make!(SVGFEDropShadowElement),
+        local_name!("feFlood") => make!(SVGFEFloodElement),
+        local_name!("feGaussianBlur") => make!(SVGFEGaussianBlurElement),
+        local_name!("feImage") => make!(SVGFEImageElement),
+        local_name!("feMerge") => make!(SVGFEMergeElement),
+        local_name!("feMergeNode") => make!(SVGFEMergeNodeElement),
+        local_name!("feMorphology") => make!(SVGFEMorphologyElement),
+        local_name!("feOffset") => make!(SVGFEOffsetElement),
+        local_name!("feSpecularLighting") => make!(SVGFESpecularLightingElement),
+        local_name!("feTile") => make!(SVGFETileElement),
+        local_name!("feTurbulence") => make!(SVGFETurbulenceElement),
         _ => make!(SVGElement),
     }
 }

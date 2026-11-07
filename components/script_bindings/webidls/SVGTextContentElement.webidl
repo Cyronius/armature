@@ -5,12 +5,12 @@
 // https://svgwg.org/svg2-draft/text.html#InterfaceSVGTextContentElement
 [Exposed=Window, Abstract]
 interface SVGTextContentElement : SVGGraphicsElement {
-  // const unsigned short LENGTHADJUST_UNKNOWN = 0;
-  // const unsigned short LENGTHADJUST_SPACING = 1;
-  // const unsigned short LENGTHADJUST_SPACINGANDGLYPHS = 2;
+  const unsigned short LENGTHADJUST_UNKNOWN = 0;
+  const unsigned short LENGTHADJUST_SPACING = 1;
+  const unsigned short LENGTHADJUST_SPACINGANDGLYPHS = 2;
 
-  // [SameObject] readonly attribute SVGAnimatedLength textLength;
-  // [SameObject] readonly attribute SVGAnimatedEnumeration lengthAdjust;
+  [SameObject] readonly attribute SVGAnimatedLength textLength;
+  [SameObject] readonly attribute SVGAnimatedEnumeration lengthAdjust;
 
   // long getNumberOfChars();
   // float getComputedTextLength();
