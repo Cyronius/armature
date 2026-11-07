@@ -15,7 +15,7 @@ use crate::dom::bindings::codegen::Bindings::AnimationEventBinding::{
 use crate::dom::bindings::codegen::Bindings::EventBinding::EventMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::num::Finite;
-use crate::dom::bindings::root::DomRoot;
+use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::event::Event;
 use crate::dom::window::Window;
@@ -27,15 +27,23 @@ pub(crate) struct AnimationEvent {
     animation_name: Atom,
     elapsed_time: Finite<f32>,
     pseudo_element: TracedDOMString,
+    /// <https://drafts.csswg.org/css-animations-2/#dom-animationevent-animation>
+    animation: MutNullableDom<crate::dom::animation::Animation>,
 }
 
 impl AnimationEvent {
+    /// Set the CSSAnimation that fired this event.
+    pub(crate) fn set_animation(&self, animation: &crate::dom::animation::Animation) {
+        self.animation.set(Some(animation));
+    }
+
     fn new_inherited(init: &AnimationEventInit) -> AnimationEvent {
         AnimationEvent {
             event: Event::new_inherited(),
             animation_name: Atom::from(init.animationName.clone()),
             elapsed_time: init.elapsedTime,
             pseudo_element: init.pseudoElement.clone().traced(),
+            animation: Default::default(),
         }
     }
 
@@ -70,6 +78,13 @@ impl AnimationEvent {
 }
 
 impl AnimationEventMethods<crate::DomTypeHolder> for AnimationEvent {
+    /// <https://drafts.csswg.org/css-animations-2/#dom-animationevent-animation>
+    fn GetAnimation(&self) -> Option<DomRoot<crate::dom::types::CSSAnimation>> {
+        self.animation
+            .get()
+            .and_then(|animation| DomRoot::downcast::<crate::dom::types::CSSAnimation>(animation))
+    }
+
     /// <https://drafts.csswg.org/css-animations/#dom-animationevent-animationevent>
     fn Constructor(
         cx: &mut JSContext,

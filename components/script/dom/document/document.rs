@@ -94,6 +94,7 @@ use url::{Host, Position};
 
 use crate::css::stylesheet_loader::StylesheetContextId;
 use crate::css::stylesheet_set::StylesheetSetRef;
+use crate::dom::animation::Animation;
 use crate::dom::animationtimeline::AnimationTimeline;
 use crate::dom::attr::Attr;
 use crate::dom::beforeunloadevent::BeforeUnloadEvent;
@@ -5131,10 +5132,12 @@ impl Document {
         &self.animation_manager
     }
 
-    pub(crate) fn update_animations_post_reflow(&self) {
+    /// Returns whether the style of animated elements is out of date again, because CSS
+    /// animations or transitions that style created or updated have new timing.
+    pub(crate) fn update_animations_post_reflow(&self, cx: &mut JSContext) -> bool {
         let current_timeline_value = self.current_animation_timeline_value();
         self.animation_manager
-            .do_post_reflow_update(&self.window, current_timeline_value);
+            .do_post_reflow_update(cx, &self.window, current_timeline_value)
     }
 
     pub(crate) fn cancel_animations_for_node(&self, node: &Node) {
@@ -7095,6 +7098,19 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
     );
 
     /// <https://drafts.csswg.org/cssom-view/#dom-document-elementfrompoint>
+    /// <https://drafts.csswg.org/web-animations-1/#dom-documentorshadowroot-getanimations>
+    fn GetAnimations(&self, cx: &mut JSContext) -> Vec<DomRoot<Animation>> {
+        // > Returns the set of relevant animations whose target element is a descendant of
+        // > this document, after flushing pending style changes.
+        self.window()
+            .layout_reflow(cx, layout_api::QueryMsg::StyleQuery);
+        let node = self.upcast::<Node>();
+        self.animation_manager
+            .relevant_animations(cx.no_gc(), |target, _| {
+                node.is_inclusive_ancestor_of(target.upcast())
+            })
+    }
+
     fn ElementFromPoint(&self, x: Finite<f64>, y: Finite<f64>) -> Option<DomRoot<Element>> {
         self.document_or_shadow_root.element_from_point(
             self.upcast(),

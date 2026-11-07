@@ -16,7 +16,7 @@ use crate::dom::bindings::codegen::Bindings::TransitionEventBinding::{
 use crate::dom::bindings::error::Fallible;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::num::Finite;
-use crate::dom::bindings::root::DomRoot;
+use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::event::Event;
 use crate::dom::window::Window;
@@ -28,15 +28,23 @@ pub(crate) struct TransitionEvent {
     property_name: Atom,
     elapsed_time: Finite<f32>,
     pseudo_element: TracedDOMString,
+    /// <https://drafts.csswg.org/css-transitions-2/#dom-transitionevent-animation>
+    animation: MutNullableDom<crate::dom::animation::Animation>,
 }
 
 impl TransitionEvent {
+    /// Set the CSSTransition that fired this event.
+    pub(crate) fn set_animation(&self, animation: &crate::dom::animation::Animation) {
+        self.animation.set(Some(animation));
+    }
+
     fn new_inherited(init: &TransitionEventInit) -> TransitionEvent {
         TransitionEvent {
             event: Event::new_inherited(),
             property_name: Atom::from(init.propertyName.clone()),
             elapsed_time: init.elapsedTime,
             pseudo_element: init.pseudoElement.clone().traced(),
+            animation: Default::default(),
         }
     }
 
@@ -71,6 +79,13 @@ impl TransitionEvent {
 }
 
 impl TransitionEventMethods<crate::DomTypeHolder> for TransitionEvent {
+    /// <https://drafts.csswg.org/css-transitions-2/#dom-transitionevent-animation>
+    fn GetAnimation(&self) -> Option<DomRoot<crate::dom::types::CSSTransition>> {
+        self.animation
+            .get()
+            .and_then(|animation| DomRoot::downcast::<crate::dom::types::CSSTransition>(animation))
+    }
+
     /// <https://drafts.csswg.org/css-transitions/#dom-transitionevent-transitionevent>
     fn Constructor(
         cx: &mut JSContext,

@@ -5,5 +5,7 @@
 pub(crate) mod animation;
 pub(crate) mod animationeffect;
 pub(crate) mod animationtimeline;
+pub(crate) mod cssanimation;
+pub(crate) mod csstransition;
 pub(crate) mod documenttimeline;
 pub(crate) mod keyframeeffect;

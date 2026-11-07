@@ -458,6 +458,20 @@ impl ShadowRootMethods<crate::DomTypeHolder> for ShadowRoot {
             .expect("ShadowRoot always has an element as host")
     }
 
+    /// <https://drafts.csswg.org/web-animations-1/#dom-documentorshadowroot-getanimations>
+    fn GetAnimations(&self, cx: &mut JSContext) -> Vec<DomRoot<crate::dom::animation::Animation>> {
+        let document = self.owner_document();
+        document
+            .window()
+            .layout_reflow(cx, layout_api::QueryMsg::StyleQuery);
+        let node = self.upcast::<Node>();
+        document
+            .animation_manager()
+            .relevant_animations(cx.no_gc(), |target, _| {
+                node.is_inclusive_ancestor_of(target.upcast())
+            })
+    }
+
     /// <https://drafts.csswg.org/cssom/#dom-document-stylesheets>
     fn StyleSheets(&self, cx: &mut JSContext) -> DomRoot<StyleSheetList> {
         self.stylesheet_list.or_init(|| {

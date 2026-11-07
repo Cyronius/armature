@@ -61,6 +61,30 @@ pub(crate) struct EffectTimes {
     pub(crate) iteration_progress: Option<f64>,
     /// <https://drafts.csswg.org/web-animations-1/#before-flag>
     pub(crate) before_flag: bool,
+    /// The phase of the effect, or `None` if its local time is unresolved.
+    pub(crate) phase: Option<EffectPhase>,
+}
+
+/// The timing properties of an effect that the `animation-*` and `transition-*` properties
+/// set, in milliseconds.
+#[derive(Clone, Copy, JSTraceable, MallocSizeOf, PartialEq)]
+pub(crate) struct CssEffectTiming {
+    pub(crate) duration: f64,
+    pub(crate) delay: f64,
+    pub(crate) iterations: f64,
+    pub(crate) direction: PlaybackDirection,
+    pub(crate) fill: FillMode,
+}
+
+/// Flags for the timing properties that script changed with `updateTiming()`, which
+/// style no longer changes.
+pub(crate) mod overridden {
+    pub(crate) const PLAY_STATE: u8 = 1 << 0;
+    pub(crate) const DURATION: u8 = 1 << 1;
+    pub(crate) const DELAY: u8 = 1 << 2;
+    pub(crate) const ITERATIONS: u8 = 1 << 3;
+    pub(crate) const DIRECTION: u8 = 1 << 4;
+    pub(crate) const FILL: u8 = 1 << 5;
 }
 
 #[derive(Clone, JSTraceable, MallocSizeOf)]
@@ -140,6 +164,60 @@ impl AnimationEffect {
         iteration_duration * timing.iteration_count
     }
 
+    /// <https://drafts.csswg.org/web-animations-1/#start-delay>
+    pub(crate) fn start_delay(&self) -> f64 {
+        *self.specified_timing_properties.borrow().start_delay
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#iteration-duration>
+    pub(crate) fn iteration_duration(&self) -> f64 {
+        self.specified_timing_properties
+            .borrow()
+            .iteration_duration
+            .computed_value()
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#iteration-start>
+    pub(crate) fn iteration_start(&self) -> f64 {
+        *self.specified_timing_properties.borrow().iteration_start
+    }
+
+    /// The active time at `local_time` as if the fill mode were `both`, used for the
+    /// elapsed time of cancel events of CSS animations and transitions.
+    pub(crate) fn active_time_with_fill_both(&self, local_time: f64) -> f64 {
+        (local_time - self.start_delay())
+            .min(self.active_duration())
+            .max(0.0)
+    }
+
+    /// Set the timing properties that the `animation-*` or `transition-*` properties set,
+    /// except those in `skip`, a set of [`overridden`] flags.
+    pub(crate) fn set_css_timing(
+        &self,
+        timing: &CssEffectTiming,
+        skip: u8,
+        easing: Option<TimingFunction>,
+    ) {
+        let wanted = |flag: u8| skip & flag == 0;
+        let input = OptionalEffectTiming {
+            delay: wanted(overridden::DELAY).then(|| Finite::wrap(timing.delay)),
+            direction: wanted(overridden::DIRECTION).then_some(timing.direction),
+            duration: wanted(overridden::DURATION)
+                .then(|| UnrestrictedDoubleOrString::UnrestrictedDouble(timing.duration)),
+            easing: None,
+            endDelay: None,
+            fill: wanted(overridden::FILL).then_some(timing.fill),
+            iterationStart: None,
+            iterations: wanted(overridden::ITERATIONS).then_some(timing.iterations),
+        };
+        let _ = self.update_the_timing_properties(&input);
+        if let Some(easing) = easing {
+            self.specified_timing_properties
+                .borrow_mut()
+                .easing_function = easing;
+        }
+    }
+
     /// <https://drafts.csswg.org/web-animations-1/#end-time>
     pub(crate) fn end_time(&self) -> f64 {
         let (start_delay, end_delay) = {
@@ -171,6 +249,10 @@ impl AnimationEffect {
         let Some(local_time) = local_time else {
             return EffectTimes::default();
         };
+        let not_in_effect = |phase| EffectTimes {
+            phase: Some(phase),
+            ..Default::default()
+        };
 
         // <https://drafts.csswg.org/web-animations-1/#animation-effect-phases-and-states>
         let before_active_boundary_time = start_delay.min(end_time).max(0.0);
@@ -201,7 +283,7 @@ impl AnimationEffect {
             },
         };
         let Some(active_time) = active_time else {
-            return EffectTimes::default();
+            return not_in_effect(phase);
         };
 
         // <https://drafts.csswg.org/web-animations-1/#calculating-the-overall-progress>
@@ -277,6 +359,7 @@ impl AnimationEffect {
             current_iteration: Some(current_iteration),
             iteration_progress: Some(transformed_progress),
             before_flag,
+            phase: Some(phase),
         }
     }
 
@@ -490,6 +573,25 @@ impl AnimationEffectMethods<crate::DomTypeHolder> for AnimationEffect {
         // > to update the timing properties of an animation effect passing the timing parameter as input.
         self.update_the_timing_properties(timing)?;
         if let Some(animation) = self.associated_animation.get() {
+            // > After a successful call to updateTiming() on the effect of a CSSAnimation,
+            // > changes to the corresponding animation-* properties are not reflected.
+            let mut flags = 0;
+            if timing.duration.is_some() {
+                flags |= overridden::DURATION;
+            }
+            if timing.delay.is_some() {
+                flags |= overridden::DELAY;
+            }
+            if timing.iterations.is_some() {
+                flags |= overridden::ITERATIONS;
+            }
+            if timing.direction.is_some() {
+                flags |= overridden::DIRECTION;
+            }
+            if timing.fill.is_some() {
+                flags |= overridden::FILL;
+            }
+            animation.override_css_properties(flags);
             animation.effect_timing_changed(cx);
         }
         Ok(())

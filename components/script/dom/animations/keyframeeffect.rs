@@ -96,6 +96,10 @@ pub(crate) struct KeyframeEffect {
     #[no_trace]
     #[ignore_malloc_size_of = "Arc"]
     keyframes_for_style: DomRefCell<Option<Arc<Vec<ScriptKeyframe>>>>,
+
+    /// Whether this is the effect of a CSS animation or transition whose keyframes come
+    /// from style, because script has not replaced them.
+    css_keyframes: Cell<bool>,
 }
 
 impl KeyframeEffect {
@@ -107,7 +111,32 @@ impl KeyframeEffect {
             composite: Cell::new(CompositeOperation::Replace),
             target_pseudo_selector: Default::default(),
             keyframes_for_style: Default::default(),
+            css_keyframes: Cell::new(false),
         }
+    }
+
+    /// Create the effect of a CSS animation or transition, whose keyframes come from style.
+    pub(crate) fn new_for_css(
+        cx: &mut JSContext,
+        window: &Window,
+        target: &Element,
+        pseudo_selector: Option<DOMString>,
+    ) -> DomRoot<Self> {
+        let effect = Self::new(cx, window);
+        effect.target_element.set(Some(target));
+        *effect.target_pseudo_selector.borrow_mut() = pseudo_selector;
+        effect.css_keyframes.set(true);
+        effect
+    }
+
+    /// Whether the keyframes of this effect come from a CSS animation or transition.
+    pub(crate) fn uses_css_keyframes(&self) -> bool {
+        self.css_keyframes.get()
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#effect-target-target-pseudo-selector>
+    pub(crate) fn target_pseudo_selector(&self) -> Option<DOMString> {
+        self.target_pseudo_selector.borrow().clone()
     }
 
     fn new_with_proto(
@@ -327,6 +356,49 @@ impl KeyframeEffectMethods<crate::DomTypeHolder> for KeyframeEffect {
         // Step 1. Let result be an empty sequence of objects.
         debug_assert!(result.is_empty());
 
+        // > If this keyframe effect is associated with a CSSAnimation, and its keyframes have
+        // > not been replaced by a successful call to setKeyframes(), the computed keyframes
+        // > for this keyframe effect.
+        if self.css_keyframes.get() {
+            let keyframes = self
+                .upcast::<AnimationEffect>()
+                .associated_animation()
+                .and_then(|animation| animation.css_computed_keyframes(cx))
+                .unwrap_or_default();
+            for keyframe in keyframes {
+                let base_keyframe = BaseComputedKeyframe {
+                    composite: keyframe.composite,
+                    offset: Some(Finite::wrap(keyframe.offset)),
+                    computedOffset: Some(Finite::wrap(keyframe.offset)),
+                    easing: keyframe.easing,
+                };
+                rooted!(&in(cx) let mut output_keyframe = JS_NewObject(cx, None));
+                base_keyframe.to_jsobject(cx, output_keyframe.handle_mut());
+                for (property_name, value_string) in keyframe.values {
+                    rooted!(&in(cx) let mut value = UndefinedValue());
+                    value_string.to_jsval(cx, value.handle_mut());
+                    let Ok(property_name) = CString::new(property_name) else {
+                        continue;
+                    };
+                    if !JS_DefineProperty(
+                        cx,
+                        output_keyframe.handle(),
+                        &property_name,
+                        value.handle(),
+                        PropertyFlags::ENUMERABLE |
+                            PropertyFlags::WRITABLE |
+                            PropertyFlags::CONFIGURABLE,
+                    ) {
+                        return Err(Error::Operation(Some(
+                            "Could not define a property of a keyframe".to_owned(),
+                        )));
+                    }
+                }
+                result.push(Heap::boxed(output_keyframe.get()))
+            }
+            return Ok(());
+        }
+
         // Step 2. Let keyframes be one of the following:
         // If this keyframe effect is associated with a CSSAnimation, and its keyframes have not been replaced
         // by a successful call to setKeyframes(),
@@ -426,6 +498,9 @@ impl KeyframeEffectMethods<crate::DomTypeHolder> for KeyframeEffect {
         let document = self.upcast::<AnimationEffect>().window().Document();
         let keyframes = process_a_keyframes_argument(cx, &document, keyframes)?;
         *self.keyframes.safe_borrow_mut(cx.no_gc()) = keyframes;
+        // > After a successful call to setKeyframes() on the effect of a CSSAnimation,
+        // > changes to @keyframes rules are no longer reflected in that animation.
+        self.css_keyframes.set(false);
         self.effect_changed(cx);
         Ok(())
     }
@@ -1049,8 +1124,11 @@ fn lookup_css_property_by_idl_attribute_name(attribute_name: &str) -> Option<Non
 /// # Panics
 /// Panics when the property name is empty or consists only of `-` characters.
 /// In general it is assumed that `property_name` is a CSS property.
-fn animation_property_name_to_idl_attribute_name(property_name: &str) -> String {
-    // TODO: Step 1. If property follows the <custom-property-name> production, return property.
+pub(crate) fn animation_property_name_to_idl_attribute_name(property_name: &str) -> String {
+    // Step 1. If property follows the <custom-property-name> production, return property.
+    if property_name.starts_with("--") {
+        return property_name.to_owned();
+    }
 
     // Step 2. If property refers to the CSS float property, return the string "cssFloat".
     if property_name == "float" {

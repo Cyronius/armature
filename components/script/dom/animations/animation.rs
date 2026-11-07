@@ -3,14 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use std::cell::Cell;
+use std::cmp::Ordering as CmpOrdering;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use cssparser::ToCss;
 use dom_struct::dom_struct;
-use js::context::JSContext;
+use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
+use layout_api::QueryMsg;
 use script_bindings::cell::DomRefCell;
 use script_bindings::codegen::GenericBindings::AnimationBinding::AnimationPlayState;
 use script_bindings::codegen::GenericBindings::DocumentBinding::DocumentMethods;
+use script_bindings::codegen::GenericBindings::KeyframeEffectBinding::CompositeOperationOrAuto;
 use script_bindings::codegen::GenericBindings::WindowBinding::WindowMethods;
 use script_bindings::error::{Error, ErrorResult};
 use script_bindings::inheritance::Castable;
@@ -18,17 +22,24 @@ use script_bindings::num::Finite;
 use script_bindings::reflector::reflect_dom_object_with_proto;
 use script_bindings::root::DomRoot;
 use script_bindings::str::DOMString;
-use style::animation::{AnimationSetKey, ScriptAnimation};
+use style::animation::{AnimationSetKey, AnimationState, ScriptAnimation, ScriptTiming};
+use style::properties::animated_properties::AnimationValue;
+use style::properties::longhands::animation_composition::computed_value::single_value::T as AnimationComposition;
+use style::selector_parser::PseudoElement;
+use style::values::specified::TimingFunction as SpecifiedTimingFunction;
 use stylo_atoms::Atom;
 
-use crate::dom::animationeffect::AnimationEffect;
+use crate::dom::animationeffect::{AnimationEffect, CssEffectTiming, EffectPhase, overridden};
 use crate::dom::bindings::codegen::Bindings::AnimationBinding::AnimationMethods;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::MutNullableDom;
+use crate::dom::cssanimation::CSSAnimation;
+use crate::dom::csstransition::CSSTransition;
+use crate::dom::document::animation_manager::TransitionOrAnimationEventType;
 use crate::dom::element::Element;
 use crate::dom::eventtarget::EventTarget;
 use crate::dom::globalscope::GlobalScope;
-use crate::dom::keyframeeffect::KeyframeEffect;
+use crate::dom::keyframeeffect::{KeyframeEffect, animation_property_name_to_idl_attribute_name};
 use crate::dom::node::{Node, NodeDamage, NodeFlags};
 use crate::dom::promise::{Promise, RootedPromise, TracedPromise};
 use crate::dom::types::AnimationTimeline;
@@ -103,6 +114,57 @@ pub(crate) struct Animation {
 
     /// The values last given to style for this animation.
     last_style_sample: Cell<Option<StyleSample>>,
+
+    /// For a CSS animation or transition, the state that links it to style.
+    css: DomRefCell<Option<CssState>>,
+
+    /// <https://drafts.csswg.org/css-animations-2/#owning-element-section>
+    /// <https://drafts.csswg.org/css-transitions-2/#owning-element>
+    owning_element: MutNullableDom<Element>,
+
+    /// The effect that style created for a CSS animation or transition.
+    css_effect: MutNullableDom<KeyframeEffect>,
+}
+
+/// The phase of a CSS animation or transition, used to dispatch its events.
+///
+/// <https://drafts.csswg.org/css-animations-2/#event-dispatch>
+/// <https://drafts.csswg.org/css-transitions-2/#event-dispatch>
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf, PartialEq)]
+enum CssPhase {
+    Idle,
+    Pending,
+    Before,
+    Active,
+    After,
+}
+
+/// The state of a CSS animation or transition that links it to the animation or
+/// transition that style generated.
+#[derive(JSTraceable, MallocSizeOf)]
+struct CssState {
+    is_transition: bool,
+    /// The key of the owning element in the animation sets of style.
+    #[no_trace]
+    #[ignore_malloc_size_of = "Defined in style"]
+    key: AnimationSetKey,
+    /// The identifier of the animation or transition in the animation sets of style.
+    style_id: u64,
+    /// The animation name, or the expanded transition property name.
+    name: String,
+    /// For an animation, the position of its name in `animation-name`. For a transition,
+    /// its transition generation.
+    order: u64,
+    /// The [`overridden`] flags for the properties that script changed.
+    overridden: u8,
+    /// Whether `animation-play-state` was `paused` at the last style update.
+    style_paused: bool,
+    /// The timing properties from the last style update.
+    style_timing: CssEffectTiming,
+    previous_phase: CssPhase,
+    previous_iteration: Option<f64>,
+    /// The local time when the events were last determined.
+    previous_local_time: Option<f64>,
 }
 
 impl Animation {
@@ -126,6 +188,9 @@ impl Animation {
             registered: Default::default(),
             style_target: Default::default(),
             last_style_sample: Default::default(),
+            css: Default::default(),
+            owning_element: Default::default(),
+            css_effect: Default::default(),
         }
     }
 
@@ -136,16 +201,21 @@ impl Animation {
     ) -> DomRoot<Self> {
         let animation =
             reflect_dom_object_with_proto(cx, Box::new(Self::new_inherited()), global, proto);
+        animation.initialize_promises(cx);
+        animation
+    }
 
+    /// Create the initial ready and finished promises of a new animation.
+    pub(crate) fn initialize_promises(&self, cx: &mut JSContext) {
+        let global = self.global();
         // > The current ready promise is initially a resolved Promise created using the
         // > procedure to create a new resolved Promise with the animation itself as its value.
-        let ready_promise = Promise::new_resolved(cx, global, DomRoot::from_ref(&*animation));
-        *animation.ready_promise.borrow_mut() = Some(ready_promise.to_traced());
+        let ready_promise = Promise::new_resolved(cx, &global, DomRoot::from_ref(self));
+        *self.ready_promise.borrow_mut() = Some(ready_promise.to_traced());
 
         // > The current finished promise is initially a pending Promise object.
-        let finished_promise = Promise::new(cx, global);
-        *animation.finished_promise.borrow_mut() = Some(finished_promise.to_traced());
-        animation
+        let finished_promise = Promise::new(cx, &global);
+        *self.finished_promise.borrow_mut() = Some(finished_promise.to_traced());
     }
 
     fn ready_promise(&self, cx: &JSContext) -> RootedPromise {
@@ -270,6 +340,12 @@ impl Animation {
         // Step 2. If new timeline is the same object as old timeline, abort this procedure.
         if self.timeline.get().as_deref() == timeline {
             return;
+        }
+        // Remember the local time of a CSS animation or transition, for the elapsed time of
+        // its cancel event if the new timeline makes it idle.
+        let current_time = self.current_time();
+        if let Some(css) = self.css.borrow_mut().as_mut() {
+            css.previous_local_time = current_time;
         }
         // Step 3. Let the timeline of animation be new timeline.
         self.timeline.set(timeline);
@@ -484,7 +560,9 @@ impl Animation {
                 // > If associated effect end is positive infinity, throw an "InvalidStateError"
                 // > DOMException and abort these steps.
                 if associated_effect_end == f64::INFINITY {
-                    return Err(Error::InvalidState(None));
+                    return Err(Error::InvalidState(Some(
+                        "Cannot play a reversed animation with an infinite end".to_owned(),
+                    )));
                 }
                 // > Otherwise, Set seek time to animation’s associated effect end.
                 seek_time = Some(associated_effect_end);
@@ -629,7 +707,9 @@ impl Animation {
                 // > throw an "InvalidStateError" DOMException and abort these steps.
                 let associated_effect_end = self.associated_effect_end();
                 if associated_effect_end == f64::INFINITY {
-                    return Err(Error::InvalidState(None));
+                    return Err(Error::InvalidState(Some(
+                        "Cannot pause a reversed animation with an infinite end".to_owned(),
+                    )));
                 }
                 // > Otherwise, let seek time be animation’s associated effect end.
                 seek_time = Some(associated_effect_end);
@@ -831,11 +911,11 @@ impl Animation {
 
     fn queue_playback_event(&self, event_type: Atom, current_time: Option<f64>) {
         let global = self.global();
-        global
-            .as_window()
-            .Document()
-            .animation_manager()
-            .queue_playback_event(self, event_type, current_time, self.timeline_time());
+        let window = global.as_window();
+        let document = window.Document();
+        let manager = document.animation_manager();
+        manager.queue_playback_event(self, event_type, current_time, self.timeline_time());
+        manager.handle_animation_presence_or_pending_events_change(window);
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#reset-an-animations-pending-tasks>
@@ -855,7 +935,12 @@ impl Animation {
         // Step 6. Set the [[PromiseIsHandled]] internal slot of animation’s current ready
         // promise to true.
         let ready_promise = self.ready_promise(cx);
-        ready_promise.reject_error(cx, Error::Abort(None));
+        ready_promise.reject_error(
+            cx,
+            Error::Abort(Some(
+                "The pending tasks of the animation were reset".to_owned(),
+            )),
+        );
         ready_promise.set_promise_is_handled(cx);
         // Step 7. Let animation’s current ready promise be the result of creating a new
         // resolved Promise object with value animation in the relevant Realm of animation.
@@ -867,6 +952,7 @@ impl Animation {
     fn cancel_an_animation(&self, cx: &mut JSContext) {
         // Step 1. If animation’s play state is not idle, perform the following steps:
         if self.play_state() != AnimationPlayState::Idle {
+            self.queue_css_cancel_event();
             // Step 1.1. Run the procedure to reset an animation’s pending tasks on animation.
             self.reset_pending_tasks(cx);
             // Step 1.2. Reject the current finished promise with a DOMException named
@@ -875,7 +961,10 @@ impl Animation {
             // promise to true.
             let finished_promise = self.finished_promise(cx);
             if finished_promise.is_pending() {
-                finished_promise.reject_error(cx, Error::Abort(None));
+                finished_promise.reject_error(
+                    cx,
+                    Error::Abort(Some("The animation was canceled".to_owned())),
+                );
             }
             finished_promise.set_promise_is_handled(cx);
             // Step 1.4. Let current finished promise be a new promise in the relevant Realm of
@@ -904,7 +993,10 @@ impl Animation {
         if effective_playback_rate == 0.0 ||
             (effective_playback_rate > 0.0 && associated_effect_end == f64::INFINITY)
         {
-            return Err(Error::InvalidState(None));
+            return Err(Error::InvalidState(Some(
+                "Cannot finish an animation with a zero playback rate or an infinite end"
+                    .to_owned(),
+            )));
         }
 
         // Step 2. Apply any pending playback rate to animation.
@@ -992,13 +1084,56 @@ impl Animation {
             self.run_finish_notification_steps(cx);
         }
         self.update_style(cx);
+        self.update_css_events();
 
-        let keep =
-            self.play_state() != AnimationPlayState::Idle || self.style_target.get().is_some();
+        // Stop updating animations that cannot change on their own: idle ones once style no
+        // longer applies them, and finished ones that have no effect.
+        let keep = self.is_pending() ||
+            self.pending_finish_notification.get() ||
+            match self.play_state() {
+                AnimationPlayState::Idle => self.style_target.get().is_some(),
+                AnimationPlayState::Finished => self.is_in_effect(),
+                _ => true,
+            };
         if !keep {
+            self.remove_script_style(cx);
             self.registered.set(false);
         }
         keep
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#in-effect>
+    fn is_in_effect(&self) -> bool {
+        self.associated_effect.get().is_some_and(|effect| {
+            effect
+                .compute_timing(self.current_time(), self.playback_rate.get())
+                .active_time
+                .is_some()
+        })
+    }
+
+    /// <https://drafts.csswg.org/web-animations-1/#relevant-animation>
+    pub(crate) fn is_relevant(&self) -> bool {
+        let Some(effect) = self.associated_effect.get() else {
+            return false;
+        };
+        let playback_rate = self.playback_rate.get();
+        let times = effect.compute_timing(self.current_time(), playback_rate);
+        // > An animation effect is in effect if its active time is not unresolved.
+        if times.active_time.is_some() {
+            return true;
+        }
+        // > An animation effect is current if any of the following conditions are true: the
+        // > animation effect is in play, or the animation effect is associated with an
+        // > animation with a playback rate > 0 and the animation effect is in the before
+        // > phase, or [..] with a playback rate < 0 and the animation effect is in the after
+        // > phase.
+        match times.phase {
+            Some(EffectPhase::Active) => self.play_state() != AnimationPlayState::Finished,
+            Some(EffectPhase::Before) => playback_rate > 0.0,
+            Some(EffectPhase::After) => playback_rate < 0.0,
+            None => false,
+        }
     }
 
     /// Called when the timing or keyframes of the associated effect change.
@@ -1011,6 +1146,23 @@ impl Animation {
     /// Give style the current state of this animation, so that it applies the associated
     /// effect to its target.
     fn update_style(&self, cx: &mut JSContext) {
+        // Make sure that an animation frame dispatches the events of the change.
+        if self.css.borrow().is_some() {
+            let global = self.global();
+            let window = global.as_window();
+            window
+                .Document()
+                .animation_manager()
+                .note_animation_changed(window);
+        }
+
+        // A CSS animation or transition whose keyframes come from style is applied by style.
+        if self.css.borrow().is_some() && self.update_css_style(cx) {
+            self.remove_script_style(cx);
+            self.register_with_document();
+            return;
+        }
+
         let effect = self.associated_effect.get();
         let keyframe_effect = effect
             .as_ref()
@@ -1088,6 +1240,800 @@ impl Animation {
     }
 }
 
+/// A computed keyframe of a CSS animation or transition, for `getKeyframes()`.
+pub(crate) struct CssComputedKeyframe {
+    pub(crate) offset: f64,
+    pub(crate) easing: DOMString,
+    pub(crate) composite: CompositeOperationOrAuto,
+    /// The IDL attribute names of the properties, with their serialized values.
+    pub(crate) values: Vec<(String, String)>,
+}
+
+/// The IDL attribute name and serialized value of an animated value.
+fn serialize_animation_value(value: &AnimationValue) -> Option<(String, String)> {
+    let name = animation_property_name_to_idl_attribute_name(&value.id().name());
+    let mut serialization = String::new();
+    value.uncompute().to_css(&mut serialization).ok()?;
+    Some((name, serialization))
+}
+
+/// The position of a CSS animation or transition in the composite order, used to sort
+/// its events together with the tree order of their targets.
+pub(crate) struct CssEventOrder {
+    is_transition: bool,
+    pseudo_element_rank: u8,
+    order: u64,
+    name: String,
+    unique_id: u64,
+}
+
+impl CssEventOrder {
+    /// Compare the positions of two animations whose targets are the same element.
+    pub(crate) fn cmp_same_target(&self, other: &CssEventOrder) -> CmpOrdering {
+        other
+            .is_transition
+            .cmp(&self.is_transition)
+            .then(self.pseudo_element_rank.cmp(&other.pseudo_element_rank))
+            .then(self.order.cmp(&other.order))
+            .then_with(|| {
+                if self.is_transition {
+                    self.name.cmp(&other.name)
+                } else {
+                    CmpOrdering::Equal
+                }
+            })
+            .then(self.unique_id.cmp(&other.unique_id))
+    }
+
+    /// Whether this is the order of a CSS transition.
+    pub(crate) fn is_transition(&self) -> bool {
+        self.is_transition
+    }
+}
+
+/// The rank of a pseudo-element in the composite order of animations.
+fn pseudo_element_rank(pseudo_element: Option<PseudoElement>) -> u8 {
+    match pseudo_element {
+        None => 0,
+        Some(PseudoElement::Marker) => 1,
+        Some(PseudoElement::Before) => 2,
+        Some(PseudoElement::After) => 4,
+        Some(_) => 3,
+    }
+}
+
+impl Animation {
+    /// Create the `CSSAnimation` for an animation that style generated.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_css_animation(
+        cx: &mut JSContext,
+        window: &Window,
+        owner: &Element,
+        key: AnimationSetKey,
+        style_id: u64,
+        name: &str,
+        name_index: usize,
+        timing: CssEffectTiming,
+        paused: bool,
+    ) -> DomRoot<Animation> {
+        let animation =
+            DomRoot::upcast::<Animation>(CSSAnimation::new(cx, window, DOMString::from(name)));
+        animation.initialize_css(
+            cx,
+            window,
+            owner,
+            CssState {
+                is_transition: false,
+                key,
+                style_id,
+                name: name.to_owned(),
+                order: name_index as u64,
+                overridden: 0,
+                style_paused: paused,
+                style_timing: timing,
+                previous_phase: CssPhase::Idle,
+                previous_iteration: None,
+                previous_local_time: None,
+            },
+            None,
+        );
+        // > When an animation is created, if animation-play-state is paused, the animation
+        // > is paused, otherwise it plays.
+        if paused {
+            let _ = animation.pause_an_animation(cx);
+        } else {
+            let _ = animation.play_an_animation(cx, true);
+        }
+        animation
+    }
+
+    /// Create the `CSSTransition` for a transition that style generated.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_css_transition(
+        cx: &mut JSContext,
+        window: &Window,
+        owner: &Element,
+        key: AnimationSetKey,
+        style_id: u64,
+        property: &str,
+        generation: u64,
+        timing: CssEffectTiming,
+        easing: SpecifiedTimingFunction,
+    ) -> DomRoot<Animation> {
+        let animation =
+            DomRoot::upcast::<Animation>(CSSTransition::new(cx, window, DOMString::from(property)));
+        animation.initialize_css(
+            cx,
+            window,
+            owner,
+            CssState {
+                is_transition: true,
+                key,
+                style_id,
+                name: property.to_owned(),
+                order: generation,
+                overridden: 0,
+                style_paused: false,
+                style_timing: timing,
+                previous_phase: CssPhase::Idle,
+                previous_iteration: None,
+                previous_local_time: None,
+            },
+            Some(easing),
+        );
+        let _ = animation.play_an_animation(cx, true);
+        animation
+    }
+
+    fn initialize_css(
+        &self,
+        cx: &mut JSContext,
+        window: &Window,
+        owner: &Element,
+        state: CssState,
+        easing: Option<SpecifiedTimingFunction>,
+    ) {
+        let pseudo_selector = state
+            .key
+            .pseudo_element
+            .map(|pseudo_element| DOMString::from(pseudo_element.to_css_string()));
+        let timing = state.style_timing;
+        *self.css.borrow_mut() = Some(state);
+        self.owning_element.set(Some(owner));
+        let document = window.Document();
+        self.set_the_timeline(cx, Some(document.Timeline().upcast()));
+        let effect = KeyframeEffect::new_for_css(cx, window, owner, pseudo_selector);
+        effect
+            .upcast::<AnimationEffect>()
+            .set_css_timing(&timing, 0, easing);
+        self.css_effect.set(Some(&effect));
+        self.set_the_associated_effect(cx, Some(effect.upcast()));
+    }
+
+    /// Whether this is a CSS animation or transition that still has an owning element.
+    fn has_owning_element(&self) -> bool {
+        self.owning_element.get().is_some()
+    }
+
+    /// Update a CSS animation from the new values of the `animation-*` properties.
+    pub(crate) fn update_from_css_style(
+        &self,
+        cx: &mut JSContext,
+        timing: CssEffectTiming,
+        paused: bool,
+        name_index: usize,
+    ) {
+        let (timing_changed, overridden_flags, play_state_changed) = {
+            let mut css = self.css.borrow_mut();
+            let Some(css) = css.as_mut() else {
+                return;
+            };
+            css.order = name_index as u64;
+            let timing_changed = css.style_timing != timing;
+            css.style_timing = timing;
+            let play_state_changed = css.style_paused != paused;
+            css.style_paused = paused;
+            (timing_changed, css.overridden, play_state_changed)
+        };
+
+        // > After successfully setting the effect of a CSSAnimation to null or some
+        // > AnimationEffect other than the original KeyframeEffect, changes to the
+        // > animation-* properties other than animation-name and animation-play-state are not
+        // > reflected in that animation.
+        let css_effect = self.css_effect.get();
+        if timing_changed &&
+            css_effect.is_some() &&
+            self.associated_effect.get().as_deref() ==
+                css_effect.as_deref().map(Castable::upcast)
+        {
+            if let Some(effect) = css_effect {
+                effect
+                    .upcast::<AnimationEffect>()
+                    .set_css_timing(&timing, overridden_flags, None);
+                self.effect_timing_changed(cx);
+            }
+        }
+
+        // > After a successful call to play() or pause() on a CSSAnimation, any subsequent
+        // > change to the animation-play-state will no longer cause the CSSAnimation to be
+        // > played or paused.
+        if play_state_changed &&
+            overridden_flags & overridden::PLAY_STATE == 0 &&
+            self.play_state() != AnimationPlayState::Idle
+        {
+            if paused {
+                let _ = self.pause_an_animation(cx);
+            } else {
+                let _ = self.play_an_animation(cx, false);
+            }
+        }
+    }
+
+    /// Cancel a CSS animation or transition that style no longer generates, and disassociate
+    /// it from its owning element.
+    pub(crate) fn cancel_from_style(&self, cx: &mut JSContext) {
+        self.cancel_an_animation(cx);
+        self.owning_element.set(None);
+        self.update_style(cx);
+    }
+
+    /// Note that script changed the given [`overridden`] properties of a CSS animation, which
+    /// style then no longer changes.
+    pub(crate) fn override_css_properties(&self, flags: u8) {
+        if let Some(css) = self.css.borrow_mut().as_mut() {
+            if !css.is_transition {
+                css.overridden |= flags;
+            }
+        }
+    }
+
+    /// The computed keyframes of a CSS animation or transition.
+    ///
+    /// <https://drafts.csswg.org/css-animations-2/#keyframes>
+    pub(crate) fn css_computed_keyframes(
+        &self,
+        cx: &mut JSContext,
+    ) -> Option<Vec<CssComputedKeyframe>> {
+        self.flush_css_style(cx);
+        let (key, style_id, is_transition) = {
+            let css = self.css.borrow();
+            let css = css.as_ref()?;
+            (css.key.clone(), css.style_id, css.is_transition)
+        };
+        let global = self.global();
+        let document = global.as_window().Document();
+        let animations = document.animation_manager().sets();
+        let sets = animations.sets.read();
+        let set = sets.get(&key)?;
+        if is_transition {
+            let transition = set
+                .transitions
+                .iter()
+                .find(|transition| transition.id == style_id)?;
+            let property_animation = &transition.property_animation;
+            let keyframe = |offset, value: &AnimationValue| CssComputedKeyframe {
+                offset,
+                easing: DOMString::from_static("linear"),
+                composite: CompositeOperationOrAuto::Auto,
+                values: serialize_animation_value(value).into_iter().collect(),
+            };
+            return Some(vec![
+                keyframe(0.0, property_animation.from_value()),
+                keyframe(1.0, property_animation.to_value()),
+            ]);
+        }
+        let animation = set
+            .animations
+            .iter()
+            .find(|animation| animation.id == style_id)?;
+        Some(
+            animation
+                .css_keyframes()
+                .into_iter()
+                .map(|keyframe| CssComputedKeyframe {
+                    offset: keyframe.offset,
+                    easing: DOMString::from(style_traits::ToCss::to_css_string(
+                        &keyframe.timing_function,
+                    )),
+                    composite: match keyframe.composite {
+                        None => CompositeOperationOrAuto::Auto,
+                        Some(AnimationComposition::Replace) => CompositeOperationOrAuto::Replace,
+                        Some(AnimationComposition::Add) => CompositeOperationOrAuto::Add,
+                        Some(AnimationComposition::Accumulate) => {
+                            CompositeOperationOrAuto::Accumulate
+                        },
+                    },
+                    values: keyframe
+                        .values
+                        .iter()
+                        .filter_map(serialize_animation_value)
+                        .collect(),
+                })
+                .collect(),
+        )
+    }
+
+    /// Bring the state of a CSS animation or transition up to date with the style of the
+    /// document, as script observes the result.
+    fn flush_css_style(&self, cx: &mut JSContext) {
+        if self.css.borrow().is_none() {
+            return;
+        }
+        self.global()
+            .as_window()
+            .layout_reflow(cx, QueryMsg::StyleQuery);
+    }
+
+    /// The animation and transition sets key, style identifier and kind of the style
+    /// animation that applies this CSS animation or transition, if style applies it: its
+    /// effect is the one that style created, with the keyframes from style and the
+    /// owning element as target.
+    fn css_link_for_style(&self) -> Option<DomRoot<Element>> {
+        let owner = self.owning_element.get()?;
+        let effect = self.css_effect.get()?;
+        if self.associated_effect.get().as_deref() != Some(effect.upcast()) ||
+            !effect.uses_css_keyframes()
+        {
+            return None;
+        }
+        let key = self.css.borrow().as_ref()?.key.clone();
+        let pseudo_selector = key
+            .pseudo_element
+            .map(|pseudo_element| DOMString::from(pseudo_element.to_css_string()));
+        if effect
+            .upcast::<AnimationEffect>()
+            .associated_animation()
+            .is_none() ||
+            effect.target_pseudo_selector() != pseudo_selector
+        {
+            return None;
+        }
+        let target = crate::dom::bindings::codegen::Bindings::KeyframeEffectBinding::KeyframeEffectMethods::GetTarget(&*effect)?;
+        (target == owner).then_some(owner)
+    }
+
+    /// Give style the timing of this CSS animation or transition. Returns whether style
+    /// applies it, see [`Self::css_link_for_style`]; otherwise style is told that it has
+    /// no effect, and it is applied like other animations.
+    fn update_css_style(&self, cx: &mut JSContext) -> bool {
+        let link = self.css_link_for_style();
+        let (key, style_id, is_transition) = {
+            let css = self.css.borrow();
+            let Some(css) = css.as_ref() else {
+                return false;
+            };
+            (css.key.clone(), css.style_id, css.is_transition)
+        };
+
+        let play_state = self.play_state();
+        let pending = self.is_pending();
+        let sample = match (&link, self.associated_effect.get()) {
+            (Some(_), Some(effect)) if play_state != AnimationPlayState::Idle || pending => {
+                let times = effect.compute_timing(self.current_time(), self.playback_rate.get());
+                StyleSample {
+                    iteration_progress: times.active_time.and(times.iteration_progress),
+                    before_flag: times.before_flag,
+                    needs_ticks: play_state == AnimationPlayState::Running || pending,
+                }
+            },
+            _ => StyleSample::default(),
+        };
+        let finished = play_state == AnimationPlayState::Finished;
+        let last_sample = self.last_style_sample.get();
+        if last_sample == Some(sample) && (!is_transition || !finished) {
+            return link.is_some();
+        }
+        self.last_style_sample.set(Some(sample));
+
+        let state = if is_transition && finished {
+            AnimationState::Finished
+        } else if sample.needs_ticks {
+            AnimationState::Running
+        } else {
+            AnimationState::Paused(0.0)
+        };
+        let timing = ScriptTiming {
+            iteration_progress: sample.iteration_progress,
+            before_flag: sample.before_flag,
+        };
+        let global = self.global();
+        let document = global.as_window().Document();
+        let animations = document.animation_manager().sets();
+        {
+            let mut sets = animations.sets.write();
+            if let Some(set) = sets.get_mut(&key) {
+                if is_transition {
+                    if let Some(transition) = set
+                        .transitions
+                        .iter_mut()
+                        .find(|transition| transition.id == style_id)
+                    {
+                        transition.script_timing = Some(timing);
+                        if transition.state != AnimationState::Canceled {
+                            transition.state = state;
+                        }
+                        set.dirty = true;
+                    }
+                } else if let Some(animation) = set
+                    .animations
+                    .iter_mut()
+                    .find(|animation| animation.id == style_id)
+                {
+                    animation.script_timing = Some(timing);
+                    if animation.state != AnimationState::Canceled {
+                        animation.state = state;
+                    }
+                    set.dirty = true;
+                }
+            }
+        }
+        if let Some(owner) = self.owning_element.get() {
+            let node = owner.upcast::<Node>();
+            node.dirty(cx.no_gc(), NodeDamage::Style);
+        }
+        document.animation_manager().note_css_timing_changed();
+        link.is_some()
+    }
+
+    /// Stop applying this animation as an animation created by script.
+    fn remove_script_style(&self, cx: &mut JSContext) {
+        let Some(old_target) = self.style_target.get() else {
+            return;
+        };
+        let global = self.global();
+        let document = global.as_window().Document();
+        let node = old_target.upcast::<Node>();
+        document.animation_manager().sets().remove_script_animation(
+            &AnimationSetKey::new_for_non_pseudo(node.to_opaque()),
+            self.unique_id,
+        );
+        node.dirty(cx.no_gc(), NodeDamage::Style);
+        self.style_target.set(None);
+        self.last_style_sample.set(None);
+    }
+
+    /// The phase of this CSS animation or transition for event dispatch, and its current
+    /// iteration.
+    fn css_phase(&self, is_transition: bool, previous_phase: CssPhase) -> (CssPhase, Option<f64>) {
+        let current_time = self.current_time();
+        let (phase, iteration) = match self.associated_effect.get() {
+            None => (
+                match current_time {
+                    None => CssPhase::Idle,
+                    Some(time) if time < 0.0 => CssPhase::Before,
+                    Some(_) => CssPhase::After,
+                },
+                None,
+            ),
+            Some(effect) => {
+                let times = effect.compute_timing(current_time, self.playback_rate.get());
+                let phase = match times.phase {
+                    None => CssPhase::Idle,
+                    Some(EffectPhase::Before) => CssPhase::Before,
+                    Some(EffectPhase::Active) => CssPhase::Active,
+                    Some(EffectPhase::After) => CssPhase::After,
+                };
+                (phase, times.current_iteration)
+            },
+        };
+        // > If the transition has a pending play task or a pending pause task and its phase
+        // > was previously idle or pending, the transition phase is pending.
+        if is_transition &&
+            self.is_pending() &&
+            matches!(previous_phase, CssPhase::Idle | CssPhase::Pending)
+        {
+            return (CssPhase::Pending, iteration);
+        }
+        (phase, iteration)
+    }
+
+    /// The interval start and interval end used for the elapsed time of events.
+    fn css_interval(&self) -> (f64, f64) {
+        let Some(effect) = self.associated_effect.get() else {
+            return (0.0, 0.0);
+        };
+        let start_delay = effect.start_delay();
+        let active_duration = effect.active_duration();
+        // > interval start = max(min(-start delay, active duration), 0)
+        // > interval end = max(min(associated effect end - start delay, active duration), 0)
+        (
+            (-start_delay).min(active_duration).max(0.0),
+            (effect.end_time() - start_delay)
+                .min(active_duration)
+                .max(0.0),
+        )
+    }
+
+    /// Queue the CSS animation or transition events for the change of phase since the
+    /// last animation frame.
+    ///
+    /// <https://drafts.csswg.org/css-animations-2/#event-dispatch>
+    /// <https://drafts.csswg.org/css-transitions-2/#event-dispatch>
+    fn update_css_events(&self) {
+        let Some(owner) = self.owning_element.get() else {
+            return;
+        };
+        let (is_transition, previous_phase, previous_iteration) = {
+            let css = self.css.borrow();
+            let Some(css) = css.as_ref() else {
+                return;
+            };
+            (
+                css.is_transition,
+                css.previous_phase,
+                css.previous_iteration,
+            )
+        };
+        // > Each time a new animation frame is established and the animation does not have a
+        // > pending play task or pending pause task, the events to dispatch are determined.
+        if !is_transition && self.is_pending() {
+            return;
+        }
+        let (phase, iteration) = self.css_phase(is_transition, previous_phase);
+        // > not idle and not after → idle: cancel, with the active time at the moment it
+        // > was canceled. This happens when the timeline of the animation is removed.
+        if phase == CssPhase::Idle && !matches!(previous_phase, CssPhase::Idle | CssPhase::After) {
+            self.queue_css_cancel_event();
+            return;
+        }
+        if let Some(css) = self.css.borrow_mut().as_mut() {
+            css.previous_phase = phase;
+            css.previous_iteration = iteration;
+            css.previous_local_time = self.current_time();
+        }
+
+        use CssPhase::*;
+        use TransitionOrAnimationEventType::*;
+        let (interval_start, interval_end) = self.css_interval();
+        let mut events: Vec<(TransitionOrAnimationEventType, f64)> = Vec::new();
+        if is_transition {
+            match (previous_phase, phase) {
+                (Idle, Pending | Before) => events.push((TransitionRun, interval_start)),
+                (Idle, Active) => {
+                    events.push((TransitionRun, interval_start));
+                    events.push((TransitionStart, interval_start));
+                },
+                (Idle, After) => {
+                    events.push((TransitionRun, interval_start));
+                    events.push((TransitionStart, interval_start));
+                    events.push((TransitionEnd, interval_end));
+                },
+                (Pending | Before, Active) => events.push((TransitionStart, interval_start)),
+                (Pending | Before, After) => {
+                    events.push((TransitionStart, interval_start));
+                    events.push((TransitionEnd, interval_end));
+                },
+                (Active, After) => events.push((TransitionEnd, interval_end)),
+                (Active, Before) => events.push((TransitionEnd, interval_start)),
+                (After, Active) => events.push((TransitionStart, interval_end)),
+                (After, Before) => {
+                    events.push((TransitionStart, interval_end));
+                    events.push((TransitionEnd, interval_start));
+                },
+                _ => {},
+            }
+        } else {
+            match (previous_phase, phase) {
+                (Idle | Before, Active) => events.push((AnimationStart, interval_start)),
+                (Idle | Before, After) => {
+                    events.push((AnimationStart, interval_start));
+                    events.push((AnimationEnd, interval_end));
+                },
+                (Active, Before) => events.push((AnimationEnd, interval_start)),
+                (Active, Active) if previous_iteration != iteration => {
+                    if let (Some(previous), Some(current), Some(effect)) =
+                        (previous_iteration, iteration, self.associated_effect.get())
+                    {
+                        // > If the previous current iteration is greater than the current
+                        // > iteration, let iteration boundary be current iteration + 1,
+                        // > otherwise let it be current iteration.
+                        let boundary = if previous > current {
+                            current + 1.0
+                        } else {
+                            current
+                        };
+                        events.push((
+                            AnimationIteration,
+                            (boundary - effect.iteration_start()) * effect.iteration_duration(),
+                        ));
+                    }
+                },
+                (Active, After) => events.push((AnimationEnd, interval_end)),
+                (After, Active) => events.push((AnimationStart, interval_end)),
+                (After, Before) => {
+                    events.push((AnimationStart, interval_end));
+                    events.push((AnimationEnd, interval_start));
+                },
+                _ => {},
+            }
+        }
+        // The events of one change of phase keep their order: they share the earliest of
+        // their scheduled event times.
+        let scheduled_event_time = events
+            .iter()
+            .filter_map(|(_, elapsed_time)| self.css_scheduled_event_time(*elapsed_time))
+            .min_by(|a, b| a.total_cmp(b));
+        for (event_type, elapsed_time) in events {
+            self.queue_css_event_at(&owner, event_type, elapsed_time, scheduled_event_time);
+        }
+    }
+
+    /// The time of the timeline at which an event with the given elapsed time is scheduled,
+    /// used to sort events.
+    ///
+    /// <https://drafts.csswg.org/web-animations-1/#scheduled-event-time>
+    fn css_scheduled_event_time(&self, elapsed_time: f64) -> Option<f64> {
+        let start_time = self.start_time.get()?;
+        let playback_rate = self.playback_rate.get();
+        if playback_rate == 0.0 {
+            return None;
+        }
+        let start_delay = self
+            .associated_effect
+            .get()
+            .map_or(0.0, |effect| effect.start_delay());
+        Some(start_time + (start_delay + elapsed_time) / playback_rate)
+    }
+
+    /// Queue the cancel event of a CSS animation or transition that is being canceled.
+    fn queue_css_cancel_event(&self) {
+        let Some(owner) = self.owning_element.get() else {
+            return;
+        };
+        let (is_transition, previous_phase) = {
+            let mut css = self.css.borrow_mut();
+            let Some(css) = css.as_mut() else {
+                return;
+            };
+            let previous_phase = std::mem::replace(&mut css.previous_phase, CssPhase::Idle);
+            (css.is_transition, previous_phase)
+        };
+        if matches!(previous_phase, CssPhase::Idle | CssPhase::After) {
+            return;
+        }
+        // > The active time of the animation at the moment it was canceled calculated using
+        // > a fill mode of both.
+        let local_time = self
+            .current_time()
+            .or_else(|| self.css.borrow().as_ref()?.previous_local_time)
+            .unwrap_or(0.0);
+        let elapsed_time = self
+            .associated_effect
+            .get()
+            .map_or(0.0, |effect| effect.active_time_with_fill_both(local_time));
+        let event_type = if is_transition {
+            TransitionOrAnimationEventType::TransitionCancel
+        } else {
+            TransitionOrAnimationEventType::AnimationCancel
+        };
+        self.queue_css_event(&owner, event_type, elapsed_time);
+    }
+
+    fn queue_css_event(
+        &self,
+        owner: &Element,
+        event_type: TransitionOrAnimationEventType,
+        elapsed_time: f64,
+    ) {
+        // Cancel events have an unresolved scheduled event time, so they come before the
+        // other events, like those of an animation that replaces the canceled one.
+        self.queue_css_event_at(owner, event_type, elapsed_time, None);
+    }
+
+    fn queue_css_event_at(
+        &self,
+        owner: &Element,
+        event_type: TransitionOrAnimationEventType,
+        elapsed_time: f64,
+        scheduled_event_time: Option<f64>,
+    ) {
+        let (pseudo_element, name, order) = {
+            let css = self.css.borrow();
+            let Some(css) = css.as_ref() else {
+                return;
+            };
+            // The composite order of the animation when the event is queued, before a
+            // canceled animation loses its owning element.
+            let order = CssEventOrder {
+                is_transition: css.is_transition,
+                pseudo_element_rank: pseudo_element_rank(css.key.pseudo_element),
+                order: css.order,
+                name: css.name.clone(),
+                unique_id: self.unique_id,
+            };
+            (css.key.pseudo_element, css.name.clone(), order)
+        };
+        let global = self.global();
+        let window = global.as_window();
+        let document = window.Document();
+        let manager = document.animation_manager();
+        manager.queue_css_event(
+            self,
+            owner,
+            pseudo_element,
+            event_type,
+            name,
+            elapsed_time / 1000.0,
+            scheduled_event_time,
+            order,
+        );
+        manager.handle_animation_presence_or_pending_events_change(window);
+    }
+
+    /// The target element and pseudo-element of the effect of this animation, for
+    /// `getAnimations()`.
+    pub(crate) fn effect_target(&self) -> Option<(DomRoot<Element>, bool)> {
+        let effect = self.associated_effect.get()?;
+        let effect = effect.downcast::<KeyframeEffect>()?;
+        let target = crate::dom::bindings::codegen::Bindings::KeyframeEffectBinding::KeyframeEffectMethods::GetTarget(effect)?;
+        Some((target, effect.target_pseudo_selector().is_some()))
+    }
+
+    /// Compare two animations in the composite order.
+    ///
+    /// <https://drafts.csswg.org/web-animations-1/#animation-composite-order>
+    pub(crate) fn composite_order(&self, other: &Animation, no_gc: &NoGC) -> CmpOrdering {
+        // CSS transitions with an owning element come first, then CSS animations with an
+        // owning element, then other animations.
+        let class = |animation: &Animation| match animation.css.borrow().as_ref() {
+            Some(css) if animation.has_owning_element() => {
+                if css.is_transition {
+                    0
+                } else {
+                    1
+                }
+            },
+            _ => 2,
+        };
+        let (class_a, class_b) = (class(self), class(other));
+        if class_a != class_b {
+            return class_a.cmp(&class_b);
+        }
+        if class_a == 2 {
+            return self.unique_id.cmp(&other.unique_id);
+        }
+
+        // Sort by the tree order of the owning elements, and pseudo-elements after their
+        // element.
+        let (Some(owner_a), Some(owner_b)) =
+            (self.owning_element.get(), other.owning_element.get())
+        else {
+            return self.unique_id.cmp(&other.unique_id);
+        };
+        let css_a = self.css.borrow();
+        let css_b = other.css.borrow();
+        let (Some(css_a), Some(css_b)) = (css_a.as_ref(), css_b.as_ref()) else {
+            return self.unique_id.cmp(&other.unique_id);
+        };
+        if owner_a != owner_b {
+            let (node_a, node_b) = (owner_a.upcast::<Node>(), owner_b.upcast::<Node>());
+            return if node_a.is_before(no_gc, node_b) {
+                CmpOrdering::Less
+            } else {
+                CmpOrdering::Greater
+            };
+        }
+        let rank = pseudo_element_rank(css_a.key.pseudo_element)
+            .cmp(&pseudo_element_rank(css_b.key.pseudo_element));
+        if rank != CmpOrdering::Equal {
+            return rank;
+        }
+        // Transitions sort by transition generation, then by property name; animations by
+        // the position of their name in animation-name.
+        css_a
+            .order
+            .cmp(&css_b.order)
+            .then_with(|| {
+                if css_a.is_transition {
+                    css_a.name.cmp(&css_b.name)
+                } else {
+                    CmpOrdering::Equal
+                }
+            })
+            .then_with(|| self.unique_id.cmp(&other.unique_id))
+    }
+}
+
 impl AnimationMethods<crate::DomTypeHolder> for Animation {
     // <https://drafts.csswg.org/web-animations-1/#dom-animation-onfinish>
     event_handler!(finish, GetOnfinish, SetOnfinish);
@@ -1136,7 +2082,9 @@ impl AnimationMethods<crate::DomTypeHolder> for Animation {
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-effect>
-    fn GetEffect(&self) -> Option<DomRoot<AnimationEffect>> {
+    fn GetEffect(&self, cx: &mut JSContext) -> Option<DomRoot<AnimationEffect>> {
+        // The timing of the effect of a CSS animation reflects pending style changes.
+        self.flush_css_style(cx);
         self.associated_effect.get()
     }
 
@@ -1166,7 +2114,13 @@ impl AnimationMethods<crate::DomTypeHolder> for Animation {
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-starttime>
     fn SetStartTime(&self, cx: &mut JSContext, start_time: Option<Finite<f64>>) {
+        let was_paused = self.play_state() == AnimationPlayState::Paused;
         self.set_the_start_time(cx, start_time.map(|time| *time));
+        // > After successfully setting the startTime of a CSSAnimation, if the play state
+        // > changes to or from paused, animation-play-state no longer plays or pauses it.
+        if was_paused != (self.play_state() == AnimationPlayState::Paused) {
+            self.override_css_properties(overridden::PLAY_STATE);
+        }
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-currenttime>
@@ -1208,17 +2162,21 @@ impl AnimationMethods<crate::DomTypeHolder> for Animation {
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-playstate>
-    fn PlayState(&self) -> AnimationPlayState {
+    fn PlayState(&self, cx: &mut JSContext) -> AnimationPlayState {
+        // Style changes, like that of animation-play-state, may change the play state.
+        self.flush_css_style(cx);
         self.play_state()
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-pending>
-    fn Pending(&self) -> bool {
+    fn Pending(&self, cx: &mut JSContext) -> bool {
+        self.flush_css_style(cx);
         self.is_pending()
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-ready>
     fn Ready(&self, cx: &mut JSContext) -> RootedPromise {
+        self.flush_css_style(cx);
         self.ready_promise(cx)
     }
 
@@ -1239,12 +2197,21 @@ impl AnimationMethods<crate::DomTypeHolder> for Animation {
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-play>
     fn Play(&self, cx: &mut JSContext) -> ErrorResult {
-        self.play_an_animation(cx, true)
+        self.flush_css_style(cx);
+        self.play_an_animation(cx, true)?;
+        // > After a successful call to play() or pause() on a CSSAnimation, any subsequent
+        // > change to the animation-play-state will no longer cause the CSSAnimation to be
+        // > played or paused.
+        self.override_css_properties(overridden::PLAY_STATE);
+        Ok(())
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-pause>
     fn Pause(&self, cx: &mut JSContext) -> ErrorResult {
-        self.pause_an_animation(cx)
+        self.flush_css_style(cx);
+        self.pause_an_animation(cx)?;
+        self.override_css_properties(overridden::PLAY_STATE);
+        Ok(())
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#seamlessly-update-the-playback-rate>
@@ -1309,7 +2276,9 @@ impl AnimationMethods<crate::DomTypeHolder> for Animation {
         // Step 1. If there is no timeline associated with animation, or the associated timeline
         // is inactive throw an "InvalidStateError" DOMException and abort these steps.
         if self.timeline_time().is_none() {
-            return Err(Error::InvalidState(None));
+            return Err(Error::InvalidState(Some(
+                "Cannot reverse an animation without an active timeline".to_owned(),
+            )));
         }
         // Step 2. Let original pending playback rate be animation’s pending playback rate.
         let original_pending_playback_rate = self.pending_playback_rate.get();
@@ -1320,10 +2289,13 @@ impl AnimationMethods<crate::DomTypeHolder> for Animation {
         // Step 4. Run the steps to play an animation for animation with the auto-rewind flag
         // set to true. If the steps to play an animation throw an exception, set animation’s
         // pending playback rate to original pending playback rate and propagate the exception.
+        let was_paused = self.play_state() == AnimationPlayState::Paused;
         let result = self.play_an_animation(cx, true);
         if result.is_err() {
             self.pending_playback_rate
                 .set(original_pending_playback_rate);
+        } else if was_paused != (self.play_state() == AnimationPlayState::Paused) {
+            self.override_css_properties(overridden::PLAY_STATE);
         }
         result
     }

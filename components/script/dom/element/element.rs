@@ -4930,6 +4930,32 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animatable-animate>
+    /// <https://drafts.csswg.org/web-animations-1/#dom-animatable-getanimations>
+    fn GetAnimations(
+        &self,
+        cx: &mut JSContext,
+        options: &crate::dom::bindings::codegen::Bindings::AnimatableBinding::GetAnimationsOptions,
+    ) -> Vec<DomRoot<Animation>> {
+        // > Returns the set of relevant animations for a subject element: this element or, if
+        // > subtree is true, also the pseudo-elements of this element and its descendants,
+        // > after flushing pending style changes.
+        let document = self.owner_document();
+        document
+            .window()
+            .layout_reflow(cx, layout_api::QueryMsg::StyleQuery);
+        let node = self.upcast::<Node>();
+        document.animation_manager().relevant_animations(
+            cx.no_gc(),
+            |target, has_pseudo_selector| {
+                if options.subtree {
+                    node.is_inclusive_ancestor_of(target.upcast())
+                } else {
+                    target == self && !has_pseudo_selector
+                }
+            },
+        )
+    }
+
     fn Animate(
         &self,
         cx: &mut JSContext,

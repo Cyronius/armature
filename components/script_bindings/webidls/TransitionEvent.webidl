@@ -12,6 +12,7 @@ interface TransitionEvent : Event {
   readonly attribute DOMString          propertyName;
   readonly attribute float              elapsedTime;
   readonly attribute DOMString          pseudoElement;
+  [Pref="dom_web_animations_enabled"] readonly attribute CSSTransition? animation;
 };
 
 dictionary TransitionEventInit : EventInit {

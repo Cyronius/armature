@@ -586,7 +586,7 @@ pub enum ScrollContainerResponse {
     Element(UntrustedNodeAddress, AxesOverflow),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum QueryMsg {
     BoxArea,
     BoxAreas,
@@ -616,7 +616,7 @@ pub enum QueryMsg {
 /// Please do not add any other types of reflows. In general, all reflow should
 /// go through the *update the rendering* step of the HTML specification. Exceptions
 /// should have careful review.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ReflowGoal {
     /// A reflow has been requesting by the *update the rendering* step of the HTML
     /// event loop. This nominally driven by the display's VSync.

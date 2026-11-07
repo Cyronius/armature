@@ -376,6 +376,10 @@ pub(crate) struct Window {
     #[no_trace]
     layout_blocker: Cell<LayoutBlocker>,
 
+    /// Whether this window is restyling again because CSS animations or transitions that
+    /// the previous restyle created or updated have new timing.
+    reflowing_for_animations: Cell<bool>,
+
     /// A channel to notify webdriver if there is a navigation
     #[no_trace]
     webdriver_load_status_sender: RefCell<Option<GenericSender<WebDriverLoadStatus>>>,
@@ -2711,10 +2715,14 @@ impl Window {
 
     /// Prepares to tick animations and then does a reflow which also advances the
     /// layout animation clock.
-    pub(crate) fn advance_animation_clock(&self, no_gc: &NoGC, delta: TimeDuration) {
-        self.Document()
-            .advance_animation_timeline_for_testing(delta);
-        ScriptThread::handle_tick_all_animations_for_testing(no_gc, self.pipeline_id());
+    pub(crate) fn advance_animation_clock(&self, cx: &mut JSContext, delta: TimeDuration) {
+        let document = self.Document();
+        // Animations, which script times, start at the time before the clock advances, and
+        // then follow the clock.
+        document.animation_manager().update_script_animations(cx);
+        document.advance_animation_timeline_for_testing(delta);
+        document.animation_manager().update_script_animations(cx);
+        ScriptThread::handle_tick_all_animations_for_testing(cx.no_gc(), self.pipeline_id());
     }
 
     /// Reflows the page unconditionally if possible and not suppressed. This method will wait for
@@ -2735,6 +2743,7 @@ impl Window {
         if !document.is_fully_active() {
             return Default::default();
         }
+        let goal_for_animations = reflow_goal.clone();
 
         self.document_unrooted(cx.no_gc())
             .ensure_safe_to_run_script_or_layout();
@@ -2899,7 +2908,18 @@ impl Window {
                 .handle_new_iframe_sizes_after_layout(cx, self, iframe_sizes);
         }
 
-        document.update_animations_post_reflow();
+        // The CSS animations and transitions that this restyle created or updated give style
+        // their timing, so restyle once more for a query from script to observe their effect.
+        // A rendering update leaves that to the next animation frame.
+        if document.update_animations_post_reflow(cx) &&
+            matches!(goal_for_animations, ReflowGoal::LayoutQuery(_)) &&
+            !self.reflowing_for_animations.get()
+        {
+            self.reflowing_for_animations.set(true);
+            let result = self.reflow(cx, goal_for_animations);
+            self.reflowing_for_animations.set(false);
+            return result;
+        }
 
         (
             reflow_result.reflow_phases_run,
@@ -4210,6 +4230,7 @@ impl Window {
             viewport_details_at_last_resize_steps: Cell::new(viewport_details),
             viewport_details: Cell::new(viewport_details),
             layout_blocker: Cell::new(LayoutBlocker::WaitingForParse),
+            reflowing_for_animations: Cell::new(false),
             current_state: Cell::new(WindowState::Alive),
             #[cfg(feature = "devtools")]
             devtools_marker_sender: Default::default(),

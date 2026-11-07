@@ -17,6 +17,7 @@ interface AnimationEvent : Event {
   readonly attribute DOMString animationName;
   readonly attribute float     elapsedTime;
   readonly attribute DOMString pseudoElement;
+  [Pref="dom_web_animations_enabled"] readonly attribute CSSAnimation? animation;
 };
 
 dictionary AnimationEventInit : EventInit {
