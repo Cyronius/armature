@@ -332,3 +332,13 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   them). Affects most of `css/css-animations` and `css/css-transitions` and the animated reftests that wait for
   `document.getAnimations()`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-508: Build the SVG values of pointer-events for Servo
+- Files: `style/values/specified/ui.rs`
+- Why: `pointer-events` only had `auto` and `none` outside Gecko, so the SVG values (`visiblePainted`,
+  `visibleFill`, `visibleStroke`, `visible`, `painted`, `fill`, `stroke` and `all`) were invalid. Servo now hit
+  tests the shapes inside `svg` elements, which needs them. Servo's layout only compares the value with `none`,
+  so HTML boxes treat the new values as `auto`, as other engines do. Affects
+  `svg/interact/scripted/pointer-events-fill-stroke-hittest.html`, `svg/interact/parsing` and the
+  `pointer-events` presentation attribute.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
