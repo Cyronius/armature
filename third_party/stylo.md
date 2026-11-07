@@ -312,3 +312,23 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   the "Web Animations" and "Compositing Web Animations" subtests of the `*-interpolation.html` and
   `*-composition.html` tests throughout `css/`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-507: Let script own the timing of CSS animations and transitions
+- Files: `style/servo/animation.rs`
+- Why: CSS animations and transitions had their own timing in style, so script could not expose them as
+  `CSSAnimation` and `CSSTransition` objects that `getAnimations()` returns and that can be paused, seeked or
+  reversed. Each CSS animation and transition now has an identifier, and once script has created its object,
+  script computes its timing with the Web Animations model and gives style the iteration progress, which style
+  samples instead of using its own clock. CSS animations sample their keyframes at that progress with each
+  keyframe's timing function applied to the interval that starts at it; transitions interpolate between their
+  start and end values at the eased progress. Style keeps generating, updating and canceling them from the
+  computed values: it reports the timing properties and `animation-play-state` of each animation, keeps the
+  identity and timing state of an animation when its properties change, keeps updating the remaining animations
+  after an existing one is updated (it used to stop at the first), sorts animations by their position in
+  `animation-name`, generates animations with a zero duration, uses the progress from script for reversed
+  transitions, and exposes the keyframes of an animation with their computed values for
+  `KeyframeEffect.getKeyframes()`. A completed transition keeps its end value until it is removed. Running
+  transitions of a property that a script animation sets keep running (this changes AS-506, which canceled
+  them). Affects most of `css/css-animations` and `css/css-transitions` and the animated reftests that wait for
+  `document.getAnimations()`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

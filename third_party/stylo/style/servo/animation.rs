@@ -36,6 +36,29 @@ use debug_unreachable::debug_unreachable;
 use parking_lot::RwLock;
 use servo_arc::Arc;
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// Armature (AS-507): Script owns the timing of CSS animations and transitions through
+// their `CSSAnimation` and `CSSTransition` objects. Style gives each animation and
+// transition an identifier so that script can find it, keeps generating and updating
+// them from the computed values, and samples them at the progress that script computes.
+
+/// The source of the identifiers of CSS animations and transitions.
+static NEXT_CSS_ANIMATION_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_css_animation_id() -> u64 {
+    NEXT_CSS_ANIMATION_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+/// The timing of a CSS animation or transition, as computed by script.
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
+pub struct ScriptTiming {
+    /// The iteration progress of the effect, or `None` if it is not in effect. For a
+    /// transition, this includes the transition timing function.
+    pub iteration_progress: Option<f64>,
+    /// The before flag used to evaluate step easing functions.
+    pub before_flag: bool,
+}
 
 /// Represents an animation for a given property.
 #[derive(Clone, Debug, MallocSizeOf)]
@@ -54,6 +77,21 @@ pub struct PropertyAnimation {
 }
 
 impl PropertyAnimation {
+    /// Armature (AS-507): The value this animation starts from.
+    pub fn from_value(&self) -> &AnimationValue {
+        &self.from
+    }
+
+    /// Armature (AS-507): The value this animation ends at.
+    pub fn to_value(&self) -> &AnimationValue {
+        &self.to
+    }
+
+    /// Armature (AS-507): The timing function of this animation.
+    pub fn timing_function(&self) -> &TimingFunction {
+        &self.timing_function
+    }
+
     /// Returns the given property longhand id.
     pub fn property_id(&self) -> PropertyDeclarationId<'_> {
         debug_assert_eq!(self.from.id(), self.to.id());
@@ -138,6 +176,9 @@ struct IntermediateComputedKeyframe {
     timing_function: Option<TimingFunction>,
     composition: Option<AnimationComposition>,
     start_percentage: f64,
+    /// Armature (AS-507): Whether a keyframe rule declares this keyframe, rather than it
+    /// being generated for a missing 0% or 100% keyframe.
+    declared: bool,
 }
 
 impl IntermediateComputedKeyframe {
@@ -147,6 +188,7 @@ impl IntermediateComputedKeyframe {
             timing_function: None,
             composition: None,
             start_percentage,
+            declared: false,
         }
     }
 
@@ -205,6 +247,8 @@ impl IntermediateComputedKeyframe {
             KeyframesStepValue::ComputedValues => return,
             KeyframesStepValue::Declarations { ref block } => block,
         };
+        // Armature (AS-507): Remember that a keyframe rule declares this keyframe.
+        self.declared = true;
 
         // Filter out !important, non-animatable properties, and the
         // 'display' property (which is only animatable from SMIL).
@@ -302,6 +346,12 @@ struct ComputedKeyframe {
     /// The animation values to transition to and from when processing this
     /// keyframe animation step.
     values: Box<[AnimationValueOrReference]>,
+
+    /// Armature (AS-507): The keyframe-specific composite operation.
+    composition: Option<AnimationComposition>,
+
+    /// Armature (AS-507): Whether a keyframe rule declares this keyframe.
+    declared: bool,
 }
 
 /// Composite a keyframe value with the underlying value according to the
@@ -456,6 +506,10 @@ impl ComputedKeyframe {
                 .timing_function
                 .clone()
                 .unwrap_or_else(|| default_timing_function.clone());
+            // Armature (AS-507): Keep the keyframe-specific composite operation, for
+            // `getKeyframes()`.
+            let keyframe_composition = step.composition;
+            let declared = step.declared;
             let composition = step.composition.unwrap_or(default_composition);
             let step_style = step.resolve_style(element, context, base_style, resolver);
 
@@ -532,6 +586,8 @@ impl ComputedKeyframe {
                 timing_function,
                 start_percentage,
                 values,
+                composition: keyframe_composition,
+                declared,
             });
 
             step_index += 1;
@@ -599,6 +655,20 @@ pub struct Animation {
     /// Whether or not this animation is new and or has already been tracked
     /// by the script thread.
     pub is_new: bool,
+
+    /// Armature (AS-507): The identifier of this animation, which stays the same when
+    /// the animation is updated from a new style.
+    pub id: u64,
+
+    /// Armature (AS-507): The position of this animation's name in `animation-name`.
+    pub name_index: usize,
+
+    /// Armature (AS-507): Whether `animation-play-state` is `paused` for this animation.
+    pub paused_in_style: bool,
+
+    /// Armature (AS-507): The timing that script computed for this animation, once
+    /// script owns it. Style then ignores its own timing state.
+    pub script_timing: Option<ScriptTiming>,
 }
 
 impl Animation {
@@ -613,6 +683,11 @@ impl Animation {
             None => return true,
         };
 
+        // Armature (AS-507): Animations with a zero duration are animations too, which
+        // script times.
+        if self.script_timing.is_some() {
+            return false;
+        }
         new_ui.animation_duration_mod(index).seconds() == 0.
     }
 
@@ -740,6 +815,31 @@ impl Animation {
             self, other
         );
 
+        // Armature (AS-507): Keep the identity of the animation. Once script owns the timing,
+        // only take the new keyframes and timing properties, which script reads back.
+        let id = self.id;
+        if let Some(script_timing) = self.script_timing {
+            let state = self.state.clone();
+            let started_at = self.started_at;
+            let iteration_state = self.iteration_state.clone();
+            let current_direction = self.current_direction;
+            *self = other.clone();
+            self.id = id;
+            self.script_timing = Some(script_timing);
+            self.state = state;
+            self.started_at = started_at;
+            self.current_direction = current_direction;
+            self.is_new = false;
+            if let (
+                KeyframesIterationState::Finite(current, _),
+                KeyframesIterationState::Finite(old_current, _),
+            ) = (&mut self.iteration_state, iteration_state)
+            {
+                *current = old_current;
+            }
+            return;
+        }
+
         // NB: We shall not touch the started_at field, since we don't want to
         // restart the animation.
         let old_started_at = self.started_at;
@@ -750,6 +850,8 @@ impl Animation {
         let old_iteration_state = self.iteration_state.clone();
 
         *self = other.clone();
+        // Armature (AS-507): Keep the identifier.
+        self.id = id;
         self.current_direction = old_direction;
 
         if self.delay != old_delay {
@@ -843,6 +945,17 @@ impl Animation {
     fn get_property_declaration_at_time(&self, now: f64, map: &mut AnimationValueMap) {
         if self.computed_steps.is_empty() {
             // Nothing to do.
+            return;
+        }
+
+        // Armature (AS-507): Sample at the progress that script computed.
+        if let Some(script_timing) = self.script_timing {
+            if self.state == AnimationState::Canceled {
+                return;
+            }
+            if let Some(progress) = script_timing.iteration_progress {
+                self.sample_at_iteration_progress(progress, script_timing.before_flag, map);
+            }
             return;
         }
 
@@ -1013,6 +1126,124 @@ impl Animation {
     }
 }
 
+/// Armature (AS-507): A keyframe of a CSS animation, with the computed values of the
+/// properties that it sets, for `KeyframeEffect.getKeyframes()`.
+#[derive(Clone, Debug)]
+pub struct CssKeyframe {
+    /// The offset of the keyframe, between 0 and 1.
+    pub offset: f64,
+    /// The timing function used from this keyframe to the next one.
+    pub timing_function: TimingFunction,
+    /// The keyframe-specific composite operation, or `Some(Replace)` for a keyframe
+    /// generated for a missing 0% or 100% keyframe.
+    pub composite: Option<AnimationComposition>,
+    /// The values of the properties that the keyframe sets.
+    pub values: Vec<AnimationValue>,
+}
+
+impl Animation {
+    /// Armature (AS-507): The keyframes of this animation, with computed values.
+    pub fn css_keyframes(&self) -> Vec<CssKeyframe> {
+        if self.number_of_animating_properties == 0 {
+            return vec![];
+        }
+        self.computed_steps
+            .iter()
+            .map(|step| CssKeyframe {
+                offset: step.start_percentage,
+                timing_function: step.timing_function.clone(),
+                composite: if step.declared {
+                    step.composition
+                } else {
+                    Some(AnimationComposition::Replace)
+                },
+                values: step
+                    .values
+                    .iter()
+                    .filter_map(|value| match value {
+                        AnimationValueOrReference::AnimationValue(value) => Some(value.clone()),
+                        AnimationValueOrReference::NotDefinedHere(_) => None,
+                    })
+                    .collect(),
+            })
+            .filter(|keyframe| !keyframe.values.is_empty())
+            .collect()
+    }
+
+    /// Armature (AS-507): Fill in `map` with the values of this animation at the given
+    /// iteration progress, which already accounts for the animation direction. Each
+    /// keyframe's timing function applies to the interval that starts at that keyframe,
+    /// as for the keyframe-specific easing of keyframe effects.
+    ///
+    /// <https://drafts.csswg.org/web-animations-1/#the-effect-value-of-a-keyframe-effect>
+    fn sample_at_iteration_progress(
+        &self,
+        progress: f64,
+        before_flag: bool,
+        map: &mut AnimationValueMap,
+    ) {
+        let count = self.computed_steps.len();
+        let start_index = self
+            .computed_steps
+            .iter()
+            .rposition(|step| step.start_percentage <= progress && step.start_percentage < 1.)
+            .unwrap_or(0);
+        let end_index = (start_index + 1).min(count - 1);
+        let before_flag = || {
+            if before_flag {
+                BeforeFlag::Set
+            } else {
+                BeforeFlag::Unset
+            }
+        };
+
+        for property_index in 0..self.number_of_animating_properties {
+            let Some(start) = self.next_relevant_keyframe_for_property_in_direction(
+                property_index,
+                start_index,
+                Direction::Backward,
+            ) else {
+                continue;
+            };
+            let Some(end) = self.next_relevant_keyframe_for_property_in_direction(
+                property_index,
+                end_index,
+                Direction::Forward,
+            ) else {
+                map.insert(start.value.id().to_owned(), start.value.clone());
+                continue;
+            };
+            if end.start_percentage == start.start_percentage {
+                let value = if progress < start.start_percentage { start.value } else { end.value };
+                map.insert(value.id().to_owned(), value.clone());
+                continue;
+            }
+            let distance =
+                (progress - start.start_percentage) / (end.start_percentage - start.start_percentage);
+            let transformed_distance =
+                start
+                    .timing_function
+                    .calculate_output(distance, before_flag(), 1e-7);
+            let value = start
+                .value
+                .animate(
+                    end.value,
+                    Procedure::Interpolate {
+                        progress: transformed_distance,
+                    },
+                )
+                .unwrap_or_else(|()| {
+                    if transformed_distance < 0.5 {
+                        start.value.clone()
+                    } else {
+                        end.value.clone()
+                    }
+                });
+            map.insert(value.id().to_owned(), value);
+        }
+    }
+}
+
 impl fmt::Debug for Animation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Animation")
@@ -1056,6 +1287,13 @@ pub struct Transition {
     /// If this `Transition` has been replaced by a new one this field is
     /// used to help produce better reversed transitions.
     pub reversing_shortening_factor: f64,
+
+    /// Armature (AS-507): The identifier of this transition.
+    pub id: u64,
+
+    /// Armature (AS-507): The timing that script computed for this transition, once
+    /// script owns it. Style then ignores its own timing state.
+    pub script_timing: Option<ScriptTiming>,
 }
 
 impl Transition {
@@ -1081,7 +1319,37 @@ impl Transition {
             is_new: true,
             reversing_adjusted_start_value: from,
             reversing_shortening_factor: 1.0,
+            id: next_css_animation_id(),
+            script_timing: None,
         }
+    }
+
+    /// Armature (AS-507): The start delay of this transition, which is shortened for a
+    /// reversed transition with a negative delay.
+    pub fn effective_delay(&self) -> f64 {
+        if self.delay >= 0. {
+            self.delay
+        } else {
+            self.delay * self.reversing_shortening_factor
+        }
+    }
+
+    /// Armature (AS-507): The output of the timing function of this transition at the
+    /// given time, or at the progress that script computed.
+    fn transformed_progress(&self, now: f64) -> f64 {
+        if let Some(script_timing) = self.script_timing {
+            return script_timing.iteration_progress.unwrap_or_else(|| {
+                if self.state == AnimationState::Finished {
+                    1.
+                } else {
+                    0.
+                }
+            });
+        }
+        let progress = ((now - self.start_time) / self.property_animation.duration)
+            .min(1.0)
+            .max(0.0);
+        self.property_animation.timing_function_output(progress)
     }
 
     fn update_for_possibly_reversed_transition(
@@ -1112,11 +1380,8 @@ impl Transition {
         //      time of the style change event, times the reversing shortening
         //      factor of the old transition
         //    2.  1 minus the reversing shortening factor of the old transition."
-        let transition_progress = ((now - replaced_transition.start_time)
-            / (replaced_transition.property_animation.duration))
-            .min(1.0)
-            .max(0.0);
-        let timing_function_output = replaced_animation.timing_function_output(transition_progress);
+        // Armature (AS-507): Use the progress that script computed, if any.
+        let timing_function_output = replaced_transition.transformed_progress(now);
         let old_reversing_shortening_factor = replaced_transition.reversing_shortening_factor;
         self.reversing_shortening_factor = ((timing_function_output
             * old_reversing_shortening_factor)
@@ -1163,6 +1428,22 @@ impl Transition {
 
     /// Update the given animation at a given point of progress.
     pub fn calculate_value(&self, time: f64) -> AnimationValue {
+        // Armature (AS-507): Interpolate at the progress that script computed, which already
+        // includes the timing function.
+        if self.script_timing.is_some() {
+            let progress = self.transformed_progress(time);
+            let animation = &self.property_animation;
+            return animation
+                .from
+                .animate(&animation.to, Procedure::Interpolate { progress })
+                .unwrap_or_else(|()| {
+                    if progress < 0.5 {
+                        animation.from.clone()
+                    } else {
+                        animation.to.clone()
+                    }
+                });
+        }
         let progress = if time < self.start_time {
             0.0
         } else if self.property_animation.duration == 0.0 {
@@ -1606,6 +1887,16 @@ impl ElementAnimationSet {
                         continue;
                     }
                 },
+            }
+
+            // Armature (AS-507): A transition that script does not have in effect has no value,
+            // except a completed one, which keeps its end value until it is removed.
+            if transition.state != AnimationState::Finished
+                && transition
+                    .script_timing
+                    .is_some_and(|timing| timing.iteration_progress.is_none())
+            {
+                continue;
             }
 
             let value = transition.calculate_value(now);
@@ -2223,7 +2514,9 @@ pub fn start_transitions_if_applicable(
 
         // Armature (AS-506): The values of script animations are in both the before-change
         // and the after-change style, so their properties do not transition.
+        // Armature (AS-507): Running transitions of those properties keep running.
         if animation_state.is_animated_by_script(&physical_property) {
+            properties_that_transition.insert(physical_property);
             continue;
         }
 
@@ -2252,7 +2545,8 @@ pub fn maybe_start_animations<E>(
     E: TElement,
 {
     let style = new_style.get_ui();
-    for (i, name) in style.animation_name_iter().enumerate() {
+    // Armature (AS-507): Keep updating the following animations after one is updated.
+    'names: for (i, name) in style.animation_name_iter().enumerate() {
         let name = match name.as_atom() {
             Some(atom) => atom,
             None => continue,
@@ -2260,9 +2554,6 @@ pub fn maybe_start_animations<E>(
 
         debug!("maybe_start_animations: name={}", name);
         let duration = style.animation_duration_mod(i).seconds() as f64;
-        if duration == 0. {
-            continue;
-        }
 
         let Some(keyframe_animation) = context.stylist.lookup_keyframes(name, element) else {
             continue;
@@ -2340,11 +2631,23 @@ pub fn maybe_start_animations<E>(
             current_direction: initial_direction,
             number_of_animating_properties,
             is_new: true,
+            id: next_css_animation_id(),
+            name_index: i,
+            paused_in_style: style.animation_play_state_mod(i) == AnimationPlayState::Paused,
+            // Armature (AS-507): Style cannot time an animation with a zero duration, so it
+            // has no effect until script times it.
+            script_timing: (duration == 0.).then_some(ScriptTiming {
+                iteration_progress: None,
+                before_flag: false,
+            }),
         };
 
         // If we started with a negative delay, make sure we iterate the animation if
         // the delay moves us past the first iteration.
-        new_animation.iterate_by(starting_progress);
+        // Armature (AS-507): Only when there is a duration to iterate by.
+        if duration > 0. {
+            new_animation.iterate_by(starting_progress);
+        }
 
         animation_state.dirty = true;
 
@@ -2357,10 +2660,15 @@ pub fn maybe_start_animations<E>(
             if new_animation.name == existing_animation.name {
                 existing_animation
                     .update_from_other(&new_animation, context.current_time_for_animations);
-                return;
+                continue 'names;
             }
         }
 
         animation_state.animations.push(new_animation);
     }
+
+    // Armature (AS-507): Composite animations in the order of their names in `animation-name`.
+    animation_state
+        .animations
+        .sort_by_key(|animation| animation.name_index);
 }
