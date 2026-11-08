@@ -8,6 +8,7 @@ use stylo_dom::ElementState;
 
 use crate::dom::bindings::codegen::Bindings::DOMPointBinding::DOMPointInit;
 use crate::dom::bindings::codegen::Bindings::SVGGeometryElementBinding::SVGGeometryElementMethods;
+use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::num::Finite;
 use crate::dom::bindings::root::DomRoot;
@@ -105,11 +106,21 @@ impl SVGGeometryElementMethods<crate::DomTypeHolder> for SVGGeometryElement {
         &self,
         cx: &mut js::context::JSContext,
         distance: Finite<f32>,
-    ) -> DomRoot<DOMPoint> {
-        let point = self.geometry(cx).map_or(kurbo::Point::ZERO, |geometry| {
-            geometry.point_at_length(*distance as f64)
-        });
-        DOMPoint::new(cx, &self.owner_global(), point.x, point.y, 0.0, 1.0)
+    ) -> Fallible<DomRoot<DOMPoint>> {
+        let point = self
+            .geometry(cx)
+            .and_then(|geometry| geometry.point_at_length(*distance as f64))
+            .ok_or_else(|| {
+                Error::InvalidState(Some("The shape has no point on its path".into()))
+            })?;
+        Ok(DOMPoint::new(
+            cx,
+            &self.owner_global(),
+            point.x,
+            point.y,
+            0.0,
+            1.0,
+        ))
     }
 
     svg_animated_number!(PathLength, "pathLength", "pathLength", Whole, 0.0);

@@ -12,7 +12,9 @@
 
 use html5ever::{LocalName, local_name, ns};
 use js::context::{JSContext, NoGC};
-use kurbo::{Affine, BezPath, Ellipse, Line, ParamCurveArclen, PathSeg, Point, Rect, Shape};
+use kurbo::{
+    Affine, BezPath, Ellipse, Line, ParamCurveArclen, PathEl, PathSeg, Point, Rect, Shape,
+};
 
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::inheritance::Castable;
@@ -73,22 +75,29 @@ impl SVGShapeGeometry {
     /// The point at `distance` along the shape, which is clamped to its length.
     ///
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGGeometryElement__getPointAtLength>
-    pub(crate) fn point_at_length(&self, distance: f64) -> Point {
+    pub(crate) fn point_at_length(&self, distance: f64) -> Option<Point> {
         let segments = self.segments();
         let Some(first) = segments.first() else {
-            return Point::ZERO;
+            // A move-only path has a point but no segments. An empty shape has neither.
+            return match self {
+                Self::Path(path) => match path.elements().first() {
+                    Some(PathEl::MoveTo(point)) => Some(*point),
+                    _ => None,
+                },
+                _ => None,
+            };
         };
         let mut remaining = distance.max(0.0);
         for segment in &segments {
             let length = segment.arclen(ACCURACY);
             if remaining <= length {
                 let t = segment.inv_arclen(remaining, ACCURACY);
-                return kurbo::ParamCurve::eval(segment, t);
+                return Some(kurbo::ParamCurve::eval(segment, t));
             }
             remaining -= length;
         }
         let last = segments.last().unwrap_or(first);
-        kurbo::ParamCurve::end(last)
+        Some(kurbo::ParamCurve::end(last))
     }
 
     /// The distance from `point` to the outline of the shape.
