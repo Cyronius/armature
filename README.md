@@ -85,6 +85,8 @@ Notes on the numbers:
 - The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 450 tests, most of them
   WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
   Servo's CI would measure.
+- The table predates the SVG hit-testing and path geometry improvements described below; their gains are not included
+  in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
@@ -248,7 +250,8 @@ Notes on the numbers:
   mouse events) finds the shape under the point inside an `svg` element, which layout treats as one box. The SVG
   area went from 36.5% to 49.2% before hit testing (the table above was measured earlier still, at 46.7%), and hit
   testing, with the SVG values of `pointer-events` that Stylo now builds for Servo (AS-508), makes about 4,700 more
-  subtests pass.
+  subtests pass. A subsequent fix makes `getPointAtLength()` return the move point of a move-only path and throw
+  `InvalidStateError` for an empty path, bringing 22 more SVG subtests into conformance.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
