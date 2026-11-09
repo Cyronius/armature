@@ -9499,6 +9499,7 @@ dependencies = [
  "stylo_dom",
  "stylo_malloc_size_of",
  "stylo_traits",
+ "svgtypes",
  "swapper",
  "tempfile",
  "tendril",

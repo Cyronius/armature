@@ -152,6 +152,7 @@ stylo_dom = { workspace = true }
 stylo_malloc_size_of = { workspace = true }
 stylo_traits = { workspace = true }
 swapper = { workspace = true }
+svgtypes = { workspace = true }
 tempfile = { workspace = true }
 tendril = { workspace = true }
 time = { workspace = true }
