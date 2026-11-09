@@ -645,6 +645,9 @@ fn is_display_none(element: &SVGElement) -> bool {
 /// <https://svgwg.org/svg2-draft/coords.html#BoundingBoxes>
 pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<Rect> {
     if let Some(geometry) = shape_geometry(cx, element) {
+        if matches!(&geometry, SVGShapeGeometry::Path(path) if path.elements().is_empty()) {
+            return None;
+        }
         return Some(geometry.bounding_box());
     }
     let local_name = element.upcast::<Element>().local_name().clone();
