@@ -13,6 +13,7 @@ use xml5ever::local_name;
 
 use crate::dom::Node;
 use crate::dom::document::focus::FocusableAreaKind;
+use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::types::{Element, HTMLElement};
 
 impl Element {
@@ -27,6 +28,29 @@ impl Element {
     /// both "Is this element a focusable area?" and "Is this element click (or sequentially)
     /// focusable."
     pub(crate) fn focusable_area_kind(&self, no_gc: &NoGC) -> FocusableAreaKind {
+        // SVG definition and descriptive elements never render themselves, even
+        // when style traversal gives them computed styles and a tabindex.
+        if self.is::<SVGElement>() &&
+            matches!(
+                self.local_name(),
+                &local_name!("defs") |
+                    &local_name!("symbol") |
+                    &local_name!("clipPath") |
+                    &local_name!("mask") |
+                    &local_name!("marker") |
+                    &local_name!("pattern") |
+                    &local_name!("linearGradient") |
+                    &local_name!("radialGradient") |
+                    &local_name!("desc") |
+                    &local_name!("metadata") |
+                    &local_name!("script") |
+                    &local_name!("style") |
+                    &local_name!("title")
+            )
+        {
+            return Default::default();
+        }
+
         // Do not allow unrendered, disconnected, disabled or inert nodes to be focusable areas ever.
         let node: &Node = self.upcast();
         if !node.is_connected() ||
@@ -91,6 +115,11 @@ impl Element {
             NodeTypeId::Element(ElementTypeId::HTMLElement(
                 HTMLElementTypeId::HTMLAnchorElement,
             )) => self.has_attribute(&local_name!("href")),
+
+            // SVG links participate in the same default focus navigation as HTML links.
+            _ if self.is::<SVGElement>() && self.local_name() == &local_name!("a") => {
+                self.has_attribute(&local_name!("href"))
+            },
 
             // >  - input elements whose type attribute are not in the Hidden state
             // >  - button elements

@@ -48,7 +48,7 @@ use selectors::sink::Push;
 use servo_arc::Arc as ServoArc;
 use servo_config::pref;
 use style::applicable_declarations::ApplicableDeclarationBlock;
-use style::attr::{AttrValue, LengthOrPercentageOrAuto};
+use style::attr::{AttrValue, LengthOrPercentageOrAuto, parse_integer};
 use style::context::QuirksMode;
 use style::invalidation::element::restyle_hints::RestyleHint;
 use style::properties::longhands::{
@@ -3019,11 +3019,8 @@ impl Element {
     }
 
     pub(crate) fn explicitly_set_tab_index(&self) -> Option<i32> {
-        if self.has_attribute(&local_name!("tabindex")) {
-            Some(self.get_int_attribute(&local_name!("tabindex"), 0))
-        } else {
-            None
-        }
+        self.get_attribute_string_value_with_namespace(&ns!(), &local_name!("tabindex"))
+            .and_then(|value| parse_integer(value.chars()).ok())
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-tabindex>
@@ -3041,7 +3038,6 @@ impl Element {
         // > or SVG a element, or is a summary element that is a summary for its parent details;
         // > otherwise -1.
         //
-        // Note: We do not currently support SVG `a` elements.
         if matches!(
             self.upcast::<Node>().type_id(),
             NodeTypeId::Element(ElementTypeId::HTMLElement(
@@ -3055,7 +3051,8 @@ impl Element {
                     HTMLElementTypeId::HTMLSelectElement |
                     HTMLElementTypeId::HTMLTextAreaElement
             ))
-        ) {
+        ) || (self.is::<SVGElement>() && self.local_name() == &local_name!("a"))
+        {
             return 0;
         }
         if self

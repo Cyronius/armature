@@ -29,6 +29,7 @@ use crate::dom::css::cssstyledeclaration::{
 };
 use crate::dom::document::Document;
 use crate::dom::document::focus::FocusableArea;
+use crate::dom::domstringmap::DOMStringMap;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::iterators::ShadowIncluding;
@@ -159,6 +160,7 @@ pub(crate) const PRESENTATION_ATTRIBUTES: &[&str] = &[
 pub(crate) struct SVGElement {
     element: Element,
     style_decl: MutNullableDom<CSSStyleDeclaration>,
+    dataset: MutNullableDom<DOMStringMap>,
     /// The objects of the SVG DOM that reflect the attributes of this element.
     animated_properties: DomRefCell<Vec<SVGAnimatedPropertyEntry>>,
 }
@@ -181,6 +183,7 @@ impl SVGElement {
         SVGElement {
             element: Element::new_inherited_with_state(state, tag_name, ns!(svg), prefix, document),
             style_decl: Default::default(),
+            dataset: Default::default(),
             animated_properties: Default::default(),
         }
     }
@@ -619,6 +622,12 @@ impl VirtualMethods for SVGElement {
 }
 
 impl SVGElementMethods<crate::DomTypeHolder> for SVGElement {
+    /// <https://html.spec.whatwg.org/multipage/#dom-dataset>
+    fn Dataset(&self, cx: &mut JSContext) -> DomRoot<DOMStringMap> {
+        self.dataset
+            .or_init(|| DOMStringMap::new(cx, self.upcast()))
+    }
+
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGElement__className>
     fn ClassName(&self, cx: &mut JSContext) -> DomRoot<SVGAnimatedString> {
         self.animated_string(cx, "className", local_name!("class"))
