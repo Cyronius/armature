@@ -190,6 +190,15 @@ pub(crate) fn convert(
     let rect = NonZeroRect::from_xywh(x, y, width, height);
     let rect = rect.log_none(|| log::warn!("Image has an invalid size. Skipped."))?;
 
+    // Armature (AU-003): Parse relative nested SVG sizes against this image's viewport.
+    // The first parse establishes an intrinsic size for resolving a missing image dimension.
+    let kind = if matches!(kind, ImageKind::SVG(_)) && actual_size != rect.size() {
+        nested_svg_for_viewport(href, rect.size(), state.opt).unwrap_or(kind)
+    } else {
+        kind
+    };
+    let actual_size = kind.actual_size()?;
+
     convert_inner(
         kind,
         id,
@@ -201,6 +210,29 @@ pub(crate) fn convert(
         cache,
         parent,
     )
+}
+
+// Armature (AU-003): The default 100px SVG viewport is wrong for a size-less nested SVG.
+// Reparse only when its root depends on the embedding viewport; the resized parse then passes
+// that viewport to deeper data URL images without repeatedly reparsing every level.
+fn nested_svg_for_viewport(href: &str, size: Size, opt: &Options) -> Option<ImageKind> {
+    let url = data_url::DataUrl::process(href).ok()?;
+    let (data, _) = url.decode_to_vec().ok()?;
+    let text = std::str::from_utf8(&data).ok()?;
+    let document = roxmltree::Document::parse(text).ok()?;
+    let root = document.root_element();
+    let relative = |name| {
+        root.attribute(name).is_none_or(|value| {
+            let value = value.trim();
+            value.ends_with('%') || value.eq_ignore_ascii_case("auto")
+        })
+    };
+    if !relative("width") || !relative("height") {
+        return None;
+    }
+    Tree::from_data_nested_with_size(&data, opt, size)
+        .ok()
+        .map(ImageKind::SVG)
 }
 
 pub(crate) fn convert_inner(

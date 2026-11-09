@@ -13,3 +13,8 @@
 
 - Files: `Cargo.toml`, `src/parser/svgtree/mod.rs`, `src/parser/svgtree/parse.rs`, `src/parser/shapes.rs`
 - Why: Let valid CSS `d: path(...)` and `d: none` declarations override path attributes when parsed SVG documents are rasterized. Invalid CSS path declarations leave the XML attribute in effect.
+
+### AU-003: Resolve nested SVG images against their image viewport
+
+- Files: `src/parser/mod.rs`, `src/parser/image.rs`, `src/parser/converter.rs`
+- Why: A nested SVG without absolute root dimensions inherits the embedding `<image>` viewport. Reparse it with that viewport so percentage geometry and further nested images keep their proper scale.

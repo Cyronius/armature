@@ -123,6 +123,15 @@ impl crate::Tree {
     /// external files, as required by the SVG specification when SVG files are loaded
     /// for `<image href="..." />` tags.
     pub fn from_data_nested(data: &[u8], opt: &Options) -> Result<Self, Error> {
+        Self::from_data_nested_with_size(data, opt, opt.default_size)
+    }
+
+    // Armature (AU-003): A nested SVG's relative root sizes use the embedding image viewport.
+    pub(crate) fn from_data_nested_with_size(
+        data: &[u8],
+        opt: &Options,
+        default_size: crate::Size,
+    ) -> Result<Self, Error> {
         let nested_opt = Options {
             resources_dir: None,
             dpi: opt.dpi,
@@ -131,7 +140,7 @@ impl crate::Tree {
             shape_rendering: opt.shape_rendering,
             text_rendering: opt.text_rendering,
             image_rendering: opt.image_rendering,
-            default_size: opt.default_size,
+            default_size,
             image_href_resolver: ImageHrefResolver {
                 resolve_data: Box::new(|a, b, c| (opt.image_href_resolver.resolve_data)(a, b, c)),
                 // External images should be ignored.
@@ -152,7 +161,24 @@ impl crate::Tree {
             ..Options::default()
         };
 
-        Self::from_data(data, &nested_opt)
+        let mut tree = Self::from_data(data, &nested_opt)?;
+        // Armature (AU-003): Content outside a relative nested SVG viewport must not
+        // enlarge its intrinsic size and scale all of its descendants on embedding.
+        if let Ok(text) = std::str::from_utf8(data) &&
+            let Ok(document) = roxmltree::Document::parse(text)
+        {
+            let root = document.root_element();
+            let relative = |name| {
+                root.attribute(name).is_none_or(|value| {
+                    let value = value.trim();
+                    value.ends_with('%') || value.eq_ignore_ascii_case("auto")
+                })
+            };
+            if relative("width") && relative("height") {
+                tree.size = default_size;
+            }
+        }
+        Ok(tree)
     }
 
     /// Parses `Tree` from an SVG string.

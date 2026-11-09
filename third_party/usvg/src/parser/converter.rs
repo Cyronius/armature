@@ -586,8 +586,10 @@ fn resolve_svg_size(svg: &SvgNode, opt: &Options) -> (Result<Size, Error>, bool)
         }
     } else {
         Size::from_wh(
-            svg.convert_user_length(AId::Width, &state, def),
-            svg.convert_user_length(AId::Height, &state, def),
+            // Armature (AU-003): Use the resolved fallback dimensions for a root
+            // with relative sizes and no viewBox, rather than re-reading 100%.
+            units::convert_user_length(width, *svg, AId::Width, &state),
+            units::convert_user_length(height, *svg, AId::Height, &state),
         )
     };
 
