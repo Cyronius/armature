@@ -337,6 +337,8 @@ Notes on the numbers:
   Seeking an SVG animation clock refreshes its cached raster image. The serializer also applies active `<animate>`
   and `<set>` presentation property values to the rendering copy, so the scripted motion and rewind/freeze reftests
   now pass.
+  SVG descendant attribute and child mutations now refresh the outermost raster. SMIL presentation-property effects
+  also refresh it when they start, end, or cross a discrete keyframe; four more SVG animation reftests now pass.
   All 86 path interface subtests and 33 SVG image sizing subtests pass. Across the same 343 SVG animation subtests,
   the broader run moved from 145 PASS / 151 FAIL / 47 TIMEOUT to 343 PASS / 0 FAIL / 0 TIMEOUT, with no previously
   passing subtest regressing.
@@ -376,7 +378,8 @@ Notes on the numbers:
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
   draws `<image>` elements whose `href` is a `data:` URL. SMIL effects cover basic lengths, enumerations, and numbers;
-  full repeat and syncbase timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
+  continuous presentation-property interpolation is not yet rerasterized on every frame. Full repeat and syncbase
+  timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
   methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
   geometry is measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
