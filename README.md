@@ -370,6 +370,9 @@ Notes on the numbers:
   Imported IDs are tracked so changes in their source subtree refresh the visible SVG raster. The
   two hidden-symbol animation reftests now pass; the media-fragment override is the one remaining
   expected-fail reftest in the SVG animation run.
+  Cyclic SVG pattern paint references now use their declared fallback color instead of overflowing
+  the image parser's stack. All 23 SVG crashtests pass, including the pattern cycle test that
+  previously reported PASS immediately before the browser crashed.
 - **SVG geometry properties**: Negative `r`, `rx`, `ry`, `width` and `height` presentation attributes are ignored, and
   `<foreignObject>` maps its geometry attributes to CSS properties. `getComputedStyle()` resolves the used width and
   height of SVG rectangles, images and foreign objects against their SVG viewport, including percentages and
