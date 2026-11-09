@@ -1479,32 +1479,55 @@ fn inner_invoke(
             continue;
         };
 
-        // Step 2.6 Let global be listener callback’s associated realm’s global object.
+        // Step 2.6 Let targetGlobal be currentTarget's node document's relevant
+        // global object for a node, and currentTarget's relevant global object otherwise.
+        let target_global = if let Some(node) = event_target.downcast::<Node>() {
+            if let Some(document) = node.downcast::<Document>() {
+                document.global()
+            } else {
+                node.owner_global()
+            }
+        } else {
+            event_target.global()
+        };
+
+        // Step 2.7 Let global be listener callback's associated realm's global object.
         let global = compiled_listener.associated_global();
 
-        // Step 2.7 Let currentEvent be undefined.
+        // Step 2.8 Do not invoke a listener in a document that is no longer fully active.
+        if target_global
+            .downcast::<Window>()
+            .is_some_and(|window| !window.Document().is_fully_active()) ||
+            global
+                .downcast::<Window>()
+                .is_some_and(|window| !window.Document().is_fully_active())
+        {
+            continue;
+        }
+
+        // Step 2.9 Let currentEvent be undefined.
         let mut current_event = None;
-        // Step 2.8 If global is a Window object:
+        // Step 2.10 If global is a Window object:
         if let Some(window) = global.downcast::<Window>() {
-            // Step 2.8.1 Set currentEvent to global’s current event.
+            // Step 2.10.1 Set currentEvent to global’s current event.
             current_event = window.current_event();
 
-            // Step 2.8.2 If invocationTargetInShadowTree is false, then set global’s current event to event.
+            // Step 2.10.2 If invocationTargetInShadowTree is false, then set global’s current event to event.
             if !invocation_target_in_shadow_tree {
                 current_event = window.set_current_event(Some(event))
             }
         }
 
-        // Step 2.9 If listener’s passive is true, then set event's in passive listener flag.
+        // Step 2.11 If listener’s passive is true, then set event's in passive listener flag.
         event.set_in_passive_listener(event_target.is_passive(listener));
 
-        // Step 2.10 If global is a Window object, then record timing info for event listener
+        // Step 2.12 If global is a Window object, then record timing info for event listener
         // given event and listener.
-        // Step 2.11 Call a user object’s operation with listener’s callback, "handleEvent", « event »,
+        // Step 2.13 Call a user object’s operation with listener’s callback, "handleEvent", « event »,
         // and event’s currentTarget attribute value. If this throws an exception exception:
-        //     Step 2.10.1 Report exception for listener’s callback’s corresponding JavaScript object’s
+        //     Step 2.13.1 Report exception for listener’s callback’s corresponding JavaScript object’s
         //     associated realm’s global object.
-        //     Step 2.10.2 Set legacyOutputDidListenersThrowFlag if given.
+        //     Step 2.13.2 Set legacyOutputDidListenersThrowFlag if given.
         #[cfg(feature = "devtools")]
         let marker = TimelineMarker::start("DOMEvent".to_owned());
         if compiled_listener
@@ -1519,15 +1542,15 @@ fn inner_invoke(
             window.emit_timeline_marker(marker.end());
         }
 
-        // Step 2.12 Unset event’s in passive listener flag.
+        // Step 2.14 Unset event’s in passive listener flag.
         event.set_in_passive_listener(false);
 
-        // Step 2.13 If global is a Window object, then set global’s current event to currentEvent.
+        // Step 2.15 If global is a Window object, then set global’s current event to currentEvent.
         if let Some(window) = global.downcast::<Window>() {
             window.set_current_event(current_event.as_deref());
         }
 
-        // Step 2.13: If event’s stop immediate propagation flag is set, then break.
+        // Step 2.16: If event’s stop immediate propagation flag is set, then break.
         if event.has_flag(EventFlags::StopImmediatePropagation) {
             break;
         }
