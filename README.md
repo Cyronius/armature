@@ -85,8 +85,8 @@ Notes on the numbers:
 - The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 450 tests, most of them
   WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
   Servo's CI would measure.
-- The table predates the SVG hit-testing and path geometry improvements described below; their gains are not included
-  in these scores.
+- The table predates the SVG hit-testing, path DOM, image sizing and SMIL work described below; their gains are not
+  included in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
@@ -251,7 +251,88 @@ Notes on the numbers:
   area went from 36.5% to 49.2% before hit testing (the table above was measured earlier still, at 46.7%), and hit
   testing, with the SVG values of `pointer-events` that Stylo now builds for Servo (AS-508), makes about 4,700 more
   subtests pass. A subsequent fix makes `getPointAtLength()` return the move point of a move-only path and throw
-  `InvalidStateError` for an empty path, bringing 22 more SVG subtests into conformance.
+  `InvalidStateError` for an empty path, bringing 22 more SVG subtests into conformance. The path DOM APIs
+  (`getPathData()`, `setPathData()` and `getPathSegmentAtLength()`) now pass 79 more subtests across 19 SVG path
+  interface files, including normalization, malformed data, mutation records and length boundaries. SVG `<image>`
+  now uses resource natural dimensions for `auto` sizing in `getBBox()`, and waits for image loads before the document
+  load event; all 33 focused subtests pass across two geometry files. Allowing SVG descendants to participate in style
+  traversal makes CSS `d` interpolation work in dynamically styled SVG subtrees, bringing 180 more subtests into
+  conformance across three path property files, plus one geometry subtest. SVG roots now have independent animation
+  clocks with pause, resume and seek controls, and a simple `<animate>` child interpolates `SVGAnimatedLength.animVal`.
+  The pause/seek and SVG reinsertion timing tests now pass three subtests across two files. SVG animation elements
+  expose their DOM interfaces and timing methods, including scheduled begin and end instance times, interval queries,
+  and SMIL clock parsing; 23 more subtests pass across four timing and clock files. A local WPT covers DOM instance
+  times, frozen values after an early end, and nested SVG fragments sharing the outermost clock. Length animations
+  now compose `by`, `from`/`by`, `from`/`to`, `to`, and `values` effects across SVG length units, with frozen effects
+  and `additive="sum"`; 31 SVG length animation subtests pass while `baseVal` remains unchanged. Enumerated SVG
+  attributes now sample discrete `from`/`to` and `values` animations, making 13 more subtests pass. Numeric and integer
+  SVG DOM attributes now sample interpolated values, including optional number pairs, making eight more subtests pass;
+  three invalid-value tests already passed but still had failure expectations. Scheduled SMIL begin/end events,
+  `onbegin`/`onend` handlers, eventbase timing dependencies, and `<set>` length values now pass the event listener,
+  begin attribute mutation, begin event, and end event tests. Basic syncbase dependencies now resolve during playback
+  and paused timeline seeks, including cyclic begin/end chains and escaped dots in referenced IDs; six more timing
+  tests pass. Seeking queues begin and end events when the active interval changes and skips events for intervals or
+  repeats crossed entirely by the seek; eight seeking event tests now pass, and the large-time seek test also passes.
+  Repeat boundaries now dispatch `repeatEvent` and resolve `repeat(n)` dependencies, making six more repeat tests pass.
+  Seeking during a repeat event preserves dependent begin events, and SVG animations honor ancestor `systemLanguage`
+  conditions. SMIL now sends CSS presentation property effects, including `fill` and `d`, through the style animation
+  compositor, and dispatches timing boundaries across animations in clock order. The animated `d` style leaves
+  `getPathData()` on the base attribute. Discrete sampling, `keyTimes` and spline easing now share one timing
+  calculation across SVG DOM values and animated style. `repeatDur` and `repeatCount` now determine the active
+  interval, and repeated length and numeric animations sample each iteration with `accumulate="sum"` where requested.
+  SVG string and boolean `animVal` values now follow discrete animations; a single `values` entry and an indefinite
+  simple duration keep the first specified value, and CSS `visibility` uses discrete SMIL timing.
+  Animated marker `orient` angles interpolate across degree, radian and gradian units; `orientAngle.animVal` and
+  `orientType.animVal` also follow transitions between an angle and `auto`.
+  Animated SVG length and number lists now sample `values`, `from`/`to`, `from`/`by`, additive, and repeated effects
+  while keeping `baseVal` independent. Animated polygon and polyline point lists also sample these effects while
+  keeping malformed animation values from replacing the base list. All eleven targeted list animation failures pass.
+  SVG motion now contributes its sampled path or coordinate-pair translation and rotation to DOM geometry, including
+  referenced shapes, discrete timing, key points, repeats, and zero-length paths. The 39 previously failing motion
+  and related timing subtests in this selection now pass. SVG 2's `auto` ellipse radius is reflected in geometry.
+  `animateTransform` now updates transform-list `animVal` and CTM from the same sampled effect, including discrete
+  timing, accumulation, additive composition, and the default `translate` type. Seven more animation subtests pass.
+  SVG path `d` animations now use path addition for `by` effects and accumulate compatible paths across repeats,
+  while invalid or incompatible path additions leave the base value intact. Five more animation subtests pass.
+  SMIL eventbase timing now observes DOM events, including bubbling and events on non-SVG elements. Effects that begin
+  later take priority, and unitless SVG lengths reach the CSS compositor as lengths. Discrete `display` effects now
+  resolve in Stylo. Five more selected SVG animation subtests pass and the four timeouts are gone. In the focused CSS
+  display animation checks, 26 formerly expected failures now pass; other display animation failures remain.
+  SVG length effects now compose by interval start time, so later frozen effects take priority even when their
+  elements appear earlier in the DOM. The rewind and multiple-animation ending tests now pass.
+  An immediate `beginElement()` also consumes past DOM end instance times, so an `endElement()` call on an inactive
+  animation no longer prevents it from starting at the same clock instant.
+  SVG geometry now samples the same animated lengths as `animVal`, so `getBBox()` reflects active length animations;
+  invalid `keySplines` control points on either axis leave the animation unapplied. Both spline-limit tests pass.
+  SVG length animations now evaluate `calc()` values with arithmetic precedence and SVG unit conversion, including
+  viewport-relative percentages. Two additive length tests now pass, with local coverage for nested calculations,
+  invalid types and changing viewport size.
+  Animated SVG `viewBox` values now reach `animVal` and the geometry used by `getCTM()`; both SVGRect animation tests
+  pass, along with a local transform regression test.
+  SMIL length values now follow animations that target an element through `href` or `xlink:href`, including when the
+  target changes; `points` animations also stop affecting the XML DOM value when `attributeType` switches to CSS.
+  Other animated SVG DOM value classes now use the same external target lookup, and signed `by` changes work for
+  `viewBox` dimensions. Absolute color `by` animations sample channels in sRGB, including transparent colors and
+  `currentColor` effects. The multi-type additive test and two color tests now pass.
+  SMIL `class` effects now participate in CSS selector matching while leaving the DOM attribute unchanged; styles
+  return to the base class when the effect ends. Both affected upstream tests and a local regression test pass.
+  SVG graphics elements now expose transformed client rectangles, including text ranges, while respecting hidden
+  ancestors and stylesheet `display: none`. Event clicks on SVG children can reach SMIL timing, and `restart="never"`
+  keeps an animation to its first interval.
+  Paced numeric SMIL animations place keyframes by value distance, ignoring `keyTimes`. The SVG 2 `path-length` CSS
+  property now parses, computes, and interpolates; `pathLength` presentation attributes and SMIL animations feed it.
+  The focused parsing and interpolation tests gained 47 passing subtests. The SVG rasterizer now calibrates stroke
+  dashes and text path start offsets with CSS `path-length` or the `pathLength` attribute. All 15 SVG path distance
+  reftests now pass, including 12 that previously had failure expectations and all four CSS rendering cases.
+  Computed `d` values now serialize with absolute path commands, including inherited and animated values. The five
+  path serialization subtests and the last two SVG animation subtests in this selection now pass.
+  CSS `d: path(...)` and `d: none` now determine rasterized path geometry; SVG DOM geometry queries also use the
+  computed `d` value. XML path data is escaped when parsed as a CSS presentation hint, preserving SVG whitespace;
+  malformed XML data still renders its valid prefix. Three rendering reftests, four DOM geometry subtests and one
+  path number parsing subtest now pass. Rendering animated motion along a path supplied by CSS `d` remains open.
+  All 86 path interface subtests and 33 SVG image sizing subtests pass. Across the same 343 SVG animation subtests,
+  the broader run moved from 145 PASS / 151 FAIL / 47 TIMEOUT to 343 PASS / 0 FAIL / 0 TIMEOUT, with no previously
+  passing subtest regressing.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -287,9 +368,10 @@ Notes on the numbers:
   style has dropped it. Container query units in keyframes are not supported, as in style sheets.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
-  draws `<image>` elements whose `href` is a `data:` URL. SMIL animation (`SVGAnimationElement`) is missing, so
-  `animVal` is always `baseVal`. The geometry methods use attributes, not the CSS geometry properties, and text is
-  measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
+  draws `<image>` elements whose `href` is a `data:` URL. SMIL effects cover basic lengths, enumerations, and numbers;
+  full repeat and syncbase timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
+  methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
+  geometry is measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
