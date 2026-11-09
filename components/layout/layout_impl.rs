@@ -18,7 +18,7 @@ use embedder_traits::{
 };
 use encoding_rs::ISO_8859_8;
 use euclid::{Point2D, Rect, Scale, Size2D};
-use fonts::{FontContext, FontContextWebFontMethods};
+use fonts::{FontContext, FontContextWebFontMethods, FontGroup};
 use fonts_traits::{StylesheetWebFontLoadFinishedCallback, WebFontSetDifference};
 use icu_locale_core::subtags::Language;
 use layout_api::{
@@ -1986,6 +1986,13 @@ impl RegisteredSpeculativePainters for RegisteredPaintersImpl {
 
 struct LayoutFontMetricsProvider(Arc<FontContext>);
 
+impl LayoutFontMetricsProvider {
+    fn font_group(&self, font: &Font, base_size: CSSPixelLength) -> Arc<FontGroup> {
+        self.0
+            .font_group_with_size(ServoArc::new(font.clone()), base_size.into())
+    }
+}
+
 impl FontMetricsProvider for LayoutFontMetricsProvider {
     fn query_font_metrics(
         &self,
@@ -1995,9 +2002,7 @@ impl FontMetricsProvider for LayoutFontMetricsProvider {
         _flags: QueryFontMetricsFlags,
     ) -> FontMetrics {
         let font_context = &self.0;
-        let font_group = self
-            .0
-            .font_group_with_size(ServoArc::new(font.clone()), base_size.into());
+        let font_group = self.font_group(font, base_size);
 
         let Some(first_font_metrics) = font_group
             .first(font_context)
