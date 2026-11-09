@@ -85,8 +85,8 @@ Notes on the numbers:
 - The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 450 tests, most of them
   WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
   Servo's CI would measure.
-- The table predates the SVG hit-testing, path DOM, image sizing, canvas image, focus and SMIL work described below; their
-  gains are not included in these scores.
+- The table predates the SVG hit-testing, path DOM, image sizing, canvas image, focus, conditional processing and
+  SMIL work described below; their gains are not included in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
@@ -266,6 +266,10 @@ Notes on the numbers:
   SVG links participate in focus navigation, and unrendered SVG definition elements stay out of it. Invalid
   `tabindex` values no longer create focusable areas where the element has no default focus behavior. The targeted SVG
   focus and dataset tests pass, alongside eight previously failing HTML focus subtests.
+  SVG `systemLanguage` now preserves empty comma-separated tokens in its DOM list, excludes nonmatching graphics from
+  geometry, hit testing and focus, and selects the first matching `<switch>` child. The SVG rasterizer uses the
+  browser's language preference, so image pixels follow the same conditions. All 27 focused parsing and matching
+  subtests and the new raster and focus tests pass.
   Allowing SVG descendants to participate
   in style traversal makes CSS `d` interpolation work in dynamically styled SVG subtrees, bringing 180 more subtests into
   conformance across three path property files, plus one geometry subtest. SVG roots now have independent animation
