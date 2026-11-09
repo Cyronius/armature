@@ -493,6 +493,38 @@ impl SVGAnimationElement {
         Some(((position - completed) as f32, completed as u32))
     }
 
+    /// Whether playback needs another rendered SVG image before the next SMIL
+    /// timing boundary. Frozen and discrete effects are refreshed separately.
+    pub(crate) fn has_continuous_visual_effect(&self) -> bool {
+        if !self.upcast::<Node>().is_connected() || !self.passes_conditional_processing() {
+            return false;
+        }
+        let element = self.upcast::<SVGElement>();
+        if element
+            .viewport_element()
+            .is_none_or(|root| root.animations_are_paused()) ||
+            self.simple_duration()
+                .is_none_or(|duration| duration <= 0.0) ||
+            self.active_interval_at(self.current_time()).is_none()
+        {
+            return false;
+        }
+        let kind = self.upcast::<Element>().local_name();
+        if kind == &local_name!("animateMotion") {
+            return true;
+        }
+        kind == &local_name!("animate") &&
+            self.style_target.get().is_some() &&
+            !self.class_style_effect.get() &&
+            self.calculation_mode() != "discrete" &&
+            !matches!(
+                element
+                    .svg_attribute(&local_name!("attributeName"))
+                    .as_deref(),
+                Some("display" | "visibility" | "class")
+            )
+    }
+
     /// Progress for simple value interpolation, including a frozen final value.
     pub(crate) fn sample_progress(&self) -> Option<f32> {
         self.sample_iteration().map(|(progress, _)| progress)

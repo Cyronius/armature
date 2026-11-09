@@ -1318,6 +1318,11 @@ impl ScriptThread {
             .filter(|(_, document)| document.is_fully_active() && !document.window().throttled())
             .filter_map(|(_, document)| document.next_smil_event_delay())
             .min();
+        let continuous_smil_visual_effect = self.documents.borrow().iter().any(|(_, document)| {
+            document.is_fully_active() &&
+                !document.window().throttled() &&
+                document.has_continuous_smil_visual_effect()
+        });
 
         // If we are not running animations and no rendering update is
         // necessary, just exit early and schedule the next rendering update
@@ -1329,7 +1334,7 @@ impl ScriptThread {
         // If animations are running and a reflow in this event loop iteration
         // produced a display list, rely on the renderer to inform us of the
         // next animation tick / rendering opportunity.
-        if running_animations && built_any_display_lists {
+        if running_animations && built_any_display_lists && !continuous_smil_visual_effect {
             return;
         }
 
@@ -1359,9 +1364,14 @@ impl ScriptThread {
             .map(|last_render_opportunity_time| Instant::now() - last_render_opportunity_time)
             .unwrap_or(Duration::MAX)
             .min(animation_delay);
-        self.schedule_update_the_rendering_timer_if_necessary(
-            animation_delay - time_since_last_rendering_opportunity,
-        );
+        // Rasterizing a changing SVG can take longer than one frame interval.
+        // Give the event loop time to process other work before the next sample.
+        let delay = if continuous_smil_visual_effect {
+            animation_delay
+        } else {
+            animation_delay - time_since_last_rendering_opportunity
+        };
+        self.schedule_update_the_rendering_timer_if_necessary(delay);
     }
 
     /// Fulfill the possibly-pending pending `document.fonts.ready` promise if

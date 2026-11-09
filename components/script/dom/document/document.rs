@@ -5190,11 +5190,70 @@ impl Document {
     }
 
     pub(crate) fn next_smil_event_delay(&self) -> Option<Duration> {
-        self.smil_animation_elements
-            .borrow()
+        let animations = self.smil_animation_elements.borrow();
+        let boundary = animations
             .iter()
             .filter_map(|animation| animation.next_timing_event_delay())
-            .min()
+            .min();
+        if self.has_continuous_smil_visual_effect() {
+            Some(
+                boundary
+                    .unwrap_or(Duration::MAX)
+                    .min(Duration::from_millis(16)),
+            )
+        } else {
+            boundary
+        }
+    }
+
+    pub(crate) fn has_continuous_smil_visual_effect(&self) -> bool {
+        self.completely_loaded() &&
+            self.smil_animation_elements
+                .borrow()
+                .iter()
+                .any(|animation| animation.has_continuous_visual_effect())
+    }
+
+    fn invalidate_continuous_smil_rasters(&self, cx: &mut JSContext) {
+        // Starting a new image load before the document finishes loading can
+        // postpone the load event indefinitely for an endless animation.
+        if !self.completely_loaded() {
+            return;
+        }
+        // Continuous image churn must not keep the initial font environment
+        // pending forever; let fonts.ready settle before the next raster update.
+        if self.Fonts(cx).waiting_to_fullfill_promise() {
+            return;
+        }
+        // A screenshot request needs one completed frame. Let pending raster work
+        // settle before sampling the next frame of an indefinite animation.
+        if self.window().has_pending_screenshot_readiness_request() {
+            return;
+        }
+        let animations: Vec<_> = self
+            .smil_animation_elements
+            .borrow()
+            .iter()
+            .filter(|animation| animation.has_continuous_visual_effect())
+            .map(Dom::as_rooted)
+            .collect();
+        for animation in animations {
+            let Some(target) = animation.target_element(cx) else {
+                continue;
+            };
+            if !target.upcast::<Node>().is_connected() {
+                continue;
+            }
+            if let Some(root) = target
+                .upcast::<Node>()
+                .inclusive_ancestors(ShadowIncluding::No)
+                .take_while(|ancestor| ancestor.is::<SVGElement>())
+                .filter_map(DomRoot::downcast::<SVGSVGElement>)
+                .last()
+            {
+                root.invalidate_cached_serialized_subtree_and_rasterization_result(cx.no_gc());
+            }
+        }
     }
 
     pub(crate) fn notify_smil_timing_event(
@@ -5447,6 +5506,7 @@ impl Document {
         self.animation_manager()
             .send_playback_events(self.window(), cx);
         self.update_smil_animation_events(cx);
+        self.invalidate_continuous_smil_rasters(cx);
     }
 
     pub(crate) fn set_has_pending_animated_image_update(&self) {

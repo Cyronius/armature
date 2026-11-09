@@ -2934,6 +2934,10 @@ impl Window {
         self.maybe_resolve_pending_screenshot_readiness_requests(cx);
     }
 
+    pub(crate) fn has_pending_screenshot_readiness_request(&self) -> bool {
+        self.has_pending_screenshot_readiness_request.get()
+    }
+
     pub(crate) fn maybe_resolve_pending_screenshot_readiness_requests(&self, cx: &mut JSContext) {
         let pending_request = self.has_pending_screenshot_readiness_request.get();
         if !pending_request {
