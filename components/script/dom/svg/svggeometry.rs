@@ -982,8 +982,16 @@ pub(crate) fn computed_value(element: &SVGElement, name: &str) -> String {
 ///
 /// <https://svgwg.org/svg2-draft/interact.html#PointerEventsProperty>
 fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool {
-    // Find out where the point is relative to the geometry first, which is cheap, so that
-    // style is only queried for the elements near the point.
+    let pointer_events = computed_value(element, "pointer-events").to_ascii_lowercase();
+    if pointer_events == "none" {
+        return false;
+    }
+    if pointer_events == "bounding-box" {
+        return bounding_box(cx, element).is_some_and(|bbox| {
+            point.x >= bbox.x0 && point.x <= bbox.x1 && point.y >= bbox.y0 && point.y <= bbox.y1
+        });
+    }
+    // For the other values, reject distant points before querying paint and visibility.
     let local_name = element.upcast::<Element>().local_name().clone();
     let is_text = matches!(
         local_name,
@@ -1012,17 +1020,10 @@ fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool 
     };
     // Strokes wider than this are not considered.
     const MAXIMUM_HALF_STROKE_WIDTH: f64 = 50.0;
-    let in_bounding_box = geometry
-        .as_ref()
-        .is_some_and(|geometry| geometry.bounding_box().contains(point));
-    if !in_box && winding == 0 && distance > MAXIMUM_HALF_STROKE_WIDTH && !in_bounding_box {
+    if !in_box && winding == 0 && distance > MAXIMUM_HALF_STROKE_WIDTH {
         return false;
     }
 
-    let pointer_events = computed_value(element, "pointer-events").to_ascii_lowercase();
-    if pointer_events == "none" {
-        return false;
-    }
     let visible = computed_value(element, "visibility") == "visible";
     let fill_painted = computed_value(element, "fill") != "none";
     let stroke_painted = computed_value(element, "stroke") != "none";
@@ -1033,7 +1034,7 @@ fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool 
         "painted" => (false, fill_painted, stroke_painted),
         "fill" => (false, true, false),
         "stroke" => (false, false, true),
-        "all" | "bounding-box" => (false, true, true),
+        "all" => (false, true, true),
         // `auto` and `visiblePainted`.
         _ => (true, fill_painted, stroke_painted),
     };
@@ -1043,9 +1044,6 @@ fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool 
     if geometry.is_none() {
         return in_box &&
             (fill_sensitive || stroke_sensitive || local_name == local_name!("image"));
-    }
-    if pointer_events == "bounding-box" {
-        return in_bounding_box;
     }
     if fill_sensitive && winding != 0 {
         let inside = if computed_value(element, "fill-rule") == "evenodd" {
@@ -1113,7 +1111,15 @@ pub(crate) fn hit_test_svg(
             shape_geometry_kind(element) ||
                 matches!(
                     element.upcast::<Element>().local_name(),
-                    &local_name!("text") | &local_name!("image") | &local_name!("use")
+                    &local_name!("text") |
+                        &local_name!("tspan") |
+                        &local_name!("textPath") |
+                        &local_name!("image") |
+                        &local_name!("use") |
+                        &local_name!("g") |
+                        &local_name!("a") |
+                        &local_name!("switch") |
+                        &local_name!("svg")
                 )
         })
         .collect();
