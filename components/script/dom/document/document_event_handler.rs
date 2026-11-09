@@ -1040,9 +1040,17 @@ impl DocumentEventHandler {
             }
         }
 
-        // https://w3c.github.io/uievents/#hit-test
-        // Prevent mouse event if element is disabled.
-        if element.is_actually_disabled() {
+        // https://html.spec.whatwg.org/multipage/#enabling-and-disabling-form-controls:-the-disabled-attribute
+        // A form control's internal shadow tree can be the hit target. Do not
+        // dispatch a user click through it to a disabled host.
+        if node
+            .inclusive_ancestors(ShadowIncluding::Yes)
+            .any(|ancestor| {
+                ancestor
+                    .downcast::<Element>()
+                    .is_some_and(|element| element.is_actually_disabled())
+            })
+        {
             return;
         }
 
