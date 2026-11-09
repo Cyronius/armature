@@ -162,17 +162,28 @@ impl HTMLImageElement {
 
     /// Gets the copy of the raster image data.
     pub(crate) fn get_raster_image_data(&self) -> Option<Snapshot> {
+        self.get_raster_image_data_at_size(None)
+    }
+
+    /// Rasterizes an SVG source at the requested output size when one is provided.
+    pub(crate) fn get_raster_image_data_at_size(
+        &self,
+        output_size: Option<webrender_api::units::DeviceIntSize>,
+    ) -> Option<Snapshot> {
         let image = self.image_data()?;
         let raster_image = match image {
             Image::Raster(image) => image.as_ref().clone(),
             Image::Vector(image) => {
-                let size = webrender_api::units::DeviceIntSize::new(
+                let intrinsic_size = webrender_api::units::DeviceIntSize::new(
                     i32::try_from(image.metadata.width).unwrap_or(i32::MAX),
                     i32::try_from(image.metadata.height).unwrap_or(i32::MAX),
                 );
                 self.owner_window()
                     .image_cache()
-                    .rasterize_vector_image_for_canvas(image.id, size)?
+                    .rasterize_vector_image_for_canvas(
+                        image.id,
+                        output_size.unwrap_or(intrinsic_size),
+                    )?
             },
         };
         Some(raster_image.as_snapshot())

@@ -359,7 +359,18 @@ impl ImageBitmap {
 
                 // If no ImageBitmap object can be constructed, then the promise
                 // is rejected instead.
-                let Some(snapshot) = image.get_raster_image_data() else {
+                // For an uncropped SVG source, rasterize at the requested bitmap
+                // dimensions so vector details are preserved through resizing.
+                let output_size = match (options.resizeWidth, options.resizeHeight, sw, sh) {
+                    (Some(width), Some(height), None, None) => {
+                        Some(webrender_api::units::DeviceIntSize::new(
+                            i32::try_from(width).unwrap_or(i32::MAX),
+                            i32::try_from(height).unwrap_or(i32::MAX),
+                        ))
+                    },
+                    _ => None,
+                };
+                let Some(snapshot) = image.get_raster_image_data_at_size(output_size) else {
                     p.reject_error(realm, Error::InvalidState(None));
                     return p;
                 };
