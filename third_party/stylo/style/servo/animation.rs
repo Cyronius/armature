@@ -2021,7 +2021,8 @@ impl ScriptAnimation {
             let mut step = IntermediateComputedKeyframe::new(keyframe.offset);
             for declaration in keyframe.declarations.normal_declaration_iter() {
                 if let PropertyDeclarationId::Longhand(id) = declaration.id() {
-                    if id == LonghandId::Display || !id.is_animatable() {
+                    // Armature (AS-509): SMIL set effects can animate display discretely.
+                    if id != LonghandId::Display && !id.is_animatable() {
                         continue;
                     }
                 }

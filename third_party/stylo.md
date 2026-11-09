@@ -342,3 +342,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `svg/interact/scripted/pointer-events-fill-stroke-hittest.html`, `svg/interact/parsing` and the
   `pointer-events` presentation attribute.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-509: Resolve display in script animation effects
+- Files: `style/servo/animation.rs`
+- Why: SVG SMIL `<set>` can switch `display` at an eventbase. Script animations need to resolve the
+  discrete display value instead of dropping its declaration, while CSS animation keyframes keep
+  their existing display handling. Affects `svg/animations/slider-switch.html`.
+- Upstream: Could go upstream as part of script animation support.
