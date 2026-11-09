@@ -68,7 +68,9 @@ impl WebDriverEmbedderControls {
                 Some(WebDriverUserPrompt::Prompt)
             },
             EmbedderControl::FilePicker { .. } => Some(WebDriverUserPrompt::File),
-            EmbedderControl::SelectElement { .. } => Some(WebDriverUserPrompt::Default),
+            // A select popup does not pause the document's event loop, so it is not
+            // a WebDriver user prompt and must not block subsequent commands.
+            EmbedderControl::SelectElement { .. } => None,
             _ => None,
         }
     }
