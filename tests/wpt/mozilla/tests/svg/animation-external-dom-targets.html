@@ -1,0 +1,46 @@
+<!doctype html>
+<title>External SMIL targets update SVG animated DOM values</title>
+<link rel="help" href="https://svgwg.org/specs/animations/#AnimationTarget">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<svg id="svg" viewBox="0 0 100 100" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs><marker id="marker" orient="-45deg"/></defs>
+  <filter><feConvolveMatrix id="convolve" kernelMatrix="1 0 0 0 1 0 0 0 1" divisor="37.5" order="6 6"/></filter>
+  <polygon id="polygon" points="0,0 10,5 0,10"/>
+  <animate xlink:href="#marker" attributeName="orient" by="45deg" dur="4s" fill="freeze"/>
+  <animate href="#convolve" attributeName="divisor" by="-17.5" dur="4s" fill="freeze"/>
+  <animate href="#convolve" attributeName="order" by="-3 -3" dur="4s" fill="freeze"/>
+  <animate href="#svg" attributeName="viewBox" from="0 0 100 100" to="10 10 80 80" dur="4s" fill="freeze"/>
+  <animate href="#polygon" attributeName="points" by="0,0 10,5 0,10" dur="4s" fill="freeze"/>
+</svg>
+<script>
+const svg = document.getElementById("svg");
+const marker = document.getElementById("marker");
+const convolve = document.getElementById("convolve");
+const polygon = document.getElementById("polygon");
+svg.pauseAnimations();
+svg.setCurrentTime(2);
+
+test(() => {
+  assert_approx_equals(marker.orientAngle.animVal.value, -22.5, 0.01);
+  assert_equals(marker.orientAngle.baseVal.value, -45);
+}, "An external animate element updates orient.animVal");
+
+test(() => {
+  assert_approx_equals(polygon.animatedPoints.getItem(1).x, 15, 0.01);
+  assert_equals(polygon.points.getItem(1).x, 10);
+}, "An external animate element updates animatedPoints");
+
+test(() => {
+  assert_approx_equals(convolve.divisor.animVal, 28.75, 0.01);
+  assert_equals(convolve.divisor.baseVal, 37.5);
+  assert_equals(convolve.orderX.animVal, 5);
+  assert_equals(convolve.orderX.baseVal, 6);
+}, "External animate elements update number and integer animVal values");
+
+test(() => {
+  assert_equals(svg.viewBox.animVal.x, 5);
+  assert_equals(svg.viewBox.animVal.width, 90);
+  assert_equals(svg.viewBox.baseVal.width, 100);
+}, "An external animate element updates viewBox.animVal");
+</script>

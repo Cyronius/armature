@@ -1,0 +1,46 @@
+<!doctype html>
+<title>SMIL class effects style both present and missing class attributes</title>
+<link rel="help" href="https://svgwg.org/specs/animations/#AnimationSandwichModel">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/common/rendering-utils.js"></script>
+<style>
+  .base { fill: red; }
+  .animated { fill: blue; }
+  [class~="animated"] { stroke: lime; }
+</style>
+<svg id="svg">
+  <rect id="with-base" class="base" width="10" height="10">
+    <set attributeName="class" to="animated" dur="1s"/>
+  </rect>
+  <rect id="without-base" width="10" height="10">
+    <set attributeName="class" to="animated" dur="1s"/>
+  </rect>
+</svg>
+<script>
+  promise_setup(() => new Promise(resolve => addEventListener('load', resolve, {once: true})));
+
+  promise_test(async () => {
+    svg.pauseAnimations();
+    svg.setCurrentTime(0.5);
+    await waitForAtLeastOneFrame();
+
+    for (const rect of [document.getElementById('with-base'),
+                        document.getElementById('without-base')]) {
+      assert_equals(getComputedStyle(rect).fill, 'rgb(0, 0, 255)');
+      assert_equals(getComputedStyle(rect).stroke, 'rgb(0, 255, 0)');
+    }
+    const withBase = document.getElementById('with-base');
+    const withoutBase = document.getElementById('without-base');
+    assert_equals(withBase.getAttribute('class'), 'base');
+    assert_true(withBase.classList.contains('base'));
+    assert_false(withBase.classList.contains('animated'));
+    assert_false(withoutBase.hasAttribute('class'));
+    assert_equals(withoutBase.getAttribute('class'), null);
+
+    svg.setCurrentTime(2);
+    await waitForAtLeastOneFrame();
+    assert_equals(getComputedStyle(withBase).fill, 'rgb(255, 0, 0)');
+    assert_equals(getComputedStyle(withoutBase).fill, 'rgb(0, 0, 0)');
+  }, 'SMIL class effects affect selectors but preserve and restore DOM attributes');
+</script>

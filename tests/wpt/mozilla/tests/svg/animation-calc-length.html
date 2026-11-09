@@ -1,0 +1,44 @@
+<!doctype html>
+<title>SVG length animation calc expressions</title>
+<link rel="help" href="https://drafts.csswg.org/css-values-4/#math-function">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<svg width="200">
+  <rect id="precedence" width="10" height="10">
+    <animate attributeName="width" by="calc(25% + 10px * 2)" dur="4s"/>
+  </rect>
+  <rect id="grouping" width="10" height="10">
+    <animate attributeName="width" by="calc((25% + 5px) / 2)" dur="4s"/>
+  </rect>
+  <rect id="nested" width="10" height="10">
+    <animate attributeName="width" by="calc(calc(10px + 5px) * 2)" dur="4s"/>
+  </rect>
+  <rect id="mixed-types" width="10" height="10">
+    <animate attributeName="width" by="calc(5px + 2)" dur="4s"/>
+  </rect>
+  <rect id="division-by-zero" width="10" height="10">
+    <animate attributeName="width" by="calc(5px / 0)" dur="4s"/>
+  </rect>
+</svg>
+<script>
+const svg = document.querySelector("svg");
+svg.pauseAnimations();
+svg.setCurrentTime(2);
+
+test(() => {
+  assert_equals(document.getElementById("precedence").width.animVal.value, 45);
+  assert_equals(document.getElementById("grouping").width.animVal.value, 23.75);
+  assert_equals(document.getElementById("nested").width.animVal.value, 25);
+}, "calc() respects operator precedence, grouping, and nested functions");
+
+test(() => {
+  assert_equals(document.getElementById("mixed-types").width.animVal.value, 10);
+  assert_equals(document.getElementById("division-by-zero").width.animVal.value, 10);
+}, "Invalid calc() values leave the base length intact");
+
+test(() => {
+  svg.setAttribute("width", "400");
+  assert_equals(document.getElementById("precedence").width.animVal.value, 70);
+  assert_equals(document.getElementById("precedence").getBBox().width, 70);
+}, "Percentages resolve against the current SVG viewport when sampled");
+</script>

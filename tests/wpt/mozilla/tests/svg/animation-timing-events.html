@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SVG animation interval events</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<svg>
+  <rect width="10" height="10">
+    <animate id="scheduled" attributeName="x" from="0" to="10"
+             begin="0.05s" dur="0.05s"/>
+    <animate id="scripted" attributeName="y" from="0" to="10"
+             begin="indefinite" dur="0.05s"/>
+  </rect>
+</svg>
+<script>
+async_test(t => {
+  const animation = document.querySelector('#scheduled');
+  const events = [];
+  animation.addEventListener('beginEvent', t.step_func(event => {
+    assert_false(event.bubbles);
+    assert_false(event.cancelable);
+    events.push(event.type);
+  }));
+  animation.addEventListener('endEvent', t.step_func_done(event => {
+    events.push(event.type);
+    assert_array_equals(events, ['beginEvent', 'endEvent']);
+  }));
+}, 'Scheduled SVG intervals dispatch beginEvent before endEvent');
+
+async_test(t => {
+  const animation = document.querySelector('#scripted');
+  const events = [];
+  animation.addEventListener('beginEvent', t.step_func(event => {
+    events.push(event.type);
+  }));
+  animation.addEventListener('endEvent', t.step_func_done(event => {
+    events.push(event.type);
+    assert_array_equals(events, ['beginEvent', 'endEvent']);
+  }));
+  requestAnimationFrame(() => animation.beginElementAt(0.03));
+}, 'beginElementAt() schedules begin and end events');
+</script>

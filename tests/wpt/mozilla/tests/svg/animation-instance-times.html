@@ -1,0 +1,56 @@
+<!doctype html>
+<title>SVG animation instance times and fragment clock</title>
+<link rel="help" href="https://w3c.github.io/svgwg/specs/animations/#InterfaceSVGAnimationElement">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<svg id="outer">
+  <rect id="rect" x="5" width="10" height="10">
+    <animate id="animation" attributeName="x" begin="indefinite"
+             from="0" to="100" dur="10s" fill="freeze"></animate>
+  </rect>
+  <svg id="inner"></svg>
+</svg>
+<script>
+const outer = document.getElementById("outer");
+const inner = document.getElementById("inner");
+const rect = document.getElementById("rect");
+const animation = document.getElementById("animation");
+outer.pauseAnimations();
+outer.setCurrentTime(0);
+
+test(() => {
+  assert_true(animation instanceof SVGAnimateElement);
+  assert_true(animation instanceof SVGAnimationElement);
+  assert_equals(animation.targetElement, rect);
+  assert_throws_dom("InvalidStateError", () => animation.getStartTime());
+
+  outer.setCurrentTime(2);
+  animation.beginElementAt(3);
+  assert_equals(animation.getStartTime(), 5);
+  outer.setCurrentTime(7);
+  assert_equals(rect.x.animVal.value, 20);
+
+  animation.endElementAt(2);
+  outer.setCurrentTime(10);
+  assert_equals(rect.x.animVal.value, 40);
+  assert_throws_dom("InvalidStateError", () => animation.getStartTime());
+}, "DOM begin/end instance times control a frozen length animation");
+
+test(() => {
+  assert_equals(inner.getCurrentTime(), 10);
+  assert_true(inner.animationsPaused());
+  inner.unpauseAnimations();
+  inner.setCurrentTime(50);
+  inner.pauseAnimations();
+  assert_true(outer.animationsPaused());
+  assert_equals(outer.getCurrentTime(), 10);
+  assert_equals(inner.getCurrentTime(), 10);
+}, "Nested SVG elements use the outermost fragment clock");
+
+test(() => {
+  const ns = "http://www.w3.org/2000/svg";
+  assert_true(document.createElementNS(ns, "set") instanceof SVGSetElement);
+  assert_true(document.createElementNS(ns, "animateMotion") instanceof SVGAnimateMotionElement);
+  assert_true(document.createElementNS(ns, "animateTransform") instanceof SVGAnimateTransformElement);
+}, "Animation element interfaces match their SVG tags");
+</script>

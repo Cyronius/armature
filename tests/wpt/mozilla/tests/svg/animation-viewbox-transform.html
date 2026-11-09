@@ -1,0 +1,31 @@
+<!doctype html>
+<title>Animated SVG viewBox affects the current transformation matrix</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/coords.html#ViewBoxAttribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<svg id="svg" width="100" height="100" viewBox="0 0 100 100" preserveAspectRatio="none">
+  <animate attributeName="viewBox" from="0 0 100 100" to="50 50 50 50" dur="4s" fill="freeze"/>
+  <rect id="rect" width="10" height="10"/>
+</svg>
+<script>
+const svg = document.getElementById("svg");
+const rect = document.getElementById("rect");
+svg.pauseAnimations();
+
+function checkMatrix(time, scale, translate) {
+  svg.setCurrentTime(time);
+  const matrix = rect.getCTM();
+  assert_approx_equals(matrix.a, scale, 1e-5);
+  assert_approx_equals(matrix.d, scale, 1e-5);
+  assert_approx_equals(matrix.e, translate, 1e-5);
+  assert_approx_equals(matrix.f, translate, 1e-5);
+}
+
+test(() => {
+  checkMatrix(0, 1, 0);
+  checkMatrix(2, 4 / 3, -100 / 3);
+  checkMatrix(4, 2, -100);
+  assert_equals(svg.viewBox.baseVal.x, 0);
+  assert_equals(svg.viewBox.animVal.x, 50);
+}, "getCTM() uses the animated viewBox while baseVal remains unchanged");
+</script>

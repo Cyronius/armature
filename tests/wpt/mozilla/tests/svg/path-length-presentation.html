@@ -1,0 +1,28 @@
+<!doctype html>
+<title>SVG pathLength presentation attribute maps to CSS path-length</title>
+<link rel="help" href="https://svgwg.org/svg2-draft/paths.html#PathLengthAttribute">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<svg><rect id="shape" width="20" height="20" pathLength="100"></rect></svg>
+<script>
+const shape = document.querySelector("#shape");
+const computed = () => getComputedStyle(shape).getPropertyValue("path-length");
+
+test(() => {
+  assert_equals(computed(), "100px");
+}, "pathLength is a path-length presentation attribute");
+
+test(() => {
+  shape.style.setProperty("path-length", "10px");
+  assert_equals(computed(), "10px");
+  shape.style.removeProperty("path-length");
+  assert_equals(computed(), "100px");
+}, "CSS path-length overrides the presentation attribute");
+
+test(() => {
+  shape.setAttribute("pathLength", "25");
+  assert_equals(computed(), "25px");
+  shape.setAttribute("pathLength", "-1");
+  assert_equals(computed(), "none");
+}, "pathLength mutations update the presentation value");
+</script>
