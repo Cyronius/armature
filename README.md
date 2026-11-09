@@ -257,8 +257,10 @@ Notes on the numbers:
   (`getPathData()`, `setPathData()` and `getPathSegmentAtLength()`) now pass 79 more subtests across 19 SVG path
   interface files, including normalization, malformed data, mutation records and length boundaries. SVG `<image>`
   now uses resource natural dimensions for `auto` sizing in `getBBox()`, and waits for image loads before the document
-  load event; all 33 focused subtests pass across two geometry files. Allowing SVG descendants to participate in style
-  traversal makes CSS `d` interpolation work in dynamically styled SVG subtrees, bringing 180 more subtests into
+  load event; all 33 focused subtests pass across two geometry files. SVG `<image>` also loads when detached and
+  reflects `crossOrigin`; canvas drawing and `createImageBitmap()` use its decoded raster pixels and CORS status.
+  Four SVG image CORS subtests and three image bitmap origin subtests now pass. Allowing SVG descendants to participate
+  in style traversal makes CSS `d` interpolation work in dynamically styled SVG subtrees, bringing 180 more subtests into
   conformance across three path property files, plus one geometry subtest. SVG roots now have independent animation
   clocks with pause, resume and seek controls, and a simple `<animate>` child interpolates `SVGAnimatedLength.animVal`.
   The pause/seek and SVG reinsertion timing tests now pass three subtests across two files. SVG animation elements
