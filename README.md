@@ -379,6 +379,10 @@ Notes on the numbers:
   `calc()`. A nested `<svg>` keeps its width and height attributes for viewport sizing without treating them as CSS
   sizing declarations. All 308 subtests in `svg/geometry/parsing` now pass, including 60 that previously failed; the
   surrounding 86-file `svg/geometry` run matches expectations.
+- **SVG bounding boxes**: `getBBox()` now includes stroked path and line outlines when requested, preserves the
+  position of move-only paths and single-point polygons, measures foreign objects, and excludes images with no
+  source or nonpositive dimensions. In the 97-file `svg/types/scripted` run, 22 previously failing subtests now pass
+  with no passing subtest regressing.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
@@ -427,6 +431,9 @@ Notes on the numbers:
   timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
   methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
   geometry is measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
+- SVG `getBBox()` still omits marker and clipping-path bounds from its optional result. Five WPT cases expect zero
+  for graphics inside definitions, clip paths and masks; Armature returns their own geometry, as the current
+  [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
