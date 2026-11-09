@@ -332,6 +332,8 @@ Notes on the numbers:
   path number parsing subtest now pass. The `mpath.svg` reftest now renders motion along a path
   supplied by CSS `d`: the serializer writes the sampled motion transform to its rendering copy
   without changing the live element's transform attribute.
+  SVG path geometry now keeps complete segments before malformed parameters, rejects trailing decimal points, and
+  returns positive zero for empty paths. Twelve more path error-handling subtests pass across three files.
   Seeking an SVG animation clock refreshes its cached raster image. The serializer also applies active `<animate>`
   and `<set>` presentation property values to the rendering copy, so the scripted motion and rewind/freeze reftests
   now pass.
