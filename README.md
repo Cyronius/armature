@@ -350,6 +350,9 @@ Notes on the numbers:
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
   as does the detached-document `EventTarget.when()` subtest.
+- Real pointer clicks on disabled form controls are suppressed even when hit testing lands inside the control's
+  shadow tree. Servoshell no longer treats an open `<select>` menu as a WebDriver user prompt. All nine subtests in
+  the disabled-element event dispatch test now pass, including clicks on disabled and re-enabled controls.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
