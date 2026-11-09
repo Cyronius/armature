@@ -11,6 +11,7 @@ use crate::dom::bindings::codegen::Bindings::SVGAnimatedNumberBinding::SVGAnimat
 use crate::dom::bindings::num::Finite;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::node::NodeTraits;
+use crate::dom::svg::svganimationelement::sample_targeted_numeric_animation;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::{
     is_svg_whitespace, number_to_string, parse_number, parse_number_optional_number,
@@ -68,26 +69,26 @@ impl SVGAnimatedNumber {
         parse_number_optional_number(&self.element.svg_attribute(&self.attribute)?)
     }
 
+    fn parse_value(&self, value: &str) -> Option<f32> {
+        match self.part {
+            SVGNumberPart::Whole => parse_number(value),
+            SVGNumberPart::WholeOrPercentage => {
+                let value = value.trim_matches(is_svg_whitespace);
+                match value.strip_suffix('%') {
+                    Some(percentage) => parse_number(percentage).map(|number| number / 100.0),
+                    None => parse_number(value),
+                }
+            },
+            SVGNumberPart::First => parse_number_optional_number(value).map(|(first, _)| first),
+            SVGNumberPart::Second => parse_number_optional_number(value).map(|(_, second)| second),
+        }
+    }
+
     fn value(&self) -> f32 {
-        let value = match self.part {
-            SVGNumberPart::Whole => self
-                .element
-                .svg_attribute(&self.attribute)
-                .and_then(|value| parse_number(&value)),
-            SVGNumberPart::WholeOrPercentage => self
-                .element
-                .svg_attribute(&self.attribute)
-                .and_then(|value| {
-                    let value = value.trim_matches(is_svg_whitespace);
-                    match value.strip_suffix('%') {
-                        Some(percentage) => parse_number(percentage).map(|number| number / 100.0),
-                        None => parse_number(value),
-                    }
-                }),
-            SVGNumberPart::First => self.pair().map(|(first, _)| first),
-            SVGNumberPart::Second => self.pair().map(|(_, second)| second),
-        };
-        value.unwrap_or(self.initial)
+        self.element
+            .svg_attribute(&self.attribute)
+            .and_then(|value| self.parse_value(&value))
+            .unwrap_or(self.initial)
     }
 }
 
@@ -116,7 +117,13 @@ impl SVGAnimatedNumberMethods<crate::DomTypeHolder> for SVGAnimatedNumber {
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAnimatedNumber__animVal>
-    fn AnimVal(&self) -> Finite<f32> {
-        Finite::wrap(self.value())
+    fn AnimVal(&self, cx: &mut JSContext) -> Finite<f32> {
+        Finite::wrap(sample_targeted_numeric_animation(
+            cx,
+            &self.element,
+            &self.attribute,
+            self.value(),
+            |value| self.parse_value(value),
+        ))
     }
 }

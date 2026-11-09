@@ -49,6 +49,7 @@ use crate::dom::svg::svganimatedstring::SVGAnimatedString;
 use crate::dom::svg::svganimatedtransformlist::SVGAnimatedTransformList;
 use crate::dom::svg::svgcircleelement::SVGCircleElement;
 use crate::dom::svg::svgellipseelement::SVGEllipseElement;
+use crate::dom::svg::svggeometryelement::SVGGeometryElement;
 use crate::dom::svg::svgimageelement::SVGImageElement;
 use crate::dom::svg::svgpathelement::SVGPathElement;
 use crate::dom::svg::svgpointlist::SVGPointList;
@@ -586,6 +587,7 @@ impl VirtualMethods for SVGElement {
                     &local_name!("y") |
                     &local_name!("width") |
                     &local_name!("height") |
+                    &local_name!("pathLength") |
                     &local_name!("d")
             ) ||
             self.super_type()
@@ -626,6 +628,9 @@ impl SVGElementMethods<crate::DomTypeHolder> for SVGElement {
 
     // https://html.spec.whatwg.org/multipage/#globaleventhandlers
     global_event_handlers!();
+    event_handler!(beginEvent, GetOnbegin, SetOnbegin);
+    event_handler!(endEvent, GetOnend, SetOnend);
+    event_handler!(repeatEvent, GetOnrepeat, SetOnrepeat);
 
     /// <https://html.spec.whatwg.org/multipage/#dom-noncedelement-nonce>
     fn Nonce(&self) -> DOMString {
@@ -760,6 +765,27 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
             self.parse_presentation_attribute(&mut parser_context, name, push);
         }
 
+        // `pathLength` is a unitless SVG number, while its CSS presentation
+        // property is the non-negative `path-length` length.
+        if element.downcast::<SVGGeometryElement>().is_some() &&
+            let Some(value) = element.get_attr_val_for_layout(&ns!(), &local_name!("pathLength"))
+        {
+            let value = value.trim();
+            if value
+                .parse::<f32>()
+                .ok()
+                .is_some_and(|number| number.is_finite() && number >= 0.0)
+            {
+                let css_value = format!("{value}px");
+                let mut parser = cssparser::Parser::new(&css_value);
+                if let Ok(property) = parser.parse_entirely(|input| {
+                    longhands::path_length::parse_declared(&parser_context, input)
+                }) {
+                    push(property);
+                }
+            }
+        }
+
         // Parse geometry attributes based on element type
         // <circle>: https://svgwg.org/svg2-draft/shapes.html#CircleElement
         if element.downcast::<SVGCircleElement>().is_some() {
@@ -824,7 +850,11 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
                         push(property);
                     }
                 } else {
-                    let wrapped = format!("path(\"{}\")", value);
+                    // XML path data can contain quotes, backslashes and SVG whitespace.
+                    // Escape it as a CSS string before parsing the presentation hint.
+                    let mut wrapped = String::from("path(");
+                    cssparser::serialize_string(value, &mut wrapped).unwrap();
+                    wrapped.push(')');
                     let mut parser = cssparser::Parser::new(&wrapped);
                     if let Ok(property) = parser.parse_entirely(|parse_input| {
                         longhands::d::parse_declared(&parser_context, parse_input)

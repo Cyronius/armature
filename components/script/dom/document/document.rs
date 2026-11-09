@@ -217,7 +217,10 @@ use crate::dom::selection::Selection;
 use crate::dom::servoparser::ServoParser;
 use crate::dom::shadowroot::shadowroot::ShadowRoot;
 use crate::dom::storageevent::StorageEvent;
+use crate::dom::svg::svganimationelement::{SVGAnimationElement, SVGTimingBoundaryKind};
+use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgscriptelement::SVGScriptElement;
+use crate::dom::svg::svgsvgelement::SVGSVGElement;
 use crate::dom::text::Text;
 use crate::dom::textevent::TextEvent;
 use crate::dom::touchevent::TouchEvent as DomTouchEvent;
@@ -642,6 +645,8 @@ pub(crate) struct Document {
     timeline: Dom<DocumentTimeline>,
     /// Animations for this Document
     animation_manager: AnimationManager,
+    /// Connected SVG animation elements with timeline events to dispatch.
+    smil_animation_elements: DomRefCell<Vec<Dom<SVGAnimationElement>>>,
     /// The nearest inclusive ancestors to all the nodes that require a restyle.
     dirty_root: MutNullableDom<Element>,
     /// <https://html.spec.whatwg.org/multipage/#will-declaratively-refresh>
@@ -4318,6 +4323,7 @@ impl Document {
             selection: MutNullableDom::new(None),
             timeline: Dom::from_ref(timeline),
             animation_manager: AnimationManager::new(),
+            smil_animation_elements: Default::default(),
             dirty_root: Default::default(),
             declarative_refresh: Default::default(),
             resize_observers: Default::default(),
@@ -5132,6 +5138,243 @@ impl Document {
         &self.animation_manager
     }
 
+    pub(crate) fn register_smil_animation(&self, animation: &SVGAnimationElement) {
+        let mut elements = self.smil_animation_elements.borrow_mut();
+        if !elements.iter().any(|element| **element == *animation) {
+            elements.push(Dom::from_ref(animation));
+        }
+    }
+
+    pub(crate) fn unregister_smil_animation(&self, animation: &SVGAnimationElement) {
+        self.smil_animation_elements
+            .borrow_mut()
+            .retain(|element| **element != *animation);
+    }
+
+    pub(crate) fn smil_animations_targeting(
+        &self,
+        cx: &mut JSContext,
+        target: &SVGElement,
+    ) -> Vec<DomRoot<SVGAnimationElement>> {
+        let animations: Vec<_> = self
+            .smil_animation_elements
+            .borrow()
+            .iter()
+            .map(Dom::as_rooted)
+            .collect();
+        let mut matching: Vec<_> = animations
+            .into_iter()
+            .filter(|animation| {
+                animation
+                    .target_element(cx)
+                    .is_some_and(|candidate| std::ptr::eq(&*candidate, target))
+            })
+            .collect();
+        // The registry holds connected animations. Detached elements can still expose
+        // animated DOM values from their child animations.
+        for child in target.upcast::<Node>().child_elements() {
+            if let Some(animation) = child.downcast::<SVGAnimationElement>() &&
+                animation
+                    .target_element(cx)
+                    .is_some_and(|candidate| std::ptr::eq(&*candidate, target)) &&
+                !matching.iter().any(|existing| **existing == *animation)
+            {
+                matching.push(DomRoot::from_ref(animation));
+            }
+        }
+        matching
+    }
+
+    pub(crate) fn has_smil_animations(&self) -> bool {
+        !self.smil_animation_elements.borrow().is_empty()
+    }
+
+    pub(crate) fn next_smil_event_delay(&self) -> Option<Duration> {
+        self.smil_animation_elements
+            .borrow()
+            .iter()
+            .filter_map(|animation| animation.next_timing_event_delay())
+            .min()
+    }
+
+    pub(crate) fn notify_smil_timing_event(
+        &self,
+        source_id: &str,
+        event_name: &str,
+        repeat_index: Option<u32>,
+        boundary: f64,
+        source_time: f64,
+        include_eventbase: bool,
+    ) {
+        let animations: Vec<_> = self
+            .smil_animation_elements
+            .borrow()
+            .iter()
+            .map(Dom::as_rooted)
+            .collect();
+        for animation in animations {
+            animation.record_timing_event(
+                source_id,
+                event_name,
+                repeat_index,
+                boundary,
+                source_time,
+                include_eventbase,
+            );
+        }
+    }
+
+    /// Resolve DOM eventbase timing conditions after an event is observed at
+    /// the target or at a bubbling ancestor.
+    pub(crate) fn notify_smil_dom_event(
+        &self,
+        cx: &mut JSContext,
+        sources: &[DomRoot<Element>],
+        event_name: &str,
+    ) {
+        let animations: Vec<_> = self
+            .smil_animation_elements
+            .borrow()
+            .iter()
+            .map(Dom::as_rooted)
+            .collect();
+        let mut changed = false;
+        for source in sources {
+            for animation in &animations {
+                changed |= animation.record_dom_event(cx, source, event_name);
+            }
+        }
+        if changed {
+            self.update_smil_animation_events(cx);
+        }
+    }
+
+    pub(crate) fn advance_smil_timeline_to(&self, root: &SVGSVGElement, through: f64) {
+        let animations: Vec<_> = self
+            .smil_animation_elements
+            .borrow()
+            .iter()
+            .map(Dom::as_rooted)
+            .filter(|animation| {
+                animation.passes_conditional_processing() &&
+                    root.upcast::<Node>()
+                        .is_inclusive_ancestor_of(animation.upcast::<Node>())
+            })
+            .collect();
+        // A cyclic timing graph can generate unbounded instance times.
+        for _ in 0..10_000 {
+            let mut next: Option<(f64, SVGTimingBoundaryKind, &SVGAnimationElement)> = None;
+            for animation in &animations {
+                let Some((boundary, kind)) = animation.next_timing_boundary_before(through) else {
+                    continue;
+                };
+                let candidate = (boundary, kind);
+                if next.is_none_or(|current| {
+                    candidate
+                        .0
+                        .total_cmp(&current.0)
+                        .then_with(|| candidate.1.order().cmp(&current.1.order())) ==
+                        std::cmp::Ordering::Less
+                }) {
+                    next = Some((boundary, kind, animation));
+                }
+            }
+            let Some((boundary, kind, animation)) = next else {
+                break;
+            };
+            animation.process_timing_boundary(boundary, kind, false);
+        }
+    }
+
+    pub(crate) fn queue_smil_seek_events(&self, root: &SVGSVGElement, from: f64, to: f64) {
+        let animations: Vec<_> = self
+            .smil_animation_elements
+            .borrow()
+            .iter()
+            .map(Dom::as_rooted)
+            .filter(|animation| {
+                animation.passes_conditional_processing() &&
+                    root.upcast::<Node>()
+                        .is_inclusive_ancestor_of(animation.upcast::<Node>())
+            })
+            .collect();
+        for animation in animations {
+            let previous = animation.active_interval_at(from);
+            let current = animation.active_interval_at(to);
+            if previous == current {
+                if let Some(begin) = current {
+                    if animation.take_pending_begin_event(begin) {
+                        self.task_manager()
+                            .dom_manipulation_task_source()
+                            .queue_simple_event(
+                                animation.upcast::<EventTarget>(),
+                                Atom::from("beginEvent"),
+                            );
+                    }
+                }
+                continue;
+            }
+            let task_manager = self.task_manager();
+            let task_source = task_manager.dom_manipulation_task_source();
+            let target = animation.upcast::<EventTarget>();
+            if previous.is_some() {
+                task_source.queue_simple_event(target, Atom::from("endEvent"));
+            }
+            if current.is_some() {
+                animation.mark_begin_event_dispatched();
+                task_source.queue_simple_event(target, Atom::from("beginEvent"));
+            }
+        }
+    }
+
+    fn update_smil_animation_events(&self, cx: &mut JSContext) {
+        let animations: Vec<_> = self
+            .smil_animation_elements
+            .borrow()
+            .iter()
+            .map(Dom::as_rooted)
+            .collect();
+        // A boundary can add an instance time to an animation already visited
+        // in tree order. Reconsider all animations after each boundary.
+        for _ in 0..10_000 {
+            let mut next: Option<(f64, SVGTimingBoundaryKind, &SVGAnimationElement)> = None;
+            for animation in &animations {
+                let Some((boundary, kind)) = animation.next_due_timing_boundary() else {
+                    continue;
+                };
+                let candidate = (boundary, kind);
+                if next.is_none_or(|current| {
+                    candidate
+                        .0
+                        .total_cmp(&current.0)
+                        .then_with(|| candidate.1.order().cmp(&current.1.order())) ==
+                        std::cmp::Ordering::Less
+                }) {
+                    next = Some((boundary, kind, animation));
+                }
+            }
+            let Some((boundary, kind, animation)) = next else {
+                break;
+            };
+            animation.dispatch_timing_boundary(cx, boundary, kind);
+        }
+        for animation in animations {
+            animation.update_style_effect(cx);
+        }
+    }
+
+    pub(crate) fn update_smil_style_effects(&self, cx: &mut JSContext) {
+        let animations: Vec<_> = self
+            .smil_animation_elements
+            .borrow()
+            .iter()
+            .map(Dom::as_rooted)
+            .collect();
+        for animation in animations {
+            animation.update_style_effect(cx);
+        }
+    }
+
     /// Returns whether the style of animated elements is out of date again, because CSS
     /// animations or transitions that style created or updated have new timing.
     pub(crate) fn update_animations_post_reflow(&self, cx: &mut JSContext) -> bool {
@@ -5203,6 +5446,7 @@ impl Document {
             .send_pending_events(self.window(), cx);
         self.animation_manager()
             .send_playback_events(self.window(), cx);
+        self.update_smil_animation_events(cx);
     }
 
     pub(crate) fn set_has_pending_animated_image_update(&self) {

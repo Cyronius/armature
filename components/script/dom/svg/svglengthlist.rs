@@ -3,19 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use dom_struct::dom_struct;
-use html5ever::LocalName;
+use html5ever::{LocalName, local_name};
 use js::context::JSContext;
 use script_bindings::cell::DomRefCell;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
 
 use crate::dom::bindings::codegen::Bindings::SVGLengthListBinding::SVGLengthListMethods;
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
+use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
+use crate::dom::element::Element;
 use crate::dom::node::NodeTraits;
+use crate::dom::svg::svganimationelement::trim_one_trailing_semicolon;
 use crate::dom::svg::svgelement::SVGElement;
-use crate::dom::svg::svglength::SVGLength;
-use crate::dom::svg::svgtypes::{SVGLengthDirection, SVGLengthValue, split_list};
+use crate::dom::svg::svglength::{ElementLengthContext, SVGLength};
+use crate::dom::svg::svgtypes::{SVGLengthContext, SVGLengthDirection, SVGLengthValue, split_list};
 
 /// <https://svgwg.org/svg2-draft/types.html#InterfaceSVGLengthList>
 ///
@@ -45,6 +48,69 @@ fn parse_length_list(value: Option<&str>) -> Vec<SVGLengthValue> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn parse_animation_list(value: &str) -> Option<Vec<SVGLengthValue>> {
+    split_list(value)?
+        .into_iter()
+        .map(SVGLengthValue::parse)
+        .collect::<Option<Vec<_>>>()
+        .filter(|values| !values.is_empty())
+}
+
+fn interpolate_lists(
+    cx: &mut JSContext,
+    context: &dyn SVGLengthContext,
+    from: &[SVGLengthValue],
+    to: &[SVGLengthValue],
+    fraction: f32,
+) -> Option<Vec<SVGLengthValue>> {
+    if from.len() != to.len() {
+        return Some(if fraction < 0.5 { from } else { to }.to_vec());
+    }
+    from.iter()
+        .zip(to)
+        .map(|(from, to)| {
+            if from.unit_type == to.unit_type {
+                return Some(SVGLengthValue::new(
+                    from.value + (to.value - from.value) * fraction,
+                    from.unit_type,
+                ));
+            }
+            let from_units = from.to_user_units(cx, context)?;
+            let to_units = to.to_user_units(cx, context)?;
+            let unit_type = if fraction <= 0.5 {
+                from.unit_type
+            } else {
+                to.unit_type
+            };
+            SVGLengthValue::from_user_units(
+                cx,
+                from_units + (to_units - from_units) * fraction,
+                unit_type,
+                context,
+            )
+        })
+        .collect()
+}
+
+fn add_lists(
+    cx: &mut JSContext,
+    context: &dyn SVGLengthContext,
+    underlying: &[SVGLengthValue],
+    effect: &[SVGLengthValue],
+) -> Option<Vec<SVGLengthValue>> {
+    if underlying.len() != effect.len() {
+        return None;
+    }
+    underlying
+        .iter()
+        .zip(effect)
+        .map(|(underlying, effect)| {
+            let sum = underlying.to_user_units(cx, context)? + effect.to_user_units(cx, context)?;
+            SVGLengthValue::from_user_units(cx, sum, underlying.unit_type, context)
+        })
+        .collect()
 }
 
 impl SVGLengthList {
@@ -78,13 +144,168 @@ impl SVGLengthList {
         self.direction
     }
 
+    fn animated_values(
+        &self,
+        cx: &mut JSContext,
+        mut result: Vec<SVGLengthValue>,
+    ) -> Vec<SVGLengthValue> {
+        let context = ElementLengthContext {
+            element: &self.element,
+            direction: self.direction,
+        };
+        for animation in self
+            .element
+            .owner_document()
+            .smil_animations_targeting(cx, &self.element)
+        {
+            if animation.upcast::<Element>().local_name() != &local_name!("animate") {
+                continue;
+            }
+            let element = animation.upcast::<SVGElement>();
+            if element
+                .svg_attribute(&local_name!("attributeName"))
+                .as_deref() !=
+                Some(self.attribute.as_ref())
+            {
+                continue;
+            }
+            let Some((progress, iteration)) = animation.sample_iteration() else {
+                continue;
+            };
+            let additive =
+                element.svg_attribute(&local_name!("additive")).as_deref() == Some("sum");
+            let accumulate =
+                element.svg_attribute(&local_name!("accumulate")).as_deref() == Some("sum");
+            let parsed_values = element.svg_attribute(&local_name!("values")).map(|values| {
+                trim_one_trailing_semicolon(&values)
+                    .split(';')
+                    .map(parse_animation_list)
+                    .collect::<Option<Vec<_>>>()
+            });
+            let (from, to, by) = if parsed_values.is_some() {
+                (None, None, None)
+            } else {
+                let parse = |name| {
+                    element
+                        .svg_attribute(&name)
+                        .map(|value| parse_animation_list(&value))
+                };
+                (
+                    parse(local_name!("from")),
+                    parse(local_name!("to")),
+                    parse(local_name!("by")),
+                )
+            };
+            if parsed_values.as_ref().is_some_and(Option::is_none) ||
+                from.as_ref().is_some_and(Option::is_none) ||
+                to.as_ref().is_some_and(Option::is_none) ||
+                by.as_ref().is_some_and(Option::is_none)
+            {
+                continue;
+            }
+            let (mut effect, additive, final_value) = if let Some(Some(values)) = parsed_values {
+                let effect = if values.len() == 1 {
+                    values[0].clone()
+                } else {
+                    let Some((index, fraction)) =
+                        animation.sample_value_interval(values.len(), progress)
+                    else {
+                        continue;
+                    };
+                    let Some(effect) = interpolate_lists(
+                        cx,
+                        &context,
+                        &values[index],
+                        &values[index + 1],
+                        fraction,
+                    ) else {
+                        continue;
+                    };
+                    effect
+                };
+                (effect, additive, Some(values[values.len() - 1].clone()))
+            } else {
+                let (Some((_, fraction)), from, to, by) = (
+                    animation.sample_value_interval(2, progress),
+                    from.flatten(),
+                    to.flatten(),
+                    by.flatten(),
+                ) else {
+                    continue;
+                };
+                match (from, to, by) {
+                    (Some(from), Some(to), _) => {
+                        let Some(effect) = interpolate_lists(cx, &context, &from, &to, fraction)
+                        else {
+                            continue;
+                        };
+                        (effect, additive, Some(to))
+                    },
+                    (Some(from), None, Some(by)) => {
+                        let Some(to) = add_lists(cx, &context, &from, &by) else {
+                            continue;
+                        };
+                        let Some(effect) = interpolate_lists(cx, &context, &from, &to, fraction)
+                        else {
+                            continue;
+                        };
+                        (effect, additive, Some(to))
+                    },
+                    (None, None, Some(by)) => {
+                        let effect = by
+                            .iter()
+                            .map(|value| {
+                                SVGLengthValue::new(value.value * fraction, value.unit_type)
+                            })
+                            .collect();
+                        (effect, true, Some(by))
+                    },
+                    (None, Some(to), _) => {
+                        let Some(effect) = interpolate_lists(cx, &context, &result, &to, fraction)
+                        else {
+                            continue;
+                        };
+                        (effect, false, None)
+                    },
+                    _ => continue,
+                }
+            };
+            if accumulate && iteration > 0 {
+                if let Some(final_value) = final_value {
+                    let scaled = final_value
+                        .iter()
+                        .map(|value| {
+                            SVGLengthValue::new(value.value * iteration as f32, value.unit_type)
+                        })
+                        .collect::<Vec<_>>();
+                    let Some(sum) = add_lists(cx, &context, &effect, &scaled) else {
+                        continue;
+                    };
+                    effect = sum;
+                }
+            }
+            if additive {
+                let Some(sum) = add_lists(cx, &context, &result, &effect) else {
+                    continue;
+                };
+                result = sum;
+            } else {
+                result = effect;
+            }
+        }
+        result
+    }
+
     /// <https://svgwg.org/svg2-draft/types.html#TermSynchronizeList>
     pub(crate) fn synchronize(&self, cx: &mut JSContext) {
         let value = self.element.svg_attribute(&self.attribute);
-        if self.synchronized_value.borrow().as_ref() == Some(&value) {
+        if !self.read_only && self.synchronized_value.borrow().as_ref() == Some(&value) {
             return;
         }
-        let values = parse_length_list(value.as_deref());
+        let mut values = parse_length_list(value.as_deref());
+        if self.read_only {
+            values = self.animated_values(cx, values);
+        }
         *self.synchronized_value.borrow_mut() = Some(value);
 
         // > If the new value has fewer items than the list, detach the items beyond its
@@ -118,7 +339,7 @@ impl SVGLengthList {
             .items
             .borrow()
             .iter()
-            .map(|item| item.length().to_string())
+            .map(|item| item.length(cx).to_string())
             .collect::<Vec<_>>()
             .join(" ");
         *self.synchronized_value.borrow_mut() = Some(Some(value.clone()));
@@ -138,13 +359,8 @@ impl SVGLengthList {
     /// belongs to a list.
     fn item_for_insertion(&self, cx: &mut JSContext, new_item: &SVGLength) -> DomRoot<SVGLength> {
         if new_item.is_attached() {
-            return SVGLength::new_own(
-                cx,
-                &self.global(),
-                new_item.length(),
-                Some(self),
-                self.read_only,
-            );
+            let value = new_item.length(cx);
+            return SVGLength::new_own(cx, &self.global(), value, Some(self), self.read_only);
         }
         new_item.attach(self, self.read_only);
         DomRoot::from_ref(new_item)

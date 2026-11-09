@@ -404,11 +404,11 @@ pub struct ScriptThread {
     #[no_trace]
     layout_factory: Arc<dyn LayoutFactory>,
 
-    /// The [`TimerId`] of a ScriptThread-scheduled "update the rendering" call, if any.
+    /// The timer and deadline of a ScriptThread-scheduled "update the rendering" call, if any.
     /// The ScriptThread schedules calls to "update the rendering," but the renderer can
     /// also do this when animating. Renderer-based calls always take precedence.
     #[no_trace]
-    scheduled_update_the_rendering: RefCell<Option<TimerId>>,
+    scheduled_update_the_rendering: RefCell<Option<(TimerId, Instant)>>,
 
     /// Whether an animation tick or ScriptThread-triggered rendering update is pending. This might
     /// either be because the Servo renderer is managing animations and the [`ScriptThread`] has
@@ -1067,15 +1067,21 @@ impl ScriptThread {
     }
 
     fn cancel_scheduled_update_the_rendering(&self) {
-        if let Some(timer_id) = self.scheduled_update_the_rendering.borrow_mut().take() {
+        if let Some((timer_id, _)) = self.scheduled_update_the_rendering.borrow_mut().take() {
             self.timer_scheduler.borrow_mut().cancel_timer(timer_id);
         }
     }
 
     fn schedule_update_the_rendering_timer_if_necessary(&self, delay: Duration) {
-        if self.scheduled_update_the_rendering.borrow().is_some() {
+        let deadline = Instant::now() + delay;
+        if self
+            .scheduled_update_the_rendering
+            .borrow()
+            .is_some_and(|(_, scheduled_deadline)| scheduled_deadline <= deadline)
+        {
             return;
         }
+        self.cancel_scheduled_update_the_rendering();
 
         debug!("Scheduling ScriptThread animation frame.");
         let trigger_script_thread_animation = self.needs_rendering_update.clone();
@@ -1086,7 +1092,7 @@ impl ScriptThread {
             duration: delay,
         });
 
-        *self.scheduled_update_the_rendering.borrow_mut() = Some(timer_id);
+        *self.scheduled_update_the_rendering.borrow_mut() = Some((timer_id, deadline));
     }
 
     /// <https://html.spec.whatwg.org/multipage/#update-the-rendering>
@@ -1305,11 +1311,18 @@ impl ScriptThread {
                 (document.animation_manager().running_animation_count() != 0 ||
                     document.has_active_request_animation_frame_callbacks())
         });
+        let next_smil_event_delay = self
+            .documents
+            .borrow()
+            .iter()
+            .filter(|(_, document)| document.is_fully_active() && !document.window().throttled())
+            .filter_map(|(_, document)| document.next_smil_event_delay())
+            .min();
 
         // If we are not running animations and no rendering update is
         // necessary, just exit early and schedule the next rendering update
         // when it becomes necessary.
-        if !needs_rendering_update && !running_animations {
+        if !needs_rendering_update && !running_animations && next_smil_event_delay.is_none() {
             return;
         }
 
@@ -1327,15 +1340,17 @@ impl ScriptThread {
         // slow down rAFs that don't change the DOM.
         //
         // TODO: Should either of these delays be reduced to also reduce update latency?
-        let animation_delay = if running_animations && !needs_rendering_update {
+        let animation_delay = if needs_rendering_update {
+            Duration::from_millis(20)
+        } else if running_animations {
             // 30 milliseconds (33 FPS) is used here as the rendering isn't changing
             // so it isn't a problem to slow down rAF callback calls. In addition, this allows
             // renderer-based ticks to arrive first.
-            Duration::from_millis(30)
+            Duration::from_millis(30).min(next_smil_event_delay.unwrap_or(Duration::MAX))
         } else {
-            // 20 milliseconds (50 FPS) is used here in order to allow any renderer-based
-            // animation ticks to arrive first.
-            Duration::from_millis(20)
+            // A SMIL boundary can be scheduled directly without running frames
+            // throughout the interval before it.
+            next_smil_event_delay.unwrap_or(Duration::from_millis(20))
         };
 
         let time_since_last_rendering_opportunity = self

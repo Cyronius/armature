@@ -3,16 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use dom_struct::dom_struct;
-use html5ever::LocalName;
+use html5ever::{LocalName, local_name};
 use js::context::JSContext;
 use script_bindings::cell::DomRefCell;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
 
 use crate::dom::bindings::codegen::Bindings::SVGNumberListBinding::SVGNumberListMethods;
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
+use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
+use crate::dom::element::Element;
 use crate::dom::node::NodeTraits;
+use crate::dom::svg::svganimationelement::trim_one_trailing_semicolon;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgnumber::SVGNumber;
 use crate::dom::svg::svgtypes::{number_to_string, parse_number, split_list};
@@ -41,7 +44,142 @@ fn parse_number_list(value: Option<&str>) -> Vec<f32> {
         .unwrap_or_default()
 }
 
+fn parse_animation_list(value: &str) -> Option<Vec<f32>> {
+    split_list(value)?
+        .into_iter()
+        .map(parse_number)
+        .collect::<Option<Vec<_>>>()
+        .filter(|values| !values.is_empty())
+}
+
+fn interpolate_lists(from: &[f32], to: &[f32], fraction: f32) -> Vec<f32> {
+    if from.len() != to.len() {
+        return if fraction < 0.5 { from } else { to }.to_vec();
+    }
+    from.iter()
+        .zip(to)
+        .map(|(from, to)| from + (to - from) * fraction)
+        .collect()
+}
+
+fn add_lists(underlying: &[f32], effect: &[f32]) -> Option<Vec<f32>> {
+    if underlying.len() != effect.len() {
+        return None;
+    }
+    Some(underlying.iter().zip(effect).map(|(a, b)| a + b).collect())
+}
+
 impl SVGNumberList {
+    fn animated_values(&self, cx: &mut JSContext, mut result: Vec<f32>) -> Vec<f32> {
+        for animation in self
+            .element
+            .owner_document()
+            .smil_animations_targeting(cx, &self.element)
+        {
+            if animation.upcast::<Element>().local_name() != &local_name!("animate") {
+                continue;
+            }
+            let element = animation.upcast::<SVGElement>();
+            if element
+                .svg_attribute(&local_name!("attributeName"))
+                .as_deref() !=
+                Some(self.attribute.as_ref())
+            {
+                continue;
+            }
+            let Some((progress, iteration)) = animation.sample_iteration() else {
+                continue;
+            };
+            let additive =
+                element.svg_attribute(&local_name!("additive")).as_deref() == Some("sum");
+            let accumulate =
+                element.svg_attribute(&local_name!("accumulate")).as_deref() == Some("sum");
+            let parsed_values = element.svg_attribute(&local_name!("values")).map(|values| {
+                trim_one_trailing_semicolon(&values)
+                    .split(';')
+                    .map(parse_animation_list)
+                    .collect::<Option<Vec<_>>>()
+            });
+            let (from, to, by) = if parsed_values.is_some() {
+                (None, None, None)
+            } else {
+                let parse = |name| {
+                    element
+                        .svg_attribute(&name)
+                        .map(|value| parse_animation_list(&value))
+                };
+                (
+                    parse(local_name!("from")),
+                    parse(local_name!("to")),
+                    parse(local_name!("by")),
+                )
+            };
+            if parsed_values.as_ref().is_some_and(Option::is_none) ||
+                from.as_ref().is_some_and(Option::is_none) ||
+                to.as_ref().is_some_and(Option::is_none) ||
+                by.as_ref().is_some_and(Option::is_none)
+            {
+                continue;
+            }
+            let (mut effect, additive, final_value) = if let Some(Some(values)) = parsed_values {
+                let effect = if values.len() == 1 {
+                    values[0].clone()
+                } else {
+                    let Some((index, fraction)) =
+                        animation.sample_value_interval(values.len(), progress)
+                    else {
+                        continue;
+                    };
+                    interpolate_lists(&values[index], &values[index + 1], fraction)
+                };
+                (effect, additive, Some(values[values.len() - 1].clone()))
+            } else {
+                let Some((_, fraction)) = animation.sample_value_interval(2, progress) else {
+                    continue;
+                };
+                match (from.flatten(), to.flatten(), by.flatten()) {
+                    (Some(from), Some(to), _) => {
+                        (interpolate_lists(&from, &to, fraction), additive, Some(to))
+                    },
+                    (Some(from), None, Some(by)) => {
+                        let Some(to) = add_lists(&from, &by) else {
+                            continue;
+                        };
+                        (interpolate_lists(&from, &to, fraction), additive, Some(to))
+                    },
+                    (None, None, Some(by)) => (
+                        by.iter().map(|value| value * fraction).collect(),
+                        true,
+                        Some(by),
+                    ),
+                    (None, Some(to), _) => (interpolate_lists(&result, &to, fraction), false, None),
+                    _ => continue,
+                }
+            };
+            if accumulate && iteration > 0 {
+                if let Some(final_value) = final_value {
+                    let scaled = final_value
+                        .iter()
+                        .map(|value| value * iteration as f32)
+                        .collect::<Vec<_>>();
+                    let Some(sum) = add_lists(&effect, &scaled) else {
+                        continue;
+                    };
+                    effect = sum;
+                }
+            }
+            if additive {
+                let Some(sum) = add_lists(&result, &effect) else {
+                    continue;
+                };
+                result = sum;
+            } else {
+                result = effect;
+            }
+        }
+        result
+    }
+
     pub(crate) fn new(
         cx: &mut JSContext,
         element: &SVGElement,
@@ -65,10 +203,13 @@ impl SVGNumberList {
     /// <https://svgwg.org/svg2-draft/types.html#TermSynchronizeList>
     pub(crate) fn synchronize(&self, cx: &mut JSContext) {
         let value = self.element.svg_attribute(&self.attribute);
-        if self.synchronized_value.borrow().as_ref() == Some(&value) {
+        if !self.read_only && self.synchronized_value.borrow().as_ref() == Some(&value) {
             return;
         }
-        let values = parse_number_list(value.as_deref());
+        let mut values = parse_number_list(value.as_deref());
+        if self.read_only {
+            values = self.animated_values(cx, values);
+        }
         *self.synchronized_value.borrow_mut() = Some(value);
 
         // > If the new value has fewer items than the list, detach the items beyond its

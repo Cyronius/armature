@@ -10,21 +10,27 @@
 //! nothing about the geometry of SVG elements; this module recomputes it from the
 //! attributes.
 
+use cssparser::Parser;
 use html5ever::{LocalName, local_name, ns};
 use js::context::{JSContext, NoGC};
 use kurbo::{
-    Affine, BezPath, Ellipse, Line, ParamCurveArclen, PathEl, PathSeg, Point, Rect, Shape,
+    Affine, BezPath, Ellipse, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg,
+    Point, Rect, Shape,
 };
+use style::values::specified::SVGPathData;
+use style::values::specified::box_::Display;
 
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::element::Element;
 use crate::dom::node::{Node, NodeTraits};
+use crate::dom::svg::svganimationelement::{SVGAnimationElement, trim_one_trailing_semicolon};
 use crate::dom::svg::svgelement::SVGElement;
-use crate::dom::svg::svglength::resolve_length;
+use crate::dom::svg::svgimageelement::SVGImageElement;
+use crate::dom::svg::svglength::{resolve_length, resolve_value};
 use crate::dom::svg::svgpointlist::parse_point_list;
-use crate::dom::svg::svgtransformlist::parse_transform_items;
+use crate::dom::svg::svgtransformlist::animated_transform_values;
 use crate::dom::svg::svgtypes::{
     SVGLengthDirection, SVGLengthValue, is_svg_whitespace, parse_number_prefix,
 };
@@ -90,11 +96,20 @@ impl SVGShapeGeometry {
         let mut remaining = distance.max(0.0);
         for segment in &segments {
             let length = segment.arclen(ACCURACY);
+            if length == 0.0 {
+                continue;
+            }
             if remaining <= length {
                 let t = segment.inv_arclen(remaining, ACCURACY);
                 return Some(kurbo::ParamCurve::eval(segment, t));
             }
             remaining -= length;
+        }
+        if segments
+            .iter()
+            .all(|segment| segment.arclen(ACCURACY) == 0.0)
+        {
+            return Some(first.start());
         }
         let last = segments.last().unwrap_or(first);
         Some(kurbo::ParamCurve::end(last))
@@ -121,6 +136,51 @@ fn length(
     direction: SVGLengthDirection,
 ) -> f64 {
     resolve_length(cx, element, &name, direction, SVGLengthValue::number(0.0)) as f64
+}
+
+/// The used width and height of an SVG image's positioning rectangle.
+/// <https://svgwg.org/svg2-draft/embedded.html#Placement>
+fn image_size(cx: &mut JSContext, element: &SVGElement) -> (f64, f64) {
+    use SVGLengthDirection::{Horizontal, Vertical};
+    let specified = |cx: &mut JSContext, name: &str, direction| {
+        let value = SVGLengthValue::parse(&computed_value(element, name))?;
+        Some(resolve_value(cx, element, value, direction) as f64)
+    };
+    let width = specified(cx, "width", Horizontal);
+    let height = specified(cx, "height", Vertical);
+    let natural = element
+        .downcast::<SVGImageElement>()
+        .and_then(|image| image.natural_dimensions())
+        .unwrap_or_default();
+    let natural_width = natural.width.map(f64::from);
+    let natural_height = natural.height.map(f64::from);
+    let ratio = natural
+        .ratio
+        .map(f64::from)
+        .filter(|ratio| *ratio > 0.0 && ratio.is_finite());
+    match (width, height) {
+        (Some(width), Some(height)) => (width, height),
+        (Some(width), None) => (
+            width,
+            ratio.map_or(natural_height.unwrap_or(150.0), |r| width / r),
+        ),
+        (None, Some(height)) => (
+            ratio.map_or(natural_width.unwrap_or(300.0), |r| height * r),
+            height,
+        ),
+        (None, None) => match (natural_width, natural_height, ratio) {
+            (Some(width), Some(height), _) => (width, height),
+            (Some(width), None, Some(ratio)) => (width, width / ratio),
+            (None, Some(height), Some(ratio)) => (height * ratio, height),
+            (Some(width), None, None) => (width, 150.0),
+            (None, Some(height), None) => (300.0, height),
+            (None, None, Some(ratio)) => {
+                let width = 300.0_f64.min(150.0 * ratio);
+                (width, width / ratio)
+            },
+            (None, None, None) => (300.0, 150.0),
+        },
+    }
 }
 
 /// The geometry of `element`, when it is a basic shape or a path.
@@ -150,8 +210,24 @@ pub(crate) fn shape_geometry(cx: &mut JSContext, element: &SVGElement) -> Option
         local_name!("ellipse") => {
             let cx_ = length(cx, element, local_name!("cx"), Horizontal);
             let cy = length(cx, element, local_name!("cy"), Vertical);
-            let rx = length(cx, element, local_name!("rx"), Horizontal);
-            let ry = length(cx, element, local_name!("ry"), Vertical);
+            let specified_rx = element
+                .svg_attribute(&local_name!("rx"))
+                .and_then(|value| SVGLengthValue::parse(&value))
+                .filter(|value| value.value >= 0.0);
+            let specified_ry = element
+                .svg_attribute(&local_name!("ry"))
+                .and_then(|value| SVGLengthValue::parse(&value))
+                .filter(|value| value.value >= 0.0);
+            let rx = if specified_rx.is_some() {
+                length(cx, element, local_name!("rx"), Horizontal)
+            } else {
+                length(cx, element, local_name!("ry"), Vertical)
+            };
+            let ry = if specified_ry.is_some() {
+                length(cx, element, local_name!("ry"), Vertical)
+            } else {
+                rx
+            };
             if rx <= 0.0 || ry <= 0.0 {
                 return Some(SVGShapeGeometry::Path(BezPath::new()));
             }
@@ -180,11 +256,43 @@ pub(crate) fn shape_geometry(cx: &mut JSContext, element: &SVGElement) -> Option
             SVGShapeGeometry::Path(path)
         },
         local_name!("path") => {
-            let data = element.svg_attribute(&local_name!("d")).unwrap_or_default();
+            let attribute = element.svg_attribute(&local_name!("d"));
+            let data = match (computed_path_data(element), attribute) {
+                // An invalid XML path still renders its valid prefix. Stylo rejects the
+                // presentation hint as a whole, so use the original data for recovery.
+                (Some(computed), Some(attribute))
+                    if computed.is_empty() && !SVGPathData::parse_bytes(attribute.as_bytes()).1 =>
+                {
+                    attribute
+                },
+                (Some(computed), _) => computed,
+                (None, Some(attribute)) => attribute,
+                (None, None) => String::new(),
+            };
             SVGShapeGeometry::Path(parse_path_data(&data))
         },
         _ => return None,
     })
+}
+
+/// The CSS `d` property supplies the rendered path, including for `<mpath>` targets.
+/// Keep DOM path data APIs on the XML attribute's base value.
+fn computed_path_data(element: &SVGElement) -> Option<String> {
+    let value = computed_value(element, "d");
+    if value == "none" {
+        return Some(String::new());
+    }
+    let mut parser = Parser::new(&value);
+    parser.expect_function_matching("path").ok()?;
+    let data = parser
+        .parse_nested_block(|parser| {
+            let data = parser.expect_string()?.as_ref().to_owned();
+            parser.expect_exhausted()?;
+            Ok::<String, cssparser::ParseError<()>>(data)
+        })
+        .ok()?;
+    parser.expect_exhausted().ok()?;
+    Some(data)
 }
 
 /// Parse path data. When the data has an error, the path up to the error is used.
@@ -208,15 +316,6 @@ fn parse_path_data(data: &str) -> BezPath {
     BezPath::new()
 }
 
-/// Parse a transform list, the value of a `transform` attribute, into its matrix.
-pub(crate) fn parse_transform_list(value: &str) -> Option<Affine> {
-    Some(
-        parse_transform_items(value)?
-            .iter()
-            .fold(Affine::IDENTITY, |matrix, item| matrix * item.matrix),
-    )
-}
-
 /// Parse numbers separated by whitespace and optionally a comma.
 fn parse_numbers(value: &str) -> Option<Vec<f64>> {
     let mut numbers = Vec::new();
@@ -235,21 +334,293 @@ fn parse_numbers(value: &str) -> Option<Vec<f64>> {
     Some(numbers)
 }
 
-/// The transform that the `transform` attribute of `element` gives it.
-pub(crate) fn element_transform(element: &SVGElement) -> Affine {
-    element
-        .svg_attribute(&local_name!("transform"))
-        .and_then(|value| parse_transform_list(&value))
-        .unwrap_or(Affine::IDENTITY)
+fn motion_point(value: &str) -> Option<Point> {
+    let numbers = parse_numbers(value)?;
+    let [x, y] = numbers.as_slice() else {
+        return None;
+    };
+    Some(Point::new(*x, *y))
+}
+
+fn motion_path(cx: &mut JSContext, animation: &SVGAnimationElement) -> Option<SVGShapeGeometry> {
+    for child in animation.upcast::<Node>().child_elements() {
+        if child.local_name() == &local_name!("mpath") {
+            let mpath = child.downcast::<SVGElement>()?;
+            let referenced = referenced_element(cx.no_gc(), mpath)?;
+            return shape_geometry(cx, &referenced);
+        }
+    }
+    animation
+        .upcast::<SVGElement>()
+        .svg_attribute(&local_name!("path"))
+        .map(|data| SVGShapeGeometry::Path(parse_path_data(&data)))
+}
+
+fn motion_tangent(segment: &PathSeg, t: f64) -> f64 {
+    let derivative = match segment {
+        PathSeg::Line(line) => line.deriv().eval(t),
+        PathSeg::Quad(quad) => quad.deriv().eval(t),
+        PathSeg::Cubic(cubic) => cubic.deriv().eval(t),
+    };
+    derivative.y.atan2(derivative.x)
+}
+
+fn point_and_tangent_at_length(geometry: &SVGShapeGeometry, distance: f64) -> Option<(Point, f64)> {
+    let segments = geometry.segments();
+    if segments.is_empty() {
+        return Some((geometry.point_at_length(0.0)?, 0.0));
+    }
+    let mut remaining = distance.max(0.0);
+    for segment in &segments {
+        let length = segment.arclen(ACCURACY);
+        if length == 0.0 {
+            continue;
+        }
+        if remaining <= length {
+            let t = segment.inv_arclen(remaining, ACCURACY);
+            return Some((segment.eval(t), motion_tangent(segment, t)));
+        }
+        remaining -= length;
+    }
+    let Some(last) = segments
+        .iter()
+        .rev()
+        .find(|segment| segment.arclen(ACCURACY) > 0.0)
+    else {
+        return Some((geometry.point_at_length(0.0)?, 0.0));
+    };
+    Some((last.end(), motion_tangent(last, 1.0)))
+}
+
+fn discrete_path_point(
+    path: &BezPath,
+    animation: &SVGAnimationElement,
+    progress: f32,
+) -> Option<(Point, f64)> {
+    let mut points = Vec::new();
+    let mut subpath_start = Point::ZERO;
+    for element in path.elements() {
+        let point = match element {
+            PathEl::MoveTo(point) => {
+                subpath_start = *point;
+                *point
+            },
+            PathEl::LineTo(point) | PathEl::QuadTo(_, point) | PathEl::CurveTo(_, _, point) => {
+                *point
+            },
+            PathEl::ClosePath => subpath_start,
+        };
+        points.push(point);
+    }
+    let index = if points.len() == 1 {
+        0
+    } else {
+        let (index, fraction) = animation.sample_value_interval(points.len(), progress)?;
+        index + usize::from(fraction >= 1.0)
+    };
+    let point = *points.get(index)?;
+    let direction = if index + 1 < points.len() {
+        points[index + 1] - point
+    } else if index > 0 {
+        point - points[index - 1]
+    } else {
+        kurbo::Vec2::ZERO
+    };
+    Some((point, direction.y.atan2(direction.x)))
+}
+
+/// Sample the supplemental transform of active animateMotion children.
+fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Affine {
+    let mut result = Affine::IDENTITY;
+    for child in element.upcast::<Node>().child_elements() {
+        if child.local_name() != &local_name!("animateMotion") {
+            continue;
+        }
+        let Some(animation) = child.downcast::<SVGAnimationElement>() else {
+            continue;
+        };
+        let Some((progress, iteration)) = animation.sample_iteration() else {
+            continue;
+        };
+        let attributes = animation.upcast::<SVGElement>();
+        let mode = attributes
+            .svg_attribute(&local_name!("calcMode"))
+            .unwrap_or_else(|| "paced".into());
+        let path = motion_path(cx, animation);
+        let (mut position, tangent, by_only) = if let Some(path) = path {
+            if mode == "discrete" &&
+                attributes
+                    .svg_attribute(&local_name!("keyPoints"))
+                    .is_none() &&
+                let SVGShapeGeometry::Path(ref bezier) = path
+            {
+                let Some((position, tangent)) = discrete_path_point(bezier, animation, progress)
+                else {
+                    continue;
+                };
+                (position, tangent, false)
+            } else {
+                let total = path.total_length();
+                let key_points = attributes.svg_attribute(&local_name!("keyPoints"));
+                let distance = if let Some(key_points) = key_points {
+                    let points: Option<Vec<f64>> = trim_one_trailing_semicolon(&key_points)
+                        .split(';')
+                        .map(|point| point.trim().parse::<f64>().ok())
+                        .collect();
+                    let Some(points) = points.filter(|points| {
+                        points.len() >= 2 && points.iter().all(|point| (0.0..=1.0).contains(point))
+                    }) else {
+                        continue;
+                    };
+                    let Some((index, fraction)) =
+                        animation.sample_value_interval(points.len(), progress)
+                    else {
+                        continue;
+                    };
+                    (points[index] + (points[index + 1] - points[index]) * f64::from(fraction)) *
+                        total
+                } else if mode == "paced" || total == 0.0 {
+                    f64::from(progress) * total
+                } else {
+                    let segments = path.segments();
+                    let mut distances = vec![0.0];
+                    for segment in segments {
+                        distances.push(
+                            distances.last().copied().unwrap_or(0.0) + segment.arclen(ACCURACY),
+                        );
+                    }
+                    if distances.len() == 1 {
+                        0.0
+                    } else {
+                        let Some((index, fraction)) =
+                            animation.sample_value_interval(distances.len(), progress)
+                        else {
+                            continue;
+                        };
+                        distances[index] +
+                            (distances[index + 1] - distances[index]) * f64::from(fraction)
+                    }
+                };
+                let Some((position, tangent)) = point_and_tangent_at_length(&path, distance) else {
+                    continue;
+                };
+                (position, tangent, false)
+            }
+        } else {
+            let values = attributes.svg_attribute(&local_name!("values"));
+            let points = if let Some(values) = values.as_deref() {
+                trim_one_trailing_semicolon(values)
+                    .split(';')
+                    .map(motion_point)
+                    .collect::<Option<Vec<_>>>()
+            } else {
+                let from = attributes.svg_attribute(&local_name!("from"));
+                let to = attributes.svg_attribute(&local_name!("to"));
+                let by = attributes.svg_attribute(&local_name!("by"));
+                match (
+                    from.as_deref().and_then(motion_point),
+                    to.as_deref().and_then(motion_point),
+                    by.as_deref().and_then(motion_point),
+                ) {
+                    (Some(from), Some(to), _) => Some(vec![from, to]),
+                    (Some(from), None, Some(by)) => Some(vec![from, from + by.to_vec2()]),
+                    (None, None, Some(by)) => Some(vec![Point::ZERO, by]),
+                    (None, Some(to), _) => Some(vec![Point::ZERO, to]),
+                    _ => None,
+                }
+            };
+            let Some(points) = points.filter(|points| !points.is_empty()) else {
+                continue;
+            };
+            let by_only = values.is_none() &&
+                attributes.svg_attribute(&local_name!("from")).is_none() &&
+                attributes.svg_attribute(&local_name!("to")).is_none() &&
+                attributes.svg_attribute(&local_name!("by")).is_some();
+            if points.len() == 1 {
+                (points[0], 0.0, by_only)
+            } else {
+                let Some((index, fraction)) =
+                    animation.sample_value_interval(points.len(), progress)
+                else {
+                    continue;
+                };
+                let from = points[index];
+                let to = points[index + 1];
+                let position = from + (to - from) * f64::from(fraction);
+                let delta = to - from;
+                (position, delta.y.atan2(delta.x), by_only)
+            }
+        };
+        if iteration > 0 &&
+            attributes
+                .svg_attribute(&local_name!("accumulate"))
+                .as_deref() ==
+                Some("sum")
+        {
+            let final_position = if let Some(path) = motion_path(cx, animation) {
+                path.point_at_length(path.total_length())
+            } else if let Some(values) = attributes.svg_attribute(&local_name!("values")) {
+                trim_one_trailing_semicolon(&values)
+                    .split(';')
+                    .last()
+                    .and_then(motion_point)
+            } else {
+                attributes
+                    .svg_attribute(&local_name!("to"))
+                    .as_deref()
+                    .and_then(motion_point)
+                    .or_else(|| {
+                        attributes
+                            .svg_attribute(&local_name!("by"))
+                            .as_deref()
+                            .and_then(motion_point)
+                    })
+            };
+            if let Some(final_position) = final_position {
+                position += final_position.to_vec2() * f64::from(iteration);
+            }
+        }
+        let angle = match attributes.svg_attribute(&local_name!("rotate")).as_deref() {
+            Some("auto") => tangent,
+            Some("auto-reverse") => tangent + std::f64::consts::PI,
+            Some(value) => value.trim().parse::<f64>().unwrap_or(0.0).to_radians(),
+            None => 0.0,
+        };
+        let motion = Affine::translate((position.x, position.y)) * Affine::rotate(angle);
+        if by_only ||
+            attributes
+                .svg_attribute(&local_name!("additive"))
+                .as_deref() ==
+                Some("sum")
+        {
+            result *= motion;
+        } else {
+            result = motion;
+        }
+    }
+    result
+}
+
+/// The transform that the `transform` attribute and motion animations give `element`.
+pub(crate) fn element_transform(cx: &mut JSContext, element: &SVGElement) -> Affine {
+    let base = animated_transform_values(cx, element, &local_name!("transform"))
+        .iter()
+        .fold(Affine::IDENTITY, |matrix, item| matrix * item.matrix);
+    base * motion_transform(cx, element)
 }
 
 /// Whether `element` does not take part in rendering because of its `display`.
 ///
-/// The computed style of the elements inside an `svg` element always has `display: none`
-/// in Servo, which does not lay them out, so this looks at the `display` presentation
-/// attribute and at the `style` attribute instead.
+/// Check CSS display when style data is available, including stylesheet rules. Some SVG
+/// descendants have no style data, so also check their presentation and style attributes.
 fn is_display_none(element: &SVGElement) -> bool {
     let element = element.upcast::<Element>();
+    if element
+        .style()
+        .is_some_and(|style| style.get_box().display == Display::None)
+    {
+        return true;
+    }
     if element
         .get_attribute_string_value_with_namespace(&ns!(), &local_name!("display"))
         .is_some_and(|value| value.trim() == "none")
@@ -277,6 +648,17 @@ pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<R
     }
     let local_name = element.upcast::<Element>().local_name().clone();
     match local_name {
+        local_name!("image") => {
+            let x = length(
+                cx,
+                element,
+                local_name!("x"),
+                SVGLengthDirection::Horizontal,
+            );
+            let y = length(cx, element, local_name!("y"), SVGLengthDirection::Vertical);
+            let (width, height) = image_size(cx, element);
+            Some(Rect::new(x, y, x + width, y + height))
+        },
         local_name!("text") | local_name!("tspan") | local_name!("textPath") => {
             // Text that is not displayed has no geometry.
             let hidden = element
@@ -307,7 +689,7 @@ pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<R
             let referenced = referenced_element(cx.no_gc(), element)?;
             let bbox = bounding_box(cx, &referenced)?;
             Some(
-                (Affine::translate((x, y)) * element_transform(&referenced))
+                (Affine::translate((x, y)) * element_transform(cx, &referenced))
                     .transform_rect_bbox(bbox),
             )
         },
@@ -330,7 +712,7 @@ pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<R
                 let Some(bbox) = bounding_box(cx, &child) else {
                     continue;
                 };
-                let bbox = element_transform(&child).transform_rect_bbox(bbox);
+                let bbox = element_transform(cx, &child).transform_rect_bbox(bbox);
                 union = Some(match union {
                     Some(union) => union.union(bbox),
                     None => bbox,
@@ -356,24 +738,23 @@ fn referenced_element(no_gc: &NoGC, element: &SVGElement) -> Option<DomRoot<SVGE
     DomRoot::downcast::<SVGElement>(referenced)
 }
 
-/// Parse a `viewBox` attribute: four numbers, of which the width and height must be
-/// positive for the view box to apply.
-pub(crate) fn parse_view_box(element: &SVGElement) -> Option<Rect> {
-    let value = element.svg_attribute(&local_name!("viewBox"))?;
-    match parse_numbers(&value)?.as_slice() {
-        [x, y, width, height] if *width > 0.0 && *height > 0.0 => {
-            Some(Rect::new(*x, *y, x + width, y + height))
-        },
-        _ => None,
-    }
+/// The animated `viewBox`, if its width and height establish a view box.
+pub(crate) fn parse_view_box(cx: &mut JSContext, element: &SVGElement) -> Option<Rect> {
+    let [x, y, width, height] = element.view_box(cx).animated_rect(cx);
+    (width > 0.0 && height > 0.0).then(|| Rect::new(x, y, x + width, y + height))
 }
 
 /// The transform from the user space inside the view box of `element` to its viewport of
 /// size `width` by `height`.
 ///
 /// <https://svgwg.org/svg2-draft/coords.html#ComputingAViewportsTransform>
-pub(crate) fn view_box_transform(element: &SVGElement, width: f64, height: f64) -> Affine {
-    let Some(view_box) = parse_view_box(element) else {
+pub(crate) fn view_box_transform(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    width: f64,
+    height: f64,
+) -> Affine {
+    let Some(view_box) = parse_view_box(cx, element) else {
         return Affine::IDENTITY;
     };
     let (align, meet_or_slice) = parse_preserve_aspect_ratio(
@@ -476,7 +857,7 @@ pub(crate) fn svg_viewport_size(cx: &mut JSContext, svg: &SVGElement) -> (f64, f
 /// parent: its position, which outermost `svg` elements do not have, and its view box.
 fn svg_element_transform(cx: &mut JSContext, svg: &SVGElement) -> Affine {
     let (width, height) = svg_viewport_size(cx, svg);
-    let view_box = view_box_transform(svg, width, height);
+    let view_box = view_box_transform(cx, svg, width, height);
     if is_outermost_svg(svg) {
         return view_box;
     }
@@ -499,7 +880,7 @@ pub(crate) fn current_transform(
     let mut transform = if is_svg {
         svg_element_transform(cx, element)
     } else {
-        element_transform(element)
+        element_transform(cx, element)
     };
     if is_svg && is_outermost_svg(element) {
         if to_screen {
@@ -517,7 +898,7 @@ pub(crate) fn current_transform(
             if !to_screen {
                 // The nearest viewport element establishes the coordinate system.
                 let (width, height) = svg_viewport_size(cx, &ancestor);
-                return view_box_transform(&ancestor, width, height) * transform;
+                return view_box_transform(cx, &ancestor, width, height) * transform;
             }
             transform = svg_element_transform(cx, &ancestor) * transform;
             if is_outermost_svg(&ancestor) {
@@ -525,7 +906,7 @@ pub(crate) fn current_transform(
             }
             continue;
         }
-        transform = element_transform(&ancestor) * transform;
+        transform = element_transform(cx, &ancestor) * transform;
     }
     transform
 }
@@ -560,14 +941,18 @@ pub(crate) fn shape_geometry_kind(element: &SVGElement) -> bool {
 
 /// The transform from the user space of `element` to the user space of its ancestor
 /// `ancestor`.
-pub(crate) fn transform_to_user_space_of(element: &SVGElement, ancestor: &SVGElement) -> Affine {
-    let mut transform = element_transform(element);
+pub(crate) fn transform_to_user_space_of(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    ancestor: &SVGElement,
+) -> Affine {
+    let mut transform = element_transform(cx, element);
     for node in element.upcast::<Node>().ancestors() {
         if &*node == ancestor.upcast::<Node>() {
             break;
         }
         if let Some(svg_element) = node.downcast::<SVGElement>() {
-            transform = element_transform(svg_element) * transform;
+            transform = element_transform(cx, svg_element) * transform;
         }
     }
     transform
@@ -682,7 +1067,7 @@ fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool 
 
 /// Whether `element` is inside an element whose content is never rendered directly, like
 /// `defs` or `clipPath`, or is not displayed.
-fn is_never_rendered(element: &SVGElement) -> bool {
+pub(crate) fn is_never_rendered(element: &SVGElement) -> bool {
     element
         .upcast::<Node>()
         .inclusive_ancestors(crate::dom::iterators::ShadowIncluding::No)
@@ -747,7 +1132,8 @@ pub(crate) fn hit_test_svg(
                 SVGLengthDirection::Horizontal,
             );
             let y = length(cx, element, local_name!("y"), SVGLengthDirection::Vertical);
-            let transform = transform * Affine::translate((x, y)) * element_transform(&referenced);
+            let transform =
+                transform * Affine::translate((x, y)) * element_transform(cx, &referenced);
             if transform.determinant() == 0.0 {
                 continue;
             }

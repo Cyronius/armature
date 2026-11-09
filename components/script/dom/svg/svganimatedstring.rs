@@ -12,7 +12,8 @@ use crate::dom::bindings::codegen::Bindings::SVGAnimatedStringBinding::SVGAnimat
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::element::Element;
-use crate::dom::node::NodeTraits;
+use crate::dom::node::{Node, NodeTraits};
+use crate::dom::svg::svganimationelement::{SVGAnimationElement, trim_one_trailing_semicolon};
 use crate::dom::svg::svgelement::SVGElement;
 
 /// <https://svgwg.org/svg2-draft/types.html#InterfaceSVGAnimatedString>
@@ -64,6 +65,58 @@ impl SVGAnimatedString {
             });
         value.map(DOMString::from).unwrap_or_default()
     }
+
+    fn animated_value(&self) -> DOMString {
+        let mut result = self.value();
+        for child in self.element.upcast::<Node>().child_elements() {
+            if child.local_name() != &local_name!("animate") &&
+                child.local_name() != &local_name!("set")
+            {
+                continue;
+            }
+            let Some(animation) = child.downcast::<SVGAnimationElement>() else {
+                continue;
+            };
+            let element = animation.upcast::<SVGElement>();
+            if element
+                .svg_attribute(&local_name!("attributeName"))
+                .as_deref() !=
+                Some(self.attribute.as_ref())
+            {
+                continue;
+            }
+            if child.local_name() == &local_name!("set") {
+                if animation.set_is_active() &&
+                    let Some(to) = element.svg_attribute(&local_name!("to"))
+                {
+                    result = DOMString::from(to);
+                }
+                continue;
+            }
+            if let Some(values) = element.svg_attribute(&local_name!("values")) {
+                let values: Vec<_> = trim_one_trailing_semicolon(&values)
+                    .split(';')
+                    .map(str::trim)
+                    .collect();
+                if let Some(index) = animation.sample_discrete_index(values.len()) {
+                    result = DOMString::from(values[index]);
+                }
+                continue;
+            }
+            if let Some(to) = element.svg_attribute(&local_name!("to")) {
+                if let Some(index) = animation.sample_discrete_index(2) {
+                    if index == 0 {
+                        if let Some(from) = element.svg_attribute(&local_name!("from")) {
+                            result = DOMString::from(from.trim());
+                        }
+                    } else {
+                        result = DOMString::from(to.trim());
+                    }
+                }
+            }
+        }
+        result
+    }
 }
 
 impl SVGAnimatedStringMethods<crate::DomTypeHolder> for SVGAnimatedString {
@@ -100,6 +153,6 @@ impl SVGAnimatedStringMethods<crate::DomTypeHolder> for SVGAnimatedString {
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAnimatedString__animVal>
     fn AnimVal(&self) -> DOMString {
-        self.value()
+        self.animated_value()
     }
 }

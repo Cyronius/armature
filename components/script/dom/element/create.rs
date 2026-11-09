@@ -89,6 +89,9 @@ use crate::dom::html::htmlvideoelement::HTMLVideoElement;
 use crate::dom::htmlmarqueeelement::HTMLMarqueeElement;
 use crate::dom::mathmlelement::MathMLElement;
 use crate::dom::svg::svgaelement::SVGAElement;
+use crate::dom::svg::svganimateelement::SVGAnimateElement;
+use crate::dom::svg::svganimatemotionelement::SVGAnimateMotionElement;
+use crate::dom::svg::svganimatetransformelement::SVGAnimateTransformElement;
 use crate::dom::svg::svgcircleelement::SVGCircleElement;
 use crate::dom::svg::svgclippathelement::SVGClipPathElement;
 use crate::dom::svg::svgdefselement::SVGDefsElement;
@@ -137,6 +140,7 @@ use crate::dom::svg::svgpolylineelement::SVGPolylineElement;
 use crate::dom::svg::svgradialgradientelement::SVGRadialGradientElement;
 use crate::dom::svg::svgrectelement::SVGRectElement;
 use crate::dom::svg::svgscriptelement::SVGScriptElement;
+use crate::dom::svg::svgsetelement::SVGSetElement;
 use crate::dom::svg::svgstopelement::SVGStopElement;
 use crate::dom::svg::svgstyleelement::SVGStyleElement;
 use crate::dom::svg::svgsvgelement::SVGSVGElement;
@@ -174,6 +178,9 @@ fn create_svg_element(
 
     match name.local {
         local_name!("a") => make!(SVGAElement),
+        local_name!("animate") => make!(SVGAnimateElement),
+        local_name!("animateMotion") => make!(SVGAnimateMotionElement),
+        local_name!("animateTransform") => make!(SVGAnimateTransformElement),
         local_name!("circle") => make!(SVGCircleElement),
         local_name!("defs") => make!(SVGDefsElement),
         local_name!("ellipse") => make!(SVGEllipseElement),
@@ -190,6 +197,7 @@ fn create_svg_element(
         local_name!("style") => make!(SVGStyleElement, creator),
         local_name!("rect") => make!(SVGRectElement),
         local_name!("script") => make!(SVGScriptElement, creator),
+        local_name!("set") => make!(SVGSetElement),
         local_name!("svg") => make!(SVGSVGElement),
         local_name!("symbol") => make!(SVGSymbolElement),
         local_name!("text") => make!(SVGTextElement),

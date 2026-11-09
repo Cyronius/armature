@@ -70,10 +70,16 @@ impl SVGAngle {
         )
     }
 
-    pub(crate) fn angle(&self) -> SVGAngleValue {
+    pub(crate) fn angle(&self, cx: &mut JSContext) -> SVGAngleValue {
         match &self.storage {
             SVGAngleStorage::Detached(value) => value.get(),
-            SVGAngleStorage::Reflected(animated) => animated.base_value(),
+            SVGAngleStorage::Reflected(animated) => {
+                if self.read_only {
+                    animated.animated_value(cx)
+                } else {
+                    animated.base_value()
+                }
+            },
         }
     }
 
@@ -105,35 +111,35 @@ impl SVGAngle {
 
 impl SVGAngleMethods<crate::DomTypeHolder> for SVGAngle {
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAngle__unitType>
-    fn UnitType(&self) -> u16 {
-        self.angle().dom_unit_type()
+    fn UnitType(&self, cx: &mut JSContext) -> u16 {
+        self.angle(cx).dom_unit_type()
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAngle__value>
-    fn Value(&self) -> Finite<f32> {
-        Finite::wrap(self.angle().to_degrees())
+    fn Value(&self, cx: &mut JSContext) -> Finite<f32> {
+        Finite::wrap(self.angle(cx).to_degrees())
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAngle__value>
     fn SetValue(&self, cx: &mut JSContext, value: Finite<f32>) -> ErrorResult {
-        let unit_type = self.angle().unit_type;
+        let unit_type = self.angle(cx).unit_type;
         self.set_angle(cx, SVGAngleValue::from_degrees(*value, unit_type))
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAngle__valueInSpecifiedUnits>
-    fn ValueInSpecifiedUnits(&self) -> Finite<f32> {
-        Finite::wrap(self.angle().value)
+    fn ValueInSpecifiedUnits(&self, cx: &mut JSContext) -> Finite<f32> {
+        Finite::wrap(self.angle(cx).value)
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAngle__valueInSpecifiedUnits>
     fn SetValueInSpecifiedUnits(&self, cx: &mut JSContext, value: Finite<f32>) -> ErrorResult {
-        let unit_type = self.angle().unit_type;
+        let unit_type = self.angle(cx).unit_type;
         self.set_angle(cx, SVGAngleValue::new(*value, unit_type))
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAngle__valueAsString>
-    fn ValueAsString(&self) -> DOMString {
-        DOMString::from(self.angle().to_string())
+    fn ValueAsString(&self, cx: &mut JSContext) -> DOMString {
+        DOMString::from(self.angle(cx).to_string())
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAngle__valueAsString>
@@ -162,7 +168,7 @@ impl SVGAngleMethods<crate::DomTypeHolder> for SVGAngle {
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAngle__convertToSpecifiedUnits>
     fn ConvertToSpecifiedUnits(&self, cx: &mut JSContext, unit_type: u16) -> ErrorResult {
         self.check_unit_type(unit_type)?;
-        let degrees = self.angle().to_degrees();
+        let degrees = self.angle(cx).to_degrees();
         self.set_angle(cx, SVGAngleValue::from_degrees(degrees, unit_type))
     }
 }

@@ -75,6 +75,7 @@ use crate::dom::node::{
 };
 use crate::dom::shadowroot::shadowroot::ShadowRoot;
 use crate::dom::svg::svgaelement::SVGAElement;
+use crate::dom::svg::svganimationelement::SVGAnimationElement;
 use crate::dom::svg::svgcircleelement::SVGCircleElement;
 use crate::dom::svg::svgdefselement::SVGDefsElement;
 use crate::dom::svg::svgelement::SVGElement;
@@ -463,6 +464,9 @@ pub(crate) fn vtable_for(node: &Node) -> &dyn VirtualMethods {
         NodeTypeId::Element(ElementTypeId::SVGElement(SVGElementTypeId::SVGStyleElement)) => {
             node.downcast::<SVGStyleElement>().unwrap() as &dyn VirtualMethods
         },
+        NodeTypeId::Element(ElementTypeId::SVGElement(SVGElementTypeId::SVGAnimationElement(
+            _,
+        ))) => node.downcast::<SVGAnimationElement>().unwrap() as &dyn VirtualMethods,
         // The other SVG elements, which only have the virtual methods of SVGElement.
         NodeTypeId::Element(ElementTypeId::SVGElement(_)) => {
             node.downcast::<SVGElement>().unwrap() as &dyn VirtualMethods

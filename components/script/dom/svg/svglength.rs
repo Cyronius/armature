@@ -143,10 +143,16 @@ impl SVGLength {
     }
 
     /// The value, without synchronizing a list that this length is an element of first.
-    pub(crate) fn length(&self) -> SVGLengthValue {
+    pub(crate) fn length(&self, cx: &mut JSContext) -> SVGLengthValue {
         match &self.storage {
             SVGLengthStorage::Own { value, .. } => value.get(),
-            SVGLengthStorage::Reflected(animated) => animated.base_value(),
+            SVGLengthStorage::Reflected(animated) => {
+                if self.read_only.get() {
+                    animated.animated_value(cx)
+                } else {
+                    animated.base_value()
+                }
+            },
         }
     }
 
@@ -215,13 +221,13 @@ impl SVGLengthMethods<crate::DomTypeHolder> for SVGLength {
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__unitType>
     fn UnitType(&self, cx: &mut JSContext) -> u16 {
         self.synchronize(cx);
-        self.length().dom_unit_type()
+        self.length(cx).dom_unit_type()
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__value>
     fn GetValue(&self, cx: &mut JSContext) -> Fallible<Finite<f32>> {
         self.synchronize(cx);
-        let length = self.length();
+        let length = self.length(cx);
         let value = self
             .with_context(cx, |cx, context| length.to_user_units(cx, context))
             .ok_or_else(not_supported)?;
@@ -232,7 +238,7 @@ impl SVGLengthMethods<crate::DomTypeHolder> for SVGLength {
     fn SetValue(&self, cx: &mut JSContext, value: Finite<f32>) -> ErrorResult {
         self.synchronize(cx);
         self.check_writable()?;
-        let unit_type = self.length().unit_type;
+        let unit_type = self.length(cx).unit_type;
         let length = self
             .with_context(cx, |cx, context| {
                 SVGLengthValue::from_user_units(cx, *value, unit_type, context)
@@ -244,21 +250,21 @@ impl SVGLengthMethods<crate::DomTypeHolder> for SVGLength {
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__valueInSpecifiedUnits>
     fn ValueInSpecifiedUnits(&self, cx: &mut JSContext) -> Finite<f32> {
         self.synchronize(cx);
-        Finite::wrap(self.length().value)
+        Finite::wrap(self.length(cx).value)
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__valueInSpecifiedUnits>
     fn SetValueInSpecifiedUnits(&self, cx: &mut JSContext, value: Finite<f32>) -> ErrorResult {
         self.synchronize(cx);
         self.check_writable()?;
-        let unit_type = self.length().unit_type;
+        let unit_type = self.length(cx).unit_type;
         self.set_length(cx, SVGLengthValue::new(*value, unit_type))
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__valueAsString>
     fn ValueAsString(&self, cx: &mut JSContext) -> DOMString {
         self.synchronize(cx);
-        DOMString::from(self.length().to_string())
+        DOMString::from(self.length(cx).to_string())
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__valueAsString>
@@ -291,7 +297,7 @@ impl SVGLengthMethods<crate::DomTypeHolder> for SVGLength {
         if !SVGLengthValue::is_valid_unit_type(unit_type) {
             return Err(not_supported());
         }
-        let length = self.length();
+        let length = self.length(cx);
         let converted = self
             .with_context(cx, |cx, context| {
                 let user_units = length.to_user_units(cx, context)?;
@@ -311,10 +317,7 @@ pub(crate) fn resolve_length(
     direction: SVGLengthDirection,
     initial: SVGLengthValue,
 ) -> f32 {
-    let value = element
-        .svg_attribute(attribute)
-        .and_then(|value| SVGLengthValue::parse(&value))
-        .unwrap_or(initial);
+    let value = SVGAnimatedLength::sample_value(cx, element, attribute, direction, initial);
     let context = ElementLengthContext { element, direction };
     value.to_user_units(cx, &context).unwrap_or(0.0)
 }
@@ -331,9 +334,9 @@ pub(crate) fn resolve_value(
 }
 
 /// The context of a length that reflects an attribute of `element`.
-struct ElementLengthContext<'a> {
-    element: &'a SVGElement,
-    direction: SVGLengthDirection,
+pub(crate) struct ElementLengthContext<'a> {
+    pub(crate) element: &'a SVGElement,
+    pub(crate) direction: SVGLengthDirection,
 }
 
 impl SVGLengthContext for ElementLengthContext<'_> {

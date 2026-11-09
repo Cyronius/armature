@@ -601,8 +601,8 @@ pub(crate) fn handle_get_layout(
         .expect("should be getting layout of element");
 
     let rect = element.GetBoundingClientRect(cx);
-    let width = rect.Width() as f32;
-    let height = rect.Height() as f32;
+    let width = rect.Width(cx) as f32;
+    let height = rect.Height(cx) as f32;
 
     let window = node.owner_window();
     let computed_style = window.GetComputedStyle(cx, element, None);

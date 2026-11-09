@@ -182,6 +182,8 @@ use crate::dom::sanitizer::Sanitizer;
 use crate::dom::servoparser::ServoParser;
 use crate::dom::shadowroot::shadowroot::{IsUserAgentWidget, ShadowRoot};
 use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::svggeometry;
+use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
 use crate::dom::text::Text;
 use crate::dom::trustedtypes::trustedhtml::TrustedHTML;
 use crate::dom::trustedtypes::trustedtypepolicyfactory::TrustedTypePolicyFactory;
@@ -208,6 +210,9 @@ pub struct Element {
     #[no_trace]
     prefix: DomRefCell<Option<Prefix>>,
     attrs: AttributeStorage,
+    /// SMIL class effects affect selector matching without changing the DOM attribute.
+    #[no_trace]
+    animated_classes: DomRefCell<Vec<(u64, AttrValue)>>,
     #[no_trace]
     id_attribute: AtomicRefCell<Option<Atom>>,
     #[conditional_malloc_size_of]
@@ -329,6 +334,7 @@ impl Element {
             namespace,
             prefix: DomRefCell::new(prefix),
             attrs: Default::default(),
+            animated_classes: Default::default(),
             id_attribute: Default::default(),
             style_attribute: DomRefCell::new(None),
             attr_list: Default::default(),
@@ -338,6 +344,46 @@ impl Element {
             rare_data: Default::default(),
             style_data: Default::default(),
         }
+    }
+
+    /// Replace one SMIL class effect while preserving the underlying class attribute.
+    pub(crate) fn set_animated_class(
+        &self,
+        cx: &mut JSContext,
+        animation_id: u64,
+        value: Option<String>,
+    ) {
+        let mut classes = self.animated_classes.borrow_mut();
+        let previous = classes.last().map(|(_, value)| (&**value).to_owned());
+        classes.retain(|(id, _)| *id != animation_id);
+        if let Some(value) = value {
+            classes.push((animation_id, AttrValue::from_serialized_tokenlist(value)));
+        }
+        let current = classes.last().map(|(_, value)| (&**value).to_owned());
+        drop(classes);
+        if previous != current {
+            self.upcast::<Node>().dirty(cx.no_gc(), NodeDamage::Style);
+        }
+    }
+
+    /// SVG graphics inside an outer `svg` have SVG layout boxes, even though
+    /// Servo lays out their outer `svg` as a single replaced box.
+    fn svg_client_rect(&self, cx: &mut JSContext) -> Option<kurbo::Rect> {
+        if !self.is_connected() ||
+            !self.is::<SVGGraphicsElement>() ||
+            !self
+                .upcast::<Node>()
+                .ancestors()
+                .any(|node| node.is::<SVGElement>())
+        {
+            return None;
+        }
+        let svg = self.downcast::<SVGElement>()?;
+        if svggeometry::is_never_rendered(svg) {
+            return None;
+        }
+        let bbox = svggeometry::bounding_box(cx, svg)?;
+        Some(svggeometry::current_transform(cx, svg, true).transform_rect_bbox(bbox))
     }
 
     pub(crate) fn set_had_duplicate_attributes(&self, no_gc: &NoGC) {
@@ -1164,6 +1210,12 @@ pub(crate) fn get_attr_for_layout<'dom>(
     namespace: &Namespace,
     name: &LocalName,
 ) -> Option<&'dom AttrValue> {
+    if namespace == &ns!() && name == &local_name!("class") {
+        let classes = unsafe { elem.unsafe_get().animated_classes.borrow_for_layout() };
+        if let Some((_, value)) = classes.last() {
+            return Some(value);
+        }
+    }
     let storage = unsafe { elem.unsafe_get().attrs.borrow_for_layout() };
     storage
         .iter()
@@ -1203,8 +1255,17 @@ impl<'dom> LayoutDom<'dom, Element> {
         F: FnMut(&LocalName),
     {
         let storage = unsafe { self.unsafe_get().attrs.borrow_for_layout() };
+        let has_class = storage.iter().any(|entry| {
+            entry.local_name_for_layout() == &local_name!("class") &&
+                entry.namespace_for_layout() == &ns!()
+        });
         for entry in storage.iter() {
             callback(entry.local_name_for_layout());
+        }
+        if !has_class &&
+            !unsafe { self.unsafe_get().animated_classes.borrow_for_layout() }.is_empty()
+        {
+            callback(&local_name!("class"));
         }
     }
 
@@ -1830,10 +1891,18 @@ impl<'dom> LayoutDom<'dom, Element> {
         name: &LocalName,
     ) -> impl Iterator<Item = &'dom AttrValue> {
         let storage = unsafe { self.unsafe_get().attrs.borrow_for_layout() };
-        storage
-            .iter()
-            .filter(move |e: &&AttributeEntry| name == e.local_name_for_layout())
-            .map(|e: &AttributeEntry| e.value_for_layout())
+        let animated = (name == &local_name!("class"))
+            .then(|| unsafe { self.unsafe_get().animated_classes.borrow_for_layout() })
+            .and_then(|classes| classes.last().map(|(_, value)| value));
+        animated.into_iter().chain(
+            storage
+                .iter()
+                .filter(move |e: &&AttributeEntry| {
+                    name == e.local_name_for_layout() &&
+                        !(animated.is_some() && e.namespace_for_layout() == &ns!())
+                })
+                .map(|e: &AttributeEntry| e.value_for_layout()),
+        )
     }
 
     #[expect(unsafe_code)]
@@ -3441,7 +3510,7 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     fn GetClientRects(&self, cx: &mut JSContext) -> DomRoot<DOMRectList> {
         let win = self.owner_window();
         let raw_rects = self.upcast::<Node>().border_boxes();
-        let rects: Vec<DomRoot<DOMRect>> = raw_rects
+        let mut rects: Vec<DomRoot<DOMRect>> = raw_rects
             .into_iter()
             .map(|rect| {
                 DOMRect::new(
@@ -3454,6 +3523,18 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
                 )
             })
             .collect();
+        if rects.is_empty() {
+            if let Some(rect) = self.svg_client_rect(cx) {
+                rects.push(DOMRect::new(
+                    cx,
+                    win.upcast(),
+                    rect.x0,
+                    rect.y0,
+                    rect.width(),
+                    rect.height(),
+                ));
+            }
+        }
         DOMRectList::new(cx, &win, rects)
     }
 
@@ -3461,6 +3542,18 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
     fn GetBoundingClientRect(&self, cx: &mut JSContext) -> DomRoot<DOMRect> {
         let win = self.owner_window();
         let rect = self.upcast::<Node>().border_box(cx).unwrap_or_default();
+        if rect.size.width == Au::new(0) && rect.size.height == Au::new(0) {
+            if let Some(svg_rect) = self.svg_client_rect(cx) {
+                return DOMRect::new(
+                    cx,
+                    win.upcast(),
+                    svg_rect.x0,
+                    svg_rect.y0,
+                    svg_rect.width(),
+                    svg_rect.height(),
+                );
+            }
+        }
         debug_assert!(rect.size.width.to_f64_px() >= 0.0 && rect.size.height.to_f64_px() >= 0.0);
         DOMRect::new(
             cx,
@@ -5070,7 +5163,12 @@ impl VirtualMethods for Element {
             // so that other element types (such as SVG elements) activate them as well.
             ref name if name.starts_with("on") && EventTarget::is_content_event_handler(name) => {
                 let evtarget = self.upcast::<EventTarget>();
-                let event_name = &name[2..];
+                let event_name = match (&name[2..], self.is::<SVGElement>()) {
+                    ("begin", true) => "beginEvent",
+                    ("end", true) => "endEvent",
+                    ("repeat", true) => "repeatEvent",
+                    _ => &name[2..],
+                };
                 match mutation {
                     // https://html.spec.whatwg.org/multipage/#activate-an-event-handler
                     AttributeMutation::Set(_) => {

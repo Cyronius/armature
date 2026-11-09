@@ -11,6 +11,7 @@ use crate::dom::bindings::codegen::Bindings::SVGAnimatedIntegerBinding::SVGAnima
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::node::NodeTraits;
 use crate::dom::svg::svganimatednumber::SVGNumberPart;
+use crate::dom::svg::svganimationelement::sample_targeted_numeric_animation;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::{parse_integer, parse_integer_optional_integer};
 
@@ -62,6 +63,20 @@ impl SVGAnimatedInteger {
         };
         value.unwrap_or(self.initial)
     }
+
+    fn parse_animated_value(&self, value: &str) -> Option<f32> {
+        match self.part {
+            SVGNumberPart::Whole | SVGNumberPart::WholeOrPercentage => {
+                parse_integer(value).map(|value| value as f32)
+            },
+            SVGNumberPart::First => {
+                parse_integer_optional_integer(value).map(|(first, _)| first as f32)
+            },
+            SVGNumberPart::Second => {
+                parse_integer_optional_integer(value).map(|(_, second)| second as f32)
+            },
+        }
+    }
 }
 
 impl SVGAnimatedIntegerMethods<crate::DomTypeHolder> for SVGAnimatedInteger {
@@ -87,7 +102,14 @@ impl SVGAnimatedIntegerMethods<crate::DomTypeHolder> for SVGAnimatedInteger {
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGAnimatedInteger__animVal>
-    fn AnimVal(&self) -> i32 {
-        self.value()
+    fn AnimVal(&self, cx: &mut JSContext) -> i32 {
+        sample_targeted_numeric_animation(
+            cx,
+            &self.element,
+            &self.attribute,
+            self.value() as f32,
+            |value| self.parse_animated_value(value),
+        )
+        .round() as i32
     }
 }

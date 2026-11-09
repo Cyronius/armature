@@ -43,6 +43,8 @@ use crate::dom::element::Element;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::{Node, NodeTraits};
 use crate::dom::selection::{Selection, SelectionLiveRangeNotification};
+use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::{svggeometry, svgtext};
 use crate::dom::text::Text;
 use crate::dom::trustedtypes::trustedhtml::TrustedHTML;
 use crate::dom::window::Window;
@@ -374,7 +376,40 @@ impl Range {
     }
 
     /// <https://drafts.csswg.org/cssom-view/#dom-range-getclientrects>
-    fn client_rects(&self, no_gc: &NoGC) -> Vec<Rect<Au, CSSPixel>> {
+    fn svg_text_client_rect(
+        &self,
+        cx: &mut JSContext,
+        node: &Node,
+        start: u32,
+        end: u32,
+    ) -> Option<Rect<Au, CSSPixel>> {
+        let text = node.downcast::<Text>()?;
+        let parent = node.GetParentElement()?;
+        let svg = parent.downcast::<SVGElement>()?;
+        let root = svgtext::text_root(svg)?;
+        if svggeometry::is_never_rendered(svg) {
+            return None;
+        }
+        let bbox = svgtext::element_characters(cx, &root)
+            .into_iter()
+            .filter(|character| {
+                std::ptr::eq(&*character.source, text) &&
+                    character.source_offset < end &&
+                    character.source_offset + character.utf16_length as u32 > start
+            })
+            .map(|character| character.extent())
+            .reduce(|left, right| left.union(right))?;
+        let rect = svggeometry::current_transform(cx, &root, true).transform_rect_bbox(bbox);
+        Some(Rect::new(
+            euclid::Point2D::new(Au::from_f64_px(rect.x0), Au::from_f64_px(rect.y0)),
+            euclid::Size2D::new(
+                Au::from_f64_px(rect.width()),
+                Au::from_f64_px(rect.height()),
+            ),
+        ))
+    }
+
+    fn client_rects(&self, cx: &mut JSContext) -> Vec<Rect<Au, CSSPixel>> {
         // FIXME: For text nodes that are only partially selected, this should return the client
         // rect of the selected part, not the whole text node.
         let start = self.start_container();
@@ -395,14 +430,38 @@ impl Range {
             }
         }
 
-        let document = start.owner_doc();
-        let unrooted_end = end.as_unrooted(no_gc);
-        start
-            .following_nodes_unrooted(no_gc, document.upcast::<Node>(), ShadowIncluding::No)
-            .take_while(move |node| *node != *end)
-            .chain(iter::once(unrooted_end))
-            .flat_map(move |node| node.border_boxes())
-            .collect()
+        let nodes: Vec<_> = if *start == *end {
+            vec![DomRoot::from_ref(&*start)]
+        } else {
+            let no_gc = cx.no_gc();
+            let document = start.owner_doc();
+            let unrooted_end = end.as_unrooted(no_gc);
+            start
+                .following_nodes_unrooted(no_gc, document.upcast::<Node>(), ShadowIncluding::No)
+                .take_while(|node| *node != *end)
+                .chain(iter::once(unrooted_end))
+                .map(|node| node.as_rooted())
+                .collect()
+        };
+        let mut rects = Vec::new();
+        for node in nodes {
+            let first = if *node == *start {
+                self.start_offset()
+            } else {
+                0
+            };
+            let last = if *node == *end {
+                self.end_offset()
+            } else {
+                node.len()
+            };
+            if let Some(rect) = self.svg_text_client_rect(cx, &node, first, last) {
+                rects.push(rect);
+            } else {
+                rects.extend(node.border_boxes());
+            }
+        }
+        rects
     }
 
     /// <https://dom.spec.whatwg.org/#concept-range-bp-set>
@@ -1386,7 +1445,7 @@ impl RangeMethods<crate::DomTypeHolder> for Range {
         let start = self.start_container();
         let window = start.owner_window();
 
-        let client_rects = self.client_rects(cx.no_gc());
+        let client_rects = self.client_rects(cx);
         let client_rects = client_rects
             .iter()
             .map(|rect| {
@@ -1409,7 +1468,7 @@ impl RangeMethods<crate::DomTypeHolder> for Range {
         let window = self.start_container().owner_window();
 
         // Step 1. Let list be the result of invoking getClientRects() on the same range this method was invoked on.
-        let list = self.client_rects(cx.no_gc());
+        let list = self.client_rects(cx);
 
         // Step 2. If list is empty return a DOMRect object whose x, y, width and height members are zero.
         // Step 3. If all rectangles in list have zero width or height, return the first rectangle in list.

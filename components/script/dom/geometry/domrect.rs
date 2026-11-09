@@ -58,11 +58,15 @@ impl DOMRect {
     }
 
     /// The coordinate with index `index` (x, y, width, height).
-    fn coordinate(&self, index: usize) -> f64 {
+    fn coordinate(&self, cx: &mut JSContext, index: usize) -> f64 {
         if let Some(animated) = self.svg_animated_rect.get() {
             // Keep the coordinates of DOMRectReadOnly, which `top`, `left`, `right` and
             // `bottom` use, in sync with the attribute as well.
-            let rect = animated.rect();
+            let rect = if self.svg_read_only {
+                animated.animated_rect(cx)
+            } else {
+                animated.rect()
+            };
             self.rect.set_x(rect[0]);
             self.rect.set_y(rect[1]);
             self.rect.set_width(rect[2]);
@@ -155,8 +159,8 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-x>
-    fn X(&self) -> f64 {
-        self.coordinate(0)
+    fn X(&self, cx: &mut JSContext) -> f64 {
+        self.coordinate(cx, 0)
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-x>
@@ -165,8 +169,8 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-y>
-    fn Y(&self) -> f64 {
-        self.coordinate(1)
+    fn Y(&self, cx: &mut JSContext) -> f64 {
+        self.coordinate(cx, 1)
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-y>
@@ -175,8 +179,8 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-width>
-    fn Width(&self) -> f64 {
-        self.coordinate(2)
+    fn Width(&self, cx: &mut JSContext) -> f64 {
+        self.coordinate(cx, 2)
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-width>
@@ -185,8 +189,8 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-height>
-    fn Height(&self) -> f64 {
-        self.coordinate(3)
+    fn Height(&self, cx: &mut JSContext) -> f64 {
+        self.coordinate(cx, 3)
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-height>
@@ -200,11 +204,25 @@ impl Serializable<crate::DomTypeHolder> for DOMRect {
     type Data = DomRect;
 
     fn serialize(&self, _no_gc: &NoGC) -> Result<(DomRectId, Self::Data), ()> {
+        let [x, y, width, height] = if let Some(animated) = self.svg_animated_rect.get() {
+            if self.svg_read_only {
+                animated.animated_rect_without_context()
+            } else {
+                animated.rect()
+            }
+        } else {
+            [
+                self.rect.X(),
+                self.rect.Y(),
+                self.rect.Width(),
+                self.rect.Height(),
+            ]
+        };
         let serialized = DomRect {
-            x: self.X(),
-            y: self.Y(),
-            width: self.Width(),
-            height: self.Height(),
+            x,
+            y,
+            width,
+            height,
         };
         Ok((DomRectId::new(), serialized))
     }

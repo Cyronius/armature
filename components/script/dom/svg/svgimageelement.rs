@@ -9,9 +9,11 @@ use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::JSContext;
 use js::rust::HandleObject;
 use net_traits::image_cache::{
-    ImageCacheResult, ImageLoadListener, ImageOrMetadataAvailable, ImageResponse,
+    Image, ImageCacheResult, ImageLoadListener, ImageOrMetadataAvailable, ImageResponse,
+    VectorImageNaturalDimensions,
 };
 use net_traits::request::InternalRequest;
+use script_bindings::cell::DomRefCell;
 use style::attr::AttrValue;
 
 use crate::dom::bindings::codegen::Bindings::SVGImageElementBinding::SVGImageElementMethods;
@@ -31,6 +33,7 @@ use crate::dom::svg::svgtypes::{
     SVGLengthValue, svg_animated_length, svg_preserve_aspect_ratio, svg_uri_reference,
 };
 use crate::dom::window::layout_image::fetch_image_into_cache;
+use crate::event_loop::document_loader::{LoadBlocker, LoadType};
 
 /// <https://svgwg.org/svg2-draft/embedded.html#Placement>
 const DEFAULT_WIDTH: u32 = 300;
@@ -39,6 +42,7 @@ const DEFAULT_HEIGHT: u32 = 150;
 #[dom_struct]
 pub(crate) struct SVGImageElement {
     svggraphicselement: SVGGraphicsElement,
+    load_blocker: DomRefCell<Option<LoadBlocker>>,
     /// Incremented whenever the image resource is processed again, so that the responses of
     /// earlier requests no longer fire events at the element.
     request_generation: Cell<u32>,
@@ -59,6 +63,7 @@ impl SVGImageElement {
     ) -> SVGImageElement {
         SVGImageElement {
             svggraphicselement: SVGGraphicsElement::new_inherited(local_name, prefix, document),
+            load_blocker: DomRefCell::new(None),
             request_generation: Cell::new(0),
         }
     }
@@ -90,6 +95,44 @@ impl SVGImageElement {
             })
     }
 
+    /// The natural dimensions of the current resource, including available raster metadata.
+    pub(crate) fn natural_dimensions(&self) -> Option<VectorImageNaturalDimensions> {
+        let href = self.image_href()?;
+        let node = self.upcast::<Node>();
+        let url = node.owner_doc().encoding_parse_a_url(&href).ok()?;
+        let window = self.owner_window();
+        let cache_result =
+            window
+                .image_cache()
+                .get_cached_image_status(url, window.origin().immutable(), None);
+        let dimensions = |width: u32, height: u32| {
+            let width = width as f32;
+            let height = height as f32;
+            VectorImageNaturalDimensions {
+                width: Some(width),
+                height: Some(height),
+                ratio: if width > 0.0 && height > 0.0 {
+                    Some(width / height)
+                } else {
+                    None
+                },
+            }
+        };
+        Some(match cache_result {
+            ImageCacheResult::Available(ImageOrMetadataAvailable::ImageAvailable {
+                image, ..
+            }) => match image {
+                Image::Vector(image) => image.natural_dimensions,
+                Image::Raster(image) => dimensions(image.metadata.width, image.metadata.height),
+            },
+            ImageCacheResult::Available(ImageOrMetadataAvailable::MetadataAvailable(
+                metadata,
+                _,
+            )) => dimensions(metadata.width, metadata.height),
+            _ => return None,
+        })
+    }
+
     /// Fetch the image resource and fire a `load` or `error` event at the element once it has
     /// been fetched and decoded, as browsers do for the SVG `image` element.
     ///
@@ -98,10 +141,11 @@ impl SVGImageElement {
     ///
     /// Only the events come from this request: the image is still drawn by the renderer of the
     /// enclosing `svg` element.
-    fn process_image_resource(&self) {
+    fn process_image_resource(&self, cx: &mut JSContext) {
         // Responses to any earlier request are no longer relevant.
         let generation = self.request_generation.get().wrapping_add(1);
         self.request_generation.set(generation);
+        LoadBlocker::terminate(cx, &self.load_blocker);
 
         // Only connected elements in a document with a browsing context start a fetch (a request
         // that has started still fires its event if the element is removed). The
@@ -124,6 +168,10 @@ impl SVGImageElement {
         };
 
         let window = self.owner_window();
+        *self.load_blocker.safe_borrow_mut(cx.no_gc()) = Some(LoadBlocker::new(
+            &node.owner_doc(),
+            LoadType::Image(url.clone()),
+        ));
         let image_cache = window.image_cache();
         let cache_result =
             image_cache.get_cached_image_status(url.clone(), window.origin().immutable(), None);
@@ -177,6 +225,7 @@ impl SVGImageElement {
                 if element.request_generation.get() != generation {
                     return;
                 }
+                LoadBlocker::terminate(cx, &element.load_blocker);
                 let name = match outcome {
                     ImageLoadOutcome::Loaded => atom!("load"),
                     ImageLoadOutcome::Failed => atom!("error"),
@@ -203,7 +252,7 @@ impl VirtualMethods for SVGImageElement {
         if attr.local_name() == &local_name!("href") &&
             matches!(attr.namespace(), &ns!() | &ns!(xlink))
         {
-            self.process_image_resource();
+            self.process_image_resource(cx);
         }
     }
 
@@ -212,7 +261,7 @@ impl VirtualMethods for SVGImageElement {
             super_type.bind_to_tree(cx, context);
         }
         if context.tree_connected {
-            self.process_image_resource();
+            self.process_image_resource(cx);
         }
     }
 

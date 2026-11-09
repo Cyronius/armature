@@ -42,7 +42,7 @@ use style::stylesheets::{CssRuleType, Origin, UrlExtraData};
 use style::stylist::RuleInclusion;
 use style::traversal::resolve_style;
 use style::values::computed::transform::Matrix3D;
-use style::values::computed::{Float, Length, Size};
+use style::values::computed::{DProperty, Float, Length, Size};
 use style::values::generics::font::LineHeight;
 use style::values::generics::position::AspectRatio;
 use style::values::specified::GenericGridTemplateComponent;
@@ -326,6 +326,11 @@ pub fn process_resolved_style_request(
     };
 
     let computed_style = |fragment: Option<&Fragment>| match longhand_id {
+        // SVG path data is serialized with absolute commands in computed style.
+        LonghandId::D => match &style.get_svg().d {
+            DProperty::Path(path) => DProperty::Path(path.normalize(false)).to_css_string(),
+            DProperty::None => String::from("none"),
+        },
         LonghandId::MinWidth
             if style.get_min_width() == &Size::Auto &&
                 !should_honor_min_size_auto(fragment, style) =>

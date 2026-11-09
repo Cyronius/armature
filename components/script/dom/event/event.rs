@@ -717,6 +717,32 @@ impl Event {
         // Step 8. Set event’s currentTarget attribute to null.
         self.current_target.set(None);
 
+        // SVG eventbase timing observes events at the target and, for bubbling
+        // events, at the eventbase ancestors in the dispatch path.
+        let event_name = self.type_();
+        let observe_smil_event = !matches!(
+            event_name.as_ref(),
+            "beginEvent" | "endEvent" | "repeatEvent"
+        ) && original_target
+            .downcast::<Node>()
+            .is_some_and(|node| node.owner_doc().has_smil_animations());
+        let smil_eventbases: Vec<_> = if observe_smil_event {
+            self.path
+                .borrow()
+                .iter()
+                .take(if self.bubbles.get() { usize::MAX } else { 1 })
+                .filter_map(|segment| {
+                    segment
+                        .invocation_target
+                        .as_rooted()
+                        .downcast::<Element>()
+                        .map(DomRoot::from_ref)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         // Step 9. Set event’s path to the empty list.
         self.path.borrow_mut().clear();
 
@@ -735,6 +761,14 @@ impl Event {
 
             // Step 11.3. Set event’s touch target list to the empty list.
             // TODO
+        }
+
+        if let Some(source) = smil_eventbases.first() {
+            source.owner_document().notify_smil_dom_event(
+                cx,
+                &smil_eventbases,
+                event_name.as_ref(),
+            );
         }
 
         // Step 12. If activationTarget is non-null:

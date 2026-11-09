@@ -13,6 +13,10 @@ interface SVGElement : Element {
   readonly attribute SVGSVGElement? ownerSVGElement;
   readonly attribute SVGElement? viewportElement;
 
+  attribute EventHandler onbegin;
+  attribute EventHandler onend;
+  attribute EventHandler onrepeat;
+
   //attribute long tabIndex;
   //void focus();
   //void blur();

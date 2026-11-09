@@ -102,11 +102,9 @@ impl SVGMarkerElementMethods<crate::DomTypeHolder> for SVGMarkerElement {
 
     /// <https://svgwg.org/svg2-draft/painting.html#__svg__SVGMarkerElement__setOrientToAngle>
     fn SetOrientToAngle(&self, cx: &mut js::context::JSContext, angle: &SVGAngle) {
-        self.upcast::<SVGElement>().set_svg_attribute(
-            cx,
-            &local_name!("orient"),
-            angle.angle().to_string(),
-        );
+        let value = angle.angle(cx).to_string();
+        self.upcast::<SVGElement>()
+            .set_svg_attribute(cx, &local_name!("orient"), value);
     }
 
     svg_fit_to_view_box!();

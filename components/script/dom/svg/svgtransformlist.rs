@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use dom_struct::dom_struct;
-use html5ever::LocalName;
+use html5ever::{LocalName, local_name};
 use js::context::JSContext;
 use script_bindings::cell::DomRefCell;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
@@ -11,10 +11,13 @@ use script_bindings::reflector::{Reflector, reflect_dom_object};
 use crate::dom::bindings::codegen::Bindings::DOMMatrixBinding::DOMMatrix2DInit;
 use crate::dom::bindings::codegen::Bindings::SVGTransformListBinding::SVGTransformListMethods;
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
+use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::dommatrixreadonly::dommatrix2dinit_to_matrix;
+use crate::dom::element::Element;
 use crate::dom::node::NodeTraits;
+use crate::dom::svg::svganimationelement::trim_one_trailing_semicolon;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtransform::{SVGTransform, SVGTransformValue};
 use crate::dom::svg::svgtypes::{is_svg_whitespace, parse_number_prefix};
@@ -98,6 +101,168 @@ fn parse_arguments(value: &str) -> Option<Vec<f64>> {
     Some(numbers)
 }
 
+fn animation_parameters(kind: &str, value: &str) -> Option<Vec<f64>> {
+    let values = parse_arguments(value)?;
+    Some(match (kind, values.as_slice()) {
+        ("translate", [x]) => vec![*x, 0.0],
+        ("translate", [x, y]) => vec![*x, *y],
+        ("scale", [x]) => vec![*x, *x],
+        ("scale", [x, y]) => vec![*x, *y],
+        ("rotate", [angle]) => vec![*angle, 0.0, 0.0],
+        ("rotate", [angle, x, y]) => vec![*angle, *x, *y],
+        ("skewX" | "skewY", [angle]) => vec![*angle],
+        _ => return None,
+    })
+}
+
+fn animation_transform(kind: &str, values: &[f64]) -> Option<SVGTransformValue> {
+    Some(match (kind, values) {
+        ("translate", [x, y]) => SVGTransformValue::translate(*x, *y),
+        ("scale", [x, y]) => SVGTransformValue::scale(*x, *y),
+        ("rotate", [angle, x, y]) => SVGTransformValue::rotate(*angle, *x, *y),
+        ("skewX", [angle]) => SVGTransformValue::skew_x(*angle),
+        ("skewY", [angle]) => SVGTransformValue::skew_y(*angle),
+        _ => return None,
+    })
+}
+
+fn interpolate_parameters(from: &[f64], to: &[f64], fraction: f32) -> Vec<f64> {
+    from.iter()
+        .zip(to)
+        .map(|(from, to)| from + (to - from) * f64::from(fraction))
+        .collect()
+}
+
+/// The current transform list, including active `animateTransform` effects.
+pub(crate) fn animated_transform_values(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    attribute: &LocalName,
+) -> Vec<SVGTransformValue> {
+    let mut result = parse_transform_value_list(element.svg_attribute(attribute).as_deref());
+    for animation in element
+        .owner_document()
+        .smil_animations_targeting(cx, element)
+    {
+        if animation.upcast::<Element>().local_name() != &local_name!("animateTransform") {
+            continue;
+        }
+        let attributes = animation.upcast::<SVGElement>();
+        if attributes
+            .svg_attribute(&local_name!("attributeName"))
+            .as_deref() !=
+            Some(attribute.as_ref())
+        {
+            continue;
+        }
+        let kind = attributes
+            .svg_attribute(&local_name!("type"))
+            .unwrap_or_else(|| "translate".into());
+        if !matches!(
+            kind.as_str(),
+            "translate" | "scale" | "rotate" | "skewX" | "skewY"
+        ) {
+            continue;
+        }
+        let Some((progress, iteration)) = animation.sample_iteration() else {
+            continue;
+        };
+        let values = attributes.svg_attribute(&local_name!("values"));
+        let (mut effect, final_value, additive) = if let Some(values) = values {
+            let parsed: Option<Vec<_>> = trim_one_trailing_semicolon(&values)
+                .split(';')
+                .map(|value| animation_parameters(&kind, value))
+                .collect();
+            let Some(parsed) = parsed.filter(|parsed| !parsed.is_empty()) else {
+                continue;
+            };
+            let effect = if parsed.len() == 1 {
+                parsed[0].clone()
+            } else {
+                let Some((index, fraction)) =
+                    animation.sample_value_interval(parsed.len(), progress)
+                else {
+                    continue;
+                };
+                interpolate_parameters(&parsed[index], &parsed[index + 1], fraction)
+            };
+            let last = parsed[parsed.len() - 1].clone();
+            (effect, Some(last), false)
+        } else {
+            let from_attribute = attributes.svg_attribute(&local_name!("from"));
+            let to_attribute = attributes.svg_attribute(&local_name!("to"));
+            let by_attribute = attributes.svg_attribute(&local_name!("by"));
+            let from = from_attribute
+                .as_deref()
+                .and_then(|value| animation_parameters(&kind, value));
+            let to = to_attribute
+                .as_deref()
+                .and_then(|value| animation_parameters(&kind, value));
+            let by = by_attribute
+                .as_deref()
+                .and_then(|value| animation_parameters(&kind, value));
+            if (from_attribute.is_some() && from.is_none()) ||
+                (to_attribute.is_some() && to.is_none()) ||
+                (by_attribute.is_some() && by.is_none())
+            {
+                continue;
+            }
+            let Some((_, fraction)) = animation.sample_value_interval(2, progress) else {
+                continue;
+            };
+            match (from, to, by) {
+                (Some(from), Some(to), _) => (
+                    interpolate_parameters(&from, &to, fraction),
+                    Some(to),
+                    false,
+                ),
+                (Some(from), None, Some(by)) => {
+                    let to: Vec<_> = from.iter().zip(&by).map(|(a, b)| a + b).collect();
+                    (
+                        interpolate_parameters(&from, &to, fraction),
+                        Some(to),
+                        false,
+                    )
+                },
+                (None, None, Some(by)) => {
+                    let effect = by.iter().map(|value| value * f64::from(fraction)).collect();
+                    (effect, Some(by), true)
+                },
+                (None, Some(to), _) => {
+                    let zero = vec![0.0; to.len()];
+                    (interpolate_parameters(&zero, &to, fraction), None, false)
+                },
+                _ => continue,
+            }
+        };
+        if iteration > 0 &&
+            attributes
+                .svg_attribute(&local_name!("accumulate"))
+                .as_deref() ==
+                Some("sum") &&
+            let Some(final_value) = final_value
+        {
+            for (value, final_value) in effect.iter_mut().zip(final_value) {
+                *value += final_value * f64::from(iteration);
+            }
+        }
+        let Some(effect) = animation_transform(&kind, &effect) else {
+            continue;
+        };
+        if additive ||
+            attributes
+                .svg_attribute(&local_name!("additive"))
+                .as_deref() ==
+                Some("sum")
+        {
+            result.push(effect);
+        } else {
+            result = vec![effect];
+        }
+    }
+    result
+}
+
 impl SVGTransformList {
     pub(crate) fn new(
         cx: &mut JSContext,
@@ -122,10 +287,14 @@ impl SVGTransformList {
     /// <https://svgwg.org/svg2-draft/types.html#TermSynchronizeList>
     pub(crate) fn synchronize(&self, cx: &mut JSContext) {
         let value = self.element.svg_attribute(&self.attribute);
-        if self.synchronized_value.borrow().as_ref() == Some(&value) {
+        if !self.read_only && self.synchronized_value.borrow().as_ref() == Some(&value) {
             return;
         }
-        let values = parse_transform_value_list(value.as_deref());
+        let values = if self.read_only {
+            animated_transform_values(cx, &self.element, &self.attribute)
+        } else {
+            parse_transform_value_list(value.as_deref())
+        };
         *self.synchronized_value.borrow_mut() = Some(value);
 
         // > If the new value has fewer items than the list, detach the items beyond its

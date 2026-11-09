@@ -760,10 +760,10 @@ fn get_element_in_view_center_point(cx: &mut JSContext, element: &Element) -> Op
     // Step 1: Let rectangle be the first element of the DOMRect sequence
     // returned by calling getClientRects() on element.
     element.GetClientRects(cx).first().map(|rectangle| {
-        let x = rectangle.X();
-        let y = rectangle.Y();
-        let width = rectangle.Width();
-        let height = rectangle.Height();
+        let x = rectangle.X(cx);
+        let y = rectangle.Y(cx);
+        let width = rectangle.Width(cx);
+        let height = rectangle.Height(cx);
         debug!(
             "get_element_in_view_center_point: Element rectangle at \
             (x: {x}, y: {y}, width: {width}, height: {height})",
@@ -1614,6 +1614,7 @@ pub(crate) fn handle_get_title(
 
 /// <https://w3c.github.io/webdriver/#dfn-calculate-the-absolute-position>
 fn calculate_absolute_position(
+    cx: &mut JSContext,
     documents: &DocumentCollection,
     pipeline: &PipelineId,
     rect: &DOMRect,
@@ -1632,8 +1633,8 @@ fn calculate_absolute_position(
     };
 
     // Step 3 - 5
-    let x = win.ScrollX() as f64 + rect.X();
-    let y = win.ScrollY() as f64 + rect.Y();
+    let x = win.ScrollX() as f64 + rect.X(cx);
+    let y = win.ScrollY() as f64 + rect.Y(cx);
 
     Ok((x, y))
 }
@@ -1653,12 +1654,12 @@ pub(crate) fn handle_get_rect(
                 // We pass the rect instead of element so we don't have to
                 // call `GetBoundingClientRect` twice.
                 let rect = element.GetBoundingClientRect(cx);
-                let (x, y) = calculate_absolute_position(documents, &pipeline, &rect)?;
+                let (x, y) = calculate_absolute_position(cx, documents, &pipeline, &rect)?;
 
                 // Step 6-7
                 Ok(Rect::new(
                     Point2D::new(x, y),
-                    Size2D::new(rect.Width(), rect.Height()),
+                    Size2D::new(rect.Width(cx), rect.Height(cx)),
                 ))
             }),
         )
@@ -1679,8 +1680,8 @@ pub(crate) fn handle_scroll_and_get_bounding_client_rect(
 
                 let rect = element.GetBoundingClientRect(cx);
                 Rect::new(
-                    Point2D::new(rect.X() as f32, rect.Y() as f32),
-                    Size2D::new(rect.Width() as f32, rect.Height() as f32),
+                    Point2D::new(rect.X(cx) as f32, rect.Y(cx) as f32),
+                    Size2D::new(rect.Width(cx) as f32, rect.Height(cx) as f32),
                 )
             }),
         )

@@ -14,6 +14,12 @@ interface SVGSVGElement : SVGGraphicsElement {
   attribute float currentScale;
   [SameObject] readonly attribute DOMPoint currentTranslate;
 
+  undefined pauseAnimations();
+  undefined unpauseAnimations();
+  boolean animationsPaused();
+  float getCurrentTime();
+  undefined setCurrentTime(float seconds);
+
   NodeList getIntersectionList(DOMRectReadOnly rect, SVGElement? referenceElement);
   NodeList getEnclosureList(DOMRectReadOnly rect, SVGElement? referenceElement);
   boolean checkIntersection(SVGElement element, DOMRectReadOnly rect);

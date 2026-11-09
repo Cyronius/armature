@@ -2015,8 +2015,10 @@ impl VirtualMethods for HTMLImageElement {
         let click_location =
             Point2D::new(*mouse_event.ClientX() as f32, *mouse_event.ClientY() as f32);
         let bounding_rectangle = self.upcast::<Element>().GetBoundingClientRect(cx);
-        let image_extents =
-            Point2D::new(bounding_rectangle.X() as f32, bounding_rectangle.Y() as f32);
+        let image_extents = Point2D::new(
+            bounding_rectangle.X(cx) as f32,
+            bounding_rectangle.Y(cx) as f32,
+        );
 
         // Walk HTMLAreaElements
         for area_element in area_elements {

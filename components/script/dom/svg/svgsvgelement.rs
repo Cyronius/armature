@@ -73,9 +73,43 @@ pub(crate) struct SVGSVGElement {
     current_scale: Cell<f32>,
     /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__currentTranslate>
     current_translate: MutNullableDom<DOMPoint>,
+    /// SVG document time when this root's clock was last started or resumed.
+    animation_time_origin: Cell<f64>,
+    /// Clock value at `animation_time_origin`, or the held value while paused.
+    animation_time: Cell<f64>,
+    animations_paused: Cell<bool>,
 }
 
 impl SVGSVGElement {
+    /// The outermost SVG root in this fragment, if this element is nested in one.
+    fn outermost_svg(&self) -> Option<DomRoot<SVGSVGElement>> {
+        self.upcast::<Node>()
+            .ancestors()
+            .take_while(|ancestor| ancestor.is::<SVGElement>())
+            .filter_map(DomRoot::downcast::<SVGSVGElement>)
+            .last()
+    }
+
+    /// The time in this SVG fragment's independent animation clock, in seconds.
+    pub(crate) fn animation_time(&self) -> f64 {
+        if let Some(root) = self.outermost_svg() {
+            return root.animation_time();
+        }
+        if self.animations_paused.get() {
+            self.animation_time.get()
+        } else {
+            self.animation_time.get() + self.owner_document().current_animation_timeline_value() -
+                self.animation_time_origin.get()
+        }
+    }
+
+    pub(crate) fn animations_are_paused(&self) -> bool {
+        self.outermost_svg().map_or_else(
+            || self.animations_paused.get(),
+            |root| root.animations_paused.get(),
+        )
+    }
+
     fn new_inherited(
         local_name: LocalName,
         prefix: Option<Prefix>,
@@ -87,6 +121,9 @@ impl SVGSVGElement {
             cached_serialized_data_url: Default::default(),
             current_scale: Cell::new(1.0),
             current_translate: Default::default(),
+            animation_time_origin: Cell::new(document.current_animation_timeline_value()),
+            animation_time: Cell::new(0.0),
+            animations_paused: Cell::new(false),
         }
     }
 
@@ -263,7 +300,7 @@ impl SVGSVGElement {
         let Some(bbox) = svggeometry::bounding_box(cx, element) else {
             return false;
         };
-        let transform = svggeometry::transform_to_user_space_of(element, self.upcast());
+        let transform = svggeometry::transform_to_user_space_of(cx, element, self.upcast());
         let bbox = transform.transform_rect_bbox(bbox);
         let rect = kurbo::Rect::new(
             rect.X(),
@@ -436,6 +473,54 @@ impl VirtualMethods for SVGSVGElement {
 
 impl SVGSVGElementMethods<crate::DomTypeHolder> for SVGSVGElement {
     svg_fit_to_view_box!();
+
+    /// <https://www.w3.org/TR/SVG11/animate.html#PauseAnimations>
+    fn PauseAnimations(&self) {
+        if self.outermost_svg().is_some() {
+            return;
+        }
+        if !self.animations_paused.get() {
+            self.animation_time.set(self.animation_time());
+            self.animations_paused.set(true);
+        }
+    }
+
+    /// <https://www.w3.org/TR/SVG11/animate.html#UnpauseAnimations>
+    fn UnpauseAnimations(&self) {
+        if self.outermost_svg().is_some() {
+            return;
+        }
+        if self.animations_paused.replace(false) {
+            self.animation_time_origin
+                .set(self.owner_document().current_animation_timeline_value());
+        }
+    }
+
+    /// <https://www.w3.org/TR/SVG11/animate.html#AnimationsPaused>
+    fn AnimationsPaused(&self) -> bool {
+        self.animations_are_paused()
+    }
+
+    /// <https://www.w3.org/TR/SVG11/animate.html#GetCurrentTime>
+    fn GetCurrentTime(&self) -> Finite<f32> {
+        Finite::wrap(self.animation_time() as f32)
+    }
+
+    /// <https://www.w3.org/TR/SVG11/animate.html#SetCurrentTime>
+    fn SetCurrentTime(&self, cx: &mut JSContext, seconds: Finite<f32>) {
+        if self.outermost_svg().is_some() {
+            return;
+        }
+        let previous_time = self.animation_time();
+        self.animation_time.set(*seconds as f64);
+        self.animation_time_origin
+            .set(self.owner_document().current_animation_timeline_value());
+        self.owner_document()
+            .advance_smil_timeline_to(self, *seconds as f64);
+        self.owner_document()
+            .queue_smil_seek_events(self, previous_time, *seconds as f64);
+        self.owner_document().update_smil_style_effects(cx);
+    }
 
     svg_animated_length!(X, "x", Horizontal, SVGLengthValue::number(0.0));
     svg_animated_length!(Y, "y", Vertical, SVGLengthValue::number(0.0));

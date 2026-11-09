@@ -34,6 +34,9 @@ use crate::dom::text::Text;
 
 /// A laid out character of SVG text.
 pub(crate) struct SVGTextCharacter {
+    /// The source text node and its UTF-16 offset before whitespace collapsing.
+    pub(crate) source: DomRoot<Text>,
+    pub(crate) source_offset: u32,
     /// The text content elements that contain the character, from the innermost one out to
     /// the `text` element.
     pub(crate) elements: Vec<DomRoot<SVGElement>>,
@@ -87,7 +90,9 @@ pub(crate) fn text_root(element: &SVGElement) -> Option<DomRoot<SVGElement>> {
 }
 
 /// The characters of the text, with the text content elements that contain them.
-fn collect_characters(root: &SVGElement) -> Vec<(char, Vec<DomRoot<SVGElement>>)> {
+fn collect_characters(
+    root: &SVGElement,
+) -> Vec<(char, DomRoot<Text>, u32, Vec<DomRoot<SVGElement>>)> {
     let mut characters = Vec::new();
     let preserve = |element: &SVGElement| {
         element
@@ -123,7 +128,10 @@ fn collect_characters(root: &SVGElement) -> Vec<(char, Vec<DomRoot<SVGElement>>)
         }
         let preserve_space = preserve(&elements[0]);
         let data = String::from(text.upcast::<CharacterData>().Data());
+        let mut source_offset = 0;
         for character in data.chars() {
+            let offset = source_offset;
+            source_offset += character.len_utf16() as u32;
             let character = match character {
                 '\n' | '\r' if !preserve_space => continue,
                 '\n' | '\r' | '\t' => ' ',
@@ -133,17 +141,17 @@ fn collect_characters(root: &SVGElement) -> Vec<(char, Vec<DomRoot<SVGElement>>)
                 // Collapse spaces, and drop leading ones.
                 if characters
                     .last()
-                    .is_none_or(|(previous, _): &(char, _)| *previous == ' ')
+                    .is_none_or(|(previous, _, _, _): &(char, _, _, _)| *previous == ' ')
                 {
                     continue;
                 }
             }
-            characters.push((character, elements.clone()));
+            characters.push((character, DomRoot::from_ref(text), offset, elements.clone()));
         }
     }
     if characters
         .last()
-        .is_some_and(|(character, elements)| *character == ' ' && !preserve(&elements[0]))
+        .is_some_and(|(character, _, _, elements)| *character == ' ' && !preserve(&elements[0]))
     {
         characters.pop();
     }
@@ -250,7 +258,7 @@ pub(crate) fn layout_text(cx: &mut JSContext, root: &SVGElement) -> Vec<SVGTextC
     let mut laid_out: Vec<SVGTextCharacter> = Vec::new();
     let mut chunk_starts = Vec::new();
     let (mut pen_x, mut pen_y) = (0.0, 0.0);
-    for (index, (character, elements)) in characters.iter().enumerate() {
+    for (index, (character, source, source_offset, elements)) in characters.iter().enumerate() {
         let mut x = None;
         let mut y = None;
         let mut dx = None;
@@ -292,9 +300,11 @@ pub(crate) fn layout_text(cx: &mut JSContext, root: &SVGElement) -> Vec<SVGTextC
         }
         pen_x += dx.unwrap_or(0.0);
         pen_y += dy.unwrap_or(0.0);
-        let next = characters.get(index + 1).map(|(next, _)| *next);
+        let next = characters.get(index + 1).map(|(next, _, _, _)| *next);
         let (advance, ascent, descent) = glyph_metrics(&elements[0], *character, next);
         laid_out.push(SVGTextCharacter {
+            source: source.clone(),
+            source_offset: *source_offset,
             elements: elements.clone(),
             utf16_length: character.len_utf16(),
             x: pen_x,

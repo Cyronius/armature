@@ -18,6 +18,7 @@ exclude = [
     "third_party/html5ever",
     "third_party/markup5ever",
     "third_party/stylo",
+    "third_party/usvg",
     "third_party/xml5ever",
 ]
 
@@ -469,6 +470,8 @@ lto = "thin"
 codegen-units = 1
 
 [patch.crates-io]
+# The SVG rasterizer's parser includes Armature's path-length stroke calibration.
+usvg = { path = "third_party/usvg" }
 # The vendored markup5ever (see third_party/markup5ever.md). The vendored html5ever and xml5ever depend on
 # markup5ever by version, so this makes them build against the copy too.
 markup5ever = { path = "third_party/markup5ever" }

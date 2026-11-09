@@ -57,6 +57,10 @@ use crate::dom::window::Window;
 /// composite order.
 static NEXT_ANIMATION_ID: AtomicU64 = AtomicU64::new(1);
 
+pub(crate) fn next_animation_id() -> u64 {
+    NEXT_ANIMATION_ID.fetch_add(1, Ordering::Relaxed)
+}
+
 /// The values last given to style for an animation, used to avoid restyling its target
 /// when nothing changed.
 #[derive(Clone, Copy, Default, JSTraceable, MallocSizeOf, PartialEq)]
@@ -182,7 +186,7 @@ impl Animation {
     pub(crate) fn new_inherited() -> Self {
         Self {
             event_target: EventTarget::new_inherited(),
-            unique_id: NEXT_ANIMATION_ID.fetch_add(1, Ordering::Relaxed),
+            unique_id: next_animation_id(),
             id: Default::default(),
             timeline: Default::default(),
             associated_effect: Default::default(),

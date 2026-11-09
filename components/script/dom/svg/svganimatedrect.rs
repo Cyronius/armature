@@ -11,6 +11,9 @@ use crate::dom::bindings::codegen::Bindings::SVGAnimatedRectBinding::SVGAnimated
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
 use crate::dom::domrect::DOMRect;
 use crate::dom::node::NodeTraits;
+use crate::dom::svg::svganimationelement::{
+    sample_numeric_animation_with_by, sample_targeted_numeric_animation_with_by,
+};
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgtypes::{number_to_string, parse_number, split_list};
 
@@ -49,22 +52,57 @@ impl SVGAnimatedRect {
 
     /// The rectangle, parsed from the attribute: four numbers, of which the width and height
     /// must not be negative. A missing or invalid attribute gives an empty rectangle.
+    fn parse_rect(value: &str) -> Option<[f32; 4]> {
+        Self::parse_rect_delta(value).filter(|rect| rect[2] >= 0.0 && rect[3] >= 0.0)
+    }
+
+    /// A `by` value is a signed change to each coordinate, including width and height.
+    fn parse_rect_delta(value: &str) -> Option<[f32; 4]> {
+        let numbers = split_list(value)?
+            .into_iter()
+            .map(parse_number)
+            .collect::<Option<Vec<f32>>>()?;
+        match numbers.as_slice() {
+            [x, y, width, height] => Some([*x, *y, *width, *height]),
+            _ => None,
+        }
+    }
+
     pub(crate) fn rect(&self) -> [f64; 4] {
         self.element
             .svg_attribute(&self.attribute)
-            .and_then(|value| {
-                let numbers = split_list(&value)?
-                    .into_iter()
-                    .map(parse_number)
-                    .collect::<Option<Vec<f32>>>()?;
-                match numbers.as_slice() {
-                    [x, y, width, height] if *width >= 0.0 && *height >= 0.0 => {
-                        Some([*x as f64, *y as f64, *width as f64, *height as f64])
-                    },
-                    _ => None,
-                }
-            })
+            .as_deref()
+            .and_then(Self::parse_rect)
             .unwrap_or_default()
+            .map(f64::from)
+    }
+
+    pub(crate) fn animated_rect(&self, cx: &mut JSContext) -> [f64; 4] {
+        let base = self.rect();
+        std::array::from_fn(|index| {
+            f64::from(sample_targeted_numeric_animation_with_by(
+                cx,
+                &self.element,
+                &self.attribute,
+                base[index] as f32,
+                |value| Self::parse_rect(value).map(|rect| rect[index]),
+                |value| Self::parse_rect_delta(value).map(|rect| rect[index]),
+            ))
+        })
+    }
+
+    /// The child-animation value for contexts that cannot resolve external targets.
+    pub(crate) fn animated_rect_without_context(&self) -> [f64; 4] {
+        let base = self.rect();
+        std::array::from_fn(|index| {
+            f64::from(sample_numeric_animation_with_by(
+                &self.element,
+                &self.attribute,
+                base[index] as f32,
+                |value| Self::parse_rect(value).map(|rect| rect[index]),
+                |value| Self::parse_rect_delta(value).map(|rect| rect[index]),
+            ))
+        })
     }
 
     /// Set the coordinate with index `index` (x, y, width, height) of the rectangle.
