@@ -382,7 +382,10 @@ Notes on the numbers:
 - **SVG bounding boxes**: `getBBox()` now includes stroked path and line outlines when requested, preserves the
   position of move-only paths and single-point polygons, measures foreign objects, and excludes images with no
   source or nonpositive dimensions. In the 97-file `svg/types/scripted` run, 22 previously failing subtests now pass
-  with no passing subtest regressing.
+  with no passing subtest regressing. Its optional marker and clipping results now include marker content at path
+  vertices, SVG clip paths (including nested paths and `objectBoundingBox` units), and legacy CSS `clip` rectangles.
+  All 15 subtests in `SVGGraphicsElement.getBBox-05.html` pass; the same 97-file suite gained seven more passes,
+  reaching 987 passing and 41 failing subtests with no passing subtest regressing.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
@@ -431,8 +434,9 @@ Notes on the numbers:
   timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
   methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
   geometry is measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
-- SVG `getBBox()` still omits marker and clipping-path bounds from its optional result. Five WPT cases expect zero
-  for graphics inside definitions, clip paths and masks; Armature returns their own geometry, as the current
+- SVG `getBBox()` intersects clipping bounds as rectangles rather than calculating the exact clipped silhouette, and
+  marker sizing does not cover every `preserveAspectRatio` and orientation case. Five WPT cases expect zero for
+  graphics inside definitions, clip paths and masks; Armature returns their own geometry, as the current
   [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
