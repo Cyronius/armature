@@ -19,6 +19,7 @@ use kurbo::{
 };
 use style::values::specified::SVGPathData;
 use style::values::specified::box_::Display;
+use style_traits::CssWriter;
 
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::inheritance::Castable;
@@ -55,11 +56,12 @@ impl SVGShapeGeometry {
     }
 
     pub(crate) fn total_length(&self) -> f64 {
-        match self {
+        let length = match self {
             Self::Path(path) => path.perimeter(ACCURACY),
             Self::Ellipse(ellipse) => ellipse.perimeter(ACCURACY),
             Self::Line(line) => line.perimeter(ACCURACY),
-        }
+        };
+        if length == 0.0 { 0.0 } else { length }
     }
 
     pub(crate) fn winding(&self, point: Point) -> i32 {
@@ -299,21 +301,18 @@ fn computed_path_data(element: &SVGElement) -> Option<String> {
 ///
 /// <https://svgwg.org/svg2-draft/paths.html#PathDataErrorHandling>
 fn parse_path_data(data: &str) -> BezPath {
-    if let Ok(path) = BezPath::from_svg(data) {
-        return path;
-    }
-    // Find the longest prefix that ends before a command letter and parses.
-    let boundaries: Vec<usize> = data
-        .char_indices()
-        .filter(|(_, c)| c.is_ascii_alphabetic() && !matches!(c, 'e' | 'E'))
-        .map(|(index, _)| index)
-        .collect();
-    for end in boundaries.into_iter().rev() {
-        if let Ok(path) = BezPath::from_svg(&data[..end]) {
+    let (parsed, valid) = SVGPathData::parse_bytes(data.as_bytes());
+    if valid {
+        if let Ok(path) = BezPath::from_svg(data) {
             return path;
         }
     }
-    BezPath::new()
+
+    // Stylo stops at the first invalid parameter and keeps every complete
+    // segment before it, including repeated coordinate pairs within a command.
+    let mut prefix = String::new();
+    let _ = parsed.to_css(&mut CssWriter::new(&mut prefix), false);
+    BezPath::from_svg(&prefix).unwrap_or_else(|_| BezPath::new())
 }
 
 /// Parse numbers separated by whitespace and optionally a comma.
