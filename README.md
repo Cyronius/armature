@@ -268,8 +268,9 @@ Notes on the numbers:
   SVG links participate in focus navigation, and unrendered SVG definition elements stay out of it. Invalid
   `tabindex` values no longer create focusable areas where the element has no default focus behavior. The targeted SVG
   focus and dataset tests pass, alongside eight previously failing HTML focus subtests.
-  `getScreenCTM()` now includes the CSS transform of the outermost `<svg>` box and its HTML ancestors;
-  four more SVG scripted subtests pass. The 97-file scripted cluster now has 997 passing and 31 failing subtests.
+  `getScreenCTM()` now includes CSS transforms of the outermost `<svg>` box and its HTML ancestors, plus
+  CSS transforms and padding on nested SVG viewports. Eight more SVG scripted subtests pass; the 97-file
+  scripted cluster now has 1,001 passing and 27 failing subtests.
   SVG `systemLanguage` now preserves empty comma-separated tokens in its DOM list, excludes nonmatching graphics from
   geometry, hit testing and focus, and selects the first matching `<switch>` child. The SVG rasterizer uses the
   browser's language preference, so image pixels follow the same conditions. All 27 focused parsing and matching
