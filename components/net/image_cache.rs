@@ -994,12 +994,13 @@ impl ImageCacheStore {
         &mut self,
         image_id: &PendingImageId,
         device_size: &DeviceIntSize,
-    ) {
+    ) -> Vec<(PipelineId, ImageCacheResponseCallback)> {
         if let Some(entry) = self
             .rasterized_vector_images
             .remove(&(*image_id, *device_size))
         {
-            if let Some(result) = entry.result {
+            let RasterizationTask { listeners, result } = entry;
+            if let Some(result) = result {
                 if let Some(image_id) = result.id {
                     self.paint_api.update_images(
                         self.webview_id.into(),
@@ -1013,12 +1014,14 @@ impl ImageCacheStore {
                 // KeyCache that it was evicted.
                 self.evict_image_from_keycache(image_id, device_size);
             }
+            listeners
         } else {
             // If there is no corresponding rasterized_vector_image result,
             // then the vector image is either being rasterized or is in
             // self.store.key_cache.pending_image_keys. Either way, we need to notify the
             // KeyCache that it was evicted.
             self.evict_image_from_keycache(image_id, device_size);
+            Vec::new()
         }
     }
 
@@ -1488,9 +1491,15 @@ impl ImageCache for ImageCacheImpl {
     }
 
     fn evict_rasterized_image(&self, svg_id: &Uuid) {
-        let mut store = self.store.lock();
-        if let Some(mapped_image_id) = self.svg_id_image_id_map.lock().remove(svg_id) {
-            store.pending_loads.remove(&mapped_image_id);
+        let (pending_listeners, rasterization_listeners) = {
+            let mut store = self.store.lock();
+            let Some(mapped_image_id) = self.svg_id_image_id_map.lock().remove(svg_id) else {
+                return;
+            };
+            let pending_listeners = store
+                .pending_loads
+                .remove(&mapped_image_id)
+                .map_or_else(Vec::new, |load| load.listeners);
             store.vector_images.remove(&mapped_image_id);
             let images_to_remove = store
                 .rasterized_vector_images
@@ -1498,9 +1507,30 @@ impl ImageCache for ImageCacheImpl {
                 .filter(|(id, _size)| *id == mapped_image_id)
                 .cloned()
                 .collect::<Vec<_>>();
+            let mut rasterization_listeners = Vec::new();
             for (id, requested_size) in images_to_remove {
-                store.remove_rasterized_vector_image(&id, &requested_size);
+                rasterization_listeners.extend(
+                    store
+                        .remove_rasterized_vector_image(&id, &requested_size)
+                        .into_iter()
+                        .map(|(pipeline_id, callback)| (pipeline_id, callback, id, requested_size)),
+                );
             }
+            (pending_listeners, rasterization_listeners)
+        };
+        // Evicted requests will not finish normally. Wake script's pending-image
+        // bookkeeping so it can lay out the replacement SVG and take screenshots.
+        for listener in pending_listeners {
+            listener.respond(ImageResponse::FailedToLoadOrDecode);
+        }
+        for (pipeline_id, callback, image_id, requested_size) in rasterization_listeners {
+            callback(ImageCacheResponseMessage::VectorImageRasterizationComplete(
+                RasterizationCompleteResponse {
+                    pipeline_id,
+                    image_id,
+                    requested_size,
+                },
+            ));
         }
     }
 
