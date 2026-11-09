@@ -64,6 +64,8 @@ pub struct Cache {
     pub masks: HashMap<String, Arc<Mask>>,
     pub filters: HashMap<String, Arc<filter::Filter>>,
     pub paint: HashMap<String, Paint>,
+    // Armature (AU-004): Detect paint server cycles before conversion is complete.
+    pub paint_in_progress: HashSet<String>,
 
     // used for ID generation
     all_ids: HashSet<u64>,
@@ -114,6 +116,7 @@ impl Cache {
             masks: HashMap::new(),
             filters: HashMap::new(),
             paint: HashMap::new(),
+            paint_in_progress: HashSet::new(),
 
             all_ids: HashSet::new(),
             linear_gradient_index: 0,

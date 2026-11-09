@@ -27,6 +27,13 @@ pub(crate) fn convert(
         return Some(ServerOrColor::Server(paint.clone()));
     }
 
+    // Armature (AU-004): A pattern can refer to itself through the paint of a child.
+    // Treat the recursive reference as unavailable so its fallback color is used.
+    let id = node.element_id().to_string();
+    if !cache.paint_in_progress.insert(id.clone()) {
+        return None;
+    }
+
     // Unwrap is safe, because we already checked for is_paint_server().
     let paint = match node.tag_name().unwrap() {
         EId::LinearGradient => convert_linear(node, state),
@@ -34,11 +41,10 @@ pub(crate) fn convert(
         EId::Pattern => convert_pattern(node, state, cache),
         _ => unreachable!(),
     };
+    cache.paint_in_progress.remove(&id);
 
     if let Some(ServerOrColor::Server(paint)) = &paint {
-        cache
-            .paint
-            .insert(node.element_id().to_string(), paint.clone());
+        cache.paint.insert(id, paint.clone());
     }
 
     paint
@@ -1058,6 +1064,37 @@ impl Paint {
         }
 
         Some(())
+    }
+}
+
+#[cfg(test)]
+mod armature_tests {
+    use crate::{Color, Group, Node, Paint};
+
+    fn has_fallback_stroke(group: &Group) -> bool {
+        group.children.iter().any(|node| match node {
+            Node::Group(group) => has_fallback_stroke(group),
+            Node::Path(path) => path.stroke.as_ref().is_some_and(|stroke| {
+                matches!(&stroke.paint, Paint::Color(color) if *color == Color::new_rgb(0, 128, 0))
+            }),
+            _ => false,
+        })
+    }
+
+    #[test]
+    fn pattern_child_paint_cycle_uses_fallback() {
+        // Armature (AU-004): The child of p2 refers back to p1 while p1 inherits
+        // that child. Parsing must terminate and retain the outer pattern.
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+            <pattern id="p2" width="1" height="1">
+                <line x2="2" y2="1" stroke="url(#p1) green"/>
+            </pattern>
+            <pattern id="p1" width="1" height="1" href="#p2"/>
+            <polygon points="0,0 100,0 100,100" fill="url(#p1) lime"/>
+        </svg>"##;
+        let tree = crate::Tree::from_str(svg, &crate::Options::default()).unwrap();
+        assert_eq!(tree.patterns().len(), 1);
+        assert!(has_fallback_stroke(tree.patterns()[0].root()));
     }
 }
 

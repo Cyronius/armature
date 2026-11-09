@@ -18,3 +18,8 @@
 
 - Files: `src/parser/mod.rs`, `src/parser/image.rs`, `src/parser/converter.rs`
 - Why: A nested SVG without absolute root dimensions inherits the embedding `<image>` viewport. Reparse it with that viewport so percentage geometry and further nested images keep their proper scale.
+
+### AU-004: Stop recursive pattern paint conversion
+
+- Files: `src/parser/converter.rs`, `src/parser/paint_server.rs`
+- Why: A pattern child can paint itself with a pattern that inherits that child through `href`. Track paint servers while converting them so a cyclic reference uses its fallback paint instead of overflowing the parser stack.
