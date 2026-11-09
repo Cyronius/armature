@@ -142,7 +142,7 @@ fn length(
 
 /// The used width and height of an SVG image's positioning rectangle.
 /// <https://svgwg.org/svg2-draft/embedded.html#Placement>
-fn image_size(cx: &mut JSContext, element: &SVGElement) -> (f64, f64) {
+pub(crate) fn image_size(cx: &mut JSContext, element: &SVGElement) -> (f64, f64) {
     use SVGLengthDirection::{Horizontal, Vertical};
     let specified = |cx: &mut JSContext, name: &str, direction| {
         let value = SVGLengthValue::parse(&computed_value(element, name))?;

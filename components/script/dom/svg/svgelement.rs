@@ -49,6 +49,7 @@ use crate::dom::svg::svganimatedstring::SVGAnimatedString;
 use crate::dom::svg::svganimatedtransformlist::SVGAnimatedTransformList;
 use crate::dom::svg::svgcircleelement::SVGCircleElement;
 use crate::dom::svg::svgellipseelement::SVGEllipseElement;
+use crate::dom::svg::svgforeignobjectelement::SVGForeignObjectElement;
 use crate::dom::svg::svggeometryelement::SVGGeometryElement;
 use crate::dom::svg::svgimageelement::SVGImageElement;
 use crate::dom::svg::svgpathelement::SVGPathElement;
@@ -749,7 +750,13 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
     ) {
         let element = self.upcast::<Element>();
 
-        if element.is::<SVGSVGElement>() {
+        // Only an outermost <svg> uses its width and height attributes for CSS
+        // sizing. A nested <svg> uses them to establish its viewport instead.
+        if element.is::<SVGSVGElement>() &&
+            self.upcast::<Node>()
+                .parent_node_ref()
+                .is_none_or(|parent| !parent.is::<SVGElement>())
+        {
             if let Some(width) = element
                 .get_attr_for_layout(&ns!(), &local_name!("width"))
                 .and_then(AttrValue::as_length_percentage)
@@ -840,8 +847,12 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
             self.parse_svg_attribute(&parser_context, "rx", longhands::rx::parse_declared, push);
             self.parse_svg_attribute(&parser_context, "ry", longhands::ry::parse_declared, push);
         }
-        // <image>: https://svgwg.org/svg2-draft/embedded.html#ImageElement
-        if element.downcast::<SVGImageElement>().is_some() {
+        // <image> and <foreignObject> have the same geometry attributes.
+        // https://svgwg.org/svg2-draft/embedded.html#ImageElement
+        // https://svgwg.org/svg2-draft/embedded.html#ForeignObjectElement
+        if element.downcast::<SVGImageElement>().is_some() ||
+            element.downcast::<SVGForeignObjectElement>().is_some()
+        {
             self.parse_svg_attribute(&parser_context, "x", longhands::x::parse_declared, push);
             self.parse_svg_attribute(&parser_context, "y", longhands::y::parse_declared, push);
             self.parse_svg_attribute(
@@ -938,6 +949,14 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         if let Some(value) = element.get_attr_val_for_layout(&ns!(), &LocalName::from(attr_name)) {
             // A presentation attribute does nothing when its property is disabled by a preference.
             if PropertyId::parse_enabled_for_all_content(attr_name).is_err() {
+                return;
+            }
+            // SVG geometry attributes use a non-negative length or percentage,
+            // even though the corresponding CSS properties can accept `auto`.
+            if matches!(attr_name, "r" | "rx" | "ry" | "width" | "height") &&
+                (value.trim().eq_ignore_ascii_case("auto") ||
+                    SVGLengthValue::parse(value).is_some_and(|length| length.value < 0.0))
+            {
                 return;
             }
             let mut parser = cssparser::Parser::new(value);

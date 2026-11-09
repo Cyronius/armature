@@ -19,6 +19,7 @@ use style::properties::{
 use style::selector_parser::PseudoElement;
 use style::shared_lock::Locked;
 use style::stylesheets::{CssRuleType, Origin, StylesheetInDocument, UrlExtraData};
+use style::values::computed::length::{Length, Size};
 use style_traits::ParsingMode;
 
 use super::cssrule::CSSRule;
@@ -31,6 +32,9 @@ use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::element::Element;
 use crate::dom::node::{Node, NodeTraits};
+use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::svggeometry;
+use crate::dom::svg::svgimageelement::SVGImageElement;
 use crate::dom::types::CSSFontFaceDescriptors;
 use crate::dom::window::Window;
 
@@ -308,6 +312,7 @@ impl CSSStyleDeclaration {
         }
     }
 
+    #[expect(unsafe_code)]
     fn get_computed_style(&self, property: PropertyId) -> DOMString {
         match self.owner {
             CSSStyleOwner::CSSRule(..) => {
@@ -319,8 +324,62 @@ impl CSSStyleDeclaration {
                     return DOMString::new();
                 }
                 let addr = node.to_trusted_node_address();
-                node.owner_window()
-                    .resolved_style_query(addr, self.pseudo, property)
+                let is_width = property == PropertyId::NonCustom(LonghandId::Width.into());
+                let is_height = property == PropertyId::NonCustom(LonghandId::Height.into());
+                let resolved =
+                    node.owner_window()
+                        .resolved_style_query(addr, self.pseudo, property);
+
+                // SVG shape descendants are rasterized as part of their outermost
+                // <svg>, so they have no layout fragments from which the layout
+                // query can derive the used width or height.
+                if self.pseudo.is_some() ||
+                    !(is_width || is_height) ||
+                    !matches!(
+                        el.local_name(),
+                        &local_name!("rect") |
+                            &local_name!("image") |
+                            &local_name!("foreignObject")
+                    )
+                {
+                    return resolved;
+                }
+                let Some(svg) = el.downcast::<SVGElement>() else {
+                    return resolved;
+                };
+                let Some(style) = el.style_without_reflow() else {
+                    return resolved;
+                };
+                if style.get_box().display.is_none() || style.get_box().display.is_contents() {
+                    return resolved;
+                }
+                let Some(viewport) = svg.viewport_element() else {
+                    return resolved;
+                };
+                let mut cx = unsafe { script_bindings::script_runtime::temp_cx() };
+                let Some((width, height)) = viewport.viewport_size(&mut cx) else {
+                    return resolved;
+                };
+                let size = if is_width {
+                    style.get_position().get_width()
+                } else {
+                    style.get_position().get_height()
+                };
+                let basis = Length::new(if is_width { width } else { height });
+                let used = match size {
+                    Size::LengthPercentage(value) => value.0.resolve(basis).px().max(0.0),
+                    Size::Auto
+                        if el
+                            .downcast::<SVGImageElement>()
+                            .is_some_and(|image| image.natural_dimensions().is_some()) =>
+                    {
+                        let (width, height) = svggeometry::image_size(&mut cx, svg);
+                        (if is_width { width } else { height }) as f32
+                    },
+                    Size::Auto => 0.0,
+                    _ => return resolved,
+                };
+                DOMString::from(format!("{used}px"))
             },
             CSSStyleOwner::Null => DOMString::new(),
         }
