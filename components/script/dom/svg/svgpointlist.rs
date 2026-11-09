@@ -37,7 +37,7 @@ pub(crate) struct SVGPointList {
 }
 
 /// Parse a list of points: coordinates separated by whitespace and optionally a comma.
-/// The points before an error are kept, and an odd last coordinate is ignored.
+/// An invalid coordinate clears the list, while an odd last coordinate is ignored.
 ///
 /// <https://svgwg.org/svg2-draft/shapes.html#DataTypePoints>
 pub(crate) fn parse_point_list(value: Option<&str>) -> Vec<(f64, f64)> {
@@ -48,7 +48,7 @@ pub(crate) fn parse_point_list(value: Option<&str>) -> Vec<(f64, f64)> {
     let mut rest = value.trim_start_matches(is_svg_whitespace);
     while !rest.is_empty() {
         let Some((number, after)) = parse_number_prefix(rest) else {
-            break;
+            return Vec::new();
         };
         coordinates.push(number as f64);
         rest = after.trim_start_matches(is_svg_whitespace);
