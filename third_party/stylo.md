@@ -364,3 +364,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   anywhere in its geometric bounding box, independent of its fill, stroke and visibility. Servo's SVG hit testing
   needs the computed value to distinguish this region from `auto`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-512: Resolve normal line-height for Servo font-relative units
+- Files: `style/device/servo.rs`
+- Why: Servo returned zero for the `lh` and `rlh` units when `line-height` was `normal`. Ask the
+  font metrics provider for the first available font's line height, with a fallback when no font
+  is available. This also supplies a nonzero basis for SVG lengths using those units.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

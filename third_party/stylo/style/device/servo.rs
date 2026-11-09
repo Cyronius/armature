@@ -49,6 +49,11 @@ pub trait FontMetricsProvider: Debug + Sync {
         base_size: CSSPixelLength,
         flags: QueryFontMetricsFlags,
     ) -> FontMetrics;
+    // Armature (AS-512): Let Servo resolve normal line-height from its first available font.
+    /// Return the normal line height for the given font and computed font size.
+    fn normal_line_height(&self, _font: &Font, base_size: CSSPixelLength) -> CSSPixelLength {
+        base_size * 1.2
+    }
     /// Gets the base size given a generic font family.
     fn base_size_for_generic(&self, generic: GenericFontFamily) -> Length;
 }
@@ -129,8 +134,13 @@ impl Device {
         _element: Option<()>,
     ) -> NonNegativeLength {
         (match font.line_height {
-            // TODO: compute `normal` from the font metrics
-            LineHeight::Normal => CSSPixelLength::new(0.),
+            // Armature (AS-512): Resolve lh and rlh from the first available font's line height.
+            LineHeight::Normal => {
+                self.used_font_metrics.store(true, Ordering::Relaxed);
+                self.extra
+                    .font_metrics_provider
+                    .normal_line_height(font, font.font_size.computed_size())
+            },
             LineHeight::Number(number) => font.font_size.computed_size() * number.0,
             LineHeight::Length(length) => length.0,
         })
