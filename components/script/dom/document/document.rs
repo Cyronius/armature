@@ -5165,15 +5165,17 @@ impl Document {
         let mut matching: Vec<_> = animations
             .into_iter()
             .filter(|animation| {
-                animation
-                    .target_element(cx)
-                    .is_some_and(|candidate| std::ptr::eq(&*candidate, target))
+                animation.passes_conditional_processing() &&
+                    animation
+                        .target_element(cx)
+                        .is_some_and(|candidate| std::ptr::eq(&*candidate, target))
             })
             .collect();
         // The registry holds connected animations. Detached elements can still expose
         // animated DOM values from their child animations.
         for child in target.upcast::<Node>().child_elements() {
             if let Some(animation) = child.downcast::<SVGAnimationElement>() &&
+                animation.passes_conditional_processing() &&
                 animation
                     .target_element(cx)
                     .is_some_and(|candidate| std::ptr::eq(&*candidate, target)) &&

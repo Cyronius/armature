@@ -49,6 +49,7 @@ use crate::dom::node::{
     ChildrenMutation, CloneChildrenFlag, Node, NodeDamage, NodeTraits, UnbindContext,
 };
 use crate::dom::svg::svgangle::SVGAngle;
+use crate::dom::svg::svganimatedlength::SVGAnimatedLength;
 use crate::dom::svg::svgelement::{PRESENTATION_ATTRIBUTES, SVGElement};
 use crate::dom::svg::svggeometry;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
@@ -57,7 +58,8 @@ use crate::dom::svg::svglength::SVGLength;
 use crate::dom::svg::svgnumber::SVGNumber;
 use crate::dom::svg::svgtransform::{SVGTransform, SVGTransformValue};
 use crate::dom::svg::svgtypes::{
-    SVGLengthValue, parse_number, split_list, svg_animated_length, svg_fit_to_view_box,
+    SVGLengthDirection, SVGLengthValue, parse_number, split_list, svg_animated_length,
+    svg_fit_to_view_box,
 };
 
 #[dom_struct]
@@ -213,10 +215,56 @@ impl SVGSVGElement {
                 else {
                     continue;
                 };
+                let is_geometry_property = matches!(
+                    property.as_str(),
+                    "x" | "y" |
+                        "width" |
+                        "height" |
+                        "cx" |
+                        "cy" |
+                        "r" |
+                        "rx" |
+                        "ry" |
+                        "x1" |
+                        "y1" |
+                        "x2" |
+                        "y2" |
+                        "fx" |
+                        "fy" |
+                        "fr"
+                );
                 let is_animated_property = PRESENTATION_ATTRIBUTES.contains(&property.as_str()) ||
+                    is_geometry_property ||
                     property == "d" &&
                         source.upcast::<Element>().local_name() == &local_name!("path");
                 if !is_animated_property || serialized_properties.contains(&property) {
+                    continue;
+                }
+                if is_geometry_property {
+                    let direction = match property.as_str() {
+                        "x" | "width" | "cx" | "rx" | "x1" | "x2" | "fx" => {
+                            SVGLengthDirection::Horizontal
+                        },
+                        "y" | "height" | "cy" | "ry" | "y1" | "y2" | "fy" => {
+                            SVGLengthDirection::Vertical
+                        },
+                        _ => SVGLengthDirection::Other,
+                    };
+                    let value = SVGAnimatedLength::sample_value(
+                        cx,
+                        &source,
+                        &LocalName::from(property.as_str()),
+                        direction,
+                        SVGLengthValue::number(0.0),
+                    );
+                    // resvg reads geometry from SVG attributes. Keep the live
+                    // attribute unchanged and write its sampled value to the copy.
+                    clone.set_svg_attribute(
+                        cx,
+                        &LocalName::from(property.as_str()),
+                        value.to_string(),
+                    );
+                    serialized_properties.push(property);
                     continue;
                 }
                 let value = svggeometry::computed_value(&source, &property);
