@@ -346,6 +346,10 @@ Notes on the numbers:
   All 86 path interface subtests and 33 SVG image sizing subtests pass. Across the same 343 SVG animation subtests,
   the broader run moved from 145 PASS / 151 FAIL / 47 TIMEOUT to 343 PASS / 0 FAIL / 0 TIMEOUT, with no previously
   passing subtest regressing.
+- DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
+  document is no longer fully active. This also follows a node's current document after adoption. Seventeen
+  previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
+  as does the detached-document `EventTarget.when()` subtest.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
@@ -353,8 +357,6 @@ Notes on the numbers:
 
 ## What has not been done
 
-- One Observable subtest still fails: `when()` in a detached document, because ordinary event listeners still run in
-  detached documents.
 - `xml-stylesheet` processing instructions do not yet react when inserting or removing the document element moves them
   into or out of the prolog, and a style sheet loaded by `@import` falls back to the document's encoding instead of
   the encoding of the style sheet that imports it.
