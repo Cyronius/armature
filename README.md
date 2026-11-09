@@ -85,7 +85,7 @@ Notes on the numbers:
 - The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 450 tests, most of them
   WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
   Servo's CI would measure.
-- The table predates the SVG hit-testing, path DOM, image sizing, canvas image and SMIL work described below; their
+- The table predates the SVG hit-testing, path DOM, image sizing, canvas image, focus and SMIL work described below; their
   gains are not included in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
@@ -262,7 +262,10 @@ Notes on the numbers:
   Four SVG image CORS subtests and three image bitmap origin subtests now pass. Loaded SVG images can now be rasterized
   for canvas drawing and `createImageBitmap()` at its requested output size. Nested data URL SVGs inherit their
   embedding image viewport instead of their painted bounds. Three nested canvas reftests, two other SVG image
-  reftests, the SVG bitmap resize reftest and one `drawImage()` subtest now pass.
+  reftests, the SVG bitmap resize reftest and one `drawImage()` subtest now pass. SVG elements now expose `dataset`,
+  SVG links participate in focus navigation, and unrendered SVG definition elements stay out of it. Invalid
+  `tabindex` values no longer create focusable areas where the element has no default focus behavior. The targeted SVG
+  focus and dataset tests pass, alongside eight previously failing HTML focus subtests.
   Allowing SVG descendants to participate
   in style traversal makes CSS `d` interpolation work in dynamically styled SVG subtrees, bringing 180 more subtests into
   conformance across three path property files, plus one geometry subtest. SVG roots now have independent animation
