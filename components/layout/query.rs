@@ -76,6 +76,24 @@ fn root_transform_for_fragments(
     Some(scroll_tree.cumulative_node_to_root_transform(scroll_tree_node_id))
 }
 
+pub(crate) fn process_box_transform_request(
+    stacking_context_tree: &StackingContextTree,
+    node: ServoLayoutNode<'_>,
+) -> Option<[f64; 6]> {
+    let fragments = node.fragments_for_pseudo(None);
+    let transform =
+        root_transform_for_fragments(&stacking_context_tree.paint_info.scroll_tree, &fragments)?;
+    let transform = transform.to_transform();
+    Some([
+        transform.m11 as f64,
+        transform.m12 as f64,
+        transform.m21 as f64,
+        transform.m22 as f64,
+        transform.m41 as f64,
+        transform.m42 as f64,
+    ])
+}
+
 pub(crate) fn process_padding_request(node: ServoLayoutNode<'_>) -> Option<PhysicalSides<Au>> {
     let fragments = node.fragments_for_pseudo(None);
     let fragment = fragments.first()?;

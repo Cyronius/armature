@@ -91,12 +91,12 @@ use crate::display_list::{DisplayListBuilder, HitTest, PaintTimingHandler, Stack
 use crate::dom::NodeExt;
 use crate::query::{
     BoxAreaInclusion, find_character_offset_in_fragment_descendants, get_the_text_steps,
-    process_box_area_request, process_box_areas_request, process_client_rect_request,
-    process_containing_block_descendant_query, process_containing_block_query,
-    process_current_css_zoom_query, process_effective_overflow_query,
-    process_node_scroll_area_request, process_offset_parent_query, process_padding_request,
-    process_resolved_font_style_query, process_resolved_style_request,
-    process_scroll_container_query,
+    process_box_area_request, process_box_areas_request, process_box_transform_request,
+    process_client_rect_request, process_containing_block_descendant_query,
+    process_containing_block_query, process_current_css_zoom_query,
+    process_effective_overflow_query, process_node_scroll_area_request,
+    process_offset_parent_query, process_padding_request, process_resolved_font_style_query,
+    process_resolved_style_request, process_scroll_container_query,
 };
 use crate::selection::PositionInInlineFormattingContext;
 use crate::traversal::{RecalcStyle, compute_damage_and_rebuild_box_tree};
@@ -446,6 +446,15 @@ impl Layout for LayoutThread {
             };
 
             process_box_area_request(self, stacking_context_tree, node, area, inclusion)
+        })
+    }
+
+    fn query_box_transform(&self, node: TrustedNodeAddress) -> Option<[f64; 6]> {
+        with_layout_state(|| {
+            self.fragment_tree.borrow().as_ref()?;
+            let node = unsafe { ServoLayoutNode::new(&node) };
+            let stacking_context_tree = self.stacking_context_tree.borrow();
+            process_box_transform_request(stacking_context_tree.as_ref()?, node)
         })
     }
 

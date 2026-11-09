@@ -19,6 +19,7 @@ use kurbo::{
     Affine, BezPath, Cap, Ellipse, Join, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv,
     PathEl, PathSeg, Point, Rect, Shape, Stroke, StrokeOpts, stroke,
 };
+use layout_api::BoxAreaType;
 use style::values::specified::SVGPathData;
 use style::values::specified::box_::Display;
 use style_traits::CssWriter;
@@ -1455,7 +1456,8 @@ pub(crate) fn svg_viewport_size(cx: &mut JSContext, svg: &SVGElement) -> (f64, f
     if is_outermost_svg(svg) {
         return svg
             .upcast::<Node>()
-            .content_box(cx)
+            .owner_window()
+            .box_area_query(cx, svg.upcast(), BoxAreaType::Content, true)
             .map(|rect| (rect.size.width.to_f64_px(), rect.size.height.to_f64_px()))
             .unwrap_or_default();
     }
@@ -1507,7 +1509,7 @@ pub(crate) fn current_transform(
     };
     if is_svg && is_outermost_svg(element) {
         if to_screen {
-            transform = screen_offset(cx, element) * transform;
+            transform = screen_transform(cx, element) * transform;
         }
         return transform;
     }
@@ -1525,7 +1527,7 @@ pub(crate) fn current_transform(
             }
             transform = svg_element_transform(cx, &ancestor) * transform;
             if is_outermost_svg(&ancestor) {
-                return screen_offset(cx, &ancestor) * transform;
+                return screen_transform(cx, &ancestor) * transform;
             }
             continue;
         }
@@ -1534,18 +1536,25 @@ pub(crate) fn current_transform(
     transform
 }
 
-/// The translation from the viewport of the outermost `svg` element `svg` to the viewport
-/// of the document: the position of its content box.
-fn screen_offset(cx: &mut JSContext, svg: &SVGElement) -> Affine {
+/// The transformation from the outermost `svg` viewport to the document viewport.
+fn screen_transform(cx: &mut JSContext, svg: &SVGElement) -> Affine {
     let node = svg.upcast::<Node>();
-    let Some(content_box) = node.content_box(cx) else {
+    let Some(content_box) =
+        node.owner_window()
+            .box_area_query(cx, node, BoxAreaType::Content, true)
+    else {
         return Affine::IDENTITY;
     };
-    let scroll = node.owner_window().scroll_offset();
-    Affine::translate((
-        content_box.origin.x.to_f64_px() - scroll.x as f64,
-        content_box.origin.y.to_f64_px() - scroll.y as f64,
-    ))
+    let css_transform = node
+        .owner_window()
+        .box_transform_query_without_reflow(node)
+        .map(Affine::new)
+        .unwrap_or(Affine::IDENTITY);
+    css_transform *
+        Affine::translate((
+            content_box.origin.x.to_f64_px(),
+            content_box.origin.y.to_f64_px(),
+        ))
 }
 
 /// Whether `element` is a basic shape or a path.

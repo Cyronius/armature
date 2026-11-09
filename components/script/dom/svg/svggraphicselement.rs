@@ -65,7 +65,16 @@ fn affine_to_matrix(
     element: &SVGGraphicsElement,
     transform: kurbo::Affine,
 ) -> DomRoot<DOMMatrix> {
-    let [a, b, c, d, e, f] = transform.as_coeffs();
+    // Rotations by multiples of 90 degrees can leave tiny floating-point residues.
+    // Keep the exact integer matrix components exposed by the SVG DOM APIs.
+    let [a, b, c, d, e, f] = transform.as_coeffs().map(|value| {
+        let rounded = value.round();
+        if (value - rounded).abs() < 1e-12 {
+            rounded
+        } else {
+            value
+        }
+    });
     DOMMatrix::new(
         cx,
         &element.owner_global(),

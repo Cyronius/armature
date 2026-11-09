@@ -392,6 +392,8 @@ pub trait Layout {
         area: BoxAreaType,
         exclude_transform_and_inline: bool,
     ) -> Option<Rect<Au, CSSPixel>>;
+    /// The CSS transform from a box's untransformed document coordinates to the viewport.
+    fn query_box_transform(&self, node: TrustedNodeAddress) -> Option<[f64; 6]>;
     fn query_box_areas(&self, node: TrustedNodeAddress, area: BoxAreaType) -> CSSPixelRectVec;
     fn query_client_rect(&self, node: TrustedNodeAddress) -> Rect<i32, CSSPixel>;
     fn query_current_css_zoom(&self, node: TrustedNodeAddress) -> f32;

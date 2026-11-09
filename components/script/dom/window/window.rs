@@ -3193,6 +3193,12 @@ impl Window {
         self.box_area_query_without_reflow(node, area, exclude_transform_and_inline)
     }
 
+    pub(crate) fn box_transform_query_without_reflow(&self, node: &Node) -> Option<[f64; 6]> {
+        let layout = self.layout.borrow();
+        layout.ensure_stacking_context_tree(self.viewport_details.get());
+        layout.query_box_transform(node.to_trusted_node_address())
+    }
+
     pub(crate) fn box_areas_query(&self, node: &Node, area: BoxAreaType) -> CSSPixelRectVec {
         self.layout_reflow_deprecated(QueryMsg::BoxAreas);
         self.layout
