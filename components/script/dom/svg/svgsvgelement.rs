@@ -49,7 +49,7 @@ use crate::dom::node::{
     ChildrenMutation, CloneChildrenFlag, Node, NodeDamage, NodeTraits, UnbindContext,
 };
 use crate::dom::svg::svgangle::SVGAngle;
-use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::svgelement::{PRESENTATION_ATTRIBUTES, SVGElement};
 use crate::dom::svg::svggeometry;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
 use crate::dom::svg::svglength::SVGLength;
@@ -162,8 +162,9 @@ impl SVGSVGElement {
             return;
         }
 
-        // The image renderer does not sample SMIL. Apply animateMotion to the
-        // serialized copy, leaving the live element's transform attribute alone.
+        // The image renderer does not sample SMIL. Apply sampled effects to the
+        // serialized copy, leaving the live element's attributes alone.
+        let document = self.owner_document();
         for (source, clone) in self
             .upcast::<Node>()
             .traverse_preorder(ShadowIncluding::No)
@@ -175,15 +176,62 @@ impl SVGSVGElement {
             ) else {
                 continue;
             };
-            if svggeometry::motion_transform(cx, &source).is_none() {
-                continue;
+            if svggeometry::motion_transform(cx, &source).is_some() {
+                let [a, b, c, d, e, f] = svggeometry::element_transform(cx, &source).as_coeffs();
+                clone.set_svg_attribute(
+                    cx,
+                    &local_name!("transform"),
+                    format!("matrix({a} {b} {c} {d} {e} {f})"),
+                );
             }
-            let [a, b, c, d, e, f] = svggeometry::element_transform(cx, &source).as_coeffs();
-            clone.set_svg_attribute(
-                cx,
-                &local_name!("transform"),
-                format!("matrix({a} {b} {c} {d} {e} {f})"),
-            );
+
+            let mut style = source
+                .svg_attribute(&local_name!("style"))
+                .unwrap_or_default();
+            let original_style_len = style.len();
+            let mut serialized_properties = Vec::new();
+            for animation in document.smil_animations_targeting(cx, &source) {
+                if !animation.passes_conditional_processing() {
+                    continue;
+                }
+                let kind = animation.upcast::<Element>().local_name();
+                let active = if kind == &local_name!("set") {
+                    animation.set_is_active()
+                } else if kind == &local_name!("animate") {
+                    animation.sample_iteration().is_some()
+                } else {
+                    false
+                };
+                if !active {
+                    continue;
+                }
+                let Some(property) = animation
+                    .upcast::<SVGElement>()
+                    .svg_attribute(&local_name!("attributeName"))
+                else {
+                    continue;
+                };
+                let is_animated_property = PRESENTATION_ATTRIBUTES.contains(&property.as_str()) ||
+                    property == "d" &&
+                        source.upcast::<Element>().local_name() == &local_name!("path");
+                if !is_animated_property || serialized_properties.contains(&property) {
+                    continue;
+                }
+                let value = svggeometry::computed_value(&source, &property);
+                if value.is_empty() {
+                    continue;
+                }
+                if !style.trim().is_empty() && !style.trim_end().ends_with(';') {
+                    style.push(';');
+                }
+                style.push_str(&property);
+                style.push(':');
+                style.push_str(&value);
+                serialized_properties.push(property);
+            }
+            if style.len() != original_style_len {
+                clone.set_svg_attribute(cx, &local_name!("style"), style);
+            }
         }
 
         self.process_use_elements(cx, &cloned_node);
@@ -544,6 +592,7 @@ impl SVGSVGElementMethods<crate::DomTypeHolder> for SVGSVGElement {
         self.owner_document()
             .queue_smil_seek_events(self, previous_time, *seconds as f64);
         self.owner_document().update_smil_style_effects(cx);
+        self.invalidate_cached_serialized_subtree_and_rasterization_result(cx.no_gc());
     }
 
     svg_animated_length!(X, "x", Horizontal, SVGLengthValue::number(0.0));

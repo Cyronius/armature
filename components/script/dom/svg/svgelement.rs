@@ -94,7 +94,7 @@ struct SVGAnimatedPropertyEntry {
 /// name. The geometry properties are only mapped on the elements that they apply to.
 ///
 /// <https://svgwg.org/svg2-draft/styling.html#PresentationAttributes>
-const PRESENTATION_ATTRIBUTES: &[&str] = &[
+pub(crate) const PRESENTATION_ATTRIBUTES: &[&str] = &[
     "alignment-baseline",
     "baseline-shift",
     "clip-path",
