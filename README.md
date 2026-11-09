@@ -346,6 +346,12 @@ Notes on the numbers:
   All 86 path interface subtests and 33 SVG image sizing subtests pass. Across the same 343 SVG animation subtests,
   the broader run moved from 145 PASS / 151 FAIL / 47 TIMEOUT to 343 PASS / 0 FAIL / 0 TIMEOUT, with no previously
   passing subtest regressing.
+- **SVG geometry properties**: Negative `r`, `rx`, `ry`, `width` and `height` presentation attributes are ignored, and
+  `<foreignObject>` maps its geometry attributes to CSS properties. `getComputedStyle()` resolves the used width and
+  height of SVG rectangles, images and foreign objects against their SVG viewport, including percentages and
+  `calc()`. A nested `<svg>` keeps its width and height attributes for viewport sizing without treating them as CSS
+  sizing declarations. All 308 subtests in `svg/geometry/parsing` now pass, including 60 that previously failed; the
+  surrounding 86-file `svg/geometry` run matches expectations.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
