@@ -85,8 +85,8 @@ Notes on the numbers:
 - The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 450 tests, most of them
   WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
   Servo's CI would measure.
-- The table predates the SVG hit-testing, path DOM, image sizing and SMIL work described below; their gains are not
-  included in these scores.
+- The table predates the SVG hit-testing, path DOM, image sizing, canvas image and SMIL work described below; their
+  gains are not included in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
@@ -259,7 +259,11 @@ Notes on the numbers:
   now uses resource natural dimensions for `auto` sizing in `getBBox()`, and waits for image loads before the document
   load event; all 33 focused subtests pass across two geometry files. SVG `<image>` also loads when detached and
   reflects `crossOrigin`; canvas drawing and `createImageBitmap()` use its decoded raster pixels and CORS status.
-  Four SVG image CORS subtests and three image bitmap origin subtests now pass. Allowing SVG descendants to participate
+  Four SVG image CORS subtests and three image bitmap origin subtests now pass. Loaded SVG images can now be rasterized
+  for canvas drawing and `createImageBitmap()` at its requested output size. Nested data URL SVGs inherit their
+  embedding image viewport instead of their painted bounds. Three nested canvas reftests, two other SVG image
+  reftests, the SVG bitmap resize reftest and one `drawImage()` subtest now pass.
+  Allowing SVG descendants to participate
   in style traversal makes CSS `d` interpolation work in dynamically styled SVG subtrees, bringing 180 more subtests into
   conformance across three path property files, plus one geometry subtest. SVG roots now have independent animation
   clocks with pause, resume and seek controls, and a simple `<animate>` child interpolates `SVGAnimatedLength.animVal`.
@@ -398,7 +402,7 @@ Notes on the numbers:
   (Stylo matches animations by name), `getKeyframes()` does not keep keyframes that share an offset but not an easing
   apart and shows additive keyframe values already added, and a finished `CSSTransition` cannot be replayed once
   style has dropped it. Container query units in keyframes are not supported, as in style sheets.
-- SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
+- SVG documents are drawn by the same code as inline SVG, which handles `<use>` and some nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
   draws `<image>` elements whose `href` is a `data:` URL. SMIL effects cover basic lengths, enumerations, numbers,
   presentation properties and motion. Full repeat and syncbase
