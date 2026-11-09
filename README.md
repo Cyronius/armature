@@ -339,6 +339,10 @@ Notes on the numbers:
   now pass.
   SVG descendant attribute and child mutations now refresh the outermost raster. SMIL presentation-property effects
   also refresh it when they start, end, or cross a discrete keyframe; four more SVG animation reftests now pass.
+  Active continuous `<animate>` presentation-property and `<animateMotion>` effects now refresh the raster during
+  playback. Redraw waits for the document load and initial font readiness, and screenshot capture lets the current
+  frame settle. Evicting an in-flight SVG image wakes its pending listeners so canceled frames cannot block a
+  screenshot. A new mid-animation fill reftest passes alongside the existing indefinite fill and motion reftests.
   All 86 path interface subtests and 33 SVG image sizing subtests pass. Across the same 343 SVG animation subtests,
   the broader run moved from 145 PASS / 151 FAIL / 47 TIMEOUT to 343 PASS / 0 FAIL / 0 TIMEOUT, with no previously
   passing subtest regressing.
@@ -377,8 +381,8 @@ Notes on the numbers:
   style has dropped it. Container query units in keyframes are not supported, as in style sheets.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
-  draws `<image>` elements whose `href` is a `data:` URL. SMIL effects cover basic lengths, enumerations, and numbers;
-  continuous presentation-property interpolation is not yet rerasterized on every frame. Full repeat and syncbase
+  draws `<image>` elements whose `href` is a `data:` URL. SMIL effects cover basic lengths, enumerations, numbers,
+  presentation properties and motion. Full repeat and syncbase
   timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
   methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
   geometry is measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
