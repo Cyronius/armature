@@ -715,7 +715,7 @@ impl SVGSVGElementMethods<crate::DomTypeHolder> for SVGSVGElement {
         if let Some(point) = self.current_translate.get() {
             return point;
         }
-        let point = DOMPoint::new(cx, &self.owner_global(), 0.0, 0.0, 0.0, 1.0);
+        let point = DOMPoint::new_svg(cx, &self.owner_global(), 0.0, 0.0);
         self.current_translate.set(Some(&point));
         point
     }
@@ -774,7 +774,7 @@ impl SVGSVGElementMethods<crate::DomTypeHolder> for SVGSVGElement {
 
     /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGRect>
     fn CreateSVGRect(&self, cx: &mut JSContext) -> DomRoot<DOMRect> {
-        DOMRect::new(cx, &self.owner_global(), 0.0, 0.0, 0.0, 0.0)
+        DOMRect::new_svg(cx, &self.owner_global(), 0.0, 0.0, 0.0, 0.0)
     }
 
     /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__getElementById>
@@ -808,7 +808,7 @@ impl SVGSVGElementMethods<crate::DomTypeHolder> for SVGSVGElement {
 
     /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGPoint>
     fn CreateSVGPoint(&self, cx: &mut JSContext) -> DomRoot<DOMPoint> {
-        DOMPoint::new(cx, &self.owner_global(), 0.0, 0.0, 0.0, 1.0)
+        DOMPoint::new_svg(cx, &self.owner_global(), 0.0, 0.0)
     }
 
     /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__createSVGTransform>

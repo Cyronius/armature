@@ -16,7 +16,7 @@ use crate::dom::bindings::codegen::Bindings::DOMRectBinding::DOMRectMethods;
 use crate::dom::bindings::codegen::Bindings::DOMRectReadOnlyBinding::{
     DOMRectInit, DOMRectReadOnlyMethods,
 };
-use crate::dom::bindings::error::Fallible;
+use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::domrectreadonly::{DOMRectReadOnly, create_a_domrectreadonly_from_the_dictionary};
@@ -29,15 +29,18 @@ pub(crate) struct DOMRect {
     /// For the base or animated value of an `SVGAnimatedRect`, which the SVG DOM calls an
     /// `SVGRect`, the object whose attribute the coordinates reflect.
     svg_animated_rect: MutNullableDom<SVGAnimatedRect>,
+    /// SVG rectangles reject non-finite coordinates, unlike ordinary DOM rectangles.
+    svg_rect: bool,
     /// Whether this is the animated value of an `SVGAnimatedRect`, which cannot be changed.
     svg_read_only: bool,
 }
 
 impl DOMRect {
-    fn new_inherited(x: f64, y: f64, width: f64, height: f64) -> DOMRect {
+    fn new_inherited(x: f64, y: f64, width: f64, height: f64, svg_rect: bool) -> DOMRect {
         DOMRect {
             rect: DOMRectReadOnly::new_inherited(x, y, width, height),
             svg_animated_rect: Default::default(),
+            svg_rect,
             svg_read_only: false,
         }
     }
@@ -52,6 +55,7 @@ impl DOMRect {
         let rect = DOMRect {
             rect: DOMRectReadOnly::new_inherited(0.0, 0.0, 0.0, 0.0),
             svg_animated_rect: MutNullableDom::new(Some(animated)),
+            svg_rect: true,
             svg_read_only: read_only,
         };
         reflect_dom_object(cx, Box::new(rect), &*animated.global())
@@ -82,12 +86,20 @@ impl DOMRect {
     }
 
     /// Set the coordinate with index `index` (x, y, width, height).
-    fn set_coordinate(&self, cx: &mut JSContext, index: usize, value: f64) {
+    fn set_coordinate(&self, cx: &mut JSContext, index: usize, value: f64) -> ErrorResult {
+        if self.svg_read_only {
+            return Err(Error::NoModificationAllowed(Some(
+                "This SVGRect is read-only".into(),
+            )));
+        }
+        if self.svg_rect && !value.is_finite() {
+            return Err(Error::Type(
+                c"SVGRect coordinates must be finite".to_owned(),
+            ));
+        }
         if let Some(animated) = self.svg_animated_rect.get() {
-            if !self.svg_read_only {
-                animated.set_coordinate(cx, index, value);
-            }
-            return;
+            animated.set_coordinate(cx, index, value);
+            return Ok(());
         }
         match index {
             0 => self.rect.set_x(value),
@@ -95,6 +107,7 @@ impl DOMRect {
             2 => self.rect.set_width(value),
             _ => self.rect.set_height(value),
         }
+        Ok(())
     }
 
     pub(crate) fn new(
@@ -108,6 +121,21 @@ impl DOMRect {
         Self::new_with_proto(cx, global, None, x, y, width, height)
     }
 
+    pub(crate) fn new_svg(
+        cx: &mut JSContext,
+        global: &GlobalScope,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> DomRoot<DOMRect> {
+        reflect_dom_object(
+            cx,
+            Box::new(Self::new_inherited(x, y, width, height, true)),
+            global,
+        )
+    }
+
     fn new_with_proto(
         cx: &mut JSContext,
         global: &GlobalScope,
@@ -119,7 +147,7 @@ impl DOMRect {
     ) -> DomRoot<DOMRect> {
         reflect_dom_object_with_proto(
             cx,
-            Box::new(DOMRect::new_inherited(x, y, width, height)),
+            Box::new(DOMRect::new_inherited(x, y, width, height, false)),
             global,
             proto,
         )
@@ -152,6 +180,7 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
             Box::new(Self {
                 rect,
                 svg_animated_rect: Default::default(),
+                svg_rect: false,
                 svg_read_only: false,
             }),
             global,
@@ -164,8 +193,8 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-x>
-    fn SetX(&self, cx: &mut JSContext, value: f64) {
-        self.set_coordinate(cx, 0, value);
+    fn SetX(&self, cx: &mut JSContext, value: f64) -> ErrorResult {
+        self.set_coordinate(cx, 0, value)
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-y>
@@ -174,8 +203,8 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-y>
-    fn SetY(&self, cx: &mut JSContext, value: f64) {
-        self.set_coordinate(cx, 1, value);
+    fn SetY(&self, cx: &mut JSContext, value: f64) -> ErrorResult {
+        self.set_coordinate(cx, 1, value)
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-width>
@@ -184,8 +213,8 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-width>
-    fn SetWidth(&self, cx: &mut JSContext, value: f64) {
-        self.set_coordinate(cx, 2, value);
+    fn SetWidth(&self, cx: &mut JSContext, value: f64) -> ErrorResult {
+        self.set_coordinate(cx, 2, value)
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-height>
@@ -194,8 +223,8 @@ impl DOMRectMethods<crate::DomTypeHolder> for DOMRect {
     }
 
     /// <https://drafts.csswg.org/geometry/#dom-domrect-height>
-    fn SetHeight(&self, cx: &mut JSContext, value: f64) {
-        self.set_coordinate(cx, 3, value);
+    fn SetHeight(&self, cx: &mut JSContext, value: f64) -> ErrorResult {
+        self.set_coordinate(cx, 3, value)
     }
 }
 

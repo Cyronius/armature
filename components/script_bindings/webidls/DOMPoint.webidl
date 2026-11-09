@@ -18,10 +18,10 @@ interface DOMPoint : DOMPointReadOnly {
                 optional unrestricted double z = 0, optional unrestricted double w = 1);
     [NewObject] static DOMPoint fromPoint(optional DOMPointInit other = {});
 
-    inherit attribute unrestricted double x;
-    inherit attribute unrestricted double y;
-    inherit attribute unrestricted double z;
-    inherit attribute unrestricted double w;
+    [SetterThrows] inherit attribute unrestricted double x;
+    [SetterThrows] inherit attribute unrestricted double y;
+    [SetterThrows] inherit attribute unrestricted double z;
+    [SetterThrows] inherit attribute unrestricted double w;
 };
 
 dictionary DOMPointInit {

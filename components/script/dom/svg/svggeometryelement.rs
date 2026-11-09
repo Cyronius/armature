@@ -109,13 +109,11 @@ impl SVGGeometryElementMethods<crate::DomTypeHolder> for SVGGeometryElement {
             .ok_or_else(|| {
                 Error::InvalidState(Some("The shape has no point on its path".into()))
             })?;
-        Ok(DOMPoint::new(
+        Ok(DOMPoint::new_svg(
             cx,
             &self.owner_global(),
             point.x,
             point.y,
-            0.0,
-            1.0,
         ))
     }
 

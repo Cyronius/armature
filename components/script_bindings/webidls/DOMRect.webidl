@@ -13,8 +13,8 @@ interface DOMRect : DOMRectReadOnly {
 
     [NewObject] static DOMRect fromRect(optional DOMRectInit other = {});
 
-    inherit attribute unrestricted double x;
-    inherit attribute unrestricted double y;
-    inherit attribute unrestricted double width;
-    inherit attribute unrestricted double height;
+    [SetterThrows] inherit attribute unrestricted double x;
+    [SetterThrows] inherit attribute unrestricted double y;
+    [SetterThrows] inherit attribute unrestricted double width;
+    [SetterThrows] inherit attribute unrestricted double height;
 };

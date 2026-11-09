@@ -106,7 +106,7 @@ impl SVGGraphicsElementMethods<crate::DomTypeHolder> for SVGGraphicsElement {
             options.clipped,
         )
         .unwrap_or_default();
-        DOMRect::new(
+        DOMRect::new_svg(
             cx,
             &self.owner_global(),
             bbox.x0,

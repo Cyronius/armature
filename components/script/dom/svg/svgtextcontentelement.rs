@@ -125,13 +125,11 @@ impl SVGTextContentElementMethods<crate::DomTypeHolder> for SVGTextContentElemen
         charnum: u32,
     ) -> Fallible<DomRoot<DOMPoint>> {
         let character = self.character(cx, charnum)?;
-        Ok(DOMPoint::new(
+        Ok(DOMPoint::new_svg(
             cx,
             &self.owner_global(),
             character.x,
             character.y,
-            0.0,
-            1.0,
         ))
     }
 
@@ -143,20 +141,18 @@ impl SVGTextContentElementMethods<crate::DomTypeHolder> for SVGTextContentElemen
     ) -> Fallible<DomRoot<DOMPoint>> {
         let character = self.character(cx, charnum)?;
         let angle = character.rotate.to_radians();
-        Ok(DOMPoint::new(
+        Ok(DOMPoint::new_svg(
             cx,
             &self.owner_global(),
             character.x + character.advance * angle.cos(),
             character.y + character.advance * angle.sin(),
-            0.0,
-            1.0,
         ))
     }
 
     /// <https://svgwg.org/svg2-draft/text.html#__svg__SVGTextContentElement__getExtentOfChar>
     fn GetExtentOfChar(&self, cx: &mut JSContext, charnum: u32) -> Fallible<DomRoot<DOMRect>> {
         let extent = self.character(cx, charnum)?.extent();
-        Ok(DOMRect::new(
+        Ok(DOMRect::new_svg(
             cx,
             &self.owner_global(),
             extent.x0,

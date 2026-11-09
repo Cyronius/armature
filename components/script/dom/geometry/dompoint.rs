@@ -16,7 +16,7 @@ use servo_constellation_traits::DomPoint;
 
 use crate::dom::bindings::codegen::Bindings::DOMPointBinding::{DOMPointInit, DOMPointMethods};
 use crate::dom::bindings::codegen::Bindings::DOMPointReadOnlyBinding::DOMPointReadOnlyMethods;
-use crate::dom::bindings::error::Fallible;
+use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::dompointreadonly::{DOMPointReadOnly, DOMPointWriteMethods};
 use crate::dom::globalscope::GlobalScope;
@@ -29,6 +29,8 @@ pub(crate) struct DOMPoint {
     /// For an element of an `SVGPointList` (whose elements the SVG DOM calls `SVGPoint`s),
     /// the list, which reflects an attribute.
     svg_point_list: MutNullableDom<SVGPointList>,
+    /// SVG points reject non-finite coordinates, unlike ordinary DOM points.
+    svg_point: Cell<bool>,
     /// Whether this is an element of a read-only `SVGPointList`, and cannot be changed.
     svg_read_only: Cell<bool>,
 }
@@ -38,6 +40,7 @@ impl DOMPoint {
         DOMPoint {
             point: DOMPointReadOnly::new_inherited(x, y, z, w),
             svg_point_list: Default::default(),
+            svg_point: Cell::new(false),
             svg_read_only: Cell::new(false),
         }
     }
@@ -81,6 +84,7 @@ impl DOMPoint {
 
     pub(crate) fn attach_to_svg_list(&self, list: &SVGPointList, read_only: bool) {
         self.svg_point_list.set(Some(list));
+        self.svg_point.set(true);
         self.svg_read_only.set(read_only);
     }
 
@@ -92,10 +96,27 @@ impl DOMPoint {
 
     /// Set a coordinate with `set`, serializing an `SVGPointList` that this point is an
     /// element of.
-    fn set_coordinate(&self, cx: &mut JSContext, set: impl FnOnce(&DOMPointReadOnly)) {
+    fn check_writable_coordinate(&self, value: f64) -> ErrorResult {
         if self.svg_read_only.get() {
-            return;
+            return Err(Error::NoModificationAllowed(Some(
+                "This SVGPoint is read-only".into(),
+            )));
         }
+        if self.svg_point.get() && !value.is_finite() {
+            return Err(Error::Type(
+                c"SVGPoint coordinates must be finite".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn set_coordinate(
+        &self,
+        cx: &mut JSContext,
+        value: f64,
+        set: impl FnOnce(&DOMPointReadOnly),
+    ) -> ErrorResult {
+        self.check_writable_coordinate(value)?;
         let list = self.svg_point_list.get();
         if let Some(list) = list.as_ref() {
             list.synchronize(cx);
@@ -104,6 +125,7 @@ impl DOMPoint {
         if let Some(list) = self.svg_point_list.get() {
             list.commit(cx);
         }
+        Ok(())
     }
 
     fn synchronize_svg_list(&self, cx: &mut JSContext) {
@@ -121,6 +143,17 @@ impl DOMPoint {
         w: f64,
     ) -> DomRoot<DOMPoint> {
         Self::new_with_proto(cx, global, None, x, y, z, w)
+    }
+
+    pub(crate) fn new_svg(
+        cx: &mut JSContext,
+        global: &GlobalScope,
+        x: f64,
+        y: f64,
+    ) -> DomRoot<DOMPoint> {
+        let point = Self::new(cx, global, x, y, 0.0, 1.0);
+        point.svg_point.set(true);
+        point
     }
 
     fn new_with_proto(
@@ -175,8 +208,8 @@ impl DOMPointMethods<crate::DomTypeHolder> for DOMPoint {
     }
 
     /// <https://dev.w3.org/csswg/geometry/Overview.html#dom-dompointreadonly-x>
-    fn SetX(&self, cx: &mut JSContext, value: f64) {
-        self.set_coordinate(cx, |point| point.SetX(value));
+    fn SetX(&self, cx: &mut JSContext, value: f64) -> ErrorResult {
+        self.set_coordinate(cx, value, |point| point.SetX(value))
     }
 
     /// <https://dev.w3.org/csswg/geometry/Overview.html#dom-dompointreadonly-y>
@@ -186,8 +219,8 @@ impl DOMPointMethods<crate::DomTypeHolder> for DOMPoint {
     }
 
     /// <https://dev.w3.org/csswg/geometry/Overview.html#dom-dompointreadonly-y>
-    fn SetY(&self, cx: &mut JSContext, value: f64) {
-        self.set_coordinate(cx, |point| point.SetY(value));
+    fn SetY(&self, cx: &mut JSContext, value: f64) -> ErrorResult {
+        self.set_coordinate(cx, value, |point| point.SetY(value))
     }
 
     /// <https://dev.w3.org/csswg/geometry/Overview.html#dom-dompointreadonly-z>
@@ -196,8 +229,10 @@ impl DOMPointMethods<crate::DomTypeHolder> for DOMPoint {
     }
 
     /// <https://dev.w3.org/csswg/geometry/Overview.html#dom-dompointreadonly-z>
-    fn SetZ(&self, value: f64) {
+    fn SetZ(&self, value: f64) -> ErrorResult {
+        self.check_writable_coordinate(value)?;
         self.point.SetZ(value);
+        Ok(())
     }
 
     /// <https://dev.w3.org/csswg/geometry/Overview.html#dom-dompointreadonly-w>
@@ -206,8 +241,10 @@ impl DOMPointMethods<crate::DomTypeHolder> for DOMPoint {
     }
 
     /// <https://dev.w3.org/csswg/geometry/Overview.html#dom-dompointreadonly-w>
-    fn SetW(&self, value: f64) {
+    fn SetW(&self, value: f64) -> ErrorResult {
+        self.check_writable_coordinate(value)?;
         self.point.SetW(value);
+        Ok(())
     }
 }
 
