@@ -2064,13 +2064,13 @@ pub(crate) fn handle_element_click(
                             let previous_selectedness = option_element.Selected();
 
                             // Step 8.6.3
-                            match container.downcast::<HTMLSelectElement>() {
-                                Some(select_element) => {
-                                    if select_element.Multiple() {
-                                        option_element.SetSelected(cx, !option_element.Selected());
-                                    }
-                                },
-                                None => option_element.SetSelected(cx, true),
+                            if container
+                                .downcast::<HTMLSelectElement>()
+                                .is_some_and(|select_element| select_element.Multiple())
+                            {
+                                option_element.SetSelected(cx, !option_element.Selected());
+                            } else {
+                                option_element.SetSelected(cx, true);
                             }
 
                             // Step 8.6.4
