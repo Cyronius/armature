@@ -363,7 +363,9 @@ Notes on the numbers:
   screenshot. A new mid-animation fill reftest passes alongside the existing indefinite fill and motion reftests.
   All 86 path interface subtests and 33 SVG image sizing subtests pass. Across the same 343 SVG animation subtests,
   the broader run moved from 145 PASS / 151 FAIL / 47 TIMEOUT to 343 PASS / 0 FAIL / 0 TIMEOUT, with no previously
-  passing subtest regressing.
+  passing subtest regressing. Animations excluded by `systemLanguage` or an unselected `<switch>` branch no longer
+  affect their targets. The rasterized SVG copy receives sampled geometry lengths as attributes, so both `<switch>`
+  animation reftests now pass; the SVG animation run has three remaining expected-fail reftests.
 - **SVG geometry properties**: Negative `r`, `rx`, `ry`, `width` and `height` presentation attributes are ignored, and
   `<foreignObject>` maps its geometry attributes to CSS properties. `getComputedStyle()` resolves the used width and
   height of SVG rectangles, images and foreign objects against their SVG viewport, including percentages and
