@@ -357,3 +357,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `svg/path/parsing/path-length-*.tentative.svg`, `svg/path/animations/path-length-interpolation.tentative.html`,
   and `svg/animations/animate-pathLength.tentative.html`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-511: Parse the SVG pointer-events bounding-box keyword
+- Files: `style/values/specified/ui.rs`
+- Why: SVG 2 adds `bounding-box` to `pointer-events`, allowing a graphics or container element to receive events
+  anywhere in its geometric bounding box, independent of its fill, stroke and visibility. Servo's SVG hit testing
+  needs the computed value to distinguish this region from `auto`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

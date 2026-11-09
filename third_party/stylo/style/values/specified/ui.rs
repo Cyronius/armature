@@ -284,6 +284,8 @@ pub enum PointerEvents {
     Fill,
     Stroke,
     All,
+    // Armature (AS-511): SVG 2 makes an element's bounding box pointer-sensitive.
+    BoundingBox,
 }
 
 /// Internal property to represent the inert attribute state:
