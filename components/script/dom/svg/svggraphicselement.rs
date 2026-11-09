@@ -88,9 +88,15 @@ impl SVGGraphicsElementMethods<crate::DomTypeHolder> for SVGGraphicsElement {
         // Make sure that the style of the element, which decides what is displayed, is up to
         // date.
         let element = self.upcast::<SVGElement>();
-        let bbox =
-            svggeometry::bounding_box_with_options(cx, element, options.fill, options.stroke)
-                .unwrap_or_default();
+        let bbox = svggeometry::bounding_box_with_options(
+            cx,
+            element,
+            options.fill,
+            options.stroke,
+            options.markers,
+            options.clipped,
+        )
+        .unwrap_or_default();
         DOMRect::new(
             cx,
             &self.owner_global(),

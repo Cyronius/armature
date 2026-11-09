@@ -10,6 +10,8 @@
 //! nothing about the geometry of SVG elements; this module recomputes it from the
 //! attributes.
 
+use std::collections::HashSet;
+
 use cssparser::Parser;
 use html5ever::{LocalName, local_name, ns};
 use js::context::{JSContext, NoGC};
@@ -731,7 +733,7 @@ fn is_display_none(element: &SVGElement) -> bool {
 ///
 /// <https://svgwg.org/svg2-draft/coords.html#BoundingBoxes>
 pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<Rect> {
-    bounding_box_with_options(cx, element, true, false)
+    bounding_box_with_options(cx, element, true, false, false, false)
 }
 
 pub(crate) fn bounding_box_with_options(
@@ -739,12 +741,34 @@ pub(crate) fn bounding_box_with_options(
     element: &SVGElement,
     fill: bool,
     stroke: bool,
+    markers: bool,
+    clipped: bool,
+) -> Option<Rect> {
+    bounding_box_impl(
+        cx,
+        element,
+        fill,
+        stroke,
+        markers,
+        clipped,
+        &mut HashSet::new(),
+    )
+}
+
+fn bounding_box_impl(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    fill: bool,
+    stroke: bool,
+    markers: bool,
+    clipped: bool,
+    active_clips: &mut HashSet<String>,
 ) -> Option<Rect> {
     if let Some(geometry) = shape_geometry(cx, element) {
         if matches!(&geometry, SVGShapeGeometry::Path(path) if path.elements().is_empty()) {
             return None;
         }
-        return match (fill, stroke) {
+        let mut bbox = match (fill, stroke) {
             (false, false) => None,
             (true, false) => Some(geometry.bounding_box()),
             (false, true) => geometry.stroke_bounding_box(element),
@@ -753,9 +777,27 @@ pub(crate) fn bounding_box_with_options(
                 |stroke| stroke.union(geometry.bounding_box()),
             )),
         };
+        if markers {
+            if let Some(marker_bbox) = marker_bounding_box(cx, element, &geometry, active_clips) {
+                let decorated = geometry.bounding_box().union(marker_bbox);
+                bbox = Some(bbox.map_or(decorated, |bbox| bbox.union(decorated)));
+            }
+        }
+        return bbox.map(|bbox| {
+            if clipped {
+                clip_bbox(cx, element, bbox, geometry.bounding_box(), active_clips)
+            } else {
+                bbox
+            }
+        });
     }
     let local_name = element.upcast::<Element>().local_name().clone();
-    match local_name {
+    let is_use = local_name == local_name!("use");
+    let has_css_clip = matches!(
+        local_name,
+        local_name!("image") | local_name!("foreignObject")
+    );
+    let bbox = match local_name {
         local_name!("image") => {
             let image = element.downcast::<SVGImageElement>()?;
             let has_source = image
@@ -825,7 +867,24 @@ pub(crate) fn bounding_box_with_options(
             );
             let y = length(cx, element, local_name!("y"), SVGLengthDirection::Vertical);
             let referenced = referenced_element(cx.no_gc(), element)?;
-            let bbox = bounding_box_with_options(cx, &referenced, fill, stroke)?;
+            let mut bbox = bounding_box_impl(
+                cx,
+                &referenced,
+                fill,
+                stroke,
+                markers,
+                clipped,
+                active_clips,
+            )?;
+            if clipped {
+                // The use element's clipping path is in its pre-translation user space.
+                let fill_bbox =
+                    bounding_box_impl(cx, &referenced, true, false, false, false, active_clips)?;
+                bbox = clip_bbox(cx, element, bbox, fill_bbox, active_clips);
+            }
+            if bbox == Rect::ZERO {
+                return Some(Rect::ZERO);
+            }
             Some(
                 (Affine::translate((x, y)) * element_transform(cx, &referenced))
                     .transform_rect_bbox(bbox),
@@ -847,9 +906,14 @@ pub(crate) fn bounding_box_with_options(
                 if is_display_none(&child) || !child.passes_conditional_processing() {
                     continue;
                 }
-                let Some(bbox) = bounding_box_with_options(cx, &child, fill, stroke) else {
+                let Some(bbox) =
+                    bounding_box_impl(cx, &child, fill, stroke, markers, clipped, active_clips)
+                else {
                     continue;
                 };
+                if bbox == Rect::ZERO {
+                    continue;
+                }
                 let bbox = element_transform(cx, &child).transform_rect_bbox(bbox);
                 union = Some(match union {
                     Some(union) => union.union(bbox),
@@ -859,7 +923,341 @@ pub(crate) fn bounding_box_with_options(
             Some(union.unwrap_or_default())
         },
         _ => None,
+    };
+    bbox.map(|bbox| {
+        if clipped && !is_use {
+            let fill_bbox = if fill && !stroke {
+                bbox
+            } else {
+                bounding_box_impl(cx, element, true, false, false, false, active_clips)
+                    .unwrap_or(bbox)
+            };
+            let bbox = clip_bbox(cx, element, bbox, fill_bbox, active_clips);
+            if has_css_clip {
+                css_clip_bbox(element, bbox, fill_bbox)
+            } else {
+                bbox
+            }
+        } else {
+            bbox
+        }
+    })
+}
+
+/// The marker content at each marked vertex, expressed in the shape's user space.
+fn marker_bounding_box(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    geometry: &SVGShapeGeometry,
+    active_clips: &mut HashSet<String>,
+) -> Option<Rect> {
+    let subpaths = match geometry {
+        SVGShapeGeometry::Path(path) => {
+            let mut subpaths = Vec::new();
+            let mut points = Vec::new();
+            for segment in path.elements() {
+                match segment {
+                    PathEl::MoveTo(point) => {
+                        if !points.is_empty() {
+                            subpaths.push(std::mem::take(&mut points));
+                        }
+                        points.push(*point);
+                    },
+                    PathEl::LineTo(point) |
+                    PathEl::QuadTo(_, point) |
+                    PathEl::CurveTo(_, _, point) => points.push(*point),
+                    PathEl::ClosePath => {
+                        if let Some(first) = points.first().copied() {
+                            points.push(first);
+                        }
+                    },
+                }
+            }
+            if !points.is_empty() {
+                subpaths.push(points);
+            }
+            subpaths
+        },
+        SVGShapeGeometry::Line(line) => vec![vec![line.p0, line.p1]],
+        SVGShapeGeometry::Ellipse(_) => return None,
+    };
+    let mut union: Option<Rect> = None;
+    for (property, kind) in [("marker-start", 0), ("marker-mid", 1), ("marker-end", 2)] {
+        let value = computed_value(element, property);
+        let value = if value.is_empty() || value == "none" {
+            element
+                .upcast::<Element>()
+                .get_attribute_string_value(&LocalName::from(property))
+                .map(|value| value.to_string())
+                .unwrap_or(value)
+        } else {
+            value
+        };
+        let Some(url) = value
+            .trim()
+            .strip_prefix("url(")
+            .and_then(|value| value.strip_suffix(')'))
+        else {
+            continue;
+        };
+        let url = url.trim().trim_matches(['\'', '"']);
+        let Some((_, id)) = url.rsplit_once('#') else {
+            continue;
+        };
+        let document = element.upcast::<Node>().owner_doc();
+        let Some(referenced) = document.get_element_by_id(cx.no_gc(), &stylo_atoms::Atom::from(id))
+        else {
+            continue;
+        };
+        let Some(marker) = DomRoot::downcast::<SVGElement>(referenced) else {
+            continue;
+        };
+        if marker.upcast::<Element>().local_name() != &local_name!("marker") {
+            continue;
+        }
+        let children: Vec<DomRoot<SVGElement>> = marker
+            .upcast::<Node>()
+            .children()
+            .filter_map(DomRoot::downcast::<SVGElement>)
+            .collect();
+        let mut content: Option<Rect> = None;
+        for child in children {
+            if is_display_none(&child) || !child.passes_conditional_processing() {
+                continue;
+            }
+            let Some(bbox) = bounding_box_impl(cx, &child, true, false, false, false, active_clips)
+            else {
+                continue;
+            };
+            let bbox = element_transform(cx, &child).transform_rect_bbox(bbox);
+            content = Some(content.map_or(bbox, |content| content.union(bbox)));
+        }
+        let Some(content) = content else {
+            continue;
+        };
+        let marker_width = resolve_length(
+            cx,
+            &marker,
+            &local_name!("markerWidth"),
+            SVGLengthDirection::Horizontal,
+            SVGLengthValue::number(3.0),
+        ) as f64;
+        let marker_height = resolve_length(
+            cx,
+            &marker,
+            &local_name!("markerHeight"),
+            SVGLengthDirection::Vertical,
+            SVGLengthValue::number(3.0),
+        ) as f64;
+        if marker_width <= 0.0 || marker_height <= 0.0 {
+            continue;
+        }
+        let view_transform = if let Some(view_box) = parse_view_box(cx, &marker) {
+            let scale = (marker_width / view_box.width()).min(marker_height / view_box.height());
+            let offset_x = (marker_width - view_box.width() * scale) / 2.0;
+            let offset_y = (marker_height - view_box.height() * scale) / 2.0;
+            Affine::translate((offset_x, offset_y)) *
+                Affine::scale(scale) *
+                Affine::translate((-view_box.x0, -view_box.y0))
+        } else {
+            Affine::IDENTITY
+        };
+        let ref_x = length(
+            cx,
+            &marker,
+            local_name!("refX"),
+            SVGLengthDirection::Horizontal,
+        );
+        let ref_y = length(
+            cx,
+            &marker,
+            local_name!("refY"),
+            SVGLengthDirection::Vertical,
+        );
+        let reference = view_transform * Point::new(ref_x, ref_y);
+        let stroke_width = if marker.svg_attribute(&local_name!("markerUnits")).as_deref() ==
+            Some("userSpaceOnUse")
+        {
+            1.0
+        } else {
+            computed_value(element, "stroke-width")
+                .trim_end_matches("px")
+                .parse::<f64>()
+                .unwrap_or(1.0)
+        };
+        let orient = marker
+            .svg_attribute(&local_name!("orient"))
+            .unwrap_or_default();
+        for points in &subpaths {
+            for (index, point) in points.iter().enumerate() {
+                if (kind == 0 && index != 0) ||
+                    (kind == 1 && (index == 0 || index + 1 == points.len())) ||
+                    (kind == 2 && index + 1 != points.len())
+                {
+                    continue;
+                }
+                let angle = if orient == "auto" || orient == "auto-start-reverse" {
+                    let previous = points.get(index.saturating_sub(1)).unwrap_or(point);
+                    let next = points
+                        .get((index + 1).min(points.len() - 1))
+                        .unwrap_or(point);
+                    let angle = (next.y - previous.y).atan2(next.x - previous.x);
+                    if orient == "auto-start-reverse" && kind == 0 {
+                        angle + std::f64::consts::PI
+                    } else {
+                        angle
+                    }
+                } else {
+                    orient
+                        .trim_end_matches("deg")
+                        .parse::<f64>()
+                        .unwrap_or(0.0)
+                        .to_radians()
+                };
+                let transform = Affine::translate((point.x, point.y)) *
+                    Affine::rotate(angle) *
+                    Affine::scale(stroke_width) *
+                    Affine::translate((-reference.x, -reference.y)) *
+                    view_transform;
+                let bbox = transform.transform_rect_bbox(content);
+                union = Some(union.map_or(bbox, |union| union.union(bbox)));
+            }
+        }
     }
+    union
+}
+
+/// The bounding box of the clipping silhouette in the target's user space.
+fn clip_path_bbox(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    fill_bbox: Rect,
+    active_clips: &mut HashSet<String>,
+) -> Option<Rect> {
+    let value = computed_value(element, "clip-path");
+    let value = if value.is_empty() {
+        element
+            .upcast::<Element>()
+            .get_attribute_string_value(&local_name!("clip-path"))?
+            .to_string()
+    } else {
+        value
+    };
+    if value.trim() == "none" {
+        return None;
+    }
+    let url = value.trim().strip_prefix("url(")?.strip_suffix(')')?.trim();
+    let url = url.trim_matches(['\'', '"']);
+    let id = url.rsplit_once('#')?.1;
+    if !active_clips.insert(id.to_string()) {
+        return Some(Rect::ZERO);
+    }
+    let result = (|| {
+        let document = element.upcast::<Node>().owner_doc();
+        let referenced = document.get_element_by_id(cx.no_gc(), &stylo_atoms::Atom::from(id))?;
+        let clip_path = DomRoot::downcast::<SVGElement>(referenced)?;
+        if clip_path.upcast::<Element>().local_name() != &local_name!("clipPath") {
+            return None;
+        }
+        let children: Vec<DomRoot<SVGElement>> = clip_path
+            .upcast::<Node>()
+            .children()
+            .filter_map(DomRoot::downcast::<SVGElement>)
+            .collect();
+        let mut union: Option<Rect> = None;
+        for child in children {
+            if is_display_none(&child) || !child.passes_conditional_processing() {
+                continue;
+            }
+            let Some(bbox) = bounding_box_impl(cx, &child, true, false, false, true, active_clips)
+            else {
+                continue;
+            };
+            if bbox == Rect::ZERO {
+                continue;
+            }
+            let bbox = element_transform(cx, &child).transform_rect_bbox(bbox);
+            union = Some(union.map_or(bbox, |union| union.union(bbox)));
+        }
+        let mut bbox = union.unwrap_or(Rect::ZERO);
+        if bbox != Rect::ZERO {
+            bbox = clip_bbox(cx, &clip_path, bbox, bbox, active_clips);
+            bbox = element_transform(cx, &clip_path).transform_rect_bbox(bbox);
+        }
+        if bbox == Rect::ZERO {
+            return Some(bbox);
+        }
+        if clip_path
+            .svg_attribute(&local_name!("clipPathUnits"))
+            .as_deref() ==
+            Some("objectBoundingBox")
+        {
+            bbox = (Affine::translate((fill_bbox.x0, fill_bbox.y0)) *
+                Affine::scale_non_uniform(fill_bbox.width(), fill_bbox.height()))
+            .transform_rect_bbox(bbox);
+        }
+        Some(bbox)
+    })();
+    active_clips.remove(id);
+    Some(result.unwrap_or(Rect::ZERO))
+}
+
+fn clip_bbox(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    bbox: Rect,
+    fill_bbox: Rect,
+    active_clips: &mut HashSet<String>,
+) -> Rect {
+    let Some(clip) = clip_path_bbox(cx, element, fill_bbox, active_clips) else {
+        return bbox;
+    };
+    if clip == Rect::ZERO {
+        return Rect::ZERO;
+    }
+    intersect_bbox(bbox, clip)
+}
+
+fn intersect_bbox(bbox: Rect, clip: Rect) -> Rect {
+    if bbox.x0 >= clip.x1 || bbox.x1 <= clip.x0 || bbox.y0 >= clip.y1 || bbox.y1 <= clip.y0 {
+        return Rect::ZERO;
+    }
+    bbox.intersect(clip)
+}
+
+/// The legacy CSS `clip` rectangle is positioned relative to the element's box.
+fn css_clip_bbox(element: &SVGElement, bbox: Rect, fill_bbox: Rect) -> Rect {
+    let value = computed_value(element, "clip");
+    let value = if value.is_empty() || value == "auto" {
+        element
+            .upcast::<Element>()
+            .get_attribute_string_value(&local_name!("clip"))
+            .map(|value| value.to_string())
+            .unwrap_or(value)
+    } else {
+        value
+    };
+    let Some(arguments) = value
+        .strip_prefix("rect(")
+        .and_then(|value| value.strip_suffix(')'))
+    else {
+        return bbox;
+    };
+    let numbers: Vec<f64> = arguments
+        .split([',', ' '])
+        .filter(|part| !part.is_empty())
+        .filter_map(|part| part.trim_end_matches("px").parse().ok())
+        .collect();
+    if numbers.len() != 4 {
+        return bbox;
+    }
+    let clip = Rect::new(
+        fill_bbox.x0 + numbers[3],
+        fill_bbox.y0 + numbers[0],
+        fill_bbox.x0 + numbers[1],
+        fill_bbox.y0 + numbers[2],
+    );
+    intersect_bbox(bbox, clip)
 }
 
 /// The element that the `href` of a `use` element refers to.
