@@ -710,7 +710,7 @@ pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<R
                 .filter_map(DomRoot::downcast::<SVGElement>)
                 .collect();
             for child in children {
-                if is_display_none(&child) {
+                if is_display_none(&child) || !child.passes_conditional_processing() {
                     continue;
                 }
                 let Some(bbox) = bounding_box(cx, &child) else {
@@ -1072,24 +1072,25 @@ fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool 
 /// Whether `element` is inside an element whose content is never rendered directly, like
 /// `defs` or `clipPath`, or is not displayed.
 pub(crate) fn is_never_rendered(element: &SVGElement) -> bool {
-    element
-        .upcast::<Node>()
-        .inclusive_ancestors(crate::dom::iterators::ShadowIncluding::No)
-        .filter_map(DomRoot::downcast::<SVGElement>)
-        .any(|ancestor| {
-            matches!(
-                ancestor.upcast::<Element>().local_name(),
-                &local_name!("defs") |
-                    &local_name!("clipPath") |
-                    &local_name!("mask") |
-                    &local_name!("marker") |
-                    &local_name!("pattern") |
-                    &local_name!("symbol") |
-                    &local_name!("linearGradient") |
-                    &local_name!("radialGradient") |
-                    &local_name!("filter")
-            ) || is_display_none(&ancestor)
-        })
+    !element.passes_conditional_processing() ||
+        element
+            .upcast::<Node>()
+            .inclusive_ancestors(crate::dom::iterators::ShadowIncluding::No)
+            .filter_map(DomRoot::downcast::<SVGElement>)
+            .any(|ancestor| {
+                matches!(
+                    ancestor.upcast::<Element>().local_name(),
+                    &local_name!("defs") |
+                        &local_name!("clipPath") |
+                        &local_name!("mask") |
+                        &local_name!("marker") |
+                        &local_name!("pattern") |
+                        &local_name!("symbol") |
+                        &local_name!("linearGradient") |
+                        &local_name!("radialGradient") |
+                        &local_name!("filter")
+                ) || is_display_none(&ancestor)
+            })
 }
 
 /// Hit test the content of the outermost `svg` element `svg` at `point`, in the coordinates

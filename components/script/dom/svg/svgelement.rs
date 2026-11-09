@@ -21,6 +21,7 @@ use style_traits::ParsingMode;
 use stylo_dom::ElementState;
 
 use crate::dom::bindings::codegen::Bindings::HTMLOrSVGOrMathMLElementBinding::FocusOptions;
+use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::codegen::Bindings::SVGElementBinding::SVGElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{Dom, DomRoot, LayoutDom, MutNullableDom};
@@ -33,6 +34,7 @@ use crate::dom::domstringmap::DOMStringMap;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::iterators::ShadowIncluding;
+use crate::dom::navigator::navigatorinfo;
 use crate::dom::node::focus::FocusTrigger;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{ChildrenMutation, Node, NodeTraits};
@@ -58,7 +60,7 @@ use crate::dom::svg::svgpointlist::SVGPointList;
 use crate::dom::svg::svgrectelement::SVGRectElement;
 use crate::dom::svg::svgstringlist::SVGStringList;
 use crate::dom::svg::svgsvgelement::SVGSVGElement;
-use crate::dom::svg::svgtypes::{SVGLengthDirection, SVGLengthValue};
+use crate::dom::svg::svgtypes::{SVGLengthDirection, SVGLengthValue, is_svg_whitespace};
 use crate::dom::window::scrolling_box::{ScrollAxisState, ScrollRequirement};
 
 /// An object of the SVG DOM that reflects an attribute of an element, like an
@@ -166,6 +168,53 @@ pub(crate) struct SVGElement {
 }
 
 impl SVGElement {
+    /// <https://w3c.github.io/svgwg/svg2-draft/struct.html#ConditionalProcessingSystemLanguageAttribute>
+    fn system_language_matches(&self, language: &str) -> bool {
+        let Some(value) = self.svg_attribute(&local_name!("systemLanguage")) else {
+            return true;
+        };
+        value.split(',').any(|tag| {
+            let tag = tag.trim_matches(is_svg_whitespace);
+            !tag.is_empty() &&
+                (tag.eq_ignore_ascii_case(language) ||
+                    tag.get(..language.len()).is_some_and(|prefix| {
+                        prefix.eq_ignore_ascii_case(language) &&
+                            tag.as_bytes().get(language.len()) == Some(&b'-')
+                    }))
+        })
+    }
+
+    /// Conditional processing applies to the element and its SVG ancestors. A `switch`
+    /// renders only its first child whose conditions match.
+    pub(crate) fn passes_conditional_processing(&self) -> bool {
+        let language = navigatorinfo::Language();
+        let language = language.str();
+        self.upcast::<Node>()
+            .inclusive_ancestors(ShadowIncluding::No)
+            .filter_map(DomRoot::downcast::<SVGElement>)
+            .all(|element| {
+                if !element.system_language_matches(language.as_ref()) {
+                    return false;
+                }
+                let Some(parent) = element
+                    .upcast::<Node>()
+                    .GetParentElement()
+                    .and_then(DomRoot::downcast::<SVGElement>)
+                else {
+                    return true;
+                };
+                if parent.upcast::<Element>().local_name() != &local_name!("switch") {
+                    return true;
+                }
+                parent
+                    .upcast::<Node>()
+                    .child_elements()
+                    .filter_map(DomRoot::downcast::<SVGElement>)
+                    .find(|child| child.system_language_matches(language.as_ref()))
+                    .is_some_and(|selected| std::ptr::eq(&*selected, &*element))
+            })
+    }
+
     fn new_inherited(
         tag_name: LocalName,
         prefix: Option<Prefix>,

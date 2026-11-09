@@ -1098,6 +1098,7 @@ impl ImageCacheFactory for ImageCacheFactoryImpl {
         };
 
         let opt = usvg::Options {
+            languages: vec![net_traits::get_current_locale().0.clone()],
             image_href_resolver: usvg::ImageHrefResolver {
                 resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
                 resolve_string: image_string_href_resolver,

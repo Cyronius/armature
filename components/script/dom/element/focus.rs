@@ -50,6 +50,12 @@ impl Element {
         {
             return Default::default();
         }
+        if self
+            .downcast::<SVGElement>()
+            .is_some_and(|svg| !svg.passes_conditional_processing())
+        {
+            return Default::default();
+        }
 
         // Do not allow unrendered, disconnected, disabled or inert nodes to be focusable areas ever.
         let node: &Node = self.upcast();

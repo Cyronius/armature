@@ -57,7 +57,6 @@ impl SVGStringList {
             value
                 .split(',')
                 .map(|item| item.trim_matches(is_svg_whitespace))
-                .filter(|item| !item.is_empty())
                 .map(str::to_owned)
                 .collect()
         } else {

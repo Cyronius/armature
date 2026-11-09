@@ -36,8 +36,6 @@ use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::element::Element;
 use crate::dom::eventtarget::EventTarget;
-use crate::dom::iterators::ShadowIncluding;
-use crate::dom::navigator::navigatorinfo;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{BindContext, Node, NodeDamage, NodeFlags, NodeTraits, UnbindContext};
 use crate::dom::svg::svgelement::SVGElement;
@@ -215,20 +213,7 @@ impl SVGAnimationElement {
     /// An animation is disabled when its own or an SVG ancestor's language
     /// condition does not match the user's language.
     pub(crate) fn passes_conditional_processing(&self) -> bool {
-        let language = navigatorinfo::Language().to_ascii_lowercase();
-        self.upcast::<Node>()
-            .inclusive_ancestors(ShadowIncluding::No)
-            .filter_map(DomRoot::downcast::<SVGElement>)
-            .all(|element| {
-                element
-                    .svg_attribute(&local_name!("systemLanguage"))
-                    .is_none_or(|value| {
-                        value.split(',').any(|candidate| {
-                            let candidate = candidate.trim().to_ascii_lowercase();
-                            language == candidate || language.starts_with(&format!("{candidate}-"))
-                        })
-                    })
-            })
+        self.upcast::<SVGElement>().passes_conditional_processing()
     }
 
     pub(crate) fn simple_duration(&self) -> Option<f64> {
