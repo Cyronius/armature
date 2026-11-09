@@ -4,7 +4,7 @@
 
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix, local_name, ns};
-use js::context::JSContext;
+use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
 use script_bindings::cell::DomRefCell;
 use script_bindings::codegen::GenericBindings::ElementBinding::ScrollLogicalPosition;
@@ -34,7 +34,7 @@ use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::focus::FocusTrigger;
 use crate::dom::node::virtualmethods::VirtualMethods;
-use crate::dom::node::{Node, NodeTraits};
+use crate::dom::node::{ChildrenMutation, Node, NodeTraits};
 use crate::dom::svg::svganimatedangle::SVGAnimatedAngle;
 use crate::dom::svg::svganimatedboolean::SVGAnimatedBoolean;
 use crate::dom::svg::svganimatedenumeration::{SVGAnimatedEnumeration, SVGEnumerationKeywords};
@@ -544,6 +544,21 @@ impl SVGElement {
             .take_while(|ancestor| ancestor.is::<SVGElement>())
             .find_map(DomRoot::downcast::<SVGSVGElement>)
     }
+
+    pub(crate) fn invalidate_ancestor_svg_cache(&self, no_gc: &NoGC) {
+        let node = self.upcast::<Node>();
+        if !node.is_connected() {
+            return;
+        }
+        if let Some(root) = node
+            .ancestors()
+            .take_while(|ancestor| ancestor.is::<SVGElement>())
+            .filter_map(DomRoot::downcast::<SVGSVGElement>)
+            .last()
+        {
+            root.invalidate_cached_serialized_subtree_and_rasterization_result(no_gc);
+        }
+    }
 }
 
 impl VirtualMethods for SVGElement {
@@ -572,6 +587,12 @@ impl VirtualMethods for SVGElement {
                 },
             }
         }
+        self.invalidate_ancestor_svg_cache(cx.no_gc());
+    }
+
+    fn children_changed(&self, cx: &mut JSContext, mutation: &ChildrenMutation) {
+        self.super_type().unwrap().children_changed(cx, mutation);
+        self.invalidate_ancestor_svg_cache(cx.no_gc());
     }
 
     fn attribute_affects_presentational_hints(&self, attr: AttrRef<'_>) -> bool {

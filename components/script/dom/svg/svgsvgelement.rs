@@ -313,7 +313,13 @@ impl SVGSVGElement {
         let _ = root_node.AppendChild(cx, &cloned_node);
     }
 
-    fn invalidate_cached_serialized_subtree_and_rasterization_result(&self, no_gc: &NoGC) {
+    pub(crate) fn invalidate_cached_serialized_subtree_and_rasterization_result(
+        &self,
+        no_gc: &NoGC,
+    ) {
+        if self.cached_serialized_data_url.borrow().is_none() {
+            return;
+        }
         let owner_window = self.owner_window();
         owner_window
             .image_cache()

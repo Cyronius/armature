@@ -151,6 +151,7 @@ pub(crate) struct SVGAnimationElement {
     style_target: MutNullableDom<Element>,
     class_style_effect: Cell<bool>,
     last_style_progress: Cell<Option<f64>>,
+    last_discrete_sample: Cell<Option<usize>>,
     last_style_signature: DomRefCell<Option<String>>,
 }
 
@@ -177,6 +178,7 @@ impl SVGAnimationElement {
             style_target: Default::default(),
             class_style_effect: Cell::new(false),
             last_style_progress: Cell::new(None),
+            last_discrete_sample: Cell::new(None),
             last_style_signature: Default::default(),
         }
     }
@@ -724,10 +726,14 @@ impl SVGAnimationElement {
                     );
             }
             node.dirty(cx.no_gc(), NodeDamage::Style);
+            if let Some(svg_target) = target.downcast::<SVGElement>() {
+                svg_target.invalidate_ancestor_svg_cache(cx.no_gc());
+            }
             self.style_target.set(None);
         }
         self.class_style_effect.set(false);
         self.last_style_progress.set(None);
+        self.last_discrete_sample.set(None);
         *self.last_style_signature.borrow_mut() = None;
     }
 
@@ -963,7 +969,16 @@ impl SVGAnimationElement {
             return;
         }
         let signature = format!("{property}:{values:?}:{additive}:{offsets:?}:{functions:?}");
+        let discrete_sample = if is_set {
+            Some(values.len() - 1)
+        } else if mode == "discrete" {
+            self.sample_discrete_index(values.len())
+        } else {
+            None
+        };
         let target = target.upcast::<Element>();
+        let invalidate_raster = self.style_target.get().as_deref() != Some(target) ||
+            (discrete_sample.is_some() && self.last_discrete_sample.get() != discrete_sample);
         if self.style_target.get().as_deref() == Some(target) &&
             self.last_style_progress.get() == Some(progress) &&
             self.last_style_signature.borrow().as_deref() == Some(signature.as_str())
@@ -1082,7 +1097,14 @@ impl SVGAnimationElement {
         node.dirty(cx.no_gc(), NodeDamage::Style);
         self.style_target.set(Some(target));
         self.last_style_progress.set(Some(progress));
+        self.last_discrete_sample.set(discrete_sample);
         *self.last_style_signature.borrow_mut() = Some(signature);
+        if invalidate_raster {
+            target
+                .downcast::<SVGElement>()
+                .unwrap()
+                .invalidate_ancestor_svg_cache(cx.no_gc());
+        }
     }
 
     fn next_repeat_boundary(&self, begin: f64, through: f64) -> Option<(f64, u32)> {
