@@ -83,12 +83,14 @@ impl SVGGraphicsElementMethods<crate::DomTypeHolder> for SVGGraphicsElement {
     fn GetBBox(
         &self,
         cx: &mut js::context::JSContext,
-        _options: &SVGBoundingBoxOptions,
+        options: &SVGBoundingBoxOptions,
     ) -> DomRoot<DOMRect> {
         // Make sure that the style of the element, which decides what is displayed, is up to
         // date.
         let element = self.upcast::<SVGElement>();
-        let bbox = svggeometry::bounding_box(cx, element).unwrap_or_default();
+        let bbox =
+            svggeometry::bounding_box_with_options(cx, element, options.fill, options.stroke)
+                .unwrap_or_default();
         DOMRect::new(
             cx,
             &self.owner_global(),

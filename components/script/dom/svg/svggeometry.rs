@@ -14,8 +14,8 @@ use cssparser::Parser;
 use html5ever::{LocalName, local_name, ns};
 use js::context::{JSContext, NoGC};
 use kurbo::{
-    Affine, BezPath, Ellipse, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg,
-    Point, Rect, Shape,
+    Affine, BezPath, Cap, Ellipse, Join, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv,
+    PathEl, PathSeg, Point, Rect, Shape, Stroke, StrokeOpts, stroke,
 };
 use style::values::specified::SVGPathData;
 use style::values::specified::box_::Display;
@@ -49,10 +49,97 @@ pub(crate) enum SVGShapeGeometry {
 impl SVGShapeGeometry {
     pub(crate) fn bounding_box(&self) -> Rect {
         match self {
-            Self::Path(path) => path.bounding_box(),
+            Self::Path(path) => {
+                let elements = path.elements();
+                // A move-only path has a position even though kurbo gives it an
+                // empty drawing bounds. An earlier move without a segment is
+                // superseded by the last move.
+                if elements
+                    .iter()
+                    .all(|element| matches!(element, PathEl::MoveTo(_) | PathEl::ClosePath))
+                {
+                    if let Some(PathEl::MoveTo(point)) = elements
+                        .iter()
+                        .rev()
+                        .find(|element| matches!(element, PathEl::MoveTo(_)))
+                    {
+                        return Rect::new(point.x, point.y, point.x, point.y);
+                    }
+                }
+                path.bounding_box()
+            },
             Self::Ellipse(ellipse) => ellipse.bounding_box(),
             Self::Line(line) => line.bounding_box(),
         }
+    }
+
+    fn stroke_bounding_box(&self, element: &SVGElement) -> Option<Rect> {
+        if computed_value(element, "stroke") == "none" {
+            return None;
+        }
+        let width = computed_value(element, "stroke-width")
+            .trim_end_matches("px")
+            .parse::<f64>()
+            .ok()
+            .filter(|width| *width > 0.0 && width.is_finite())?;
+        let cap = match computed_value(element, "stroke-linecap").as_str() {
+            "round" => Cap::Round,
+            "square" => Cap::Square,
+            _ => Cap::Butt,
+        };
+        let join = match computed_value(element, "stroke-linejoin").as_str() {
+            "round" => Join::Round,
+            "bevel" => Join::Bevel,
+            _ => Join::Miter,
+        };
+        let miter_limit = computed_value(element, "stroke-miterlimit")
+            .parse::<f64>()
+            .unwrap_or(4.0);
+        let style = Stroke::new(width)
+            .with_caps(cap)
+            .with_join(join)
+            .with_miter_limit(miter_limit);
+        let path = match self {
+            Self::Path(path) => path.clone(),
+            Self::Ellipse(ellipse) => ellipse.to_path(ACCURACY),
+            Self::Line(line) => {
+                let mut path = BezPath::new();
+                path.move_to(line.p0);
+                path.line_to(line.p1);
+                path
+            },
+        };
+        let outline = stroke(
+            path.elements().iter().copied(),
+            &style,
+            &StrokeOpts::default(),
+            ACCURACY,
+        );
+        Some(if outline.elements().is_empty() {
+            let bbox = self.bounding_box();
+            if cap != Cap::Butt &&
+                path.elements().iter().any(|element| {
+                    matches!(
+                        element,
+                        PathEl::LineTo(_) | PathEl::QuadTo(_, _) | PathEl::CurveTo(_, _, _)
+                    )
+                }) &&
+                bbox.width() == 0.0 &&
+                bbox.height() == 0.0
+            {
+                let radius = width / 2.0;
+                Rect::new(
+                    bbox.x0 - radius,
+                    bbox.y0 - radius,
+                    bbox.x1 + radius,
+                    bbox.y1 + radius,
+                )
+            } else {
+                bbox
+            }
+        } else {
+            outline.bounding_box()
+        })
     }
 
     pub(crate) fn total_length(&self) -> f64 {
@@ -644,15 +731,48 @@ fn is_display_none(element: &SVGElement) -> bool {
 ///
 /// <https://svgwg.org/svg2-draft/coords.html#BoundingBoxes>
 pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<Rect> {
+    bounding_box_with_options(cx, element, true, false)
+}
+
+pub(crate) fn bounding_box_with_options(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    fill: bool,
+    stroke: bool,
+) -> Option<Rect> {
     if let Some(geometry) = shape_geometry(cx, element) {
         if matches!(&geometry, SVGShapeGeometry::Path(path) if path.elements().is_empty()) {
             return None;
         }
-        return Some(geometry.bounding_box());
+        return match (fill, stroke) {
+            (false, false) => None,
+            (true, false) => Some(geometry.bounding_box()),
+            (false, true) => geometry.stroke_bounding_box(element),
+            (true, true) => Some(geometry.stroke_bounding_box(element).map_or_else(
+                || geometry.bounding_box(),
+                |stroke| stroke.union(geometry.bounding_box()),
+            )),
+        };
     }
     let local_name = element.upcast::<Element>().local_name().clone();
     match local_name {
         local_name!("image") => {
+            let image = element.downcast::<SVGImageElement>()?;
+            let has_source = image
+                .upcast::<Element>()
+                .get_attribute_string_value(&local_name!("href"))
+                .or_else(|| {
+                    image
+                        .upcast::<Element>()
+                        .get_attribute_string_value_with_namespace(
+                            &ns!(xlink),
+                            &local_name!("href"),
+                        )
+                })
+                .is_some_and(|href| !href.is_empty());
+            if !has_source {
+                return None;
+            }
             let x = length(
                 cx,
                 element,
@@ -661,6 +781,20 @@ pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<R
             );
             let y = length(cx, element, local_name!("y"), SVGLengthDirection::Vertical);
             let (width, height) = image_size(cx, element);
+            if width <= 0.0 || height <= 0.0 {
+                return None;
+            }
+            Some(Rect::new(x, y, x + width, y + height))
+        },
+        local_name!("foreignObject") => {
+            use SVGLengthDirection::{Horizontal, Vertical};
+            let width = length(cx, element, local_name!("width"), Horizontal);
+            let height = length(cx, element, local_name!("height"), Vertical);
+            if width <= 0.0 || height <= 0.0 {
+                return None;
+            }
+            let x = length(cx, element, local_name!("x"), Horizontal);
+            let y = length(cx, element, local_name!("y"), Vertical);
             Some(Rect::new(x, y, x + width, y + height))
         },
         local_name!("text") | local_name!("tspan") | local_name!("textPath") => {
@@ -691,7 +825,7 @@ pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<R
             );
             let y = length(cx, element, local_name!("y"), SVGLengthDirection::Vertical);
             let referenced = referenced_element(cx.no_gc(), element)?;
-            let bbox = bounding_box(cx, &referenced)?;
+            let bbox = bounding_box_with_options(cx, &referenced, fill, stroke)?;
             Some(
                 (Affine::translate((x, y)) * element_transform(cx, &referenced))
                     .transform_rect_bbox(bbox),
@@ -713,7 +847,7 @@ pub(crate) fn bounding_box(cx: &mut JSContext, element: &SVGElement) -> Option<R
                 if is_display_none(&child) || !child.passes_conditional_processing() {
                     continue;
                 }
-                let Some(bbox) = bounding_box(cx, &child) else {
+                let Some(bbox) = bounding_box_with_options(cx, &child, fill, stroke) else {
                     continue;
                 };
                 let bbox = element_transform(cx, &child).transform_rect_bbox(bbox);
