@@ -25,12 +25,13 @@ use servo_base::text::Utf32CodeUnits;
 use servo_geometry::{FastLayoutTransform, au_rect_to_f32_rect, f32_rect_to_au_rect};
 use servo_url::ServoUrl;
 use style::Zero;
+use style::animation::AnimationSetKey;
 use style::computed_values::display::T as Display;
 use style::computed_values::position::T as Position;
 use style::computed_values::visibility::T as Visibility;
 use style::computed_values::white_space_collapse::T as WhiteSpaceCollapseValue;
 use style::context::{QuirksMode, SharedStyleContext, StyleContext, ThreadLocalStyleContext};
-use style::dom::{NodeInfo, OpaqueNode};
+use style::dom::{NodeInfo, OpaqueNode, TElement, TNode};
 use style::properties::style_structs::Font;
 use style::properties::{
     ComputedValues, Importance, LonghandId, PropertyDeclarationBlock, PropertyDeclarationId,
@@ -38,6 +39,7 @@ use style::properties::{
 };
 use style::selector_parser::PseudoElement;
 use style::shared_lock::SharedRwLock;
+use style::style_resolver::{PseudoElementResolution, StyleResolverForElement};
 use style::stylesheets::{CssRuleType, Origin, UrlExtraData};
 use style::stylist::RuleInclusion;
 use style::traversal::resolve_style;
@@ -578,14 +580,47 @@ pub fn process_resolved_style_request_for_unstyled_node(
         thread_local: &mut tlc,
     };
 
-    let element = node.as_element().unwrap();
-    let styles = resolve_style(
+    let element = unsafe { node.as_element().unwrap().dangerous_style_element() };
+    let mut styles = resolve_style(
         &mut context,
-        unsafe { element.dangerous_style_element() },
+        element,
         RuleInclusion::All,
         pseudo.as_ref(),
         None,
     );
+    // A display:none descendant does not participate in normal style traversal.
+    // Resolve its script animation keyframes here so the second style query can
+    // include their sampled declarations (including SMIL effects).
+    if element.may_have_animations() {
+        let key = AnimationSetKey::new_for_non_pseudo(element.as_node().opaque());
+        let animation_set = context.shared.animations.sets.write().remove(&key);
+        if let Some(mut animation_set) = animation_set {
+            if !animation_set.script_animations.is_empty() {
+                let shared = context.shared;
+                let mut resolver = StyleResolverForElement::new(
+                    element,
+                    &mut context,
+                    RuleInclusion::All,
+                    PseudoElementResolution::IfApplicable,
+                );
+                animation_set.resolve_script_animations(
+                    element,
+                    shared,
+                    styles.primary(),
+                    &mut resolver,
+                );
+                shared.animations.sets.write().insert(key, animation_set);
+                styles = resolve_style(&mut context, element, RuleInclusion::All, None, None);
+            } else {
+                context
+                    .shared
+                    .animations
+                    .sets
+                    .write()
+                    .insert(key, animation_set);
+            }
+        }
+    }
     let style = styles.primary();
     let longhand_id = match *property {
         PropertyId::NonCustom(id) => match id.longhand_or_shorthand() {

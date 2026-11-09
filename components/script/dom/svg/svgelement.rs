@@ -599,6 +599,10 @@ impl SVGElement {
     }
 
     pub(crate) fn invalidate_ancestor_svg_cache(&self, no_gc: &NoGC) {
+        self.invalidate_svg_caches(no_gc, false);
+    }
+
+    fn invalidate_svg_caches(&self, no_gc: &NoGC, id_changed: bool) {
         let node = self.upcast::<Node>();
         if !node.is_connected() {
             return;
@@ -610,6 +614,42 @@ impl SVGElement {
             .last()
         {
             root.invalidate_cached_serialized_subtree_and_rasterization_result(no_gc);
+        }
+
+        // A different SVG root may have copied this element or one of its
+        // ancestors through `<use>`. Refresh that root when the source changes.
+        let mut ids = Vec::new();
+        if let Some(id) = self
+            .as_element()
+            .get_attribute_string_value(&local_name!("id"))
+        {
+            ids.push(String::from(id));
+        }
+        for ancestor in node
+            .ancestors()
+            .take_while(|ancestor| ancestor.is::<SVGElement>())
+        {
+            if let Some(element) = ancestor.downcast::<Element>() &&
+                let Some(id) = element.get_attribute_string_value(&local_name!("id"))
+            {
+                ids.push(String::from(id));
+            }
+        }
+        if ids.is_empty() && !id_changed {
+            return;
+        }
+        for root in self
+            .owner_document()
+            .upcast::<Node>()
+            .traverse_preorder(ShadowIncluding::No)
+            .filter_map(DomRoot::downcast::<SVGSVGElement>)
+        {
+            if root.upcast::<SVGElement>().viewport_element().is_none() &&
+                (id_changed && root.has_external_references() ||
+                    root.depends_on_external_ids(&ids))
+            {
+                root.invalidate_cached_serialized_subtree_and_rasterization_result(no_gc);
+            }
         }
     }
 }
@@ -640,7 +680,7 @@ impl VirtualMethods for SVGElement {
                 },
             }
         }
-        self.invalidate_ancestor_svg_cache(cx.no_gc());
+        self.invalidate_svg_caches(cx.no_gc(), attr.local_name() == &local_name!("id"));
     }
 
     fn children_changed(&self, cx: &mut JSContext, mutation: &ChildrenMutation) {

@@ -72,6 +72,9 @@ pub(crate) struct SVGSVGElement {
     // on each layout and must be invalidated when the subtree changes.
     #[no_trace]
     cached_serialized_data_url: AtomicRefCell<Option<Result<ServoUrl, ()>>>,
+    /// Same-document IDs imported from another SVG root by this rendering copy.
+    #[no_trace]
+    cached_external_reference_ids: AtomicRefCell<Vec<String>>,
     /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__currentScale>
     current_scale: Cell<f32>,
     /// <https://svgwg.org/svg2-draft/struct.html#__svg__SVGSVGElement__currentTranslate>
@@ -122,6 +125,7 @@ impl SVGSVGElement {
             svggraphicselement: SVGGraphicsElement::new_inherited(local_name, prefix, document),
             uuid: Uuid::new_v4(),
             cached_serialized_data_url: Default::default(),
+            cached_external_reference_ids: Default::default(),
             current_scale: Cell::new(1.0),
             current_translate: Default::default(),
             animation_time_origin: Cell::new(document.current_animation_timeline_value()),
@@ -148,6 +152,7 @@ impl SVGSVGElement {
 
     pub(crate) fn serialize_and_cache_subtree(&self, cx: &mut js::context::JSContext) {
         let _suppress_image_requests = SVGImageRequestSuppression::new();
+        self.cached_external_reference_ids.borrow_mut().clear();
         let document_fragment = self.owner_document().CreateDocumentFragment(cx);
         let cloned_node = Node::clone(
             cx,
@@ -166,13 +171,36 @@ impl SVGSVGElement {
             return;
         }
 
-        // The image renderer does not sample SMIL. Apply sampled effects to the
-        // serialized copy, leaving the live element's attributes alone.
+        self.apply_sampled_effects_to_copy(cx, self.upcast(), &cloned_node);
+
+        self.process_use_elements(cx, &cloned_node);
+
+        let Ok(xml_source) = cloned_node.xml_serialize(false) else {
+            *self.cached_serialized_data_url.borrow_mut() = Some(Err(()));
+            return;
+        };
+
+        let xml_source: String = xml_source.into();
+        let base64_encoded_source = base64::engine::general_purpose::STANDARD.encode(xml_source);
+        let data_url = format!("data:image/svg+xml;base64,{base64_encoded_source}");
+        match ServoUrl::parse(&data_url) {
+            Ok(url) => *self.cached_serialized_data_url.borrow_mut() = Some(Ok(url)),
+            Err(error) => error!("Unable to parse serialized SVG data url: {error}"),
+        };
+    }
+
+    /// The image renderer does not sample SMIL. Apply sampled effects to each
+    /// rendering copy, including definitions imported through `<use>`.
+    fn apply_sampled_effects_to_copy(
+        &self,
+        cx: &mut JSContext,
+        source_root: &Node,
+        clone_root: &Node,
+    ) {
         let document = self.owner_document();
-        for (source, clone) in self
-            .upcast::<Node>()
+        for (source, clone) in source_root
             .traverse_preorder(ShadowIncluding::No)
-            .zip(cloned_node.traverse_preorder(ShadowIncluding::No))
+            .zip(clone_root.traverse_preorder(ShadowIncluding::No))
         {
             let (Some(source), Some(clone)) = (
                 source.downcast::<SVGElement>(),
@@ -283,21 +311,6 @@ impl SVGSVGElement {
                 clone.set_svg_attribute(cx, &local_name!("style"), style);
             }
         }
-
-        self.process_use_elements(cx, &cloned_node);
-
-        let Ok(xml_source) = cloned_node.xml_serialize(false) else {
-            *self.cached_serialized_data_url.borrow_mut() = Some(Err(()));
-            return;
-        };
-
-        let xml_source: String = xml_source.into();
-        let base64_encoded_source = base64::engine::general_purpose::STANDARD.encode(xml_source);
-        let data_url = format!("data:image/svg+xml;base64,{base64_encoded_source}");
-        match ServoUrl::parse(&data_url) {
-            Ok(url) => *self.cached_serialized_data_url.borrow_mut() = Some(Ok(url)),
-            Err(error) => error!("Unable to parse serialized SVG data url: {error}"),
-        };
     }
 
     fn process_use_elements(&self, cx: &mut JSContext, root_node: &Node) {
@@ -332,7 +345,7 @@ impl SVGSVGElement {
         };
 
         let document = self.upcast::<Node>().owner_doc();
-        let Some(referenced_element) = document.GetElementById(cx, id_string) else {
+        let Some(referenced_element) = document.GetElementById(cx, id_string.clone()) else {
             return;
         };
         let referenced_node = referenced_element.upcast::<Node>();
@@ -353,6 +366,9 @@ impl SVGSVGElement {
             return;
         };
 
+        self.cached_external_reference_ids
+            .borrow_mut()
+            .push(String::from(id_string));
         let cloned_node = Node::clone(
             cx,
             referenced_node,
@@ -360,7 +376,19 @@ impl SVGSVGElement {
             CloneChildrenFlag::CloneChildren,
             None,
         );
+        self.apply_sampled_effects_to_copy(cx, referenced_node, &cloned_node);
         let _ = root_node.AppendChild(cx, &cloned_node);
+    }
+
+    pub(crate) fn depends_on_external_ids(&self, ids: &[String]) -> bool {
+        self.cached_external_reference_ids
+            .borrow()
+            .iter()
+            .any(|reference| ids.contains(reference))
+    }
+
+    pub(crate) fn has_external_references(&self) -> bool {
+        !self.cached_external_reference_ids.borrow().is_empty()
     }
 
     pub(crate) fn invalidate_cached_serialized_subtree_and_rasterization_result(
@@ -384,6 +412,7 @@ impl SVGSVGElement {
         }
 
         *self.cached_serialized_data_url.borrow_mut() = None;
+        self.cached_external_reference_ids.borrow_mut().clear();
         self.upcast::<Node>().dirty(no_gc, NodeDamage::Other);
     }
 }
