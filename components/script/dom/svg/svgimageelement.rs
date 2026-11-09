@@ -12,18 +12,23 @@ use net_traits::image_cache::{
     Image, ImageCacheResult, ImageLoadListener, ImageOrMetadataAvailable, ImageResponse,
     VectorImageNaturalDimensions,
 };
-use net_traits::request::InternalRequest;
+use net_traits::request::Destination;
+use pixels::{CorsStatus, Snapshot};
 use script_bindings::cell::DomRefCell;
 use style::attr::AttrValue;
 
 use crate::dom::bindings::codegen::Bindings::SVGImageElementBinding::SVGImageElementMethods;
+use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::element::attributes::storage::AttrRef;
-use crate::dom::element::{AttributeMutation, Element, reflect_fetch_priority_attribute};
+use crate::dom::element::{
+    AttributeMutation, Element, cors_setting_for_element, referrer_policy_for_element,
+    reflect_cross_origin_attribute, reflect_fetch_priority_attribute, set_cross_origin_attribute,
+};
 use crate::dom::event::eventtarget::EventTarget;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{BindContext, Node, NodeTraits};
@@ -34,10 +39,31 @@ use crate::dom::svg::svgtypes::{
 };
 use crate::dom::window::layout_image::fetch_image_into_cache;
 use crate::event_loop::document_loader::{LoadBlocker, LoadType};
+use crate::fetch::fetch::{RequestWithGlobalScope, create_a_potential_cors_request};
 
 /// <https://svgwg.org/svg2-draft/embedded.html#Placement>
 const DEFAULT_WIDTH: u32 = 300;
 const DEFAULT_HEIGHT: u32 = 150;
+
+thread_local! {
+    static SUPPRESS_IMAGE_REQUESTS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// SVG rendering clones the live subtree into its document. Those private copies must not
+/// start image requests or fire image events.
+pub(crate) struct SVGImageRequestSuppression(bool);
+
+impl SVGImageRequestSuppression {
+    pub(crate) fn new() -> Self {
+        Self(SUPPRESS_IMAGE_REQUESTS.with(|suppressed| suppressed.replace(true)))
+    }
+}
+
+impl Drop for SVGImageRequestSuppression {
+    fn drop(&mut self) {
+        SUPPRESS_IMAGE_REQUESTS.with(|suppressed| suppressed.set(self.0));
+    }
+}
 
 #[dom_struct]
 pub(crate) struct SVGImageElement {
@@ -95,16 +121,68 @@ impl SVGImageElement {
             })
     }
 
+    fn cached_image(&self) -> Option<Image> {
+        let href = self.image_href()?;
+        let node = self.upcast::<Node>();
+        let url = node.owner_doc().encoding_parse_a_url(&href).ok()?;
+        let window = self.owner_window();
+        window.image_cache().get_image(
+            url,
+            window.origin().immutable().clone(),
+            cors_setting_for_element(self.upcast()),
+        )
+    }
+
+    pub(crate) fn get_raster_image_data(&self) -> Option<Snapshot> {
+        self.cached_image()?
+            .as_raster_image()
+            .map(|image| image.as_snapshot())
+    }
+
+    pub(crate) fn origin_is_clean(&self) -> bool {
+        self.cached_image()
+            .is_some_and(|image| image.cors_status() == CorsStatus::Safe)
+    }
+
+    pub(crate) fn is_usable(&self) -> Fallible<bool> {
+        let Some(href) = self.image_href().filter(|href| !href.is_empty()) else {
+            return Ok(false);
+        };
+        let node = self.upcast::<Node>();
+        let Ok(url) = node.owner_doc().encoding_parse_a_url(&href) else {
+            return Err(Error::InvalidState(Some("SVG image URL is invalid".into())));
+        };
+        let window = self.owner_window();
+        let status = window.image_cache().get_cached_image_status(
+            url,
+            window.origin().immutable(),
+            cors_setting_for_element(self.upcast()),
+        );
+        match status {
+            ImageCacheResult::FailedToLoadOrDecode => Err(Error::InvalidState(Some(
+                "SVG image failed to load or decode".into(),
+            ))),
+            ImageCacheResult::Available(ImageOrMetadataAvailable::ImageAvailable {
+                image, ..
+            }) => {
+                let metadata = image.metadata();
+                Ok(metadata.width > 0 && metadata.height > 0)
+            },
+            _ => Ok(false),
+        }
+    }
+
     /// The natural dimensions of the current resource, including available raster metadata.
     pub(crate) fn natural_dimensions(&self) -> Option<VectorImageNaturalDimensions> {
         let href = self.image_href()?;
         let node = self.upcast::<Node>();
         let url = node.owner_doc().encoding_parse_a_url(&href).ok()?;
         let window = self.owner_window();
-        let cache_result =
-            window
-                .image_cache()
-                .get_cached_image_status(url, window.origin().immutable(), None);
+        let cache_result = window.image_cache().get_cached_image_status(
+            url,
+            window.origin().immutable(),
+            cors_setting_for_element(self.upcast()),
+        );
         let dimensions = |width: u32, height: u32| {
             let width = width as f32;
             let height = height as f32;
@@ -142,18 +220,17 @@ impl SVGImageElement {
     /// Only the events come from this request: the image is still drawn by the renderer of the
     /// enclosing `svg` element.
     fn process_image_resource(&self, cx: &mut JSContext) {
+        if SUPPRESS_IMAGE_REQUESTS.with(Cell::get) {
+            return;
+        }
         // Responses to any earlier request are no longer relevant.
         let generation = self.request_generation.get().wrapping_add(1);
         self.request_generation.set(generation);
         LoadBlocker::terminate(cx, &self.load_blocker);
 
-        // Only connected elements in a document with a browsing context start a fetch (a request
-        // that has started still fires its event if the element is removed). The
-        // copies of the subtree that the enclosing `svg` element makes to render it are not
-        // connected, so they do not fetch or fire events (their `onload` attributes would run
-        // again). Browsers also fetch for elements that are not connected, which this does not.
+        // Detached elements also fetch, as HTML images do. Rendering copies are suppressed above.
         let node = self.upcast::<Node>();
-        if !node.is_connected() || !node.owner_doc().has_browsing_context() {
+        if !node.owner_doc().has_browsing_context() {
             return;
         }
 
@@ -168,13 +245,17 @@ impl SVGImageElement {
         };
 
         let window = self.owner_window();
+        let cors_setting = cors_setting_for_element(self.upcast());
         *self.load_blocker.safe_borrow_mut(cx.no_gc()) = Some(LoadBlocker::new(
             &node.owner_doc(),
             LoadType::Image(url.clone()),
         ));
         let image_cache = window.image_cache();
-        let cache_result =
-            image_cache.get_cached_image_status(url.clone(), window.origin().immutable(), None);
+        let cache_result = image_cache.get_cached_image_status(
+            url.clone(),
+            window.origin().immutable(),
+            cors_setting,
+        );
         let id = match cache_result {
             ImageCacheResult::Available(ImageOrMetadataAvailable::ImageAvailable { .. }) => {
                 self.queue_image_load_event(generation, ImageLoadOutcome::Loaded);
@@ -187,13 +268,24 @@ impl SVGImageElement {
             ImageCacheResult::Available(ImageOrMetadataAvailable::MetadataAvailable(_, id)) |
             ImageCacheResult::Pending(id) => id,
             ImageCacheResult::ReadyForRequest(id) => {
+                let global = node.owner_global();
+                let request = create_a_potential_cors_request(
+                    Some(window.webview_id()),
+                    url.clone(),
+                    Destination::Image,
+                    cors_setting,
+                    None,
+                    global.get_referrer(),
+                )
+                .with_global_scope(&global)
+                .referrer_policy(referrer_policy_for_element(self.upcast()));
                 fetch_image_into_cache(
                     url,
                     node,
                     id,
-                    InternalRequest::No,
                     image_cache.clone(),
                     InitiatorType::LocalName(local_name!("image")),
+                    request,
                 );
                 id
             },
@@ -250,7 +342,8 @@ impl VirtualMethods for SVGImageElement {
             .unwrap()
             .attribute_mutated(cx, attr, mutation);
         if attr.local_name() == &local_name!("href") &&
-            matches!(attr.namespace(), &ns!() | &ns!(xlink))
+            matches!(attr.namespace(), &ns!() | &ns!(xlink)) ||
+            attr.local_name() == &local_name!("crossorigin") && *attr.namespace() == ns!()
         {
             self.process_image_resource(cx);
         }
@@ -297,6 +390,16 @@ impl SVGImageElementMethods<crate::DomTypeHolder> for SVGImageElement {
 
     // <https://svgwg.org/svg2-draft/types.html#__svg__SVGURIReference__href>
     svg_uri_reference!();
+
+    /// <https://svgwg.org/svg2-draft/embedded.html#ImageElementCrossoriginAttribute>
+    fn GetCrossOrigin(&self) -> Option<DOMString> {
+        reflect_cross_origin_attribute(self.upcast::<Element>())
+    }
+
+    /// <https://svgwg.org/svg2-draft/embedded.html#ImageElementCrossoriginAttribute>
+    fn SetCrossOrigin(&self, cx: &mut JSContext, value: Option<DOMString>) {
+        set_cross_origin_attribute(cx, self.upcast::<Element>(), value);
+    }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-img-fetchpriority>
     fn FetchPriority(&self) -> DOMString {

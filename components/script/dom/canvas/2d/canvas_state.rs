@@ -76,7 +76,6 @@ use crate::dom::dommatrixreadonly::dommatrix2dinit_to_matrix;
 use crate::dom::element::Element;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::html::htmlcanvaselement::HTMLCanvasElement;
-use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmlvideoelement::HTMLVideoElement;
 use crate::dom::imagebitmap::ImageBitmap;
 use crate::dom::imagedata::ImageData;
@@ -454,6 +453,7 @@ impl CanvasState {
             CanvasImageSource::HTMLImageElement(image) => {
                 image.same_origin(&GlobalScope::entry().origin())
             },
+            CanvasImageSource::SVGImageElement(image) => image.origin_is_clean(),
             CanvasImageSource::HTMLVideoElement(video) => video.origin_is_clean(),
             CanvasImageSource::HTMLCanvasElement(canvas) => canvas.origin_is_clean(),
             CanvasImageSource::ImageBitmap(bitmap) => bitmap.origin_is_clean(),
@@ -553,7 +553,18 @@ impl CanvasState {
                     return Ok(());
                 }
 
-                self.draw_html_image_element(image, htmlcanvas, sx, sy, sw, sh, dx, dy, dw, dh);
+                if let Some(snapshot) = image.get_raster_image_data() {
+                    self.draw_raster_image(snapshot, htmlcanvas, sx, sy, sw, sh, dx, dy, dw, dh);
+                }
+                Ok(())
+            },
+            CanvasImageSource::SVGImageElement(ref image) => {
+                if !image.is_usable()? {
+                    return Ok(());
+                }
+                if let Some(snapshot) = image.get_raster_image_data() {
+                    self.draw_raster_image(snapshot, htmlcanvas, sx, sy, sw, sh, dx, dy, dw, dh);
+                }
                 Ok(())
             },
             CanvasImageSource::HTMLVideoElement(ref video) => {
@@ -610,9 +621,9 @@ impl CanvasState {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-drawimage>
     #[expect(clippy::too_many_arguments)]
-    fn draw_html_image_element(
+    fn draw_raster_image(
         &self,
-        image: &HTMLImageElement,
+        snapshot: Snapshot,
         canvas: Option<&HTMLCanvasElement>,
         sx: f64,
         sy: f64,
@@ -623,10 +634,6 @@ impl CanvasState {
         dw: Option<f64>,
         dh: Option<f64>,
     ) {
-        let Some(snapshot) = image.get_raster_image_data() else {
-            return;
-        };
-
         // Step 4. Establish the source and destination rectangles.
         let image_size = snapshot.size();
         let dw = dw.unwrap_or(image_size.width as f64);
@@ -1394,6 +1401,16 @@ impl CanvasState {
                 image
                     .get_raster_image_data()
                     .ok_or(Error::InvalidState(None))?
+            },
+            CanvasImageSource::SVGImageElement(ref image) => {
+                if !image.is_usable()? {
+                    return Ok(None);
+                }
+                image
+                    .get_raster_image_data()
+                    .ok_or(Error::InvalidState(Some(
+                        "SVG image has no raster data".into(),
+                    )))?
             },
             CanvasImageSource::HTMLVideoElement(ref video) => {
                 // <https://html.spec.whatwg.org/multipage/#check-the-usability-of-the-image-argument>

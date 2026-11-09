@@ -52,6 +52,7 @@ use crate::dom::svg::svgangle::SVGAngle;
 use crate::dom::svg::svgelement::{PRESENTATION_ATTRIBUTES, SVGElement};
 use crate::dom::svg::svggeometry;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
+use crate::dom::svg::svgimageelement::SVGImageRequestSuppression;
 use crate::dom::svg::svglength::SVGLength;
 use crate::dom::svg::svgnumber::SVGNumber;
 use crate::dom::svg::svgtransform::{SVGTransform, SVGTransformValue};
@@ -144,6 +145,7 @@ impl SVGSVGElement {
     }
 
     pub(crate) fn serialize_and_cache_subtree(&self, cx: &mut js::context::JSContext) {
+        let _suppress_image_requests = SVGImageRequestSuppression::new();
         let document_fragment = self.owner_document().CreateDocumentFragment(cx);
         let cloned_node = Node::clone(
             cx,

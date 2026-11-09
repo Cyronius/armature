@@ -4,9 +4,7 @@
 
 // https://html.spec.whatwg.org/multipage/#2dcontext
 
-// typedef (HTMLImageElement or
-//          SVGImageElement) HTMLOrSVGImageElement;
-typedef HTMLImageElement HTMLOrSVGImageElement;
+typedef (HTMLImageElement or SVGImageElement) HTMLOrSVGImageElement;
 
 typedef (HTMLOrSVGImageElement or
          HTMLVideoElement or

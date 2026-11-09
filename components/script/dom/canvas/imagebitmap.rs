@@ -382,6 +382,36 @@ impl ImageBitmap {
                 // to resolve promise with imageBitmap.
                 fullfill_promise_on_bitmap_task_source(&p, &image_bitmap);
             },
+            ImageBitmapSource::SVGImageElement(ref image) => {
+                if !image.is_usable().is_ok_and(|u| u) {
+                    p.reject_error(
+                        realm,
+                        Error::InvalidState(Some("SVG image is not usable".into())),
+                    );
+                    return p;
+                }
+
+                let Some(snapshot) = image.get_raster_image_data() else {
+                    p.reject_error(
+                        realm,
+                        Error::InvalidState(Some("SVG image has no raster data".into())),
+                    );
+                    return p;
+                };
+                let Some(bitmap_data) =
+                    ImageBitmap::crop_and_transform_bitmap_data(snapshot, sx, sy, sw, sh, options)
+                else {
+                    p.reject_error(
+                        realm,
+                        Error::InvalidState(Some("SVG image could not be cropped".into())),
+                    );
+                    return p;
+                };
+
+                let image_bitmap = Self::new(realm, global_scope, bitmap_data);
+                image_bitmap.set_origin_clean(image.origin_is_clean());
+                fullfill_promise_on_bitmap_task_source(&p, &image_bitmap);
+            },
             ImageBitmapSource::HTMLVideoElement(ref video) => {
                 // <https://html.spec.whatwg.org/multipage/#check-the-usability-of-the-image-argument>
                 if !video.is_usable() {

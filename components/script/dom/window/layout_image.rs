@@ -30,7 +30,7 @@ use crate::fetch::network_listener::{self, FetchResponseListener, ResourceTiming
 struct LayoutImageContext {
     id: PendingImageId,
     cache: Arc<dyn ImageCache>,
-    doc: Trusted<Document>,
+    doc: Option<Trusted<Document>>,
     url: ServoUrl,
     initiator_type: InitiatorType,
 }
@@ -76,7 +76,9 @@ impl FetchResponseListener for LayoutImageContext {
             FetchResponseMsg::ProcessResponseEOF(request_id, response.clone(), timing.clone()),
         );
         network_listener::submit_timing(cx, global, &self, &response, &timing);
-        self.doc.root().finish_load(LoadType::Image(self.url), cx);
+        if let Some(doc) = self.doc {
+            doc.root().finish_load(LoadType::Image(self.url), cx);
+        }
     }
 
     fn process_csp_violations(
@@ -124,26 +126,24 @@ pub(crate) fn fetch_image_for_layout(
     );
 }
 
-/// Fetch `url` as an image for `node` and hand the response to the image cache under `id`. The
-/// fetch delays the load event of the node's document. `initiator_type` is the initiator type that
-/// the resource timing entry reports.
+/// Fetch an SVG image into the cache. The caller owns the document load blocker.
 pub(crate) fn fetch_image_into_cache(
     url: ServoUrl,
     node: &Node,
     id: PendingImageId,
-    is_internal_request: InternalRequest,
     cache: Arc<dyn ImageCache>,
     initiator_type: InitiatorType,
+    request: RequestBuilder,
 ) {
-    fetch_image_into_cache_with_referrer(
-        url,
-        None,
-        node,
+    let document = node.owner_document();
+    let context = LayoutImageContext {
         id,
-        is_internal_request,
         cache,
+        doc: None,
+        url,
         initiator_type,
-    );
+    };
+    document.fetch_background(request, context);
 }
 
 fn fetch_image_into_cache_with_referrer(
@@ -159,7 +159,7 @@ fn fetch_image_into_cache_with_referrer(
     let context = LayoutImageContext {
         id,
         cache,
-        doc: Trusted::new(&document),
+        doc: Some(Trusted::new(&document)),
         url: url.clone(),
         initiator_type,
     };
