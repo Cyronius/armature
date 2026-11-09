@@ -1677,6 +1677,14 @@ animation_type = "none"
 rule_types_allowed = ["page"]
 affects = "layout"
 
+# Armature (AS-510): Build the SVG path-length geometry property for Servo.
+[path-length]
+type = "svg::PathLength"
+initial = "computed::svg::PathLength::None"
+struct = "svg"
+spec = "https://svgwg.org/svg2-draft/paths.html#PathLengthProperty"
+affects = "paint"
+
 [paint-order]
 type = "SVGPaintOrder"
 initial = "computed::SVGPaintOrder::normal()"

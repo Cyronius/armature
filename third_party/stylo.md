@@ -349,3 +349,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   discrete display value instead of dropping its declaration, while CSS animation keyframes keep
   their existing display handling. Affects `svg/animations/slider-switch.html`.
 - Upstream: Could go upstream as part of script animation support.
+
+### AS-510: Add the CSS path-length property
+- Files: `style/properties/longhands.toml`, `style/values/generics/svg.rs`, `style/values/specified/svg.rs`, `style/values/computed/svg.rs`
+- Why: SVG 2 maps `pathLength` to an animatable CSS `path-length` property. Parse `none` or a
+  non-negative length, compute and serialize it, and interpolate lengths. Affects
+  `svg/path/parsing/path-length-*.tentative.svg`, `svg/path/animations/path-length-interpolation.tentative.html`,
+  and `svg/animations/animate-pathLength.tentative.html`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

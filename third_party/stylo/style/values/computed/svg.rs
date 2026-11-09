@@ -7,7 +7,7 @@
 use crate::Zero;
 use crate::values::computed::color::Color;
 use crate::values::computed::url::ComputedUrl;
-use crate::values::computed::{LengthPercentage, NonNegativeLengthPercentage, Opacity};
+use crate::values::computed::{LengthPercentage, NonNegativeLength, NonNegativeLengthPercentage, Opacity};
 use crate::values::generics::svg as generic;
 pub use crate::values::specified::svg::{
     ColorInterpolation, MaskComposite, MaskMode, MaskType, ShapeRendering, StrokeLinecap,
@@ -15,6 +15,10 @@ pub use crate::values::specified::svg::{
 };
 
 pub use crate::values::specified::{DProperty, MozContextProperties, SVGPaintOrder, VectorEffect};
+
+// Armature (AS-510): Keep path-length in the computed SVG geometry style.
+/// The computed value of the `path-length` property.
+pub type PathLength = generic::PathLength<NonNegativeLength>;
 
 /// Computed SVG Paint value
 pub type SVGPaint = generic::GenericSVGPaint<Color, ComputedUrl>;

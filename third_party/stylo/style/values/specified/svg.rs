@@ -13,7 +13,7 @@ use crate::values::specified::LengthPercentage;
 use crate::values::specified::SVGPathData;
 use crate::values::specified::color::Color;
 use crate::values::specified::url::SpecifiedUrl;
-use crate::values::specified::{NonNegativeLengthPercentage, Opacity};
+use crate::values::specified::{NonNegativeLength, NonNegativeLengthPercentage, Opacity};
 use cssparser::{Parser, Token};
 use std::fmt::{self, Write};
 use style_traits::{CommaWithSpace, CssWriter, ParseError, Separator};
@@ -21,6 +21,19 @@ use style_traits::{StyleParseErrorKind, ToCss};
 
 /// Specified SVG Paint value
 pub type SVGPaint = generic::GenericSVGPaint<Color, SpecifiedUrl>;
+
+// Armature (AS-510): Parse none or a non-negative CSS length for path-length.
+/// The specified value of the `path-length` property.
+pub type PathLength = generic::PathLength<NonNegativeLength>;
+
+impl Parse for PathLength {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
+        if input.try_parse(|input| input.expect_ident_matching("none")).is_ok() {
+            return Ok(Self::None);
+        }
+        NonNegativeLength::parse(context, input).map(Self::Length)
+    }
+}
 
 /// <length> | <percentage> | <number> | context-value
 pub type SVGLength = generic::GenericSVGLength<LengthPercentage>;

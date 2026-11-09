@@ -9,6 +9,35 @@ use crate::parser::{Parse, ParserContext};
 use cssparser::Parser;
 use style_traits::ParseError;
 
+// Armature (AS-510): Represent the CSS path-length property's keyword and length values.
+/// An author-specified path length, or no calibration.
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(C, u8)]
+pub enum GenericPathLength<L> {
+    /// Use the user agent's own computed path length.
+    #[animation(error)]
+    None,
+    /// Calibrate distance calculations with this length.
+    Length(L),
+}
+
+pub use self::GenericPathLength as PathLength;
+
 /// The fallback of an SVG paint server value.
 #[derive(
     Animate,
