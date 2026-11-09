@@ -252,7 +252,9 @@ Notes on the numbers:
   mouse events) finds the shape under the point inside an `svg` element, which layout treats as one box. The SVG
   area went from 36.5% to 49.2% before hit testing (the table above was measured earlier still, at 46.7%), and hit
   testing, with the SVG values of `pointer-events` that Stylo now builds for Servo (AS-508), makes about 4,700 more
-  subtests pass. A subsequent fix makes `getPointAtLength()` return the move point of a move-only path and throw
+  subtests pass. SVG 2 `pointer-events: bounding-box` (AS-511) now parses and hit-tests group, shape, text and image
+  bounds, including their edges. Eighteen pointer-events subtests and three text hit-test subtests now pass. A
+  subsequent fix makes `getPointAtLength()` return the move point of a move-only path and throw
   `InvalidStateError` for an empty path, bringing 22 more SVG subtests into conformance. The path DOM APIs
   (`getPathData()`, `setPathData()` and `getPathSegmentAtLength()`) now pass 79 more subtests across 19 SVG path
   interface files, including normalization, malformed data, mutation records and length boundaries. SVG `<image>`
