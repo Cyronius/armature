@@ -353,6 +353,8 @@ Notes on the numbers:
 - Real pointer clicks on disabled form controls are suppressed even when hit testing lands inside the control's
   shadow tree. Servoshell no longer treats an open `<select>` menu as a WebDriver user prompt. All nine subtests in
   the disabled-element event dispatch test now pass, including clicks on disabled and re-enabled controls.
+- WebDriver clicks on options in a single-select control now set the clicked option's selectedness. The full
+  option-click test file passes all 11 subtests, including five that previously failed for single-select controls.
 - `AbortController.abort()` now rethrows an exception from an abort algorithm, and `Document.contentType` returns only
   the essence.
 - `./mach fmt` and the crown GC-rooting lint pass, and the tested directories have no unexpected results other than a
