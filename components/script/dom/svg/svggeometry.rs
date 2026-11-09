@@ -12,7 +12,9 @@
 
 use std::collections::HashSet;
 
+use app_units::Au;
 use cssparser::Parser;
+use euclid::default::{Point2D as CSSPoint, Rect as CSSRect, Size2D as CSSSize};
 use html5ever::{LocalName, local_name, ns};
 use js::context::{JSContext, NoGC};
 use kurbo::{
@@ -20,6 +22,8 @@ use kurbo::{
     PathEl, PathSeg, Point, Rect, Shape, Stroke, StrokeOpts, stroke,
 };
 use layout_api::BoxAreaType;
+use style::values::computed::Length as CSSLength;
+use style::values::computed::transform::TransformBox;
 use style::values::specified::SVGPathData;
 use style::values::specified::box_::Display;
 use style_traits::CssWriter;
@@ -1488,7 +1492,82 @@ fn svg_element_transform(cx: &mut JSContext, svg: &SVGElement) -> Affine {
     }
     let x = length(cx, svg, local_name!("x"), SVGLengthDirection::Horizontal);
     let y = length(cx, svg, local_name!("y"), SVGLengthDirection::Vertical);
-    Affine::translate((x, y)) * view_box
+    nested_svg_css_transform(svg, width, height) * Affine::translate((x, y)) * view_box
+}
+
+/// CSS transforms of nested SVG viewports are not in layout's spatial tree: layout
+/// rasterizes the whole outer SVG subtree as one box.
+fn nested_svg_css_transform(svg: &SVGElement, width: f64, height: f64) -> Affine {
+    let Some(style) = svg.upcast::<Element>().style() else {
+        return Affine::IDENTITY;
+    };
+    let box_style = style.get_box();
+    let padding = style.get_padding();
+    let basis = Au::from_f64_px(width);
+    let left = padding.padding_left.0.to_used_value(basis).to_f64_px();
+    let right = padding.padding_right.0.to_used_value(basis).to_f64_px();
+    let top = padding.padding_top.0.to_used_value(basis).to_f64_px();
+    let bottom = padding.padding_bottom.0.to_used_value(basis).to_f64_px();
+    let border = style.get_border();
+    let border_width = |width: Au, style: style::values::specified::BorderStyle| {
+        if style.none_or_hidden() {
+            0.0
+        } else {
+            width.to_f64_px()
+        }
+    };
+    let left = left + border_width(border.border_left_width.0, border.border_left_style);
+    let right = right + border_width(border.border_right_width.0, border.border_right_style);
+    let top = top + border_width(border.border_top_width.0, border.border_top_style);
+    let bottom = bottom + border_width(border.border_bottom_width.0, border.border_bottom_style);
+
+    let content_box = matches!(
+        box_style.transform_box,
+        TransformBox::ContentBox | TransformBox::FillBox
+    );
+    let reference_width = width + if content_box { 0.0 } else { left + right };
+    let reference_height = height + if content_box { 0.0 } else { top + bottom };
+    let reference_box = CSSRect::new(
+        CSSPoint::new(CSSLength::new(0.0), CSSLength::new(0.0)),
+        CSSSize::new(
+            CSSLength::new(reference_width as f32),
+            CSSLength::new(reference_height as f32),
+        ),
+    );
+    let Ok((matrix, false)) = box_style
+        .transform
+        .to_transform_3d_matrix_f64(Some(&reference_box))
+    else {
+        return Affine::IDENTITY;
+    };
+    let origin = &box_style.transform_origin;
+    let origin_x = origin
+        .horizontal
+        .to_used_value(Au::from_f64_px(reference_width))
+        .to_f64_px();
+    let origin_y = origin
+        .vertical
+        .to_used_value(Au::from_f64_px(reference_height))
+        .to_f64_px();
+    let transform = Affine::translate((origin_x, origin_y)) *
+        Affine::new([
+            matrix.m11, matrix.m12, matrix.m21, matrix.m22, matrix.m41, matrix.m42,
+        ]) *
+        Affine::translate((-origin_x, -origin_y));
+
+    // The viewport starts after the border and padding. With a border-box
+    // reference, that offset rotates along with the CSS transform, but does
+    // not scale with it.
+    let (offset_x, offset_y) = if content_box {
+        (left, top)
+    } else {
+        let angle = transform.as_coeffs()[1].atan2(transform.as_coeffs()[0]);
+        (
+            left * angle.cos() - top * angle.sin(),
+            top * angle.cos() + left * angle.sin(),
+        )
+    };
+    Affine::translate((offset_x, offset_y)) * transform
 }
 
 /// The current transformation matrix of `element`: the transform from its user space to
