@@ -386,6 +386,10 @@ Notes on the numbers:
   vertices, SVG clip paths (including nested paths and `objectBoundingBox` units), and legacy CSS `clip` rectangles.
   All 15 subtests in `SVGGraphicsElement.getBBox-05.html` pass; the same 97-file suite gained seven more passes,
   reaching 987 passing and 41 failing subtests with no passing subtest regressing.
+- **SVG stroke hit testing**: `isPointInStroke()` now uses the stroked outline, including caps, joins, dash patterns
+  and offsets, `pathLength` calibration, and non-scaling strokes. Both focused stroke files pass all subtests. The
+  97-file `svg/types/scripted` suite gained six passes, reaching 993 passing and 35 failing subtests without a
+  previously passing subtest regressing.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
@@ -438,6 +442,7 @@ Notes on the numbers:
   marker sizing does not cover every `preserveAspectRatio` and orientation case. Five WPT cases expect zero for
   graphics inside definitions, clip paths and masks; Armature returns their own geometry, as the current
   [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes.
+- SVG DOM stroke hit testing does not yet resolve percentage dash lengths or CSS transforms for non-scaling strokes.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
