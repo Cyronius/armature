@@ -23,7 +23,7 @@ use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
 use crate::dom::element::attributes::storage::AttrRef;
-use crate::dom::element::{AttributeMutation, Element};
+use crate::dom::element::{AttributeMutation, Element, reflect_fetch_priority_attribute};
 use crate::dom::event::eventtarget::EventTarget;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{BindContext, Node, NodeTraits};
@@ -297,4 +297,12 @@ impl SVGImageElementMethods<crate::DomTypeHolder> for SVGImageElement {
 
     // <https://svgwg.org/svg2-draft/types.html#__svg__SVGURIReference__href>
     svg_uri_reference!();
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-img-fetchpriority>
+    fn FetchPriority(&self) -> DOMString {
+        reflect_fetch_priority_attribute(self.upcast::<Element>())
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-img-fetchpriority>
+    make_setter!(SetFetchPriority, "fetchpriority");
 }

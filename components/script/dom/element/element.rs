@@ -5878,6 +5878,21 @@ pub(crate) fn set_cross_origin_attribute(
     }
 }
 
+/// <https://html.spec.whatwg.org/multipage/#fetch-priority-attributes>
+pub(crate) fn reflect_fetch_priority_attribute(element: &Element) -> DOMString {
+    element
+        .get_attribute_string_ref(&local_name!("fetchpriority"))
+        .map(|value| {
+            DOMString::from_static(
+                ["high", "low", "auto"]
+                    .into_iter()
+                    .find(|keyword| value.eq_ignore_ascii_case(keyword))
+                    .unwrap_or("auto"),
+            )
+        })
+        .unwrap_or_else(|| DOMString::from_static("auto"))
+}
+
 /// <https://html.spec.whatwg.org/multipage/#referrer-policy-attribute>
 pub(crate) fn reflect_referrer_policy_attribute(element: &Element) -> DOMString {
     element

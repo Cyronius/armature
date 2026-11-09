@@ -16,7 +16,8 @@ use crate::dom::document::Document;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{
     AttributeMutation, Element, ElementCreator, reflect_cross_origin_attribute,
-    reflect_referrer_policy_attribute, set_cross_origin_attribute,
+    reflect_fetch_priority_attribute, reflect_referrer_policy_attribute,
+    set_cross_origin_attribute,
 };
 use crate::dom::html::htmlscriptelement::{ScriptElement, ScriptElementState};
 use crate::dom::node::virtualmethods::VirtualMethods;
@@ -158,4 +159,12 @@ impl SVGScriptElementMethods<crate::DomTypeHolder> for SVGScriptElement {
 
     // https://svgwg.org/svg2-draft/interact.html#__svg__SVGScriptElement__referrerPolicy
     make_setter!(SetReferrerPolicy, "referrerpolicy");
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-script-fetchpriority>
+    fn FetchPriority(&self) -> DOMString {
+        reflect_fetch_priority_attribute(self.upcast::<Element>())
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-script-fetchpriority>
+    make_setter!(SetFetchPriority, "fetchpriority");
 }

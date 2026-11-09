@@ -50,7 +50,8 @@ use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{
     AttributeMutation, CustomElementCreationMode, Element, ElementCreator,
     cors_setting_for_element, referrer_policy_for_element, reflect_cross_origin_attribute,
-    reflect_referrer_policy_attribute, set_cross_origin_attribute,
+    reflect_fetch_priority_attribute, reflect_referrer_policy_attribute,
+    set_cross_origin_attribute,
 };
 use crate::dom::event::Event;
 use crate::dom::eventtarget::EventTarget;
@@ -1843,6 +1844,14 @@ impl HTMLImageElementMethods<crate::DomTypeHolder> for HTMLImageElement {
 
     // <https://html.spec.whatwg.org/multipage/#dom-img-referrerpolicy>
     make_setter!(SetReferrerPolicy, "referrerpolicy");
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-img-fetchpriority>
+    fn FetchPriority(&self) -> DOMString {
+        reflect_fetch_priority_attribute(self.upcast::<Element>())
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-img-fetchpriority>
+    make_setter!(SetFetchPriority, "fetchpriority");
 
     /// <https://html.spec.whatwg.org/multipage/#dom-img-decode>
     fn Decode(&self, cx: &mut JSContext) -> RootedPromise {

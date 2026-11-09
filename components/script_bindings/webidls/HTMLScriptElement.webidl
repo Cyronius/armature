@@ -33,6 +33,8 @@ interface HTMLScriptElement : HTMLElement {
            attribute DOMString integrity;
   [CEReactions]
            attribute DOMString referrerPolicy;
+  [CEReactions]
+           attribute DOMString fetchPriority;
 
   static boolean supports(DOMString type);
 

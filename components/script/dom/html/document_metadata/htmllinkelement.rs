@@ -52,7 +52,8 @@ use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{
     AttributeMutation, Element, ElementCreator, cors_setting_for_element,
     cors_settings_attribute_credential_mode, referrer_policy_for_element,
-    reflect_cross_origin_attribute, reflect_referrer_policy_attribute, set_cross_origin_attribute,
+    reflect_cross_origin_attribute, reflect_fetch_priority_attribute,
+    reflect_referrer_policy_attribute, set_cross_origin_attribute,
 };
 use crate::dom::html::document_metadata::processingoptions::{
     LinkFetchContext, LinkFetchContextType, LinkProcessingOptions,
@@ -1302,6 +1303,14 @@ impl HTMLLinkElementMethods<crate::DomTypeHolder> for HTMLLinkElement {
 
     // https://html.spec.whatwg.org/multipage/#dom-link-referrerpolicy
     make_setter!(SetReferrerPolicy, "referrerpolicy");
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-link-fetchpriority>
+    fn FetchPriority(&self) -> DOMString {
+        reflect_fetch_priority_attribute(self.upcast::<Element>())
+    }
+
+    // <https://html.spec.whatwg.org/multipage/#dom-link-fetchpriority>
+    make_setter!(SetFetchPriority, "fetchpriority");
 
     /// <https://drafts.csswg.org/cssom/#dom-linkstyle-sheet>
     fn GetSheet(&self, cx: &mut JSContext) -> Option<DomRoot<DOMStyleSheet>> {

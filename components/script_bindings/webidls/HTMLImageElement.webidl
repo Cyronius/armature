@@ -32,6 +32,8 @@ interface HTMLImageElement : HTMLElement {
            attribute DOMString referrerPolicy;
   [CEReactions]
            attribute DOMString decoding;
+  [CEReactions]
+           attribute DOMString fetchPriority;
 
   Promise<undefined> decode();
 
