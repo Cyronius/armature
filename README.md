@@ -105,6 +105,8 @@ Notes on the numbers:
   `a.download`/`ping`, `enterKeyHint`, `inputMode` and more). The `html/dom/reflection-*` tests went from about
   5,300 failing subtests to about 85. The enumerated ARIA attributes (`ariaBusy`, `ariaLive`, ...) are behind the
   `dom_aria_enumerated_reflection_enabled` preference.
+- **Fetch priority reflection**: `fetchPriority` reflects `fetchpriority` on HTML `img`, `link` and `script`, and SVG
+  `image` and `script` elements. All 10 focused subtests now pass across five files.
 - **`ProcessingInstruction` attributes** (`getAttribute()`, `setAttribute()` and friends), behind the
   `dom_processing_instruction_attributes_enabled` preference: 140 failing subtests down to 26.
 - **Events**: `DragEvent`, `DeviceMotionEvent` and `DeviceOrientationEvent` and their `createEvent()` aliases; the
@@ -383,6 +385,7 @@ Notes on the numbers:
   `position: fixed`), focus navigation into popovers is not implemented, and 6 tests contradict the spec.
 - `TextEncoder.encodeInto()` and `TextDecoder` streaming into a `SharedArrayBuffer` (about 210 subtests) fail because
   Servo has no cross-origin isolation, so shared memory is off in every global.
+- Fetch priority hints are reflected in the DOM but do not yet affect network request scheduling.
 - Not enabled from Stylo: anchor positioning, `@scope`, `@starting-style`, `@page` margin rules, custom media,
   `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
