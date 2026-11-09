@@ -134,9 +134,20 @@ impl SVGImageElement {
     }
 
     pub(crate) fn get_raster_image_data(&self) -> Option<Snapshot> {
-        self.cached_image()?
-            .as_raster_image()
-            .map(|image| image.as_snapshot())
+        let image = self.cached_image()?;
+        let raster_image = match image {
+            Image::Raster(image) => image.as_ref().clone(),
+            Image::Vector(image) => {
+                let size = webrender_api::units::DeviceIntSize::new(
+                    i32::try_from(image.metadata.width).unwrap_or(i32::MAX),
+                    i32::try_from(image.metadata.height).unwrap_or(i32::MAX),
+                );
+                self.owner_window()
+                    .image_cache()
+                    .rasterize_vector_image_for_canvas(image.id, size)?
+            },
+        };
+        Some(raster_image.as_snapshot())
     }
 
     pub(crate) fn origin_is_clean(&self) -> bool {

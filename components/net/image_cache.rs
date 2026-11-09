@@ -1306,6 +1306,81 @@ impl ImageCache for ImageCacheImpl {
         ));
     }
 
+    fn rasterize_vector_image_for_canvas(
+        &self,
+        image_id: PendingImageId,
+        requested_size: DeviceIntSize,
+    ) -> Option<RasterImage> {
+        let vector_image = {
+            let store = self.store.lock();
+            if let Some(image) = store
+                .rasterized_vector_images
+                .get(&(image_id, requested_size))
+                .and_then(|task| task.result.as_ref())
+            {
+                return Some(image.clone());
+            }
+            store.vector_images.get(&image_id)?.clone()
+        };
+
+        let natural_size = vector_image.svg_tree.size().to_int_size();
+        let width = u32::try_from(requested_size.width)
+            .unwrap_or(0)
+            .min(MAX_SVG_PIXMAP_DIMENSION);
+        let height = u32::try_from(requested_size.height)
+            .unwrap_or(0)
+            .min(MAX_SVG_PIXMAP_DIMENSION);
+        let size = tiny_skia::IntSize::from_wh(width, height).unwrap_or(natural_size);
+        let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height())?;
+
+        // Canvas draws an already loaded image synchronously. Isolate malformed SVGs that
+        // make resvg panic, just as the asynchronous layout rasterization path does.
+        let previous = SUPPRESS_ABORT_IN_PANIC_HOOK.replace(true);
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let viewport_tree = vector_image.viewport_dependent.as_ref().and_then(|svg| {
+                svg.tree_for_viewport(
+                    requested_size.width as f32,
+                    requested_size.height as f32,
+                    &self.usvg_options,
+                )
+            });
+            let svg_tree = viewport_tree.as_ref().unwrap_or(&vector_image.svg_tree);
+            let natural_size = svg_tree.size().to_int_size();
+            let transform = tiny_skia::Transform::from_scale(
+                size.width() as f32 / natural_size.width() as f32,
+                size.height() as f32 / natural_size.height() as f32,
+            );
+            resvg::render(svg_tree, transform, &mut pixmap.as_mut());
+        }));
+        SUPPRESS_ABORT_IN_PANIC_HOOK.set(previous);
+        if result.is_err() {
+            warn!("resvg panicked while drawing SVG image {image_id:?} into canvas");
+            return None;
+        }
+
+        let bytes = pixmap.take();
+        let frame = ImageFrame {
+            delay: None,
+            byte_range: 0..bytes.len(),
+            width: size.width(),
+            height: size.height(),
+        };
+        Some(RasterImage {
+            metadata: ImageMetadata {
+                width: size.width(),
+                height: size.height(),
+            },
+            format: PixelFormat::RGBA8,
+            frames: vec![frame],
+            bytes: Arc::new(bytes),
+            id: None,
+            cors_status: vector_image.cors_status,
+            load_time: None,
+            is_opaque: false,
+            loop_count: None,
+        })
+    }
+
     fn rasterize_vector_image(
         &self,
         image_id: PendingImageId,

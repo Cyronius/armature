@@ -253,6 +253,13 @@ pub trait ImageCache: Sync + Send {
         svg_id: Option<Uuid>,
     ) -> Option<RasterImage>;
 
+    /// Rasterize a loaded SVG image synchronously for a canvas image source.
+    fn rasterize_vector_image_for_canvas(
+        &self,
+        image_id: VectorImageId,
+        size: DeviceIntSize,
+    ) -> Option<RasterImage>;
+
     /// Adds a new listener to be notified once the given `image_id` has been rasterized at
     /// the given `size`. The listener will receive a `VectorImageRasterizationComplete`
     /// message on the given `sender`, even if the listener is called after rasterization
