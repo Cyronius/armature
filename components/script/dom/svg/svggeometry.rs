@@ -430,8 +430,9 @@ fn discrete_path_point(
 }
 
 /// Sample the supplemental transform of active animateMotion children.
-fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Affine {
+pub(crate) fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Option<Affine> {
     let mut result = Affine::IDENTITY;
+    let mut sampled = false;
     for child in element.upcast::<Node>().child_elements() {
         if child.local_name() != &local_name!("animateMotion") {
             continue;
@@ -587,6 +588,7 @@ fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Affine {
             None => 0.0,
         };
         let motion = Affine::translate((position.x, position.y)) * Affine::rotate(angle);
+        sampled = true;
         if by_only ||
             attributes
                 .svg_attribute(&local_name!("additive"))
@@ -598,7 +600,7 @@ fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Affine {
             result = motion;
         }
     }
-    result
+    sampled.then_some(result)
 }
 
 /// The transform that the `transform` attribute and motion animations give `element`.
@@ -606,7 +608,7 @@ pub(crate) fn element_transform(cx: &mut JSContext, element: &SVGElement) -> Aff
     let base = animated_transform_values(cx, element, &local_name!("transform"))
         .iter()
         .fold(Affine::IDENTITY, |matrix, item| matrix * item.matrix);
-    base * motion_transform(cx, element)
+    base * motion_transform(cx, element).unwrap_or(Affine::IDENTITY)
 }
 
 /// Whether `element` does not take part in rendering because of its `display`.

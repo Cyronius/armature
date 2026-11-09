@@ -162,6 +162,30 @@ impl SVGSVGElement {
             return;
         }
 
+        // The image renderer does not sample SMIL. Apply animateMotion to the
+        // serialized copy, leaving the live element's transform attribute alone.
+        for (source, clone) in self
+            .upcast::<Node>()
+            .traverse_preorder(ShadowIncluding::No)
+            .zip(cloned_node.traverse_preorder(ShadowIncluding::No))
+        {
+            let (Some(source), Some(clone)) = (
+                source.downcast::<SVGElement>(),
+                clone.downcast::<SVGElement>(),
+            ) else {
+                continue;
+            };
+            if svggeometry::motion_transform(cx, &source).is_none() {
+                continue;
+            }
+            let [a, b, c, d, e, f] = svggeometry::element_transform(cx, &source).as_coeffs();
+            clone.set_svg_attribute(
+                cx,
+                &local_name!("transform"),
+                format!("matrix({a} {b} {c} {d} {e} {f})"),
+            );
+        }
+
         self.process_use_elements(cx, &cloned_node);
 
         let Ok(xml_source) = cloned_node.xml_serialize(false) else {
