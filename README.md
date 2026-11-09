@@ -271,8 +271,9 @@ Notes on the numbers:
   `getScreenCTM()` now includes CSS transforms of the outermost `<svg>` box and its HTML ancestors, plus
   CSS transforms and padding on nested SVG viewports. Eight more SVG scripted subtests pass. Invalid tokens in SVG
   `points` attributes now clear the reflected `SVGPointList`, while an unmatched final coordinate still leaves
-  complete points in place. One more subtest passes; the 97-file scripted cluster now has 1,002 passing and 26
-  failing subtests.
+  complete points in place. SVG-created points and rectangles now reject non-finite coordinate assignments, while
+  ordinary DOM geometry objects still accept them; animated SVG point-list items throw when modified. Eight more
+  subtests pass since the CTM work; the 97-file scripted cluster now has 1,009 passing and 19 failing subtests.
   SVG `systemLanguage` now preserves empty comma-separated tokens in its DOM list, excludes nonmatching graphics from
   geometry, hit testing and focus, and selects the first matching `<switch>` child. The SVG rasterizer uses the
   browser's language preference, so image pixels follow the same conditions. All 27 focused parsing and matching
