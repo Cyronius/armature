@@ -86,11 +86,7 @@ impl SVGGeometryElementMethods<crate::DomTypeHolder> for SVGGeometryElement {
         let Some(geometry) = self.geometry(cx) else {
             return false;
         };
-        let stroke_width = svggeometry::computed_value(self.upcast(), "stroke-width")
-            .trim_end_matches("px")
-            .parse::<f64>()
-            .unwrap_or(1.0);
-        geometry.distance_to_outline(kurbo::Point::new(point.x, point.y)) <= stroke_width / 2.0
+        geometry.is_point_in_stroke(cx, self.upcast(), kurbo::Point::new(point.x, point.y))
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGGeometryElement__getTotalLength>

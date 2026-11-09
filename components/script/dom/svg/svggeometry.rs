@@ -217,6 +217,93 @@ impl SVGShapeGeometry {
             })
             .fold(f64::INFINITY, f64::min)
     }
+
+    /// Test the painted stroke shape, including caps, joins and dash gaps. The stroke paint
+    /// itself does not affect `isPointInStroke()`.
+    pub(crate) fn is_point_in_stroke(
+        &self,
+        cx: &mut JSContext,
+        element: &SVGElement,
+        point: Point,
+    ) -> bool {
+        let width = computed_value(element, "stroke-width")
+            .trim_end_matches("px")
+            .parse::<f64>()
+            .unwrap_or(1.0);
+        if !width.is_finite() || width <= 0.0 || !point.x.is_finite() || !point.y.is_finite() {
+            return false;
+        }
+        let cap = match computed_value(element, "stroke-linecap").as_str() {
+            "round" => Cap::Round,
+            "square" => Cap::Square,
+            _ => Cap::Butt,
+        };
+        let join = match computed_value(element, "stroke-linejoin").as_str() {
+            "round" => Join::Round,
+            "bevel" => Join::Bevel,
+            _ => Join::Miter,
+        };
+        let miter_limit = computed_value(element, "stroke-miterlimit")
+            .parse::<f64>()
+            .unwrap_or(4.0);
+        let mut style = Stroke::new(width)
+            .with_caps(cap)
+            .with_join(join)
+            .with_miter_limit(miter_limit);
+
+        let dash_array = computed_value(element, "stroke-dasharray");
+        if dash_array != "none" {
+            let dashes: Option<Vec<f64>> = dash_array
+                .split(|character: char| character == ',' || character.is_ascii_whitespace())
+                .filter(|part| !part.is_empty())
+                .map(|part| part.trim_end_matches("px").parse::<f64>().ok())
+                .collect();
+            if let Some(dashes) = dashes.filter(|dashes| {
+                !dashes.is_empty() &&
+                    dashes.iter().all(|dash| dash.is_finite() && *dash >= 0.0) &&
+                    dashes.iter().any(|dash| *dash > 0.0)
+            }) {
+                let author_length = computed_value(element, "path-length")
+                    .trim_end_matches("px")
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|length| *length > 0.0 && length.is_finite());
+                let scale = author_length.map_or(1.0, |length| self.total_length() / length);
+                let offset = computed_value(element, "stroke-dashoffset")
+                    .trim_end_matches("px")
+                    .parse::<f64>()
+                    .unwrap_or(0.0);
+                style =
+                    style.with_dashes(offset * scale, dashes.into_iter().map(|dash| dash * scale));
+            }
+        }
+
+        let path = match self {
+            Self::Path(path) => path.clone(),
+            Self::Ellipse(ellipse) => ellipse.to_path(ACCURACY),
+            Self::Line(line) => {
+                let mut path = BezPath::new();
+                path.move_to(line.p0);
+                path.line_to(line.p1);
+                path
+            },
+        };
+        let transform = if computed_value(element, "vector-effect") == "non-scaling-stroke" {
+            current_transform(cx, element, true)
+        } else {
+            Affine::IDENTITY
+        };
+        let path = transform * path;
+        let point = transform * point;
+        stroke(
+            path.elements().iter().copied(),
+            &style,
+            &StrokeOpts::default(),
+            ACCURACY,
+        )
+        .winding(point) !=
+            0
+    }
 }
 
 /// The value of a length attribute of `element` in user units.
