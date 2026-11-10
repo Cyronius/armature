@@ -4,6 +4,7 @@
 
 use std::cell::Cell;
 
+use base64::Engine as _;
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::JSContext;
@@ -13,7 +14,7 @@ use net_traits::image_cache::{
     VectorImageNaturalDimensions,
 };
 use net_traits::request::Destination;
-use pixels::{CorsStatus, Snapshot};
+use pixels::{CorsStatus, EncodedImageType, Snapshot};
 use script_bindings::cell::DomRefCell;
 use style::attr::AttrValue;
 
@@ -148,6 +149,29 @@ impl SVGImageElement {
             },
         };
         Some(raster_image.as_snapshot())
+    }
+
+    /// The SVG rasterizer cannot fetch URLs from the serialized data URL used for an inline SVG.
+    /// Give its rendering copy the image already fetched by the document instead.
+    pub(crate) fn external_image_data_url(&self) -> Option<String> {
+        let href = self.image_href()?;
+        let url = self
+            .upcast::<Node>()
+            .owner_doc()
+            .encoding_parse_a_url(&href)
+            .ok()?;
+        if url.scheme() == "data" {
+            return None;
+        }
+        let mut image = self.get_raster_image_data()?;
+        let mut encoded = Vec::new();
+        image
+            .encode_for_mime_type(&EncodedImageType::Png, None, &mut encoded)
+            .ok()?;
+        Some(format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(encoded)
+        ))
     }
 
     pub(crate) fn origin_is_clean(&self) -> bool {
@@ -327,6 +351,11 @@ impl SVGImageElement {
                 let element = trusted_element.root();
                 if element.request_generation.get() != generation {
                     return;
+                }
+                if matches!(outcome, ImageLoadOutcome::Loaded) {
+                    element
+                        .upcast::<crate::dom::svg::svgelement::SVGElement>()
+                        .invalidate_ancestor_svg_cache(cx.no_gc());
                 }
                 LoadBlocker::terminate(cx, &element.load_blocker);
                 let name = match outcome {

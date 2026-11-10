@@ -54,7 +54,7 @@ use crate::dom::svg::svganimatedlength::SVGAnimatedLength;
 use crate::dom::svg::svgelement::{PRESENTATION_ATTRIBUTES, SVGElement};
 use crate::dom::svg::svggeometry;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
-use crate::dom::svg::svgimageelement::SVGImageRequestSuppression;
+use crate::dom::svg::svgimageelement::{SVGImageElement, SVGImageRequestSuppression};
 use crate::dom::svg::svglength::SVGLength;
 use crate::dom::svg::svgnumber::SVGNumber;
 use crate::dom::svg::svgtransform::{SVGTransform, SVGTransformValue};
@@ -229,6 +229,12 @@ impl SVGSVGElement {
             ) else {
                 continue;
             };
+            if document.is_html_document() &&
+                let Some(image) = source.downcast::<SVGImageElement>() &&
+                let Some(data_url) = image.external_image_data_url()
+            {
+                clone.set_svg_attribute(cx, &local_name!("href"), data_url);
+            }
             let has_motion_transform = svggeometry::motion_transform(cx, &source).is_some();
             if has_motion_transform {
                 let [a, b, c, d, e, f] = svggeometry::element_transform(cx, &source).as_coeffs();
