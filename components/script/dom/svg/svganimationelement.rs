@@ -447,6 +447,12 @@ impl SVGAnimationElement {
     /// Progress within the current repeat and the number of completed repeats.
     /// At an exact active end, freezing samples the end of the final repeat.
     pub(crate) fn sample_iteration(&self) -> Option<(f32, u32)> {
+        self.sample_iteration_f64()
+            .map(|(progress, iteration)| (progress as f32, iteration))
+    }
+
+    /// Retain the timeline's precision for motion paths and transforms.
+    pub(crate) fn sample_iteration_f64(&self) -> Option<(f64, u32)> {
         let time = self.current_time();
         let begin = self
             .begin_times()
@@ -475,7 +481,7 @@ impl SVGAnimationElement {
         if time >= end && elapsed > 0.0 && position - completed < 1e-10 {
             return Some((1.0, (completed - 1.0) as u32));
         }
-        Some(((position - completed) as f32, completed as u32))
+        Some((position - completed, completed as u32))
     }
 
     /// Whether playback needs another rendered SVG image before the next SMIL
@@ -678,8 +684,16 @@ impl SVGAnimationElement {
         count: usize,
         progress: f32,
     ) -> Option<(usize, f32)> {
+        self.sample_value_interval_f64(count, f64::from(progress))
+            .map(|(index, fraction)| (index, fraction as f32))
+    }
+
+    pub(crate) fn sample_value_interval_f64(
+        &self,
+        count: usize,
+        progress: f64,
+    ) -> Option<(usize, f64)> {
         let (offsets, functions) = self.value_timing(count)?;
-        let progress = f64::from(progress);
         if self.calculation_mode() == "discrete" {
             let index = offsets
                 .partition_point(|offset| *offset <= progress)
@@ -703,7 +717,7 @@ impl SVGAnimationElement {
         };
         Some((
             index,
-            functions[index].calculate_output(fraction, BeforeFlag::Unset, 1e-6) as f32,
+            functions[index].calculate_output(fraction, BeforeFlag::Unset, 1e-6),
         ))
     }
 

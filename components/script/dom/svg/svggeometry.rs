@@ -668,7 +668,7 @@ fn point_and_tangent_at_length(geometry: &SVGShapeGeometry, distance: f64) -> Op
 fn discrete_path_point(
     path: &BezPath,
     animation: &SVGAnimationElement,
-    progress: f32,
+    progress: f64,
 ) -> Option<(Point, f64)> {
     let mut points = Vec::new();
     let mut subpath_start = Point::ZERO;
@@ -688,7 +688,7 @@ fn discrete_path_point(
     let index = if points.len() == 1 {
         0
     } else {
-        let (index, fraction) = animation.sample_value_interval(points.len(), progress)?;
+        let (index, fraction) = animation.sample_value_interval_f64(points.len(), progress)?;
         index + usize::from(fraction >= 1.0)
     };
     let point = *points.get(index)?;
@@ -713,7 +713,7 @@ pub(crate) fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Opti
         let Some(animation) = child.downcast::<SVGAnimationElement>() else {
             continue;
         };
-        let Some((progress, iteration)) = animation.sample_iteration() else {
+        let Some((progress, iteration)) = animation.sample_iteration_f64() else {
             continue;
         };
         let attributes = animation.upcast::<SVGElement>();
@@ -747,14 +747,13 @@ pub(crate) fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Opti
                         continue;
                     };
                     let Some((index, fraction)) =
-                        animation.sample_value_interval(points.len(), progress)
+                        animation.sample_value_interval_f64(points.len(), progress)
                     else {
                         continue;
                     };
-                    (points[index] + (points[index + 1] - points[index]) * f64::from(fraction)) *
-                        total
+                    (points[index] + (points[index + 1] - points[index]) * fraction) * total
                 } else if mode == "paced" || total == 0.0 {
-                    f64::from(progress) * total
+                    progress * total
                 } else {
                     let segments = path.segments();
                     let mut distances = vec![0.0];
@@ -767,12 +766,11 @@ pub(crate) fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Opti
                         0.0
                     } else {
                         let Some((index, fraction)) =
-                            animation.sample_value_interval(distances.len(), progress)
+                            animation.sample_value_interval_f64(distances.len(), progress)
                         else {
                             continue;
                         };
-                        distances[index] +
-                            (distances[index + 1] - distances[index]) * f64::from(fraction)
+                        distances[index] + (distances[index + 1] - distances[index]) * fraction
                     }
                 };
                 let Some((position, tangent)) = point_and_tangent_at_length(&path, distance) else {
@@ -814,13 +812,13 @@ pub(crate) fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Opti
                 (points[0], 0.0, by_only)
             } else {
                 let Some((index, fraction)) =
-                    animation.sample_value_interval(points.len(), progress)
+                    animation.sample_value_interval_f64(points.len(), progress)
                 else {
                     continue;
                 };
                 let from = points[index];
                 let to = points[index + 1];
-                let position = from + (to - from) * f64::from(fraction);
+                let position = from + (to - from) * fraction;
                 let delta = to - from;
                 (position, delta.y.atan2(delta.x), by_only)
             }
