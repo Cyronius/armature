@@ -134,5 +134,6 @@ pub static ACCESSKIT_ROLE_TO_ARIA_ROLE: LazyLock<FxHashMap<Role, Atom>> = LazyLo
     // Note: AccessKit doesn't expose nodes with the `GenericContainer` role by default, so it acts
     // more like ARIA's `none`/`presentation` role.
     accesskit_to_aria.insert(Role::GenericContainer, Atom::from("none"));
+    accesskit_to_aria.insert(Role::Group, Atom::from("group"));
     accesskit_to_aria
 });

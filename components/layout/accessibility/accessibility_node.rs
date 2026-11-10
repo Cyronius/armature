@@ -382,6 +382,15 @@ impl AccessibilityNode {
         {
             let data = dom_element.element_data();
             let style = data.styles.primary();
+            // A popover's minimum role depends on whether it is displayed. Recompute it when
+            // layout changes, since a style change need not cause node accessibility damage.
+            if dom_node.as_html_element().is_some() &&
+                dom_element
+                    .attribute(&ns!(), &local_name!("popover"))
+                    .is_some()
+            {
+                local_damage.insert(self.set_role(role_from_dom_node(dom_node)));
+            }
             if style.get_display().is_none() {
                 self.clear_bounds();
                 local_damage.insert(self.set_hidden());
@@ -769,12 +778,36 @@ fn role_from_role_attribute(dom_element: &ServoLayoutElement<'_>) -> Option<Role
 
 fn role_from_dom_node(dom_node: &ServoLayoutNode<'_>) -> Role {
     if let Some(dom_element) = dom_node.as_element() {
-        role_from_role_attribute(&dom_element).unwrap_or_else(|| {
-            let local_name = dom_element.local_name().to_ascii_lowercase();
-            *HTML_ELEMENT_ROLE_MAPPINGS
-                .get(&local_name)
-                .unwrap_or(&Role::GenericContainer)
-        })
+        let local_name = dom_element.local_name().to_ascii_lowercase();
+        let implicit_role = *HTML_ELEMENT_ROLE_MAPPINGS
+            .get(&local_name)
+            .unwrap_or(&Role::GenericContainer);
+        let explicit_role = role_from_role_attribute(&dom_element);
+
+        // <https://w3c.github.io/aria/html-aam/#att-popover>
+        // A popover with an otherwise generic role has a minimum role of group.
+        if dom_node.as_html_element().is_some() &&
+            dom_element
+                .attribute(&ns!(), &local_name!("popover"))
+                .is_some() &&
+            dom_element.style_data().is_some_and(|_| {
+                !dom_element
+                    .element_data()
+                    .styles
+                    .primary()
+                    .get_display()
+                    .is_none()
+            }) &&
+            implicit_role == Role::GenericContainer &&
+            matches!(
+                explicit_role,
+                None | Some(Role::GenericContainer | Role::Section)
+            )
+        {
+            Role::Group
+        } else {
+            explicit_role.unwrap_or(implicit_role)
+        }
     } else if dom_node.type_id() == Some(LayoutNodeType::Text) {
         Role::TextRun
     } else {

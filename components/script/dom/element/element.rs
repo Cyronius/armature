@@ -5186,7 +5186,12 @@ impl VirtualMethods for Element {
                     },
                 }
             },
-            local_name!("style") => self.update_style_attribute(cx, attr, mutation),
+            local_name!("style") => {
+                self.update_style_attribute(cx, attr, mutation);
+                if self.is::<HTMLElement>() && self.has_attribute(&local_name!("popover")) {
+                    node.add_pending_accessibility_damage(cx.no_gc(), AccessibilityDamage::Node);
+                }
+            },
             local_name!("id") => {
                 // https://dom.spec.whatwg.org/#ref-for-concept-element-attributes-change-ext%E2%91%A2
                 let id = mutation.new_value(attr).and_then(|value| {

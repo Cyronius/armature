@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use html5ever::{LocalName, local_name, ns};
 use js::context::{JSContext, NoGC};
+use layout_api::AccessibilityDamage;
 use script_bindings::root::Dom;
 use servo_config::pref;
 use stylo_atoms::Atom;
@@ -207,6 +208,8 @@ impl HTMLElement {
         {
             self.with_popover_data_mut(cx.no_gc(), |data| data.state = new_state);
         }
+        self.upcast::<Node>()
+            .add_pending_accessibility_damage(cx.no_gc(), AccessibilityDamage::Node);
     }
 
     /// The part of the HTML node removing steps that concerns popovers.
