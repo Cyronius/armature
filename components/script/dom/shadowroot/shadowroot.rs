@@ -5,6 +5,7 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dom_struct::dom_struct;
 use html5ever::serialize::TraversalScope;
@@ -14,6 +15,7 @@ use script_bindings::dom::UnrootedDom;
 use script_bindings::domstring::TracedDOMString;
 use script_bindings::error::{ErrorResult, Fallible};
 use script_bindings::reflector::reflect_dom_object;
+use selectors::matching::ElementSelectorFlags;
 use servo_arc::Arc;
 use style::author_styles::AuthorStyles;
 use style::invalidation::element::restyle_hints::RestyleHint;
@@ -79,6 +81,8 @@ pub(crate) struct ShadowRoot {
     /// List of author styles associated with nodes in this shadow tree.
     #[custom_trace]
     author_styles: DomRefCell<AuthorStyles<ServoStylesheetInDocument>>,
+    /// Selector flags for children whose parent is this shadow root.
+    selector_flags: AtomicUsize,
     stylesheet_list: MutNullableDom<StyleSheetList>,
     window: Dom<Window>,
 
@@ -115,6 +119,17 @@ pub(crate) struct ShadowRoot {
 }
 
 impl ShadowRoot {
+    #[inline]
+    pub(crate) fn insert_selector_flags(&self, flags: ElementSelectorFlags) {
+        self.selector_flags
+            .fetch_or(flags.bits(), Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub(crate) fn get_selector_flags(&self) -> ElementSelectorFlags {
+        ElementSelectorFlags::from_bits_retain(self.selector_flags.load(Ordering::Relaxed))
+    }
+
     #[cfg_attr(crown, expect(crown::unrooted_must_root))]
     fn new_inherited(
         host: &Element,
@@ -137,6 +152,7 @@ impl ShadowRoot {
             document_or_shadow_root: DocumentOrShadowRoot::new(document.window()),
             document: Dom::from_ref(document),
             author_styles: DomRefCell::new(AuthorStyles::new()),
+            selector_flags: Default::default(),
             stylesheet_list: MutNullableDom::new(None),
             window: Dom::from_ref(document.window()),
             mode,
@@ -697,6 +713,11 @@ impl VirtualMethods for ShadowRoot {
 }
 
 impl<'dom> LayoutDom<'dom, ShadowRoot> {
+    #[inline]
+    pub(crate) fn insert_selector_flags(self, flags: ElementSelectorFlags) {
+        self.unsafe_get().insert_selector_flags(flags);
+    }
+
     #[inline]
     pub(crate) fn get_host_for_layout(self) -> LayoutDom<'dom, Element> {
         self.upcast::<DocumentFragment>()

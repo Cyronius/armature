@@ -939,6 +939,11 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
             let Some(p) = self.as_node().parent_element()
         {
             p.element.insert_selector_flags(flags);
+        } else if !parent_flags.is_empty() &&
+            let Some(parent) = self.as_node().parent_node() &&
+            let Some(shadow_root) = parent.as_shadow_root()
+        {
+            shadow_root.insert_selector_flags(flags);
         }
     }
 

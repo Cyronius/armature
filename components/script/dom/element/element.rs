@@ -3081,13 +3081,27 @@ impl Element {
     fn invalidate_nth_of_siblings(&self, no_gc: &NoGC) {
         // A change to one child can change the index of any other child matching
         // :nth-child(... of <selector>) or :nth-last-child(... of <selector>).
-        if let Some(parent) = self.upcast::<Node>().GetParentElement() &&
-            parent
-                .get_selector_flags()
-                .contains(ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH_OF)
-        {
-            for sibling in parent.upcast::<Node>().child_elements() {
-                sibling.upcast::<Node>().dirty(no_gc, NodeDamage::Style);
+        let Some(parent) = self.upcast::<Node>().GetParentNode() else {
+            return;
+        };
+        let flags = if let Some(element) = parent.downcast::<Element>() {
+            element.get_selector_flags()
+        } else if let Some(shadow_root) = parent.downcast::<ShadowRoot>() {
+            shadow_root.get_selector_flags()
+        } else {
+            return;
+        };
+        if !flags.contains(ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH_OF) {
+            return;
+        }
+
+        for sibling in parent.child_elements() {
+            sibling.upcast::<Node>().dirty(no_gc, NodeDamage::Style);
+            if sibling.upcast::<Node>().is_connected() {
+                self.owner_document_unrooted(no_gc)
+                    .ensure_pending_restyle(&sibling)
+                    .hint
+                    .insert(RestyleHint::RESTYLE_DESCENDANTS);
             }
         }
     }

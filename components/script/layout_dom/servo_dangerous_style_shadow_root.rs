@@ -6,6 +6,7 @@
 
 use std::fmt;
 
+use selectors::matching::ElementSelectorFlags;
 use style::dom::TShadowRoot;
 use style::stylist::CascadeData;
 
@@ -31,6 +32,12 @@ impl fmt::Debug for ServoDangerousStyleShadowRoot<'_> {
 impl<'dom> From<LayoutDom<'dom, ShadowRoot>> for ServoDangerousStyleShadowRoot<'dom> {
     fn from(shadow_root: LayoutDom<'dom, ShadowRoot>) -> Self {
         Self { shadow_root }
+    }
+}
+
+impl ServoDangerousStyleShadowRoot<'_> {
+    pub(crate) fn insert_selector_flags(&self, flags: ElementSelectorFlags) {
+        self.shadow_root.insert_selector_flags(flags);
     }
 }
 
