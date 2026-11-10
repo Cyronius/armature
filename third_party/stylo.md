@@ -371,3 +371,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   font metrics provider for the first available font's line height, with a fallback when no font
   is available. This also supplies a nonzero basis for SVG lengths using those units.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-513: Preserve SVG user-unit numbers in painting properties
+- Files: `style/values/specified/svg.rs`
+- Why: Keep unitless numbers, including number-only `calc()` expressions, distinct from CSS lengths
+  while serializing `stroke-width`, `stroke-dashoffset`, and `stroke-dasharray`. Convert them to
+  user-unit lengths at computed-value time. Affects `svg/painting/parsing/stroke-*-valid.svg`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

@@ -7,9 +7,13 @@
 use crate::derives::*;
 use crate::parser::{Parse, ParserContext};
 use crate::values::CustomIdent;
+use crate::values::computed::{Context, ToComputedValue};
+use crate::values::generics::NonNegative;
 use crate::values::generics::svg as generic;
 use crate::values::specified::AllowQuirks;
 use crate::values::specified::LengthPercentage;
+use crate::values::specified::NoCalcLength;
+use crate::values::specified::Number;
 use crate::values::specified::SVGPathData;
 use crate::values::specified::color::Color;
 use crate::values::specified::url::SpecifiedUrl;
@@ -35,28 +39,78 @@ impl Parse for PathLength {
     }
 }
 
+// Armature (AS-513): Keep SVG user-unit numbers distinct from CSS lengths at specified value time.
+/// A length, percentage, or number in an SVG painting property.
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss, ToShmem, ToTyped)]
+pub enum SVGLengthPercentage {
+    /// A CSS length or percentage.
+    LengthPercentage(LengthPercentage),
+    /// A number representing a length in user units.
+    Number(Number),
+}
+
+// Armature (AS-513): SVG numbers become lengths in user units when computed.
+impl ToComputedValue for SVGLengthPercentage {
+    type ComputedValue = crate::values::computed::LengthPercentage;
+
+    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
+        match self {
+            Self::LengthPercentage(value) => value.to_computed_value(context),
+            Self::Number(value) => {
+                LengthPercentage::Length(NoCalcLength::from_px(value.to_computed_value(context)))
+                    .to_computed_value(context)
+            },
+        }
+    }
+
+    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
+        Self::LengthPercentage(LengthPercentage::from_computed_value(computed))
+    }
+}
+
 /// <length> | <percentage> | <number> | context-value
-pub type SVGLength = generic::GenericSVGLength<LengthPercentage>;
+pub type SVGLength = generic::GenericSVGLength<SVGLengthPercentage>;
 
 /// A non-negative version of SVGLength.
-pub type SVGWidth = generic::GenericSVGLength<NonNegativeLengthPercentage>;
+pub type SVGWidth = generic::GenericSVGLength<NonNegative<SVGLengthPercentage>>;
 
 /// [ <length> | <percentage> | <number> ]# | context-value
-pub type SVGStrokeDashArray = generic::GenericSVGStrokeDashArray<NonNegativeLengthPercentage>;
+pub type SVGStrokeDashArray = generic::GenericSVGStrokeDashArray<NonNegative<SVGLengthPercentage>>;
 
 /// Whether the `context-value` value is enabled.
 pub fn is_context_value_enabled() -> bool {
     crate::pref!("gfx.font_rendering.opentype_svg.enabled")
 }
 
+// Armature (AS-513): Parse SVG numbers before length-percentage so unitless values round-trip.
+fn parse_svg_length_percentage(
+    context: &ParserContext,
+    input: &mut Parser,
+    non_negative: bool,
+) -> Result<SVGLengthPercentage, ParseError> {
+    if non_negative {
+        if let Ok(number) = input.try_parse(|i| Number::parse_non_negative(context, i)) {
+            return Ok(SVGLengthPercentage::Number(number));
+        }
+        NonNegativeLengthPercentage::parse_quirky(context, input, AllowQuirks::Always)
+            .map(|value| SVGLengthPercentage::LengthPercentage(value.0))
+    } else {
+        if let Ok(number) = input.try_parse(|i| Number::parse(context, i)) {
+            return Ok(SVGLengthPercentage::Number(number));
+        }
+        LengthPercentage::parse_quirky(context, input, AllowQuirks::Always)
+            .map(SVGLengthPercentage::LengthPercentage)
+    }
+}
+
 macro_rules! parse_svg_length {
-    ($ty:ty, $lp:ty) => {
+    ($ty:ty, $non_negative:expr, $wrap:expr) => {
         impl Parse for $ty {
             fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
                 if let Ok(lp) =
-                    input.try_parse(|i| <$lp>::parse_quirky(context, i, AllowQuirks::Always))
+                    input.try_parse(|i| parse_svg_length_percentage(context, i, $non_negative))
                 {
-                    return Ok(generic::SVGLength::LengthPercentage(lp));
+                    return Ok(generic::SVGLength::LengthPercentage($wrap(lp)));
                 }
 
                 try_match_ident_ignore_ascii_case! { input,
@@ -69,14 +123,14 @@ macro_rules! parse_svg_length {
     };
 }
 
-parse_svg_length!(SVGLength, LengthPercentage);
-parse_svg_length!(SVGWidth, NonNegativeLengthPercentage);
+parse_svg_length!(SVGLength, false, |value| value);
+parse_svg_length!(SVGWidth, true, NonNegative);
 
 impl Parse for SVGStrokeDashArray {
     fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         if let Ok(values) = input.try_parse(|i| {
             CommaWithSpace::parse(i, |i| {
-                NonNegativeLengthPercentage::parse_quirky(context, i, AllowQuirks::Always)
+                parse_svg_length_percentage(context, i, true).map(NonNegative)
             })
         }) {
             return Ok(generic::SVGStrokeDashArray::Values(values.into()));
