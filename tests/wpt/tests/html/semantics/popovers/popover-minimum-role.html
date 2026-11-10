@@ -10,6 +10,7 @@
 <script src="resources/popover-utils.js"></script>
 
 <body>
+<style>.visible-popover { display: block; }</style>
 <script>
 async function assertRoleEquals(element,expectedRole,message) {
   const actualRole = await test_driver.get_computed_role(element);
@@ -40,4 +41,12 @@ promise_test(async (t) => {
   popover.removeAttribute('style');
   await assertRoleEquals(popover,'group','Including with style rule removed');
 },'Dynamic changes to popover attribute should change the role.');
+
+promise_test(async (t) => {
+  const popover = initPopover(t);
+  popover.classList.add('visible-popover');
+  await assertRoleEquals(popover,'group','Stylesheet visibility gives a popover group role');
+  popover.removeAttribute('popover');
+  await assertRoleEquals(popover,'none','Removing popover restores the generic role');
+},'Popover role follows stylesheet and attribute changes.');
 </script>
