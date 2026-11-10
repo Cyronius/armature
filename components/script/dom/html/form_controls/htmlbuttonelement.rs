@@ -9,22 +9,17 @@ use dom_struct::dom_struct;
 use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
-use script_bindings::codegen::GenericBindings::DocumentBinding::DocumentMethods;
-use script_bindings::codegen::GenericBindings::DocumentFragmentBinding::DocumentFragmentMethods;
-use script_bindings::codegen::GenericBindings::NodeBinding::NodeMethods;
 use servo_config::pref;
 use style::selector_parser::PseudoElement;
 use stylo_dom::ElementState;
 
 use crate::dom::activation::Activatable;
 use crate::dom::bindings::codegen::Bindings::HTMLButtonElementBinding::HTMLButtonElementMethods;
-use crate::dom::bindings::codegen::Bindings::NodeBinding::GetRootNodeOptions;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::commandevent::CommandEvent;
 use crate::dom::document::Document;
-use crate::dom::documentfragment::DocumentFragment;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::event::{Event, EventBubbles, EventCancelable};
@@ -35,8 +30,8 @@ use crate::dom::html::htmlformelement::{
     SubmittedFrom,
 };
 use crate::dom::html::popover::{
-    get_the_popovertarget_associated_element, run_the_popover_target_attribute_activation_behavior,
-    set_popover_target_element,
+    get_associated_element, run_the_popover_target_attribute_activation_behavior,
+    set_associated_element,
 };
 use crate::dom::node::virtualmethods::{VirtualMethods, vtable_for};
 use crate::dom::node::{Node, NodeTraits};
@@ -62,6 +57,8 @@ pub(crate) struct HTMLButtonElement {
     ///
     /// <https://html.spec.whatwg.org/multipage/#explicitly-set-attr-element>
     explicitly_set_popover_target_element: MutNullableDom<Element>,
+    /// The explicitly set attr-element of `commandForElement`.
+    explicitly_set_command_for_element: MutNullableDom<Element>,
 }
 
 impl HTMLButtonElement {
@@ -82,6 +79,7 @@ impl HTMLButtonElement {
             labels_node_list: Default::default(),
             validity_state: Default::default(),
             explicitly_set_popover_target_element: Default::default(),
+            explicitly_set_command_for_element: Default::default(),
         }
     }
 
@@ -263,19 +261,37 @@ impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-popovertargetelement>
     fn GetPopoverTargetElement(&self, no_gc: &NoGC) -> Option<DomRoot<Element>> {
-        get_the_popovertarget_associated_element(
+        get_associated_element(
             no_gc,
             self.upcast(),
+            &local_name!("popovertarget"),
             self.explicitly_set_popover_target_element.get(),
         )
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-popovertargetelement>
     fn SetPopoverTargetElement(&self, cx: &mut JSContext, value: Option<&Element>) {
-        set_popover_target_element(
+        set_associated_element(
             cx,
             self.upcast(),
+            &local_name!("popovertarget"),
             &self.explicitly_set_popover_target_element,
+            value,
+        );
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-button-commandforelement>
+    fn GetCommandForElement(&self, no_gc: &NoGC) -> Option<DomRoot<Element>> {
+        self.command_for_element(no_gc)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-button-commandforelement>
+    fn SetCommandForElement(&self, cx: &mut JSContext, value: Option<&Element>) {
+        set_associated_element(
+            cx,
+            self.upcast(),
+            &local_name!("commandfor"),
+            &self.explicitly_set_command_for_element,
             value,
         );
     }
@@ -347,22 +363,13 @@ impl HTMLButtonElement {
             .perform_validation_and_update(cx, ValidationFlags::all());
     }
 
-    fn command_for_element(&self, cx: &mut JSContext) -> Option<DomRoot<Element>> {
-        let command_for_value = self
-            .upcast::<Element>()
-            .get_attribute_string_value(&local_name!("commandfor"))?
-            .into();
-
-        let root_node = self
-            .upcast::<Node>()
-            .GetRootNode(&GetRootNodeOptions::empty());
-
-        if let Some(document) = root_node.downcast::<Document>() {
-            return document.GetElementById(cx, command_for_value);
-        } else if let Some(document_fragment) = root_node.downcast::<DocumentFragment>() {
-            return document_fragment.GetElementById(cx, command_for_value);
-        }
-        unreachable!("Button element must be in a document or document fragment");
+    fn command_for_element(&self, no_gc: &NoGC) -> Option<DomRoot<Element>> {
+        get_associated_element(
+            no_gc,
+            self.upcast(),
+            &local_name!("commandfor"),
+            self.explicitly_set_command_for_element.get(),
+        )
     }
 
     fn command_state(&self) -> CommandState {
@@ -461,11 +468,16 @@ impl VirtualMethods for HTMLButtonElement {
                 self.upcast::<Element>()
                     .get_string_attribute(&local_name!("type")),
             ),
-            local_name!("commandfor") => self.set_type(
-                cx,
-                self.upcast::<Element>()
-                    .get_string_attribute(&local_name!("type")),
-            ),
+            local_name!("commandfor") => {
+                self.set_type(
+                    cx,
+                    self.upcast::<Element>()
+                        .get_string_attribute(&local_name!("type")),
+                );
+                if *attr.namespace() == ns!() {
+                    self.explicitly_set_command_for_element.set(None);
+                }
+            },
             local_name!("form") => {
                 self.form_attribute_mutated(cx, mutation);
                 self.validity_state(cx)
@@ -581,7 +593,7 @@ impl Activatable for HTMLButtonElement {
         // Step 4. Let target be the result of running element's get the commandfor-associated
         // element.
         // Step 5. If target is not null:
-        if let Some(target) = self.command_for_element(cx) {
+        if let Some(target) = self.command_for_element(cx.no_gc()) {
             // Steps 5.1 Let command be element's command attribute.
             let command = self.command_state();
             // Step 5.2 If the result of determining if a command is valid for a target given command and target is false, then return.

@@ -7,7 +7,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use html5ever::{local_name, ns};
+use html5ever::{LocalName, local_name, ns};
 use js::context::{JSContext, NoGC};
 use script_bindings::root::Dom;
 use servo_config::pref;
@@ -1216,12 +1216,13 @@ fn element_with_id_in_same_tree(
         .find(|candidate| candidate.get_id().as_ref() == Some(&id))
 }
 
-/// The getter steps of `popoverTargetElement`, which reflects the `popovertarget` attribute.
+/// The getter steps for an IDL attribute that reflects an element reference.
 ///
 /// <https://html.spec.whatwg.org/multipage/#attr-associated-element>
-pub(crate) fn get_the_popovertarget_associated_element(
+pub(crate) fn get_associated_element(
     no_gc: &NoGC,
     element: &Element,
+    attribute: &LocalName,
     explicitly_set_attr_element: Option<DomRoot<Element>>,
 ) -> Option<DomRoot<Element>> {
     // Step 1. Let element be the result of running reflectedTarget's get the element.
@@ -1248,16 +1249,17 @@ pub(crate) fn get_the_popovertarget_associated_element(
     // - candidate implements T.
     // If no such element exists, then return null.
     // Step 5. Return null.
-    let value = element.get_attribute_string_value(&local_name!("popovertarget"))?;
+    let value = element.get_attribute_string_value(attribute)?;
     element_with_id_in_same_tree(no_gc, element, &value)
 }
 
-/// The setter steps of `popoverTargetElement`, which reflects the `popovertarget` attribute.
+/// The setter steps for an IDL attribute that reflects an element reference.
 ///
 /// <https://html.spec.whatwg.org/multipage/#reflecting-content-attributes-in-idl-attributes:element>
-pub(crate) fn set_popover_target_element(
+pub(crate) fn set_associated_element(
     cx: &mut JSContext,
     element: &Element,
+    attribute: &LocalName,
     explicitly_set_attr_element: &MutNullableDom<Element>,
     value: Option<&Element>,
 ) {
@@ -1266,13 +1268,13 @@ pub(crate) fn set_popover_target_element(
         // Step 1.1. Set this's explicitly set attr-element to null.
         explicitly_set_attr_element.set(None);
         // Step 1.2. Run this's delete the content attribute.
-        element.remove_attribute(cx, &ns!(), &local_name!("popovertarget"));
+        element.remove_attribute(cx, &ns!(), attribute);
         // Step 1.3. Return.
         return;
     };
 
     // Step 2. Run this's set the content attribute with the empty string.
-    element.set_string_attribute(cx, &local_name!("popovertarget"), DOMString::new());
+    element.set_string_attribute(cx, attribute, DOMString::new());
 
     // Step 3. Set this's explicitly set attr-element to a weak reference to the given value.
     explicitly_set_attr_element.set(Some(value));
@@ -1319,8 +1321,12 @@ pub(crate) fn popover_target_element(no_gc: &NoGC, node: &Node) -> Option<DomRoo
         node.downcast::<HTMLInputElement>()
             .and_then(HTMLInputElement::explicitly_set_popover_target_element)
     };
-    let popover_element =
-        get_the_popovertarget_associated_element(no_gc, element, explicitly_set_attr_element)?;
+    let popover_element = get_associated_element(
+        no_gc,
+        element,
+        &local_name!("popovertarget"),
+        explicitly_set_attr_element,
+    )?;
 
     // Step 5. If popoverElement is null, then return null.
     // Step 6. If popoverElement's popover attribute is in the No Popover state, then return null.

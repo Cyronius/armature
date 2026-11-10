@@ -65,8 +65,8 @@ use crate::dom::html::htmlformelement::{
     FormControl, FormDatum, FormDatumValue, FormSubmitterElement, HTMLFormElement, SubmittedFrom,
 };
 use crate::dom::html::popover::{
-    get_the_popovertarget_associated_element, run_the_popover_target_attribute_activation_behavior,
-    set_popover_target_element,
+    get_associated_element, run_the_popover_target_attribute_activation_behavior,
+    set_associated_element,
 };
 use crate::dom::input_type::radio_input_type::radio_group_iter;
 use crate::dom::iterators::ShadowIncluding;
@@ -1190,18 +1190,20 @@ impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-popovertargetelement>
     fn GetPopoverTargetElement(&self, no_gc: &NoGC) -> Option<DomRoot<Element>> {
-        get_the_popovertarget_associated_element(
+        get_associated_element(
             no_gc,
             self.upcast(),
+            &local_name!("popovertarget"),
             self.explicitly_set_popover_target_element.get(),
         )
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-popovertargetelement>
     fn SetPopoverTargetElement(&self, cx: &mut JSContext, value: Option<&Element>) {
-        set_popover_target_element(
+        set_associated_element(
             cx,
             self.upcast(),
+            &local_name!("popovertarget"),
             &self.explicitly_set_popover_target_element,
             value,
         );
