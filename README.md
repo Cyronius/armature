@@ -327,8 +327,11 @@ Notes on the numbers:
   embedding image viewport instead of their painted bounds. Three nested canvas reftests, two other SVG image
   reftests, the SVG bitmap resize reftest and one `drawImage()` subtest now pass. Inline SVG now paints fetched
   external images and refreshes its raster when one loads or its URL changes. Both new static and dynamic reftests
-  pass, and the 82 SVG embedded and linking tests match expectations. SVG elements now expose `dataset`,
-  SVG links participate in focus navigation, and unrendered SVG definition elements stay out of it. Invalid
+  pass, and the 82 SVG embedded and linking tests match expectations.
+  Standalone SVG documents now embed fetched raster and SVG `<image>` resources in their rendering copy. Two new
+  reftests pass, and an existing adopted-image reftest now passes after its stale failure expectation was removed.
+  The 109-file embedded and linking run matches expectations. SVG elements now expose `dataset`, SVG links
+  participate in focus navigation, and unrendered SVG definition elements stay out of it. Invalid
   `tabindex` values no longer create focusable areas where the element has no default focus behavior. The targeted SVG
   focus and dataset tests pass, alongside eight previously failing HTML focus subtests.
   `getScreenCTM()` now includes CSS transforms of the outermost `<svg>` box and its HTML ancestors, plus
@@ -618,13 +621,13 @@ Notes on the numbers:
   apart and shows additive keyframe values already added, and a finished `CSSTransition` cannot be replayed once
   style has dropped it. Container query units in keyframes are not supported, as in style sheets.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and some nested images
-  less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
-  draws `<image>` elements whose `href` is a `data:` URL. `<use>` still lacks a DOM shadow tree, including the
-  instance event path and synchronized event listeners; direct references to SVG anchors activate through their
-  source element. SMIL effects cover basic lengths, enumerations, numbers, presentation properties and motion. Full
-  repeat and syncbase timing, `TimeEvent` details, and many animated attributes are still missing. Some geometry
-  methods still reconstruct some geometry from attributes rather than the used CSS values. Script's text
-  geometry is measured glyph by glyph without shaping or full font baseline metrics. Text-path layout is incomplete
+  less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. `<use>` still
+  lacks a DOM shadow tree, including the instance event path and synchronized event listeners; direct references to
+  SVG anchors activate through their source element. SMIL effects cover basic lengths, enumerations, numbers,
+  presentation properties and motion. Full repeat and syncbase timing, `TimeEvent` details, and many animated
+  attributes are still missing. Some geometry methods still reconstruct values from attributes rather than used CSS
+  values. Script's text geometry is measured glyph by glyph without shaping or full font baseline metrics. Text-path
+  layout is incomplete
   for advanced typography and path animation modes. One text-path `textLength` bounding-box test reads its box before
   the Ahem font loads, so its result depends on font-loading timing.
 - SVG `getBBox()` intersects clipping bounds as rectangles rather than calculating the exact clipped silhouette, and
