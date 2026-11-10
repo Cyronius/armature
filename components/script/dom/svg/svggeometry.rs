@@ -1632,6 +1632,33 @@ fn clip_content_contains_point(
             winding != 0
         };
     }
+    if node.upcast::<Element>().local_name() == &local_name!("use") {
+        let Some(referenced) = referenced_element(cx.no_gc(), node) else {
+            return false;
+        };
+        let Some(id) = referenced
+            .upcast::<Element>()
+            .get_attribute_string_value(&local_name!("id"))
+        else {
+            return false;
+        };
+        let key = format!("use:{id}");
+        if !active_clips.insert(key.clone()) {
+            return false;
+        }
+        let x = length(cx, node, local_name!("x"), SVGLengthDirection::Horizontal);
+        let y = length(cx, node, local_name!("y"), SVGLengthDirection::Vertical);
+        let transform = Affine::translate((x, y)) * element_transform(cx, &referenced);
+        let result = transform.determinant() != 0.0 &&
+            clip_content_contains_point(
+                cx,
+                &referenced,
+                transform.inverse() * point,
+                active_clips,
+            );
+        active_clips.remove(&key);
+        return result;
+    }
     let children: Vec<DomRoot<SVGElement>> = node
         .upcast::<Node>()
         .children()
@@ -1675,7 +1702,8 @@ fn clip_path_contains_point(
     let Some((_, id)) = url.rsplit_once('#') else {
         return true;
     };
-    if !active_clips.insert(id.to_string()) {
+    let key = format!("clip:{id}");
+    if !active_clips.insert(key.clone()) {
         return false;
     }
     let result = (|| {
@@ -1713,7 +1741,7 @@ fn clip_path_contains_point(
         ))
     })()
     .unwrap_or(true);
-    active_clips.remove(id);
+    active_clips.remove(&key);
     result
 }
 
