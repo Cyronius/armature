@@ -431,3 +431,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   mode so SVG geometry attributes in quirks mode can resolve unitless custom property values as
   user units, while standards mode continues to reject those values.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-521: Accept CSS and SVG image rendering keywords in Servo
+- Files: `style/values/specified/image.rs`
+- Why: Build `smooth`, `high-quality`, `optimizequality` and `optimizespeed` for Servo. CSS Images
+  requires the first two and requires accepting the deprecated SVG keywords. This fixes parsing,
+  computed style and inheritance tests in CSS Images and SVG painting.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

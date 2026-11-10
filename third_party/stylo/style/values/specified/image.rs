@@ -1333,8 +1333,10 @@ impl PaintWorklet {
 #[repr(u8)]
 pub enum ImageRendering {
     Auto,
-    #[cfg(feature = "gecko")]
+    // Armature (AS-521): Accept smooth and high-quality image rendering in Servo.
     Smooth,
+    #[cfg(feature = "servo")]
+    HighQuality,
     #[parse(aliases = "-moz-crisp-edges")]
     CrispEdges,
     Pixelated,
@@ -1346,9 +1348,8 @@ pub enum ImageRendering {
     //     as crisp-edges and smooth respectively, and authors must not use
     //     them.
     //
-    #[cfg(feature = "gecko")]
+    // Armature (AS-521): Accept the deprecated SVG keywords in Servo too.
     Optimizespeed,
-    #[cfg(feature = "gecko")]
     Optimizequality,
 }
 
