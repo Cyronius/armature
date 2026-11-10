@@ -400,3 +400,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   using the property's accumulation procedure. Unsupported properties retain their normal
   per-iteration value. Servo supplies the current iteration count to this sampler.
 - Upstream: Could go upstream as part of script animation support.
+
+### AS-517: Serialize flow alignment aliases in computed styles
+- Files: `style/values/specified/align.rs`, `style/values/computed/align.rs`
+- Why: CSS Box Alignment now accepts `flow-start` and `flow-end` as aliases of `flex-start` and
+  `flex-end`. Preserve the specified spelling in declarations, canonicalize computed styles to
+  the flow spelling, and keep their layout behavior equivalent. This also fixes discrete Web
+  Animations comparisons for the alignment properties.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

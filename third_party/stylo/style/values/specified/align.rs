@@ -8,11 +8,14 @@
 
 use crate::derives::*;
 use crate::parser::{Parse, ParserContext};
+// Armature (AS-517): Canonicalize flex alignment aliases during computed-value conversion.
+use crate::values::computed::{Context, ToComputedValue};
 use cssparser::Parser;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, KeywordsCollectFn, ParseError, SpecifiedValueInfo, ToCss};
 
 /// Constants shared by multiple CSS Box Alignment properties
+// Armature (AS-517): Normalize flex alignment aliases at computed-value time.
 #[derive(
     Clone,
     Copy,
@@ -22,7 +25,6 @@ use style_traits::{CssWriter, KeywordsCollectFn, ParseError, SpecifiedValueInfo,
     MallocSizeOf,
     PartialEq,
     Serialize,
-    ToComputedValue,
     ToResolvedValue,
     ToShmem,
 )]
@@ -67,6 +69,11 @@ bitflags! {
         const SPACE_EVENLY = 16;
         /// `anchor-center`
         const ANCHOR_CENTER = 17;
+        // Armature (AS-517): Keep flow aliases distinct in specified styles.
+        /// 'flow-start'
+        const FLOW_START = 18;
+        /// 'flow-end'
+        const FLOW_END = 19;
 
         // Additional flags stored in the upper bits:
         /// 'legacy' (mutually exclusive w. SAFE & UNSAFE)
@@ -82,10 +89,15 @@ bitflags! {
 }
 
 impl AlignFlags {
-    /// Returns the enumeration value stored in the lower 5 bits.
+    /// Returns the layout-equivalent value stored in the lower 5 bits.
     #[inline]
     pub fn value(&self) -> Self {
-        *self & !AlignFlags::FLAG_BITS
+        // Armature (AS-517): Flow aliases use the same layout alignment as flex aliases.
+        match *self & !AlignFlags::FLAG_BITS {
+            Self::FLOW_START => Self::FLEX_START,
+            Self::FLOW_END => Self::FLEX_END,
+            value => value,
+        }
     }
 
     /// Returns an updated value with the same flags.
@@ -102,13 +114,31 @@ impl AlignFlags {
     }
 }
 
+// Armature (AS-517): Computed alignment serializes the canonical flow aliases.
+impl ToComputedValue for AlignFlags {
+    type ComputedValue = Self;
+
+    fn to_computed_value(&self, _: &Context) -> Self {
+        match self.value() {
+            Self::FLEX_START => self.with_value(Self::FLOW_START),
+            Self::FLEX_END => self.with_value(Self::FLOW_END),
+            _ => *self,
+        }
+    }
+
+    fn from_computed_value(computed: &Self) -> Self {
+        *computed
+    }
+}
+
 impl ToCss for AlignFlags {
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
         W: Write,
     {
         let flags = self.flags();
-        let value = self.value();
+        // Armature (AS-517): Preserve the specified alias while serializing declarations.
+        let value = *self & !AlignFlags::FLAG_BITS;
         match flags {
             AlignFlags::LEGACY => {
                 dest.write_str("legacy")?;
@@ -131,6 +161,9 @@ impl ToCss for AlignFlags {
             AlignFlags::END => "end",
             AlignFlags::FLEX_START => "flex-start",
             AlignFlags::FLEX_END => "flex-end",
+            // Armature (AS-517): Serialize computed aliases canonically.
+            AlignFlags::FLOW_START => "flow-start",
+            AlignFlags::FLOW_END => "flow-end",
             AlignFlags::CENTER => "center",
             AlignFlags::LEFT => "left",
             AlignFlags::RIGHT => "right",
@@ -171,7 +204,6 @@ pub enum AxisDirection {
     MallocSizeOf,
     PartialEq,
     Serialize,
-    ToComputedValue,
     ToCss,
     ToResolvedValue,
     ToShmem,
@@ -183,6 +215,19 @@ pub struct ContentDistribution {
     primary: AlignFlags,
     // FIXME(https://github.com/w3c/csswg-drafts/issues/1002): This will need to
     // accept fallback alignment, eventually.
+}
+
+// Armature (AS-517): The derive clones non-generic structs without converting their fields.
+impl ToComputedValue for ContentDistribution {
+    type ComputedValue = Self;
+
+    fn to_computed_value(&self, context: &Context) -> Self {
+        Self::new(self.primary.to_computed_value(context))
+    }
+
+    fn from_computed_value(computed: &Self) -> Self {
+        *computed
+    }
 }
 
 impl ContentDistribution {
@@ -262,6 +307,9 @@ impl ContentDistribution {
             "end" => AlignFlags::END,
             "flex-start" => AlignFlags::FLEX_START,
             "flex-end" => AlignFlags::FLEX_END,
+            // Armature (AS-517): Parse flow alignment aliases without losing specified style.
+            "flow-start" => AlignFlags::FLOW_START,
+            "flow-end" => AlignFlags::FLOW_END,
             "center" => AlignFlags::CENTER,
             "left" if axis == AxisDirection::Inline => AlignFlags::LEFT,
             "right" if axis == AxisDirection::Inline => AlignFlags::RIGHT,
@@ -279,7 +327,8 @@ impl SpecifiedValueInfo for ContentDistribution {
         list_baseline_keywords(f); // block-axis only
         list_content_distribution_keywords(f);
         list_overflow_position_keywords(f);
-        f(&["start", "end", "flex-start", "flex-end", "center"]);
+        // Armature (AS-517): Expose flow alignment aliases to property completion.
+        f(&["start", "end", "flex-start", "flex-end", "flow-start", "flow-end", "center"]);
         f(&["left", "right"]); // inline-axis only
     }
 }
@@ -298,7 +347,6 @@ impl SpecifiedValueInfo for ContentDistribution {
     MallocSizeOf,
     PartialEq,
     Serialize,
-    ToComputedValue,
     ToCss,
     ToResolvedValue,
     ToShmem,
@@ -307,6 +355,19 @@ impl SpecifiedValueInfo for ContentDistribution {
 #[repr(C)]
 #[typed(todo_derive_fields)]
 pub struct SelfAlignment(pub AlignFlags);
+
+// Armature (AS-517): Convert alignment aliases within the specified wrapper.
+impl ToComputedValue for SelfAlignment {
+    type ComputedValue = Self;
+
+    fn to_computed_value(&self, context: &Context) -> Self {
+        Self(self.0.to_computed_value(context))
+    }
+
+    fn from_computed_value(computed: &Self) -> Self {
+        *computed
+    }
+}
 
 impl SelfAlignment {
     /// The initial value 'auto'
@@ -428,7 +489,6 @@ impl SpecifiedValueInfo for SelfAlignment {
     MallocSizeOf,
     PartialEq,
     Serialize,
-    ToComputedValue,
     ToCss,
     ToResolvedValue,
     ToShmem,
@@ -437,6 +497,19 @@ impl SpecifiedValueInfo for SelfAlignment {
 #[repr(C)]
 #[typed(todo_derive_fields)]
 pub struct ItemPlacement(pub AlignFlags);
+
+// Armature (AS-517): Convert alignment aliases within the specified wrapper.
+impl ToComputedValue for ItemPlacement {
+    type ComputedValue = Self;
+
+    fn to_computed_value(&self, context: &Context) -> Self {
+        Self(self.0.to_computed_value(context))
+    }
+
+    fn from_computed_value(computed: &Self) -> Self {
+        *computed
+    }
+}
 
 impl ItemPlacement {
     /// The value 'normal'
@@ -642,6 +715,9 @@ fn parse_self_position(
         "end" => AlignFlags::END,
         "flex-start" => AlignFlags::FLEX_START,
         "flex-end" => AlignFlags::FLEX_END,
+        // Armature (AS-517): Accept flow aliases for self and item alignment.
+        "flow-start" => AlignFlags::FLOW_START,
+        "flow-end" => AlignFlags::FLOW_END,
         "center" => AlignFlags::CENTER,
         "self-start" => AlignFlags::SELF_START,
         "self-end" => AlignFlags::SELF_END,
@@ -662,6 +738,9 @@ fn list_self_position_keywords(f: KeywordsCollectFn, axis: AxisDirection) {
         "end",
         "flex-start",
         "flex-end",
+        // Armature (AS-517): Expose the flow aliases for self and item alignment.
+        "flow-start",
+        "flow-end",
         "center",
         "self-start",
         "self-end",
