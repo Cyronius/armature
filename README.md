@@ -559,7 +559,10 @@ Notes on the numbers:
   Stroke width, dash lengths and dash offsets now resolve percentages and `calc()` against the current SVG viewport's
   normalized diagonal, including after a `viewBox` change and under CSS zoom. Ellipse geometry now uses computed CSS
   radii, so a radius set to zero in style disables the shape. The new six-subtest percentage stroke test passes, and
-  the 102-file SVG scripted regression run matches expectations.
+  the 102-file SVG scripted regression run matches expectations. `isPointInStroke()` now includes computed CSS
+  transforms on the shape and its SVG ancestors for non-scaling strokes, including nonuniform scales, skew, CSS
+  overrides of presentation attributes and live transform changes. All six transform subtests pass. One 103-file SVG
+  scripted run matched expectations; two font-dependent differences on a repeat run passed when rerun separately.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
@@ -621,7 +624,7 @@ Notes on the numbers:
   as the current [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes. Two
   `lh`/`rlh` tests compare the 32-bit `SVGLength.value` with a layout double using exact equality. One `ex` test
   measures its reference before Ahem loads, so its expected value can change with font-loading timing.
-- SVG DOM stroke hit testing does not yet resolve CSS transforms for non-scaling strokes.
+- SVG DOM stroke hit testing does not yet project non-scaling strokes through 3D CSS transforms.
 - Some SVG non-scaling stroke reftests still differ at raster edges or under CSS transforms. The embedded SVG viewport
   correction currently covers data URL images with a `viewBox` and a `vector-effect` attribute.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
