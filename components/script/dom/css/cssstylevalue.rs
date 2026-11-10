@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 
 use cssparser::{Parser, serialize_identifier};
 use dom_struct::dom_struct;
@@ -18,6 +19,7 @@ use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::css::css::CSS;
 use crate::dom::css::csskeywordvalue::CSSKeywordValue;
+use crate::dom::css::cssunparsedvalue::CSSUnparsedValue;
 use crate::dom::css::stylepropertymapreadonly::StylePropertyMapReadOnly;
 use crate::dom::globalscope::GlobalScope;
 
@@ -146,9 +148,10 @@ impl CSSStyleValue {
         Ok(values
             .into_iter()
             .map(|value| {
-                let keyword = if property.str().starts_with("--") {
-                    None
-                } else {
+                if property.str().starts_with("--") || value.contains("var(") {
+                    return DomRoot::upcast(CSSUnparsedValue::from_string(cx, global, value));
+                }
+                let keyword = {
                     let mut parser = Parser::new(&value);
                     let ident = parser.expect_ident().ok().map(ToString::to_string);
                     ident.filter(|_| parser.expect_exhausted().is_ok())
@@ -189,6 +192,9 @@ impl CSSStyleValueMethods<crate::DomTypeHolder> for CSSStyleValue {
 
     /// <https://drafts.css-houdini.org/css-typed-om-1/#CSSStyleValue-stringification-behavior>
     fn Stringifier(&self) -> DOMString {
+        if let Some(unparsed) = self.downcast::<CSSUnparsedValue>() {
+            return DOMString::from(unparsed.serialize(&mut HashSet::new()));
+        }
         let value = self.value();
         if self.is::<CSSKeywordValue>() {
             let mut escaped = String::new();

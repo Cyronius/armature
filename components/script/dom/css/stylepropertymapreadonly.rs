@@ -21,6 +21,7 @@ use stylo_atoms::Atom;
 use super::csskeywordvalue::CSSKeywordValue;
 use super::cssstyledeclaration::CSSStyleDeclaration;
 use super::cssstylevalue::CSSStyleValue;
+use super::cssunparsedvalue::CSSUnparsedValue;
 use crate::dom::bindings::codegen::Bindings::CSSStyleDeclarationBinding::CSSStyleDeclarationMethods;
 use crate::dom::bindings::codegen::Bindings::StylePropertyMapReadOnlyBinding::StylePropertyMapReadOnlyMethods;
 use crate::dom::bindings::error::{Error, Fallible};
@@ -80,6 +81,11 @@ impl StylePropertyMapReadOnly {
                 return None;
             }
             let global = self.global();
+            if property.str().starts_with("--") || value.contains("var(") {
+                return Some(DomRoot::upcast(CSSUnparsedValue::from_cssom_string(
+                    cx, &global, value,
+                )));
+            }
             let is_keyword = {
                 let mut parser = Parser::new(&value);
                 parser.expect_ident().is_ok() && parser.expect_exhausted().is_ok()
