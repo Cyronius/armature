@@ -103,7 +103,9 @@ Notes on the numbers:
 - **HTML reflecting attributes**: about 130 missing IDL attributes (table, table cell, row and column, heading and
   `body` colors, `ol`/`li`/`dl`, `embed`/`object`/`param`/`area`, frames, `marquee`, form controls, `meta.media`,
   `a.download`/`ping`, `enterKeyHint`, `inputMode` and more). The `html/dom/reflection-*` tests went from about
-  5,300 failing subtests to about 85. The enumerated ARIA attributes (`ariaBusy`, `ariaLive`, ...) are behind the
+  5,300 failing subtests to 47 across seven representative files. Table `span`, `colSpan` and `rowSpan` now keep
+  the assigned content attribute while clamping the reflected value, fixing 38 more subtests. The enumerated ARIA
+  attributes (`ariaBusy`, `ariaLive`, ...) are behind the
   `dom_aria_enumerated_reflection_enabled` preference.
 - **Fetch priority reflection**: `fetchPriority` reflects `fetchpriority` on HTML `img`, `link` and `script`, and SVG
   `image` and `script` elements. All 10 focused subtests now pass across five files.
