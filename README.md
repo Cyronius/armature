@@ -275,7 +275,8 @@ Notes on the numbers:
   ordinary DOM geometry objects still accept them; animated SVG point-list items throw when modified. Eight more
   subtests pass since the CTM work. SVG `lh` and `rlh` lengths now resolve against the element and root line heights,
   including `normal` from the first available font. Four more SVG scripted subtests and one CSS line-height subtest
-  pass; the 97-file scripted cluster has 15 repeatable failures, down from 19.
+  pass. `isPointInFill()` now includes points on circle, ellipse, path and line boundaries, so another SVG scripted
+  subtest passes. The 97-file scripted cluster has 14 repeatable failures, down from 19.
   SVG `systemLanguage` now preserves empty comma-separated tokens in its DOM list, excludes nonmatching graphics from
   geometry, hit testing and focus, and selects the first matching `<switch>` child. The SVG rasterizer uses the
   browser's language preference, so image pixels follow the same conditions. All 27 focused parsing and matching
