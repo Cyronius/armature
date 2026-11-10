@@ -416,7 +416,10 @@ Notes on the numbers:
   view attributes, including `viewBox`, `preserveAspectRatio`, and `transform`; named `<view>` elements work in SVG
   data URLs loaded by `<object>`.
   The renderer resolves selected views against the image viewport, preserving aspect ratio behavior. Eleven more
-  linking reftests pass, leaving 7 expected failures in the latest 55-test run, down from 30 before fragment support.
+  linking reftests pass, leaving 7 expected failures in the 55-test run, down from 30 before fragment support.
+  Inline SVG rendering now carries resolved CSS `fill` into its rasterized copy, including animated values, and
+  SVG anchors with either `href` or `xlink:href` match `:link`. Three more linking reftests pass, leaving four
+  expected failures in the latest 55-test run.
 - **SVG geometry properties**: Negative `r`, `rx`, `ry`, `width` and `height` presentation attributes are ignored, and
   `<foreignObject>` maps its geometry attributes to CSS properties. `getComputedStyle()` resolves the used width and
   height of SVG rectangles, images and foreign objects against their SVG viewport, including percentages and
