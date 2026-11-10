@@ -16,6 +16,7 @@ test_interfaces([
   "CanvasPattern",
   "CloseEvent",
   "CompressionStream",
+  "CSS",
   "CSSKeywordValue",
   "CSSMathClamp",
   "CSSMathInvert",
