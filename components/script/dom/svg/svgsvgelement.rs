@@ -229,8 +229,7 @@ impl SVGSVGElement {
             ) else {
                 continue;
             };
-            if document.is_html_document() &&
-                let Some(image) = source.downcast::<SVGImageElement>() &&
+            if let Some(image) = source.downcast::<SVGImageElement>() &&
                 let Some(data_url) = image.external_image_data_url()
             {
                 clone.set_svg_attribute(cx, &local_name!("href"), data_url);
