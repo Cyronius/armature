@@ -180,6 +180,15 @@ fn resolve(
         None
     };
 
+    // Armature (AU-006): markerUnits=strokeWidth follows the painted stroke
+    // width. For a non-scaling stroke, construct the marker in the same outer
+    // viewport as the stroke outline, then map it back to the shape's space.
+    let non_scaling_inverse = (shape_node.attribute::<&str>(AId::VectorEffect) ==
+        Some("non-scaling-stroke") &&
+        marker_node.attribute::<&str>(AId::MarkerUnits) != Some("userSpaceOnUse"))
+    .then(|| parent.abs_transform.invert())
+    .flatten();
+
     let draw_marker = |p: tiny_skia_path::Point, idx: usize| {
         if path_metadata
             .as_ref()
@@ -187,9 +196,7 @@ fn resolve(
         {
             return;
         }
-        let mut ts = Transform::from_translate(p.x, p.y);
-
-        let angle = match convert_orientation(marker_node) {
+        let mut angle = match convert_orientation(marker_node) {
             MarkerOrientation::AutoStartReverse if idx == 0 => {
                 (calc_vertex_angle(&segments, idx) + 180.0) % 360.0
             }
@@ -198,6 +205,16 @@ fn resolve(
             }
             MarkerOrientation::Angle(angle) => angle,
         };
+
+        let mut position = p;
+        if non_scaling_inverse.is_some() {
+            parent.abs_transform.map_point(&mut position);
+            let (sin, cos) = angle.to_radians().sin_cos();
+            let x = parent.abs_transform.sx * cos + parent.abs_transform.kx * sin;
+            let y = parent.abs_transform.ky * cos + parent.abs_transform.sy * sin;
+            angle = y.atan2(x).to_degrees();
+        }
+        let mut ts = Transform::from_translate(position.x, position.y);
 
         if !angle.approx_zero_ulps(4) {
             ts = ts.pre_rotate(angle);
@@ -213,6 +230,9 @@ fn resolve(
         }
 
         ts = ts.pre_translate(-r.x(), -r.y());
+        if let Some(inverse) = non_scaling_inverse {
+            ts = inverse.pre_concat(ts);
+        }
 
         // TODO: do not create a group when no clipPath
         let mut g = Group {
