@@ -85,8 +85,9 @@ Notes on the numbers:
 - The Armature run matched the expectations recorded in `tests/wpt/meta` for all but about 450 tests, most of them
   WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
   Servo's CI would measure.
-- The table predates the SVG hit-testing, path DOM, image sizing, canvas image, focus, conditional processing and
-  SMIL work, as well as the final HTML reflection fixes described below; their gains are not included in these scores.
+- The table predates the SVG hit-testing, path DOM, image sizing, non-scaling stroke, canvas image, focus, conditional
+  processing and SMIL work, as well as the final HTML reflection fixes described below; their gains are not included
+  in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
@@ -397,6 +398,10 @@ Notes on the numbers:
   placing extra middle markers where an arc was approximated by multiple cubic curves; three more marker reftests pass.
   Markers at exact 180-degree reversals choose a consistent clockwise bisector, and repeated `closepath` commands
   retain their middle-marker vertices even when the painted path collapses them. Two more marker reftests pass.
+  Non-scaling strokes are outlined in the outer SVG viewport before being mapped back to path coordinates, including
+  under non-uniform transforms. Inline SVG rendering copies now carry computed CSS stroke and `vector-effect` values,
+  and SVGs with automatic sizes resolve their layout viewport before outlining. Two more painting reftests pass,
+  including the viewBox scaling cases; external SVG images still scale their strokes with the image.
   Seeking an SVG animation clock refreshes its cached raster image. The serializer also applies active `<animate>`
   and `<set>` presentation property values to the rendering copy, so the scripted motion and rewind/freeze reftests
   now pass.
@@ -496,6 +501,8 @@ Notes on the numbers:
   graphics inside definitions, clip paths and masks; Armature returns their own geometry, as the current
   [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes.
 - SVG DOM stroke hit testing does not yet resolve percentage dash lengths or CSS transforms for non-scaling strokes.
+- Some SVG non-scaling stroke reftests still differ at raster edges or when CSS transforms and embedded images affect
+  the stroke viewport.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
