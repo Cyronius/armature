@@ -320,6 +320,11 @@ Notes on the numbers:
   text run matches expectations after removing seven stale failure expectations in related geometry tests. The
   1,247-test CSS writing modes sweep had three unexpected test files; rerunning those files with the pref off gave
   the same results.
+  Script's SVG text geometry now places characters on `<textPath>` geometry from inline `path` data or referenced
+  paths, including dynamic changes, `startOffset`, `pathLength` calibration and basic SMIL path interpolation.
+  `textLength` adjusts character spacing or glyph advances, and character position and hit-testing methods handle
+  vertical writing modes. The 27-file scripted text run now passes 35 subtests that previously failed; two expected
+  failures remain in that directory.
   SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
   `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
   scripted linking files; the full 25-file scripted linking directory matches expectations.
@@ -532,7 +537,9 @@ Notes on the numbers:
   source element. SMIL effects cover basic lengths, enumerations, numbers, presentation properties and motion. Full
   repeat and syncbase timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
   methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
-  geometry is measured glyph by glyph without shaping, `textPath` layout, `dominant-baseline` or vertical positioning.
+  geometry is measured glyph by glyph without shaping or full font baseline metrics. Text-path layout is incomplete
+  for advanced typography and path animation modes. One text-path `textLength` bounding-box test reads its box before
+  the Ahem font loads, so its result depends on font-loading timing.
 - SVG `getBBox()` intersects clipping bounds as rectangles rather than calculating the exact clipped silhouette, and
   marker sizing does not cover every `preserveAspectRatio` and orientation case. Eight WPT cases expect zero for
   graphics inside definitions, clip paths, masks or `display:none` containers; Armature returns their own geometry,
