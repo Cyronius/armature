@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml"
+     width="200" height="200" viewBox="0 0 200 200">
+  <title>CSS transforms affect non-scaling SVG stroke hit testing</title>
+  <metadata>
+    <h:link rel="help" href="https://www.w3.org/TR/SVG2/coords.html#VectorEffects"/>
+    <h:link rel="help" href="https://www.w3.org/TR/SVG2/types.html#InterfaceSVGGeometryElement"/>
+  </metadata>
+  <h:script src="/resources/testharness.js"/>
+  <h:script src="/resources/testharnessreport.js"/>
+
+  <line id="self" x1="0" y1="20" x2="100" y2="20" stroke="black"
+        stroke-width="2" vector-effect="non-scaling-stroke" style="transform: scale(2)"/>
+  <g style="transform: scale(3)">
+    <line id="parent" x1="0" y1="40" x2="100" y2="40" stroke="black"
+          stroke-width="2" vector-effect="non-scaling-stroke"/>
+  </g>
+  <line id="nonuniform" x1="0" y1="60" x2="100" y2="60" stroke="black"
+        stroke-width="2" vector-effect="non-scaling-stroke" style="transform: scale(2, 4)"/>
+  <line id="override" x1="0" y1="80" x2="100" y2="80" stroke="black"
+        stroke-width="2" vector-effect="non-scaling-stroke" transform="scale(3)"
+        style="transform: scale(2)"/>
+  <line id="skew" x1="0" y1="100" x2="100" y2="100" stroke="black"
+        stroke-width="2" vector-effect="non-scaling-stroke"
+        style="transform: matrix(1, 1, 0, 1, 0, 0)"/>
+  <line id="dynamic" x1="0" y1="120" x2="100" y2="120" stroke="black"
+        stroke-width="2" vector-effect="non-scaling-stroke"/>
+
+  <script><![CDATA[
+    test(() => {
+      const line = document.getElementById("self");
+      assert_true(line.isPointInStroke({x: 50, y: 20.4}));
+      assert_false(line.isPointInStroke({x: 50, y: 20.6}));
+    }, "A CSS transform on the shape changes the local stroke width");
+
+    test(() => {
+      const line = document.getElementById("parent");
+      assert_true(line.isPointInStroke({x: 50, y: 40.2}));
+      assert_false(line.isPointInStroke({x: 50, y: 40.4}));
+    }, "A CSS transform on an ancestor changes the local stroke width");
+
+    test(() => {
+      const line = document.getElementById("nonuniform");
+      assert_true(line.isPointInStroke({x: 50, y: 60.2}));
+      assert_false(line.isPointInStroke({x: 50, y: 60.3}));
+    }, "Nonuniform CSS scaling uses the perpendicular scale");
+
+    test(() => {
+      const line = document.getElementById("override");
+      assert_true(line.isPointInStroke({x: 50, y: 80.4}));
+      assert_false(line.isPointInStroke({x: 50, y: 80.6}));
+    }, "A CSS transform overrides the transform presentation attribute");
+
+    test(() => {
+      const line = document.getElementById("skew");
+      assert_true(line.isPointInStroke({x: 50, y: 101.2}));
+      assert_false(line.isPointInStroke({x: 50, y: 101.5}));
+    }, "A CSS skew changes distance to the stroke in local coordinates");
+
+    test(() => {
+      const line = document.getElementById("dynamic");
+      assert_true(line.isPointInStroke({x: 50, y: 120.6}));
+      line.style.transform = "scale(2)";
+      assert_false(line.isPointInStroke({x: 50, y: 120.6}));
+    }, "Changing a CSS transform updates stroke hit testing");
+  ]]></script>
+</svg>
