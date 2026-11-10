@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 def main(request, response):
     mode = request.GET.first(b"mode", b"")
     response.headers.set(b"Content-Type", b"text/css")
