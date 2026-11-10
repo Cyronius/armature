@@ -309,6 +309,9 @@ Notes on the numbers:
   computed CSS `d` coordinates directly, preserving path length precision after `setPathData()` without changing
   CSSOM `d` serialization. Three more scripted subtests pass from these fixes; the 97-file cluster now has 11
   failures, down from 19.
+  SVG `<script>` now exposes the `SVGURIReference.href` animated string, including `href`/`xlink:href` precedence.
+  Four script-linking subtests and two SVG IDL checks now pass. The SVG IDL expectations were also refreshed for 121
+  checks fixed by earlier work, and four stale scripted-geometry failure expectations were removed.
   SVG `systemLanguage` now preserves empty comma-separated tokens in its DOM list, excludes nonmatching graphics from
   geometry, hit testing and focus, and selects the first matching `<switch>` child. The SVG rasterizer uses the
   browser's language preference, so image pixels follow the same conditions. All 27 focused parsing and matching
@@ -513,9 +516,11 @@ Notes on the numbers:
   methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
   geometry is measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
 - SVG `getBBox()` intersects clipping bounds as rectangles rather than calculating the exact clipped silhouette, and
-  marker sizing does not cover every `preserveAspectRatio` and orientation case. Five WPT cases expect zero for
-  graphics inside definitions, clip paths and masks; Armature returns their own geometry, as the current
-  [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes.
+  marker sizing does not cover every `preserveAspectRatio` and orientation case. Eight WPT cases expect zero for
+  graphics inside definitions, clip paths, masks or `display:none` containers; Armature returns their own geometry,
+  as the current [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes. Two
+  `lh`/`rlh` tests compare the 32-bit `SVGLength.value` with a layout double using exact equality. One `ex` test
+  measures its reference before Ahem loads, so its expected value can change with font-loading timing.
 - SVG DOM stroke hit testing does not yet resolve percentage dash lengths or CSS transforms for non-scaling strokes.
 - Some SVG non-scaling stroke reftests still differ at raster edges or under CSS transforms. The embedded SVG viewport
   correction currently covers data URL images with a `viewBox` and a `vector-effect` attribute.
