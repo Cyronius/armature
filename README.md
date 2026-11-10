@@ -344,6 +344,9 @@ Notes on the numbers:
   computed CSS `d` coordinates directly, preserving path length precision after `setPathData()` without changing
   CSSOM `d` serialization. Three more scripted subtests pass from these fixes; the 97-file cluster now has 11
   failures, down from 19.
+  SVG geometry DOM methods now use computed CSS position and size for circles, ellipse centers and rectangles,
+  including percentages and live style changes. Seven focused subtests pass, and a 129-file SVG geometry regression
+  run matches expectations.
   SVG `<script>` now exposes the `SVGURIReference.href` animated string, including `href`/`xlink:href` precedence.
   Four script-linking subtests and two SVG IDL checks now pass. The SVG IDL expectations were also refreshed for 121
   checks fixed by earlier work, and four stale scripted-geometry failure expectations were removed.
@@ -613,8 +616,8 @@ Notes on the numbers:
   draws `<image>` elements whose `href` is a `data:` URL. `<use>` still lacks a DOM shadow tree, including the
   instance event path and synchronized event listeners; direct references to SVG anchors activate through their
   source element. SMIL effects cover basic lengths, enumerations, numbers, presentation properties and motion. Full
-  repeat and syncbase timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
-  methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
+  repeat and syncbase timing, `TimeEvent` details, and many animated attributes are still missing. Some geometry
+  methods still reconstruct some geometry from attributes rather than the used CSS values. Script's text
   geometry is measured glyph by glyph without shaping or full font baseline metrics. Text-path layout is incomplete
   for advanced typography and path animation modes. One text-path `textLength` bounding-box test reads its box before
   the Ahem font loads, so its result depends on font-loading timing.
