@@ -181,6 +181,9 @@ Notes on the numbers:
   Referrer Policy spec requires (they used the document's). Stylo's URL data now carries that referrer (Stylo change
   AS-501). This fixes 11 subtests in `referrer-policy/css-integration`; the SVG ones there still fail because Servo
   does not fetch external SVG resources such as `fill: url(file.svg#paint)`.
+- **CSS import encoding**: `@import` now uses the encoding actually selected for its parent style sheet as its
+  fallback, including through nested imports. Four focused subtests cover HTTP `charset`, `@charset`, UTF-16 BOMs,
+  and a second import level; all 21 nearby CSS charset tests still run as expected.
 - **XML serialization**: `XMLSerializer`, `innerHTML` and `outerHTML` in XML documents, and the drawing of inline SVG
   now use an implementation of the [DOM Parsing](https://w3c.github.io/DOM-Parsing/#xml-serialization) XML
   serialization algorithm instead of xml5ever's serializer. It keeps namespaces with prefixes and `xmlns`
@@ -428,8 +431,6 @@ Notes on the numbers:
 
 ## What has not been done
 
-- A style sheet loaded by `@import` falls back to the document's encoding instead of the encoding of the style sheet
-  that imports it.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
   expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
   contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
