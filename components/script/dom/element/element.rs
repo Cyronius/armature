@@ -185,6 +185,7 @@ use crate::dom::svg::svgaelement::SVGAElement;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svggeometry;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
+use crate::dom::svg::svgsvgelement::SVGSVGElement;
 use crate::dom::svg::svguseelement::SVGUseElement;
 use crate::dom::text::Text;
 use crate::dom::trustedtypes::trustedhtml::TrustedHTML;
@@ -5331,6 +5332,27 @@ impl VirtualMethods for Element {
         };
 
         self.invalidate_nth_of_siblings(cx.no_gc());
+
+        // An inline SVG's raster is a serialized copy with resolved paint values.
+        // Changes to an HTML ancestor can change inherited color and descendant
+        // selectors without mutating anything inside the SVG itself.
+        if !self.is::<SVGElement>() &&
+            node.is_connected() &&
+            matches!(
+                *attr.local_name(),
+                local_name!("class") | local_name!("id") | local_name!("style")
+            )
+        {
+            for svg in node
+                .traverse_preorder(ShadowIncluding::No)
+                .skip(1)
+                .filter_map(DomRoot::downcast::<SVGSVGElement>)
+            {
+                if svg.upcast::<SVGElement>().viewport_element().is_none() {
+                    svg.invalidate_cached_serialized_subtree_and_rasterization_result(cx.no_gc());
+                }
+            }
+        }
 
         // TODO: This should really only take into account the actual attributes that are used
         // for the content attribute property.

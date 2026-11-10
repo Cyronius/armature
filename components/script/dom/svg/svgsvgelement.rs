@@ -19,8 +19,9 @@ use style::attr::AttrValue;
 use style::parser::ParserContext;
 use style::properties::{PropertyDeclarationId, PropertyId};
 use style::stylesheets::Origin;
+use style::values::computed::svg::SVGPaintKind;
 use style::values::specified::LengthPercentage;
-use style_traits::ParsingMode;
+use style_traits::{ParsingMode, ToCss};
 use stylo_atoms::Atom;
 use uuid::Uuid;
 
@@ -321,7 +322,7 @@ impl SVGSVGElement {
                     let Ok(id) = id.longhand_or_shorthand() else {
                         continue;
                     };
-                    let value = computed_style
+                    let mut value = computed_style
                         .computed_value_to_string(PropertyDeclarationId::Longhand(id));
                     // A referenced subtree inherits from its `<use>` element. Copying an
                     // inherited value that came only from the definition's ancestors would
@@ -333,6 +334,22 @@ impl SVGSVGElement {
                         })
                     {
                         continue;
+                    }
+                    // The SVG rasterizer cannot parse modern CSS color syntax.
+                    // Transfer resolved paint colors in legacy sRGB syntax.
+                    if matches!(property, "fill" | "stroke") {
+                        let svg_style = computed_style.get_inherited_svg();
+                        let paint = if property == "fill" {
+                            &svg_style.fill
+                        } else {
+                            &svg_style.stroke
+                        };
+                        if let SVGPaintKind::Color(color) = &paint.kind {
+                            value = color
+                                .resolve_to_absolute(computed_style.get_color())
+                                .into_srgb_legacy()
+                                .to_css_string();
+                        }
                     }
                     // URLs are relative to the original document, not to the rendering copy's
                     // data URL. Keep those references in the original attributes and styles.
