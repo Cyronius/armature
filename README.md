@@ -242,11 +242,13 @@ Notes on the numbers:
   `KeyframeEffect` takes timing options, property-indexed
   keyframes (including nullable offset arrays and CSS custom properties) and a composite operation, and
   `element.animate()` plays the animation. Custom properties also affect computed style and `commitStyles()`.
-  Animations created by script now change the style of their targets: Stylo resolves their keyframes and composites
-  them (`replace`, `add` and `accumulate`) over CSS animations (AS-506). The "Web Animations" and
+  Animations created by script now change the style of their targets, including `::before` and `::after` even when
+  they generate no box. Retargeting an effect moves it between elements and pseudo-elements without leaving an old
+  effect behind (AS-515). Stylo resolves their keyframes and composites them (`replace`, `add` and `accumulate`)
+  over CSS animations (AS-506). The "Web Animations" and
   "Compositing Web Animations" subtests of the interpolation tests throughout `css/` went from about 12,100 failing
   to about 2,300, and `web-animations/interfaces`
-  from 625 failing subtests to 88 in the 47-file interface run (782 passing subtests).
+  from 625 failing subtests to 72 in the 47-file interface run (798 passing subtests).
 - **`CSSAnimation`, `CSSTransition` and `getAnimations()`**: CSS animations and transitions are now `CSSAnimation`
   and `CSSTransition` objects that `Document`, `ShadowRoot` and `Element.getAnimations()` return in composite order,
   so script can pause, seek, reverse, finish or cancel them and read their timing and keyframes
@@ -560,8 +562,9 @@ Notes on the numbers:
   `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `subgrid` is parsed but not laid out.
-- Web Animations: animations of pseudo-elements created by script have no effect, and `iterationComposite` is not
-  implemented, nor the `pseudoElement` option of `getAnimations()`. `commitStyles()` of an animation below others
+- Web Animations: script animations on pseudo-elements beyond `::before` and `::after` are not yet applied, and
+  `iterationComposite` is not implemented, nor the `pseudoElement` option of `getAnimations()`.
+  `commitStyles()` of an animation below others
   briefly recomputes the style of the target without them, which can start transitions. A `CSSAnimation` per repeated name in `animation-name` is missing
   (Stylo matches animations by name), `getKeyframes()` does not keep keyframes that share an offset but not an easing
   apart and shows additive keyframe values already added, and a finished `CSSTransition` cannot be replayed once
