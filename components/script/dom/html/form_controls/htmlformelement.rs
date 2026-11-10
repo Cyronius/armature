@@ -1392,6 +1392,7 @@ impl HTMLFormElement {
             .upcast::<EventTarget>()
             .fire_bubbling_cancelable_event(cx, atom!("reset"));
         if !reset {
+            self.marked_for_reset.set(false);
             return;
         }
 

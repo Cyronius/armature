@@ -1040,19 +1040,16 @@ impl DocumentEventHandler {
             }
         }
 
-        // https://html.spec.whatwg.org/multipage/#enabling-and-disabling-form-controls:-the-disabled-attribute
-        // A form control's internal shadow tree can be the hit target. Do not
-        // dispatch a user click through it to a disabled host.
-        if node
+        // A form control's internal shadow tree can be the hit target. Disabled
+        // controls still receive pointer events, including popover light dismiss,
+        // but must not receive the compatibility mouse events or a user click.
+        let is_disabled_control = node
             .inclusive_ancestors(ShadowIncluding::Yes)
             .any(|ancestor| {
                 ancestor
                     .downcast::<Element>()
                     .is_some_and(|element| element.is_actually_disabled())
-            })
-        {
-            return;
-        }
+            });
 
         let mouse_event_type = match mouse_button_event.action {
             embedder_traits::MouseButtonAction::Up => atom!("mouseup"),
@@ -1140,6 +1137,10 @@ impl DocumentEventHandler {
                     }
                     pointer_event_result
                 };
+
+                if is_disabled_control {
+                    return;
+                }
 
                 // Step 7. Let result = dispatch event at target
                 let result = mouse_event
@@ -1233,6 +1234,13 @@ impl DocumentEventHandler {
                     if exactly_one_button {
                         self.implicit_release_pointer_capture(cx, pointer_id, "mouse", true);
                     }
+                }
+
+                if is_disabled_control {
+                    self.button_click_state
+                        .safe_borrow_mut(cx.no_gc())
+                        .on_mouse_up(mouse_button_event.button, hit_test_result.point_in_frame);
+                    return;
                 }
 
                 // Step 7. dispatch event at target.

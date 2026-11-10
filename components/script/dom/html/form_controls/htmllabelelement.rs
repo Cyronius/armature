@@ -67,7 +67,14 @@ impl Activatable for HTMLLabelElement {
     }
 
     fn is_instance_activatable(&self) -> bool {
-        true
+        // An empty label inside another label still absorbs activation: it is
+        // interactive content and must not activate the outer label's control.
+        // Otherwise, let an enclosing button handle a click on an empty label.
+        self.upcast::<Element>().has_attribute(&local_name!("for")) ||
+            self.first_labelable_descendant().is_some() ||
+            self.upcast::<Node>()
+                .ancestors()
+                .any(|ancestor| ancestor.is::<HTMLLabelElement>())
     }
 
     // https://html.spec.whatwg.org/multipage/#the-label-element:activation_behaviour
