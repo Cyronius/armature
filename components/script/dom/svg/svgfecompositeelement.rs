@@ -78,7 +78,8 @@ impl SVGFECompositeElementMethods<crate::DomTypeHolder> for SVGFECompositeElemen
             ("out", 3),
             ("atop", 4),
             ("xor", 5),
-            ("arithmetic", 6)
+            ("arithmetic", 6),
+            ("lighter", 7)
         ],
         1
     );
