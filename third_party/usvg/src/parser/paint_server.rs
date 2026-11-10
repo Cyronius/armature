@@ -60,7 +60,9 @@ fn convert_linear(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
     }
 
     let units = convert_units(node, AId::GradientUnits, Units::ObjectBoundingBox);
-    let transform = node.resolve_transform(AId::GradientTransform, state);
+    // Armature (AU-011): A template supplies the transform unless this gradient
+    // has a valid one of its own. A singular transform cannot paint.
+    let transform = resolve_paint_server_transform(node, AId::GradientTransform, state)?;
 
     let gradient = LinearGradient {
         x1: resolve_number(node, AId::X1, units, state, Length::zero()),
@@ -129,7 +131,7 @@ fn convert_radial(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
     );
     let fx = resolve_number(node, AId::Fx, units, state, Length::new_number(cx as f64));
     let fy = resolve_number(node, AId::Fy, units, state, Length::new_number(cy as f64));
-    let transform = node.resolve_transform(AId::GradientTransform, state);
+    let transform = resolve_paint_server_transform(node, AId::GradientTransform, state)?;
 
     let gradient = RadialGradient {
         cx,
@@ -174,7 +176,7 @@ fn convert_pattern(
     let units = convert_units(node, AId::PatternUnits, Units::ObjectBoundingBox);
     let content_units = convert_units(node, AId::PatternContentUnits, Units::UserSpaceOnUse);
 
-    let transform = node.resolve_transform(AId::PatternTransform, state);
+    let transform = resolve_paint_server_transform(node, AId::PatternTransform, state)?;
 
     let rect = NonZeroRect::from_xywh(
         resolve_number(node, AId::X, units, state, Length::zero()),
@@ -421,7 +423,7 @@ pub(crate) fn resolve_number(
 }
 
 fn resolve_attr<'a, 'input: 'a>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode<'a, 'input> {
-    if node.has_attribute(name) {
+    if has_specified_attr(node, name) {
         return node;
     }
 
@@ -432,6 +434,49 @@ fn resolve_attr<'a, 'input: 'a>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode
         EId::Filter => resolve_filter_attr(node, name),
         _ => node,
     }
+}
+
+// Armature (AU-011): Empty or invalid transform declarations do not stop
+// paint-server template inheritance. `none` is a specified identity transform.
+fn has_specified_attr(node: SvgNode, name: AId) -> bool {
+    if !node.has_attribute(name) {
+        return false;
+    }
+    if !matches!(name, AId::GradientTransform | AId::PatternTransform) {
+        return true;
+    }
+    let value: &str = node.attribute(name).unwrap_or("");
+    let value = value.trim();
+    !value.is_empty() &&
+        (value.eq_ignore_ascii_case("none") || node.attribute::<Transform>(name).is_some())
+}
+
+fn resolve_paint_server_transform(
+    node: SvgNode,
+    name: AId,
+    state: &converter::State,
+) -> Option<Transform> {
+    let source = resolve_attr(node, name);
+    let value: &str = source.attribute(name).unwrap_or("");
+    if value.trim().eq_ignore_ascii_case("none") {
+        return Some(Transform::default());
+    }
+    // SvgNode's generic transform parser replaces singular matrices with
+    // identity. Reject one here so the referring paint can use its fallback.
+    if let Ok(matrix) = svgtypes::Transform::from_str(value) {
+        let matrix = Transform::from_row(
+            matrix.a as f32,
+            matrix.b as f32,
+            matrix.c as f32,
+            matrix.d as f32,
+            matrix.e as f32,
+            matrix.f as f32,
+        );
+        if !matrix.is_valid() || matrix.invert().is_none() {
+            return None;
+        }
+    }
+    Some(source.resolve_transform(name, state))
 }
 
 fn resolve_lg_attr<'a, 'input: 'a>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode<'a, 'input> {
@@ -456,7 +501,7 @@ fn resolve_lg_attr<'a, 'input: 'a>(node: SvgNode<'a, 'input>, name: AId) -> SvgN
             | (AId::SpreadMethod, EId::RadialGradient)
             | (AId::GradientTransform, EId::LinearGradient)
             | (AId::GradientTransform, EId::RadialGradient) => {
-                if link.has_attribute(name) {
+                if has_specified_attr(link, name) {
                     return link;
                 }
             }
@@ -491,7 +536,7 @@ fn resolve_rg_attr<'a, 'input>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode<
             | (AId::SpreadMethod, EId::RadialGradient)
             | (AId::GradientTransform, EId::LinearGradient)
             | (AId::GradientTransform, EId::RadialGradient) => {
-                if link.has_attribute(name) {
+                if has_specified_attr(link, name) {
                     return link;
                 }
             }
@@ -516,7 +561,7 @@ fn resolve_pattern_attr<'a, 'input: 'a>(
             break;
         }
 
-        if link.has_attribute(name) {
+        if has_specified_attr(link, name) {
             return link;
         }
     }

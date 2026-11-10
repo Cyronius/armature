@@ -53,3 +53,8 @@
 
 - Files: `src/parser/style.rs`
 - Why: CSS paint keywords are case-insensitive. Canonicalize `currentcolor` in fill and stroke values, including a fallback after a paint-server URL, while preserving case-sensitive fragment IDs.
+
+### AU-011: Resolve paint-server transforms from CSS and templates
+
+- Files: `src/parser/paint_server.rs`, `src/parser/svgtree/parse.rs`
+- Why: Gradient and pattern transforms inherit through `href` when their own declaration is absent, empty, or invalid. CSS `transform` declarations with supported SVG transform syntax set their presentation attributes, and singular transforms make the paint server unavailable so a paint fallback can be used.

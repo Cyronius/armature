@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use std::collections::HashMap;
+use std::str::FromStr;
 
 // Armature (AU-002): Decode CSS path() strings before handing them to the SVG path parser.
 use cssparser::Parser;
@@ -417,6 +418,22 @@ pub(crate) fn parse_svg_element<'input>(
                     AId::Font,
                     declaration.value
                 );
+            }
+        } else if declaration.name == "transform" &&
+            matches!(tag_name, EId::LinearGradient | EId::RadialGradient | EId::Pattern)
+        {
+            // Armature (AU-011): gradientTransform and patternTransform are
+            // presentation attributes for CSS transform on paint servers.
+            if !val.trim().is_empty() &&
+                (val.trim().eq_ignore_ascii_case("none") ||
+                    svgtypes::Transform::from_str(val).is_ok())
+            {
+                let aid = if tag_name == EId::Pattern {
+                    AId::PatternTransform
+                } else {
+                    AId::GradientTransform
+                };
+                insert_attribute(aid, val, imp);
             }
         } else if declaration.name == "d" {
             // Armature (AU-002): Invalid CSS declarations leave the XML path data intact.
