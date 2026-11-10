@@ -68,3 +68,8 @@
 
 - Files: `src/parser/svgtree/mod.rs`, `src/parser/svgtree/parse.rs`, `src/parser/style.rs`, `src/parser/filter.rs`
 - Why: URL fragment references in paint, filters, clipping, masking and `href` resolve decoded element IDs. Keep exact-ID lookup separate from URL lookup, preserve malformed percent triplets, and detect pattern cycles through encoded references.
+
+### AU-014: Accept case-insensitive currentColor on gradient stops
+
+- Files: `src/parser/paint_server.rs`
+- Why: The CSS `currentcolor` keyword is case-insensitive in `stop-color`. Resolve it from the stop's inherited color instead of painting black when its capitalization differs.

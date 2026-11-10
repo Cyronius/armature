@@ -303,8 +303,9 @@ fn convert_stops(grad: SvgNode) -> Vec<Stop> {
             prev_offset = Length::new_number(offset);
             let offset = crate::f32_bound(0.0, offset as f32, 1.0);
 
-            let (color, opacity) = match stop.attribute(AId::StopColor) {
-                Some("currentColor") => stop
+            let (color, opacity) = match stop.attribute::<&str>(AId::StopColor) {
+                // Armature (AU-014): CSS color keywords are ASCII case-insensitive.
+                Some(value) if value.eq_ignore_ascii_case("currentcolor") => stop
                     .find_attribute(AId::Color)
                     .unwrap_or_else(svgtypes::Color::black),
                 Some(value) => {
