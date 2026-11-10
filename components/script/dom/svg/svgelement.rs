@@ -50,6 +50,7 @@ use crate::dom::svg::svganimatedpreserveaspectratio::SVGAnimatedPreserveAspectRa
 use crate::dom::svg::svganimatedrect::SVGAnimatedRect;
 use crate::dom::svg::svganimatedstring::SVGAnimatedString;
 use crate::dom::svg::svganimatedtransformlist::SVGAnimatedTransformList;
+use crate::dom::svg::svganimationelement::SVGAnimationElement;
 use crate::dom::svg::svgcircleelement::SVGCircleElement;
 use crate::dom::svg::svgellipseelement::SVGEllipseElement;
 use crate::dom::svg::svgforeignobjectelement::SVGForeignObjectElement;
@@ -150,6 +151,7 @@ pub(crate) const PRESENTATION_ATTRIBUTES: &[&str] = &[
     "text-decoration",
     "text-overflow",
     "text-rendering",
+    "transform-origin",
     "unicode-bidi",
     "vector-effect",
     "visibility",
@@ -692,7 +694,10 @@ impl VirtualMethods for SVGElement {
         (attr.namespace() == &ns!() && PRESENTATION_ATTRIBUTES.contains(&&**attr.local_name())) ||
             matches!(
                 attr.local_name(),
-                &local_name!("cx") |
+                &local_name!("transform") |
+                    &local_name!("patternTransform") |
+                    &local_name!("gradientTransform") |
+                    &local_name!("cx") |
                     &local_name!("cy") |
                     &local_name!("r") |
                     &local_name!("rx") |
@@ -888,8 +893,25 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         );
 
         for name in PRESENTATION_ATTRIBUTES {
+            // Animation elements use `fill` for the SMIL fill mode, not CSS paint.
+            if *name == "fill" && element.is::<SVGAnimationElement>() {
+                continue;
+            }
             self.parse_presentation_attribute(&mut parser_context, name, push);
         }
+
+        // The transform presentation attribute has three historical spellings.
+        let transform_attribute = match element.local_name() {
+            &local_name!("pattern") => "patternTransform",
+            &local_name!("linearGradient") | &local_name!("radialGradient") => "gradientTransform",
+            _ => "transform",
+        };
+        self.parse_mapped_presentation_attribute(
+            &mut parser_context,
+            transform_attribute,
+            "transform",
+            push,
+        );
 
         // `pathLength` is a unitless SVG number, while its CSS presentation
         // property is the non-negative `path-length` length.
@@ -1004,12 +1026,23 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         name: &str,
         push: &mut impl FnMut(PropertyDeclaration),
     ) {
+        self.parse_mapped_presentation_attribute(parser_context, name, name, push);
+    }
+
+    fn parse_mapped_presentation_attribute(
+        self,
+        parser_context: &mut ParserContext,
+        attribute_name: &str,
+        property_name: &str,
+        push: &mut impl FnMut(PropertyDeclaration),
+    ) {
         let element = self.upcast::<Element>();
-        let Some(value) = element.get_attr_val_for_layout(&ns!(), &LocalName::from(name)) else {
+        let Some(value) = element.get_attr_val_for_layout(&ns!(), &LocalName::from(attribute_name))
+        else {
             return;
         };
         // A presentation attribute does nothing when its property is disabled by a preference.
-        let Ok(property_id) = PropertyId::parse_enabled_for_all_content(name) else {
+        let Ok(property_id) = PropertyId::parse_enabled_for_all_content(property_name) else {
             return;
         };
         let mut declarations = SourcePropertyDeclaration::default();
