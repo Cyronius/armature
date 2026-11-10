@@ -1608,6 +1608,115 @@ fn clip_bbox(
     intersect_bbox(bbox, clip)
 }
 
+/// Test the painted clipping silhouette in the coordinate space of `node`.
+fn clip_content_contains_point(
+    cx: &mut JSContext,
+    node: &SVGElement,
+    point: Point,
+    active_clips: &mut HashSet<String>,
+) -> bool {
+    if is_display_none(node) ||
+        !node.passes_conditional_processing() ||
+        !clip_path_contains_point(cx, node, point, active_clips)
+    {
+        return false;
+    }
+    if let Some(geometry) = shape_geometry(cx, node) {
+        if geometry.is_on_fill_boundary(point) {
+            return true;
+        }
+        let winding = geometry.winding(point);
+        return if computed_value(node, "clip-rule") == "evenodd" {
+            winding % 2 != 0
+        } else {
+            winding != 0
+        };
+    }
+    let children: Vec<DomRoot<SVGElement>> = node
+        .upcast::<Node>()
+        .children()
+        .filter_map(DomRoot::downcast::<SVGElement>)
+        .collect();
+    children.into_iter().any(|child| {
+        let transform = element_transform(cx, &child);
+        transform.determinant() != 0.0 &&
+            clip_content_contains_point(cx, &child, transform.inverse() * point, active_clips)
+    })
+}
+
+/// An invalid clip reference leaves the element unclipped. A resolved clip path
+/// clips against the union of its children's fill geometry.
+fn clip_path_contains_point(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    point: Point,
+    active_clips: &mut HashSet<String>,
+) -> bool {
+    let value = computed_value(element, "clip-path");
+    let value = if value.is_empty() {
+        element
+            .upcast::<Element>()
+            .get_attribute_string_value(&local_name!("clip-path"))
+            .map(|value| value.to_string())
+    } else {
+        Some(value)
+    };
+    let Some(value) = value else {
+        return true;
+    };
+    let Some(url) = value
+        .trim()
+        .strip_prefix("url(")
+        .and_then(|url| url.strip_suffix(')'))
+    else {
+        return true;
+    };
+    let url = url.trim().trim_matches(['\'', '"']);
+    let Some((_, id)) = url.rsplit_once('#') else {
+        return true;
+    };
+    if !active_clips.insert(id.to_string()) {
+        return false;
+    }
+    let result = (|| {
+        let document = element.upcast::<Node>().owner_doc();
+        let referenced = document.get_element_by_id(cx.no_gc(), &stylo_atoms::Atom::from(id))?;
+        let clip_path = DomRoot::downcast::<SVGElement>(referenced)?;
+        if clip_path.upcast::<Element>().local_name() != &local_name!("clipPath") {
+            return None;
+        }
+        let point = if clip_path
+            .svg_attribute(&local_name!("clipPathUnits"))
+            .as_deref() ==
+            Some("objectBoundingBox")
+        {
+            let bbox = bounding_box(cx, element)?;
+            if bbox.width() == 0.0 || bbox.height() == 0.0 {
+                return Some(false);
+            }
+            (Affine::translate((bbox.x0, bbox.y0)) *
+                Affine::scale_non_uniform(bbox.width(), bbox.height()))
+            .inverse() *
+                point
+        } else {
+            point
+        };
+        let transform = element_transform(cx, &clip_path);
+        if transform.determinant() == 0.0 {
+            return Some(false);
+        }
+        Some(clip_content_contains_point(
+            cx,
+            &clip_path,
+            transform.inverse() * point,
+            active_clips,
+        ))
+    })()
+    .unwrap_or(true);
+    active_clips.remove(id);
+    result
+}
+
 fn intersect_bbox(bbox: Rect, clip: Rect) -> Rect {
     if bbox.x0 >= clip.x1 || bbox.x1 <= clip.x0 || bbox.y0 >= clip.y1 || bbox.y1 <= clip.y0 {
         return Rect::ZERO;
@@ -2165,6 +2274,25 @@ pub(crate) fn hit_test_svg(
     // Later elements are painted on top of earlier ones.
     for element in candidates.iter().rev() {
         if is_never_rendered(element) {
+            continue;
+        }
+        // A shape outside a clip path's fill cannot receive pointer events,
+        // whether the clip is on the shape or one of its ancestors.
+        let clipped = element
+            .upcast::<Node>()
+            .inclusive_ancestors(crate::dom::iterators::ShadowIncluding::No)
+            .filter_map(DomRoot::downcast::<SVGElement>)
+            .any(|ancestor| {
+                let transform = current_transform(cx, &ancestor, true);
+                transform.determinant() == 0.0 ||
+                    !clip_path_contains_point(
+                        cx,
+                        &ancestor,
+                        transform.inverse() * point,
+                        &mut HashSet::new(),
+                    )
+            });
+        if clipped {
             continue;
         }
         let transform = current_transform(cx, element, true);
