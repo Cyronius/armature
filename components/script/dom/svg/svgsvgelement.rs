@@ -13,6 +13,7 @@ use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
 use layout_api::SVGElementData;
+use selectors::matching::ElementSelectorFlags;
 use servo_url::ServoUrl;
 use style::attr::AttrValue;
 use style::parser::ParserContext;
@@ -262,14 +263,24 @@ impl SVGSVGElement {
                         .is_some_and(|value| value.contains("var("))
                 })
                 .collect();
-            if (document.is_html_document() || !variable_geometry.is_empty()) &&
+            // The rasterizer's CSS parser does not understand the selector list in
+            // :nth-child(... of <selector>). Use Stylo's resolved values for those children.
+            let needs_paint_style = document.is_html_document() ||
+                source
+                    .upcast::<Node>()
+                    .GetParentElement()
+                    .is_some_and(|parent| {
+                        parent
+                            .get_selector_flags()
+                            .contains(ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH_OF)
+                    });
+            if (needs_paint_style || !variable_geometry.is_empty()) &&
                 let Some(computed_style) = source
                     .upcast::<Node>()
                     .owner_window()
                     .computed_style_for_svg(source.upcast::<Node>().to_trusted_node_address())
             {
-                let parent_style = document
-                    .is_html_document()
+                let parent_style = needs_paint_style
                     .then(|| {
                         source
                             .upcast::<Node>()
@@ -288,7 +299,7 @@ impl SVGSVGElement {
                 for property in RASTERIZED_SVG_STYLE_PROPERTIES
                     .iter()
                     .copied()
-                    .filter(|_| document.is_html_document())
+                    .filter(|_| needs_paint_style)
                     .chain(variable_geometry)
                 {
                     // Layout applies the outer SVG's CSS transform to its

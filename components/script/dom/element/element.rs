@@ -3074,8 +3074,22 @@ impl Element {
     }
 
     #[inline]
-    fn get_selector_flags(&self) -> ElementSelectorFlags {
+    pub(crate) fn get_selector_flags(&self) -> ElementSelectorFlags {
         ElementSelectorFlags::from_bits_retain(self.selector_flags.load(Ordering::Relaxed))
+    }
+
+    fn invalidate_nth_of_siblings(&self, no_gc: &NoGC) {
+        // A change to one child can change the index of any other child matching
+        // :nth-child(... of <selector>) or :nth-last-child(... of <selector>).
+        if let Some(parent) = self.upcast::<Node>().GetParentElement() &&
+            parent
+                .get_selector_flags()
+                .contains(ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH_OF)
+        {
+            for sibling in parent.upcast::<Node>().child_elements() {
+                sibling.upcast::<Node>().dirty(no_gc, NodeDamage::Style);
+            }
+        }
     }
 
     /// Custom [`Element`]s and those with mutation observers sometimes need the old style
@@ -5302,6 +5316,8 @@ impl VirtualMethods for Element {
             },
         };
 
+        self.invalidate_nth_of_siblings(cx.no_gc());
+
         // TODO: This should really only take into account the actual attributes that are used
         // for the content attribute property.
         if self
@@ -5663,6 +5679,7 @@ impl Element {
         }
 
         self.state.set(state);
+        self.invalidate_nth_of_siblings(no_gc);
     }
 
     /// <https://html.spec.whatwg.org/multipage/#concept-selector-active>
