@@ -334,6 +334,9 @@ Notes on the numbers:
   and paused timeline seeks, including cyclic begin/end chains and escaped dots in referenced IDs; six more timing
   tests pass. Seeking queues begin and end events when the active interval changes and skips events for intervals or
   repeats crossed entirely by the seek; eight seeking event tests now pass, and the large-time seek test also passes.
+  A paused SVG clock now processes due boundaries for animations inserted at its held time without advancing the
+  clock. All four SVG animation `href`/`xlink:href` linking subtests pass, and the 322-file `svg/animations` run
+  matches expectations.
   Repeat boundaries now dispatch `repeatEvent` and resolve `repeat(n)` dependencies, making six more repeat tests pass.
   Seeking during a repeat event preserves dependent begin events, and SVG animations honor ancestor `systemLanguage`
   conditions. SMIL now sends CSS presentation property effects, including `fill` and `d`, through the style animation
