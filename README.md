@@ -294,7 +294,9 @@ Notes on the numbers:
   Four SVG image CORS subtests and three image bitmap origin subtests now pass. Loaded SVG images can now be rasterized
   for canvas drawing and `createImageBitmap()` at its requested output size. Nested data URL SVGs inherit their
   embedding image viewport instead of their painted bounds. Three nested canvas reftests, two other SVG image
-  reftests, the SVG bitmap resize reftest and one `drawImage()` subtest now pass. SVG elements now expose `dataset`,
+  reftests, the SVG bitmap resize reftest and one `drawImage()` subtest now pass. Inline SVG now paints fetched
+  external images and refreshes its raster when one loads or its URL changes. Both new static and dynamic reftests
+  pass, and the 82 SVG embedded and linking tests match expectations. SVG elements now expose `dataset`,
   SVG links participate in focus navigation, and unrendered SVG definition elements stay out of it. Invalid
   `tabindex` values no longer create focusable areas where the element has no default focus behavior. The targeted SVG
   focus and dataset tests pass, alongside eight previously failing HTML focus subtests.
