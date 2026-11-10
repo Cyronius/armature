@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:html="http://www.w3.org/1999/xhtml"
+     width="200" height="100">
+  <title>SVG geometry uses the initial viewport for vmin, vmax and calc()</title>
+  <html:link rel="help" href="https://drafts.csswg.org/css-values-4/#viewport-relative-lengths"/>
+  <html:link rel="match" href="viewport-units-min-max-calc-ref.svg"/>
+  <rect width="10vmin" height="10vmax" fill="green"/>
+  <rect x="25" style="width:calc(5vw + 5px);height:10vh" fill="green"/>
+</svg>
