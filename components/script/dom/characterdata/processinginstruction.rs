@@ -50,6 +50,9 @@ pub(crate) struct ProcessingInstruction {
     /// Whether this processing instruction was created by a parser.
     parser_inserted: Cell<bool>,
 
+    /// Whether this node was in the document prolog at the last tree mutation.
+    in_prolog: Cell<bool>,
+
     /// The style sheet of an `xml-stylesheet` processing instruction.
     #[conditional_malloc_size_of]
     #[no_trace]
@@ -78,6 +81,7 @@ impl ProcessingInstruction {
             characterdata: CharacterData::new_inherited(data, document),
             target: target.traced(),
             parser_inserted: Cell::new(false),
+            in_prolog: Cell::new(false),
             stylesheet: DomRefCell::new(None),
             cssom_stylesheet: MutNullableDom::new(None),
             stylesheet_url: DomRefCell::new(None),
@@ -143,8 +147,6 @@ impl ProcessingInstruction {
     /// the prolog, is no longer part of the prolog, or has its data changed:
     /// <https://drafts.csswg.org/cssom/#requirements-on-user-agents-implementing-the-xml-stylesheet-processing-instruction>
     ///
-    /// TODO: This does not yet run when the prolog changes because the document element
-    /// is inserted or removed.
     fn update_stylesheet(&self, cx: &mut JSContext) {
         // Step 1. If an instance of this algorithm is currently running for node, abort that
         // instance, and stop the associated fetching if applicable.
@@ -233,6 +235,17 @@ impl ProcessingInstruction {
     pub(crate) fn data_changed(&self, cx: &mut JSContext) {
         if self.is_xml_stylesheet() && (self.stylesheet.borrow().is_some() || self.is_in_prolog()) {
             self.update_stylesheet(cx);
+        }
+    }
+
+    /// Re-evaluate a style sheet when a document child mutation moves this node into or
+    /// out of the prolog without moving the processing instruction itself.
+    pub(crate) fn prolog_changed(&self, cx: &mut JSContext) {
+        if self.is_xml_stylesheet() {
+            let in_prolog = self.is_in_prolog();
+            if self.in_prolog.replace(in_prolog) != in_prolog {
+                self.update_stylesheet(cx);
+            }
         }
     }
 
@@ -527,8 +540,8 @@ impl VirtualMethods for ProcessingInstruction {
             super_type.bind_to_tree(cx, context);
         }
 
-        if context.tree_connected && self.is_xml_stylesheet() && self.is_in_prolog() {
-            self.update_stylesheet(cx);
+        if context.tree_connected {
+            self.prolog_changed(cx);
         }
     }
 
@@ -538,6 +551,7 @@ impl VirtualMethods for ProcessingInstruction {
         }
 
         if self.is_xml_stylesheet() {
+            self.in_prolog.set(false);
             self.request_generation_id
                 .set(self.request_generation_id.get().increment());
             self.remove_stylesheet(cx.no_gc());

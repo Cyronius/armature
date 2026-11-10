@@ -4672,6 +4672,14 @@ impl VirtualMethods for Node {
 
         self.owner_doc_unrooted(cx.no_gc())
             .content_and_heritage_changed(cx.no_gc(), self);
+
+        if self.is::<Document>() && !matches!(mutation, ChildrenMutation::ChangeText) {
+            for child in self.children() {
+                if let Some(pi) = child.downcast::<ProcessingInstruction>() {
+                    pi.prolog_changed(cx);
+                }
+            }
+        }
     }
 
     fn moving_steps(&self, cx: &mut JSContext, context: &MoveContext) {
