@@ -350,6 +350,9 @@ Notes on the numbers:
   SVG `<image>` and `<foreignObject>` bounding boxes now use CSS geometry positions and sizes, while image `auto`
   dimensions still use natural dimensions. Three more focused subtests pass, and the 107-file SVG scripted and image
   sizing run matches expectations.
+  Rounded `<rect>` DOM geometry now follows its elliptical corner radii, including CSS overrides, percentages based
+  on the rectangle size, auto radii and clamping. All seven focused subtests pass; the 131-file SVG shape, type and
+  geometry regression run matches expectations.
   SVG `<script>` now exposes the `SVGURIReference.href` animated string, including `href`/`xlink:href` precedence.
   Four script-linking subtests and two SVG IDL checks now pass. The SVG IDL expectations were also refreshed for 121
   checks fixed by earlier work, and four stale scripted-geometry failure expectations were removed.
