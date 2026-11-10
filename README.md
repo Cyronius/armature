@@ -402,6 +402,9 @@ Notes on the numbers:
   under non-uniform transforms. Inline SVG rendering copies now carry computed CSS stroke and `vector-effect` values,
   and SVGs with automatic sizes resolve their layout viewport before outlining. Two more painting reftests pass,
   including the viewBox scaling cases; external SVG images still scale their strokes with the image.
+  Markers sized in stroke-width units now use that same outer viewport for non-scaling strokes, passing the focused
+  marker reftest. Computed CSS transforms on SVG descendants are also transferred to the rendering copy when their
+  transform does not already come from an SVG attribute or motion animation.
   Seeking an SVG animation clock refreshes its cached raster image. The serializer also applies active `<animate>`
   and `<set>` presentation property values to the rendering copy, so the scripted motion and rewind/freeze reftests
   now pass.
