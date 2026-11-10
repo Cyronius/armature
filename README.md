@@ -337,6 +337,9 @@ Notes on the numbers:
   A paused SVG clock now processes due boundaries for animations inserted at its held time without advancing the
   clock. All four SVG animation `href`/`xlink:href` linking subtests pass, and the 322-file `svg/animations` run
   matches expectations.
+  Motion paths now retain double precision while sampling iteration progress and eased value intervals. All three
+  `<mpath>` `href`/`xlink:href` linking subtests pass, including switching the referenced path; the combined
+  394-file SVG animation and path run matches expectations.
   Repeat boundaries now dispatch `repeatEvent` and resolve `repeat(n)` dependencies, making six more repeat tests pass.
   Seeking during a repeat event preserves dependent begin events, and SVG animations honor ancestor `systemLanguage`
   conditions. SMIL now sends CSS presentation property effects, including `fill` and `d`, through the style animation
