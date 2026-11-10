@@ -14,9 +14,25 @@ use crate::dom::document::focus::{FocusableArea, FocusableAreaKind};
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::iterators::TreeIterator;
 use crate::dom::types::{
-    Element, HTMLDialogElement, HTMLIFrameElement, HTMLSlotElement, ShadowRoot,
+    Element, HTMLDialogElement, HTMLElement, HTMLIFrameElement, HTMLSlotElement, ShadowRoot,
 };
 use crate::dom::{Document, Node, NodeTraits};
+
+/// A popover whose trigger is inside itself cannot be nested under that trigger in the focus
+/// navigation order: doing so would create a cycle.
+fn external_popover_trigger(popover: &HTMLElement) -> Option<DomRoot<HTMLElement>> {
+    if !popover.is_popover_showing() {
+        return None;
+    }
+    let trigger = popover.popover_trigger()?;
+    if popover
+        .upcast::<Node>()
+        .is_shadow_including_inclusive_ancestor_of(trigger.upcast())
+    {
+        return None;
+    }
+    Some(trigger)
+}
 
 /// <https://html.spec.whatwg.org/multipage/#focus-navigation-scope-owner>
 ///
@@ -28,11 +44,12 @@ pub(crate) enum FocusNavigationScopeOwner {
         shadow_root: DomRoot<ShadowRoot>,
     },
     Slot(DomRoot<HTMLSlotElement>),
+    PopoverTrigger(DomRoot<HTMLElement>),
 }
 
 impl FocusNavigationScopeOwner {
     pub(crate) fn iterator(&self) -> FocusNavigationScopeIterator {
-        let iterators = match self {
+        let mut iterators = match self {
             Self::Document(document) => VecDeque::from([document
                 .upcast::<Node>()
                 .traverse_preorder(ShadowIncluding::No)]),
@@ -44,9 +61,30 @@ impl FocusNavigationScopeOwner {
                 .iter()
                 .map(|slottable| slottable.node().traverse_preorder(ShadowIncluding::No))
                 .collect(),
+            Self::PopoverTrigger(_) => VecDeque::new(),
         };
 
-        FocusNavigationScopeIterator { iterators }
+        let owner = self.node();
+        if let Some(trigger) = owner.downcast::<HTMLElement>() {
+            iterators.extend(
+                trigger
+                    .owner_document()
+                    .top_layer_elements()
+                    .into_iter()
+                    .filter_map(DomRoot::downcast::<HTMLElement>)
+                    .filter(|popover| external_popover_trigger(popover).as_deref() == Some(trigger))
+                    .map(|popover| {
+                        popover
+                            .upcast::<Node>()
+                            .traverse_preorder(ShadowIncluding::No)
+                    }),
+            );
+        }
+
+        FocusNavigationScopeIterator {
+            iterators,
+            owner: DomRoot::from_ref(owner),
+        }
     }
 
     /// Returns the `Node` that backs this [`FocusNavigationScopeOwner`]. This is a node that
@@ -57,12 +95,14 @@ impl FocusNavigationScopeOwner {
             FocusNavigationScopeOwner::Document(document) => document.upcast(),
             FocusNavigationScopeOwner::ShadowHost { shadow_host, .. } => shadow_host.upcast(),
             FocusNavigationScopeOwner::Slot(html_slot_element) => html_slot_element.upcast(),
+            FocusNavigationScopeOwner::PopoverTrigger(trigger) => trigger.upcast(),
         }
     }
 }
 
 pub(crate) struct FocusNavigationScopeIterator {
     iterators: VecDeque<TreeIterator>,
+    owner: DomRoot<Node>,
 }
 
 impl Iterator for FocusNavigationScopeIterator {
@@ -77,6 +117,20 @@ impl Iterator for FocusNavigationScopeIterator {
         };
 
         while !self.iterators.is_empty() {
+            let is_popover_in_other_scope = self
+                .iterators
+                .front()
+                .and_then(TreeIterator::peek)
+                .and_then(|node| node.downcast::<HTMLElement>())
+                .is_some_and(|popover| {
+                    external_popover_trigger(popover)
+                        .is_some_and(|trigger| trigger.upcast::<Node>() != &*self.owner)
+                });
+            if is_popover_in_other_scope {
+                self.iterators.front_mut().unwrap().next_skipping_children();
+                continue;
+            }
+
             if let Some(next) = self.iterators.front_mut().and_then(|front| {
                 let should_skip_children_on_next_iteration = front
                     .peek()
@@ -424,6 +478,21 @@ impl Node {
                     )));
                 }
             }
+
+            if let Some(trigger) = self.downcast::<HTMLElement>() &&
+                trigger
+                    .owner_document()
+                    .top_layer_elements()
+                    .into_iter()
+                    .filter_map(DomRoot::downcast::<HTMLElement>)
+                    .any(|popover| {
+                        external_popover_trigger(&popover).as_deref() == Some(trigger)
+                    })
+            {
+                return Some(FocusNavigationScopeOwner::PopoverTrigger(
+                    DomRoot::from_ref(trigger),
+                ));
+            }
         }
 
         Some(FocusNavigationScopeOwner::Document(DomRoot::from_ref(
@@ -449,6 +518,12 @@ impl Node {
                     shadow_host: shadow_root.Host(),
                     shadow_root: DomRoot::from_ref(shadow_root),
                 });
+            }
+
+            if let Some(popover) = ancestor.downcast::<HTMLElement>() &&
+                let Some(trigger) = external_popover_trigger(popover)
+            {
+                return trigger.upcast::<Node>().as_focus_navigation_scope_owner();
             }
 
             if let Some(html_slot_element) = ancestor.assigned_slot() {
