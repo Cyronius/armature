@@ -119,8 +119,10 @@ Notes on the numbers:
 - **Events**: `DragEvent`, `DeviceMotionEvent` and `DeviceOrientationEvent` and their `createEvent()` aliases; the
   `<body>`/`<frameset>` window event-handler attributes now forward `onblur` and the frameset handlers.
 - **MIME types**: Request and Response `blob()` preserve MIME parameter values, including their case and non-ASCII
-  characters, and navigation quotes parameters it re-parses (so `charset` is no longer lost).
-  `mimesniff/mime-types/parsing` went from 1,916 failing subtests to 1,394.
+  characters, and navigation quotes parameters it re-parses (so `charset` is no longer lost). DOM `Headers` keeps
+  the control bytes permitted by Fetch even when the HTTP library cannot store them; this makes 186 more MIME parsing
+  subtests and nine header normalization subtests pass. `mimesniff/mime-types/parsing` went from 1,916 failing
+  subtests to 1,208.
 - **[Popover API](https://html.spec.whatwg.org/multipage/popover.html)**, behind the `dom_popover_enabled`
   preference (off by default; enabled for the tests): the `popover` attribute (`auto`, `manual` and `hint`),
   `showPopover()`/`hidePopover()`/`togglePopover()`, `beforetoggle`/`toggle` events, `popovertarget` on buttons and
@@ -483,7 +485,10 @@ Notes on the numbers:
   prefix itself (an open web-platform-tests change updates the tests). One more expects a redundant `xmlns=""` to be
   kept, which the spec drops.
 - About 1,200 `mimesniff` Blob/File subtests expect `new Blob([], {type})` to parse and re-serialise the type, which
-  Servo does not do; about 190 more need header values with control characters, which Servo's header storage rejects.
+  Servo does not do. Four Request/Response cases involving commas in `Content-Type` still fail. The network HTTP
+  library cannot send control bytes that Fetch accepts in DOM headers, so the header-value round-trip tests still fail.
+  One `response-consume` subtest expects the generated `URLSearchParams` charset to be `utf-8`, while Fetch specifies
+  `UTF-8` and MIME serialization preserves parameter case.
 - 25 popover subtests still fail in the latest run: layout has no real top layer or `::backdrop` (open popovers are
   drawn as `position: fixed`), some focus navigation cases remain incomplete, four inactive-document cases expect
   listeners to run despite the DOM Standard's fully active document check, and 6 other tests contradict the spec.
