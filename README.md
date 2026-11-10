@@ -237,15 +237,16 @@ Notes on the numbers:
   properties had made `offset` name the CSS property, which broke about 50 subtests).
 - **Web Animations API**, on in experimental mode (`dom_web_animations_enabled`): `Animation` has the playback model of
   the spec (`play()`, `pause()`, `finish()`, `cancel()`, `reverse()`, `updatePlaybackRate()`, `currentTime`,
-  `startTime`, `playbackRate`, `playState`, `pending`, the `ready` and `finished` promises, and `finish` and `cancel`
-  events), effects compute their timing (`getComputedTiming()`), `KeyframeEffect` takes timing options, property-indexed
+  `startTime`, `overallProgress`, `playbackRate`, `playState`, `pending`, the `ready` and `finished` promises, and
+  `finish` and `cancel` events), effects compute their timing (`getComputedTiming()`, including effect `startTime`),
+  `KeyframeEffect` takes timing options, property-indexed
   keyframes (including nullable offset arrays and CSS custom properties) and a composite operation, and
   `element.animate()` plays the animation. Custom properties also affect computed style and `commitStyles()`.
   Animations created by script now change the style of their targets: Stylo resolves their keyframes and composites
   them (`replace`, `add` and `accumulate`) over CSS animations (AS-506). The "Web Animations" and
   "Compositing Web Animations" subtests of the interpolation tests throughout `css/` went from about 12,100 failing
   to about 2,300, and `web-animations/interfaces`
-  from 625 failing subtests to 109 in the 47-file interface run (760 passing subtests).
+  from 625 failing subtests to 88 in the 47-file interface run (782 passing subtests).
 - **`CSSAnimation`, `CSSTransition` and `getAnimations()`**: CSS animations and transitions are now `CSSAnimation`
   and `CSSTransition` objects that `Document`, `ShadowRoot` and `Element.getAnimations()` return in composite order,
   so script can pause, seek, reverse, finish or cancel them and read their timing and keyframes
