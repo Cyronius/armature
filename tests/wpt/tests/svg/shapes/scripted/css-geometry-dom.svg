@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml"
+     width="200" height="100" viewBox="0 0 200 100">
+  <title>CSS geometry properties affect SVG geometry DOM methods</title>
+  <metadata>
+    <h:link rel="help" href="https://www.w3.org/TR/SVG2/geometry.html"/>
+    <h:link rel="help" href="https://www.w3.org/TR/SVG2/types.html#InterfaceSVGGeometryElement"/>
+  </metadata>
+  <h:script src="/resources/testharness.js"/>
+  <h:script src="/resources/testharnessreport.js"/>
+
+  <circle id="circle" cx="10" cy="10" r="5"
+          style="cx: 60px; cy: 40px; r: 20px"/>
+  <circle id="percentage" cx="100" cy="50" style="r: 10%"/>
+  <ellipse id="ellipse" cx="10" cy="10" rx="20" ry="10"
+           style="cx: 80px; cy: 60px"/>
+  <rect id="rect" x="1" y="2" width="5" height="6"
+        style="x: 40px; y: 30px; width: 70px; height: 20px"/>
+  <circle id="animated" cx="20" cy="20" r="10">
+    <animate attributeName="cx" from="20" to="60" dur="10s" fill="freeze"/>
+  </circle>
+
+  <script><![CDATA[
+    test(() => {
+      const box = document.getElementById("circle").getBBox();
+      assert_equals(box.x, 40);
+      assert_equals(box.y, 20);
+      assert_equals(box.width, 40);
+      assert_equals(box.height, 40);
+    }, "Circle CSS center and radius override presentation attributes in getBBox()");
+
+    test(() => {
+      const circle = document.getElementById("circle");
+      assert_true(circle.isPointInFill({x: 60, y: 40}));
+      assert_false(circle.isPointInFill({x: 10, y: 10}));
+      assert_approx_equals(circle.getTotalLength(), 40 * Math.PI, 0.1);
+    }, "Circle CSS geometry affects fill hit testing and path length");
+
+    test(() => {
+      const radius = Math.hypot(200, 100) / Math.SQRT2 * 0.1;
+      const box = document.getElementById("percentage").getBBox();
+      assert_approx_equals(box.x, 100 - radius, 0.01);
+      assert_approx_equals(box.width, radius * 2, 0.01);
+    }, "Circle CSS radius percentage uses the normalized viewport diagonal");
+
+    test(() => {
+      const box = document.getElementById("ellipse").getBBox();
+      assert_equals(box.x, 60);
+      assert_equals(box.y, 50);
+      assert_equals(box.width, 40);
+      assert_equals(box.height, 20);
+    }, "Ellipse CSS center affects getBBox()");
+
+    test(() => {
+      const box = document.getElementById("rect").getBBox();
+      assert_equals(box.x, 40);
+      assert_equals(box.y, 30);
+      assert_equals(box.width, 70);
+      assert_equals(box.height, 20);
+    }, "Rect CSS position and size override presentation attributes in getBBox()");
+
+    test(() => {
+      const rect = document.getElementById("rect");
+      rect.style.x = "55px";
+      rect.style.width = "25px";
+      const box = rect.getBBox();
+      assert_equals(box.x, 55);
+      assert_equals(box.width, 25);
+      assert_true(rect.isPointInFill({x: 60, y: 35}));
+      assert_false(rect.isPointInFill({x: 90, y: 35}));
+    }, "Changing rect CSS geometry updates geometry DOM methods");
+
+    async_test(t => {
+      const svg = document.documentElement;
+      svg.pauseAnimations();
+      svg.setCurrentTime(5);
+      requestAnimationFrame(t.step_func_done(() => {
+        assert_approx_equals(document.getElementById("animated").getBBox().x, 30, 0.1);
+      }));
+    }, "SMIL geometry animation remains visible to getBBox()");
+  ]]></script>
+</svg>
