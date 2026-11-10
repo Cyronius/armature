@@ -31,11 +31,13 @@ const LENGTH_UNIT_VMAX: u16 = 16;
 const LENGTH_UNIT_CH: u16 = 17;
 const LENGTH_UNIT_IC: u16 = 18;
 const LENGTH_UNIT_CAP: u16 = 19;
+const LENGTH_UNIT_LH: u16 = 20;
+const LENGTH_UNIT_RLH: u16 = 21;
 
 /// The unit suffixes of the length units, indexed by unit code.
-const LENGTH_UNITS: [&str; 20] = [
+const LENGTH_UNITS: [&str; 22] = [
     "", "", "%", "em", "ex", "px", "cm", "mm", "in", "pt", "pc", "q", "rem", "vw", "vh", "vmin",
-    "vmax", "ch", "ic", "cap",
+    "vmax", "ch", "ic", "cap", "lh", "rlh",
 ];
 
 /// The direction in which a length is measured, which decides what a percentage is a
@@ -124,6 +126,8 @@ impl SVGLengthValue {
             LENGTH_UNIT_IC => context.font_metric(cx, SVGFontMetric::IdeographicAdvance)?,
             LENGTH_UNIT_CAP => context.font_metric(cx, SVGFontMetric::CapHeight)?,
             LENGTH_UNIT_REM => context.root_font_size(cx)?,
+            LENGTH_UNIT_LH => context.line_height(cx)?,
+            LENGTH_UNIT_RLH => context.root_line_height(cx)?,
             LENGTH_UNIT_VW => context.window_viewport_size(cx)?.0 / 100.0,
             LENGTH_UNIT_VH => context.window_viewport_size(cx)?.1 / 100.0,
             LENGTH_UNIT_VMIN => {
@@ -208,6 +212,10 @@ pub(crate) trait SVGLengthContext {
     fn viewport_length(&self, cx: &mut JSContext) -> Option<f32>;
     /// The computed font size of the root element, for `rem`.
     fn root_font_size(&self, cx: &mut JSContext) -> Option<f32>;
+    /// The used line height of this element, for `lh`.
+    fn line_height(&self, cx: &mut JSContext) -> Option<f32>;
+    /// The used line height of the root element, for `rlh`.
+    fn root_line_height(&self, cx: &mut JSContext) -> Option<f32>;
     /// The size of the viewport of the window, for the viewport-percentage units.
     fn window_viewport_size(&self, cx: &mut JSContext) -> Option<(f32, f32)>;
 }
@@ -234,6 +242,12 @@ impl SVGLengthContext for NoLengthContext {
     }
     fn root_font_size(&self, _: &mut JSContext) -> Option<f32> {
         Some(INITIAL_FONT_SIZE)
+    }
+    fn line_height(&self, _: &mut JSContext) -> Option<f32> {
+        Some(INITIAL_FONT_SIZE * 1.2)
+    }
+    fn root_line_height(&self, _: &mut JSContext) -> Option<f32> {
+        Some(INITIAL_FONT_SIZE * 1.2)
     }
     fn window_viewport_size(&self, _: &mut JSContext) -> Option<(f32, f32)> {
         None

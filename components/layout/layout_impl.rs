@@ -1994,6 +1994,13 @@ impl LayoutFontMetricsProvider {
 }
 
 impl FontMetricsProvider for LayoutFontMetricsProvider {
+    fn normal_line_height(&self, font: &Font, base_size: CSSPixelLength) -> CSSPixelLength {
+        self.font_group(font, base_size)
+            .first(&self.0)
+            .map(|font| CSSPixelLength::from(font.metrics().line_gap))
+            .unwrap_or(base_size * 1.2)
+    }
+
     fn query_font_metrics(
         &self,
         _vertical: bool,

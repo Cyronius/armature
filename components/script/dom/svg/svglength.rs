@@ -9,6 +9,8 @@ use html5ever::LocalName;
 use js::context::JSContext;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
 use script_bindings::str::DOMString;
+use style::properties::ComputedValues;
+use style::values::computed::LineHeight;
 
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::codegen::Bindings::SVGLengthBinding::SVGLengthMethods;
@@ -339,6 +341,28 @@ pub(crate) struct ElementLengthContext<'a> {
     pub(crate) direction: SVGLengthDirection,
 }
 
+impl ElementLengthContext<'_> {
+    fn line_height_for_style(&self, style: &ComputedValues) -> f32 {
+        let font = style.get_font();
+        let font_size = font.font_size.computed_size().px();
+        match font.line_height {
+            LineHeight::Normal => {
+                let window = self.element.owner_window();
+                let font_context = window.font_context();
+                let font_group = font_context.font_group_with_size(
+                    style.clone_font(),
+                    font.font_size.computed_size().into(),
+                );
+                font_group
+                    .first(&font_context)
+                    .map_or(font_size * 1.2, |font| font.metrics().line_gap.to_f32_px())
+            },
+            LineHeight::Number(number) => font_size * number.0,
+            LineHeight::Length(length) => length.0.px(),
+        }
+    }
+}
+
 impl SVGLengthContext for ElementLengthContext<'_> {
     fn font_size(&self, _: &mut JSContext) -> Option<f32> {
         // An element that is not rendered has no style; use the initial font size then.
@@ -379,6 +403,23 @@ impl SVGLengthContext for ElementLengthContext<'_> {
         let root = self.element.owner_document().GetDocumentElement()?;
         Some(root.style().map_or(INITIAL_FONT_SIZE, |style| {
             style.get_font().font_size.computed_size().px()
+        }))
+    }
+
+    fn line_height(&self, _: &mut JSContext) -> Option<f32> {
+        Some(
+            self.element
+                .inherited_style()
+                .map_or(INITIAL_FONT_SIZE * 1.2, |style| {
+                    self.line_height_for_style(&style)
+                }),
+        )
+    }
+
+    fn root_line_height(&self, _: &mut JSContext) -> Option<f32> {
+        let root = self.element.owner_document().GetDocumentElement()?;
+        Some(root.style().map_or(INITIAL_FONT_SIZE * 1.2, |style| {
+            self.line_height_for_style(&style)
         }))
     }
 
