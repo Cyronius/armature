@@ -611,7 +611,9 @@ Notes on the numbers:
   refresh the serialized SVG raster. Resolved fill and stroke colors use legacy sRGB syntax in the
   rendering copy so the rasterizer can paint `color-mix()` results. Both focused repaint reftests
   now pass. The SVG rasterizer also accepts case-insensitive `currentcolor` in fill and stroke,
-  including after a paint-server URL. Three more paint-server reftests now pass.
+  including after a paint-server URL. Three more paint-server reftests now pass. Gradient stops
+  also accept case-insensitive `currentcolor`, so the dynamic stop-color reftest follows changes
+  to the SVG root's inherited color.
 - **SVG paint-server transforms**: Gradients and patterns inherit transforms from `href` templates
   when their own transform is absent, empty, or invalid. Supported CSS `transform` declarations
   also affect paint servers. Singular transforms now use the referring paint's fallback color.
