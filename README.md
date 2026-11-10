@@ -336,6 +336,10 @@ Notes on the numbers:
   `CSSStyleValue.parse()` and `parseAll()` now validate property names and values, return the first or all iterations
   of supported list-valued properties, and keep direct values associated with their property. All 21 focused parse
   and parseAll subtests pass, along with the keyword serialization case that previously lacked `parse()`.
+  `CSSUnparsedValue` and `CSSVariableReferenceValue` now support string and variable fragments, indexed access,
+  iteration, fallbacks and serialization in windows and workers. Custom properties in `attributeStyleMap` reify as
+  unparsed values; all 11 inline style mutation callback subtests pass. Five focused upstream subtests still stop in
+  their shared helper because `CSSNumericValue` is not implemented.
   SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
   `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
   scripted linking files; the full 25-file scripted linking directory matches expectations.
