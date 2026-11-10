@@ -590,15 +590,14 @@ fn resolve_grid_template(
 }
 
 #[expect(unsafe_code)]
-pub fn process_resolved_style_request_for_unstyled_node(
+pub fn resolved_style_for_unstyled_node(
     context: &SharedStyleContext,
     node: ServoLayoutNode<'_>,
     pseudo: &Option<PseudoElement>,
-    property: &PropertyId,
-) -> String {
+) -> Option<ServoArc<ComputedValues>> {
     // In a display: none subtree. No pseudo-element exists.
     if pseudo.is_some() {
-        return String::new();
+        return None;
     }
 
     let mut tlc = ThreadLocalStyleContext::new();
@@ -648,11 +647,22 @@ pub fn process_resolved_style_request_for_unstyled_node(
             }
         }
     }
-    let style = styles.primary();
+    Some(styles.primary().clone())
+}
+
+pub fn process_resolved_style_request_for_unstyled_node(
+    context: &SharedStyleContext,
+    node: ServoLayoutNode<'_>,
+    pseudo: &Option<PseudoElement>,
+    property: &PropertyId,
+) -> String {
+    let Some(style) = resolved_style_for_unstyled_node(context, node, pseudo) else {
+        return String::new();
+    };
     let longhand_id = match *property {
         PropertyId::NonCustom(id) => match id.longhand_or_shorthand() {
             Ok(longhand_id) => longhand_id,
-            Err(shorthand_id) => return shorthand_to_css_string(shorthand_id, style),
+            Err(shorthand_id) => return shorthand_to_css_string(shorthand_id, &style),
         },
         PropertyId::Custom(ref name) => {
             return style.computed_value_to_string(PropertyDeclarationId::Custom(name));

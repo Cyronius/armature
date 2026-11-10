@@ -46,6 +46,7 @@ use stylo_dom::ElementState;
 
 use crate::dom::bindings::inheritance::{
     CharacterDataTypeId, DocumentFragmentTypeId, ElementTypeId, HTMLElementTypeId, NodeTypeId,
+    SVGElementTypeId, SVGGraphicsElementTypeId,
 };
 use crate::dom::bindings::root::LayoutDom;
 use crate::dom::element::Element;
@@ -862,6 +863,16 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
                 self.element
                     .get_attr_val_for_layout(&ns!(), &local_name!("href"))
                     .is_some()
+            },
+            NodeTypeId::Element(ElementTypeId::SVGElement(
+                SVGElementTypeId::SVGGraphicsElement(SVGGraphicsElementTypeId::SVGAElement),
+            )) => {
+                self.element
+                    .get_attr_val_for_layout(&ns!(), &local_name!("href"))
+                    .is_some() ||
+                    self.element
+                        .get_attr_val_for_layout(&ns!(xlink), &local_name!("href"))
+                        .is_some()
             },
             _ => false,
         }

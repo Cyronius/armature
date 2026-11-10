@@ -414,6 +414,14 @@ pub trait Layout {
         animations: DocumentAnimationSet,
         animation_timeline_value: f64,
     ) -> String;
+    /// Return the element's computed style, including on SVG descendants that layout does not
+    /// traverse. SVG rasterization uses it to transfer document CSS to its rendering copy.
+    fn query_computed_style(
+        &self,
+        node: TrustedNodeAddress,
+        animations: DocumentAnimationSet,
+        animation_timeline_value: f64,
+    ) -> Option<ServoArc<ComputedValues>>;
 
     fn query_accesskit_node(&self, node: TrustedNodeAddress) -> Option<accesskit::Node>;
 

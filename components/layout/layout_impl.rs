@@ -97,6 +97,7 @@ use crate::query::{
     process_effective_overflow_query, process_node_scroll_area_request,
     process_offset_parent_query, process_padding_request, process_resolved_font_style_query,
     process_resolved_style_request, process_scroll_container_query,
+    resolved_style_for_unstyled_node,
 };
 use crate::selection::PositionInInlineFormattingContext;
 use crate::traversal::{RecalcStyle, compute_damage_and_rebuild_box_tree};
@@ -570,6 +571,39 @@ impl Layout for LayoutThread {
                 &pseudo,
                 &property_id,
             )
+        })
+    }
+
+    #[servo_tracing::instrument(skip_all)]
+    fn query_computed_style(
+        &self,
+        node: TrustedNodeAddress,
+        animations: DocumentAnimationSet,
+        animation_timeline_value: f64,
+    ) -> Option<ServoArc<ComputedValues>> {
+        with_layout_state(|| {
+            let node = unsafe { ServoLayoutNode::new(&node) };
+            let document = unsafe { node.dangerous_style_node() }.owner_doc();
+            let shared_locks = document.shared_style_locks();
+            let guards = StylesheetGuards {
+                author: &shared_locks.author.read(),
+                ua_or_user: &shared_locks.ua_or_user.read(),
+            };
+            let snapshot_map = SnapshotMap::new();
+            let context = self.build_shared_style_context(
+                guards,
+                &snapshot_map,
+                animation_timeline_value,
+                &animations,
+                TraversalFlags::empty(),
+            );
+
+            let element = node.as_element()?;
+            if element.style_data().is_none() {
+                resolved_style_for_unstyled_node(&context, node, &None)
+            } else {
+                Some(element.style(&context).clone())
+            }
         })
     }
 

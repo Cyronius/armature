@@ -99,8 +99,8 @@ use storage_traits::StorageThreads;
 use storage_traits::webstorage_thread::WebStorageType;
 use style::dom::OpaqueNode;
 use style::error_reporting::{ContextualParseError, ParseErrorReporter};
-use style::properties::PropertyId;
 use style::properties::style_structs::Font;
+use style::properties::{ComputedValues, PropertyId};
 use style::selector_parser::PseudoElement;
 use style::str::HTML_SPACE_CHARACTERS;
 use style::stylesheets::UrlExtraData;
@@ -3303,6 +3303,24 @@ impl Window {
             animations,
             document.current_animation_timeline_value(),
         ))
+    }
+
+    /// Compute the style of an SVG element for its rasterized rendering copy. This returns the
+    /// style as a whole, so the copy can serialize several paint properties after one query.
+    pub(crate) fn computed_style_for_svg(
+        &self,
+        element: TrustedNodeAddress,
+    ) -> Option<ServoArc<ComputedValues>> {
+        self.layout_reflow_deprecated(QueryMsg::ResolvedStyleQuery(
+            PropertyId::parse_enabled_for_all_content("fill").unwrap(),
+        ));
+
+        let document = self.Document();
+        self.layout.borrow().query_computed_style(
+            element,
+            document.animation_manager().sets(),
+            document.current_animation_timeline_value(),
+        )
     }
 
     pub(crate) fn accesskit_node_query(

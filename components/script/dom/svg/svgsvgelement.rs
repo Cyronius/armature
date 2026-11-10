@@ -16,6 +16,7 @@ use layout_api::SVGElementData;
 use servo_url::ServoUrl;
 use style::attr::AttrValue;
 use style::parser::ParserContext;
+use style::properties::{PropertyDeclarationId, PropertyId};
 use style::stylesheets::Origin;
 use style::values::specified::LengthPercentage;
 use style_traits::ParsingMode;
@@ -61,6 +62,10 @@ use crate::dom::svg::svgtypes::{
     SVGLengthDirection, SVGLengthValue, parse_number, split_list, svg_animated_length,
     svg_fit_to_view_box,
 };
+
+/// Document CSS lies outside an inline SVG's serialized rendering copy. Transfer the resolved
+/// fill while keeping other paint and text properties in the rasterizer's existing path.
+const RASTERIZED_SVG_STYLE_PROPERTIES: &[&str] = &["fill"];
 
 #[dom_struct]
 pub(crate) struct SVGSVGElement {
@@ -221,6 +226,59 @@ impl SVGSVGElement {
                 .svg_attribute(&local_name!("style"))
                 .unwrap_or_default();
             let original_style_len = style.len();
+            if document.is_html_document() &&
+                let Some(computed_style) = source
+                    .upcast::<Node>()
+                    .owner_window()
+                    .computed_style_for_svg(source.upcast::<Node>().to_trusted_node_address())
+            {
+                let parent_style = source
+                    .upcast::<Node>()
+                    .GetParentElement()
+                    .and_then(DomRoot::downcast::<SVGElement>)
+                    .and_then(|parent| {
+                        parent
+                            .upcast::<Node>()
+                            .owner_window()
+                            .computed_style_for_svg(
+                                parent.upcast::<Node>().to_trusted_node_address(),
+                            )
+                    });
+                for property in RASTERIZED_SVG_STYLE_PROPERTIES {
+                    let Ok(PropertyId::NonCustom(id)) =
+                        PropertyId::parse_enabled_for_all_content(property)
+                    else {
+                        continue;
+                    };
+                    let Ok(id) = id.longhand_or_shorthand() else {
+                        continue;
+                    };
+                    let value = computed_style
+                        .computed_value_to_string(PropertyDeclarationId::Longhand(id));
+                    // A referenced subtree inherits from its `<use>` element. Copying an
+                    // inherited value that came only from the definition's ancestors would
+                    // incorrectly override the value at the use site.
+                    if id.inherited() &&
+                        parent_style.as_ref().is_some_and(|parent| {
+                            parent.computed_value_to_string(PropertyDeclarationId::Longhand(id)) ==
+                                value
+                        })
+                    {
+                        continue;
+                    }
+                    // URLs are relative to the original document, not to the rendering copy's
+                    // data URL. Keep those references in the original attributes and styles.
+                    if value.is_empty() || value.contains("url(") {
+                        continue;
+                    }
+                    if !style.trim().is_empty() && !style.trim_end().ends_with(';') {
+                        style.push(';');
+                    }
+                    style.push_str(property);
+                    style.push(':');
+                    style.push_str(&value);
+                }
+            }
             let mut serialized_properties = Vec::new();
             for animation in document.smil_animations_targeting(cx, &source) {
                 if !animation.passes_conditional_processing() {
