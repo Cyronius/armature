@@ -9177,6 +9177,14 @@
       []
      ]
     },
+    "css-syntax": {
+     "support": {
+      "import-encoding.py": [
+       "600226372814e9695b1cfa5abcff4d5e655b1ff0",
+       []
+      ]
+     }
+    },
     "data-img-ref.html": [
      "0a1bfb60e4c1114df3a5fa583690ede13ba9ca8c",
      []
@@ -13289,6 +13297,15 @@
       {}
      ]
     ],
+    "css-syntax": {
+     "import-encoding.html": [
+      "18a26a08f3d58315dcb0e38e9e91f7cd02c406b4",
+      [
+       null,
+       {}
+      ]
+     ]
+    },
     "css-transition-cancel-event.html": [
      "23400c556d58bb21b78a9cbed3b56028c7d299c3",
      [

@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Imported style sheets inherit the importing sheet's encoding</title>
+<link rel="help" href="https://drafts.csswg.org/css-cascade-6/#processing-stylesheet-imports">
+<link rel="help" href="https://drafts.csswg.org/css-syntax/#environment-encoding">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="дочь">Direct import</div>
+<div id="внук">Nested import</div>
+<div id="кодировка">Encoding declaration</div>
+<div id="байт">Byte order mark</div>
+<script>
+async function loadStylesheet(mode) {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = `support/import-encoding.py?mode=${mode}`;
+  const loaded = new Promise((resolve, reject) => {
+    link.onload = resolve;
+    link.onerror = reject;
+  });
+  document.head.append(link);
+  await loaded;
+}
+
+for (const [mode, id, description] of [
+  ["parent-direct", "дочь", "HTTP charset of a directly importing sheet"],
+  ["parent-nested", "внук", "HTTP charset through two import levels"],
+  ["parent-declared", "кодировка", "@charset of an importing sheet"],
+  ["parent-bom", "байт", "UTF-16 BOM of an importing sheet"],
+]) {
+  promise_test(async () => {
+    await loadStylesheet(mode);
+    assert_equals(getComputedStyle(document.getElementById(id)).color,
+                  "rgb(0, 128, 0)");
+  }, description);
+}
+</script>
