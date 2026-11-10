@@ -166,6 +166,27 @@ impl SVGShapeGeometry {
         }
     }
 
+    /// The winding number is undefined on the outline; test it explicitly for fill queries.
+    pub(crate) fn is_on_fill_boundary(&self, point: Point) -> bool {
+        if !point.x.is_finite() || !point.y.is_finite() {
+            return false;
+        }
+        match self {
+            Self::Path(path) => path.segments().any(|segment| {
+                kurbo::ParamCurveNearest::nearest(&segment, point, ACCURACY).distance_sq <= 1e-12
+            }),
+            Self::Ellipse(ellipse) => {
+                let bounds = ellipse.bounding_box();
+                let x = (2.0 * point.x - bounds.x0 - bounds.x1) / bounds.width();
+                let y = (2.0 * point.y - bounds.y0 - bounds.y1) / bounds.height();
+                (x * x + y * y - 1.0).abs() <= 1e-12
+            },
+            Self::Line(line) => {
+                kurbo::ParamCurveNearest::nearest(line, point, ACCURACY).distance_sq <= 1e-12
+            },
+        }
+    }
+
     fn segments(&self) -> Vec<PathSeg> {
         match self {
             Self::Path(path) => path.segments().collect(),

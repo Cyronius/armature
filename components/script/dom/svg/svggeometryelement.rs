@@ -72,6 +72,9 @@ impl SVGGeometryElementMethods<crate::DomTypeHolder> for SVGGeometryElement {
             return false;
         };
         let point = kurbo::Point::new(point.x, point.y);
+        if geometry.is_on_fill_boundary(point) {
+            return true;
+        }
         let winding = geometry.winding(point);
         let even_odd = svggeometry::computed_value(self.upcast(), "fill-rule") == "evenodd";
         if even_odd {
