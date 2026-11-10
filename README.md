@@ -267,6 +267,8 @@ Notes on the numbers:
   Constructed `DocumentTimeline` objects now use the document's sampled animation clock and their origin offset,
   while `AnimationTimeline.duration` is exposed as null for document timelines. Seven previously expected failures
   pass across the constructor, duration and IDL tests; the full 207-test `web-animations` run has no new failures.
+  Keyframe sequences now read every keyframe and property before reporting an invalid easing, so both ordering
+  subtests in the focused WPT pass.
 - **`CSSAnimation`, `CSSTransition` and `getAnimations()`**: CSS animations and transitions are now `CSSAnimation`
   and `CSSTransition` objects that `Document`, `ShadowRoot` and `Element.getAnimations()` return in composite order,
   so script can pause, seek, reverse, finish or cancel them and read their timing and keyframes
