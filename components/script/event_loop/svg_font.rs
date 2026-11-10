@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use app_units::Au;
 use fonts::{
@@ -25,9 +25,10 @@ use webrender_api::FontVariation;
 /// Used to dynamically query fonts used in SVGs and insert them into the fontDB used when rasterizing.
 #[derive(MallocSizeOf)]
 pub struct SvgFontResolver {
-    /// Cache for Font to ID
-    font_id_cache: Mutex<FxHashMap<Font, fontdb::ID>>,
-    fallback_id_cache: Mutex<FxHashMap<char, Vec<fontdb::ID>>>,
+    /// Font IDs belong to one database. SVGs with viewport-dependent sizes are
+    /// parsed again with a fresh database, so keep the issuing database too.
+    font_id_cache: Mutex<FxHashMap<Font, (Weak<fontdb::Database>, fontdb::ID)>>,
+    fallback_id_cache: Mutex<FxHashMap<char, Vec<(Weak<fontdb::Database>, fontdb::ID)>>>,
     #[conditional_malloc_size_of]
     context: Arc<FontContext>,
 }
@@ -79,7 +80,10 @@ impl SvgFontResolver {
             )));
 
             if let Some(id) = ids.get(data_and_index.index as usize).copied() {
-                self.font_id_cache.lock().unwrap().insert(font.clone(), id);
+                self.font_id_cache
+                    .lock()
+                    .unwrap()
+                    .insert(font.clone(), (Arc::downgrade(database), id));
                 return Some(id);
             }
         }
@@ -159,8 +163,13 @@ impl FontResolver for SvgFontResolver {
     fn resolve(&self, font: &Font, database: &mut Arc<fontdb::Database>) -> Option<fontdb::ID> {
         {
             let id_cache = self.font_id_cache.lock().unwrap();
-            if let Some(font_id) = id_cache.get(font) {
-                return Some(*font_id);
+            if let Some((cached_database, font_id)) = id_cache.get(font) {
+                if cached_database
+                    .upgrade()
+                    .is_some_and(|cached_database| Arc::ptr_eq(&cached_database, database))
+                {
+                    return Some(*font_id);
+                }
             }
         }
         self.insert_into_database(font, database)
@@ -174,11 +183,15 @@ impl FontResolver for SvgFontResolver {
     ) -> Option<fontdb::ID> {
         {
             let id_cache = self.fallback_id_cache.lock().unwrap();
-            if let Some(font_id) = id_cache
-                .get(&character)
-                .and_then(|font_ids| font_ids.iter().find(|font_id| !excluded.contains(font_id)))
-            {
-                return Some(*font_id);
+            if let Some(font_id) = id_cache.get(&character).and_then(|font_ids| {
+                font_ids.iter().find(|(cached_database, font_id)| {
+                    !excluded.contains(font_id) &&
+                        cached_database.upgrade().is_some_and(|cached_database| {
+                            Arc::ptr_eq(&cached_database, database)
+                        })
+                })
+            }) {
+                return Some(font_id.1);
             }
         }
         let fallback_options = FallbackFontSelectionOptions::new(
@@ -224,12 +237,16 @@ impl FontResolver for SvgFontResolver {
                     continue;
                 }
 
-                self.fallback_id_cache
-                    .lock()
-                    .unwrap()
-                    .entry(character)
-                    .or_default()
-                    .push(*id);
+                let mut id_cache = self.fallback_id_cache.lock().unwrap();
+                let font_ids = id_cache.entry(character).or_default();
+                // Keep only IDs from this database; old SVG parses can no longer
+                // use their IDs here, and retaining them grows the cache forever.
+                font_ids.retain(|(cached_database, _)| {
+                    cached_database
+                        .upgrade()
+                        .is_some_and(|cached_database| Arc::ptr_eq(&cached_database, database))
+                });
+                font_ids.push((Arc::downgrade(database), *id));
                 return Some(*id);
             }
         }
