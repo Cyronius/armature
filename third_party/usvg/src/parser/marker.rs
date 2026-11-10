@@ -85,6 +85,11 @@ enum MarkerOrientation {
     Angle(f32),
 }
 
+struct PathMarkerMetadata {
+    vertices: Vec<bool>,
+    repeated_closes: Vec<usize>,
+}
+
 fn resolve(
     shape_node: SvgNode,
     path: &tiny_skia_path::Path,
@@ -165,18 +170,21 @@ fn resolve(
 
     // Armature: Arc commands are approximated by multiple cubic segments for painting,
     // but only the end of the original arc is a marker vertex.
-    let arc_vertices = if matches!(marker_kind, MarkerKind::Middle) &&
+    let path_metadata = if matches!(marker_kind, MarkerKind::Middle) &&
         shape_node.tag_name() == Some(EId::Path)
     {
         shape_node
             .attribute::<&str>(AId::D)
-            .and_then(|data| arc_vertex_mask(data, segments.len()))
+            .and_then(|data| path_marker_metadata(data, segments.len()))
     } else {
         None
     };
 
     let draw_marker = |p: tiny_skia_path::Point, idx: usize| {
-        if arc_vertices.as_ref().is_some_and(|vertices| !vertices[idx]) {
+        if path_metadata
+            .as_ref()
+            .is_some_and(|metadata| !metadata.vertices[idx])
+        {
             return;
         }
         let mut ts = Transform::from_translate(p.x, p.y);
@@ -224,13 +232,14 @@ fn resolve(
         }
     };
 
-    draw_markers(&segments, marker_kind, draw_marker);
+    draw_markers(&segments, marker_kind, path_metadata.as_ref(), draw_marker);
 
     Some(())
 }
 
-fn arc_vertex_mask(data: &str, segment_count: usize) -> Option<Vec<bool>> {
+fn path_marker_metadata(data: &str, segment_count: usize) -> Option<PathMarkerMetadata> {
     let mut vertices = vec![true; segment_count];
+    let mut repeated_closes = vec![0; segment_count];
     let mut current = (0.0, 0.0);
     let mut subpath_start = current;
     let mut index = 0usize;
@@ -316,6 +325,10 @@ fn arc_vertex_mask(data: &str, segment_count: usize) -> Option<Vec<bool>> {
             svgtypes::PathSegment::ClosePath { .. } => {
                 if !closed {
                     index += 1;
+                } else {
+                    // SimplifyingPathParser omits repeated closepath commands, but
+                    // each still contributes a vertex for marker placement.
+                    *repeated_closes.get_mut(index.checked_sub(1)?)? += 1;
                 }
                 current = subpath_start;
                 closed = true;
@@ -326,7 +339,10 @@ fn arc_vertex_mask(data: &str, segment_count: usize) -> Option<Vec<bool>> {
         }
     }
 
-    (index == segment_count).then_some(vertices)
+    (index == segment_count).then_some(PathMarkerMetadata {
+        vertices,
+        repeated_closes,
+    })
 }
 
 fn absolute_endpoint(current: (f64, f64), abs: bool, x: f64, y: f64) -> (f64, f64) {
@@ -344,7 +360,12 @@ fn stroke_scale(
     }
 }
 
-fn draw_markers<P>(path: &[Segment], kind: MarkerKind, mut draw_marker: P)
+fn draw_markers<P>(
+    path: &[Segment],
+    kind: MarkerKind,
+    metadata: Option<&PathMarkerMetadata>,
+    mut draw_marker: P,
+)
 where
     P: FnMut(tiny_skia_path::Point, usize),
 {
@@ -380,8 +401,20 @@ where
                 };
 
                 draw_marker(p, i);
+                if let Some(metadata) = metadata {
+                    for _ in 0..metadata.repeated_closes[i] {
+                        draw_marker(p, i);
+                    }
+                }
 
                 i += 1;
+            }
+            if let Some(metadata) = metadata {
+                // A final closepath is the end marker; earlier repeated closepaths
+                // at the same point are middle markers.
+                for _ in 0..metadata.repeated_closes[total] {
+                    draw_marker(get_subpath_start(path, total), total);
+                }
             }
         }
         MarkerKind::End => {
@@ -616,6 +649,11 @@ fn calc_angle(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, x4: f32, y4:
 
     let in_a = vector_angle(x2 - x1, y2 - y1);
     let out_a = vector_angle(x4 - x3, y4 - y3);
+    // Armature: A 180-degree reversal has two possible bisectors. Choose the
+    // clockwise one consistently, including when the angles cross zero.
+    if (out_a - in_a).abs().approx_eq_ulps(&PI, 4) {
+        return normalize(out_a + FRAC_PI_2).to_degrees();
+    }
     let d = (out_a - in_a) * 0.5;
 
     let mut angle = in_a + d;
