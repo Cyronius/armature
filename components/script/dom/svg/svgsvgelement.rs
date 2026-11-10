@@ -73,6 +73,11 @@ const RASTERIZED_SVG_STYLE_PROPERTIES: &[&str] = &[
     "transform",
 ];
 
+/// The rasterizer cannot substitute custom properties in SVG geometry attributes. Transfer only
+/// those attributes' resolved values, leaving ordinary geometry to the rasterizer.
+const RASTERIZED_SVG_VARIABLE_GEOMETRY_PROPERTIES: &[&str] =
+    &["cx", "cy", "r", "rx", "ry", "x", "y", "width", "height"];
+
 #[dom_struct]
 pub(crate) struct SVGSVGElement {
     svggraphicselement: SVGGraphicsElement,
@@ -248,30 +253,49 @@ impl SVGSVGElement {
                 .svg_attribute(&local_name!("style"))
                 .unwrap_or_default();
             let original_style_len = style.len();
-            if document.is_html_document() &&
+            let variable_geometry: Vec<_> = RASTERIZED_SVG_VARIABLE_GEOMETRY_PROPERTIES
+                .iter()
+                .copied()
+                .filter(|property| {
+                    source
+                        .svg_attribute(&LocalName::from(*property))
+                        .is_some_and(|value| value.contains("var("))
+                })
+                .collect();
+            if (document.is_html_document() || !variable_geometry.is_empty()) &&
                 let Some(computed_style) = source
                     .upcast::<Node>()
                     .owner_window()
                     .computed_style_for_svg(source.upcast::<Node>().to_trusted_node_address())
             {
-                let parent_style = source
-                    .upcast::<Node>()
-                    .GetParentElement()
-                    .and_then(DomRoot::downcast::<SVGElement>)
-                    .and_then(|parent| {
-                        parent
+                let parent_style = document
+                    .is_html_document()
+                    .then(|| {
+                        source
                             .upcast::<Node>()
-                            .owner_window()
-                            .computed_style_for_svg(
-                                parent.upcast::<Node>().to_trusted_node_address(),
-                            )
-                    });
-                for property in RASTERIZED_SVG_STYLE_PROPERTIES {
+                            .GetParentElement()
+                            .and_then(DomRoot::downcast::<SVGElement>)
+                            .and_then(|parent| {
+                                parent
+                                    .upcast::<Node>()
+                                    .owner_window()
+                                    .computed_style_for_svg(
+                                        parent.upcast::<Node>().to_trusted_node_address(),
+                                    )
+                            })
+                    })
+                    .flatten();
+                for property in RASTERIZED_SVG_STYLE_PROPERTIES
+                    .iter()
+                    .copied()
+                    .filter(|_| document.is_html_document())
+                    .chain(variable_geometry)
+                {
                     // Layout applies the outer SVG's CSS transform to its
                     // replaced box. Descendant transforms must be applied by
                     // the SVG rasterizer, except when motion has already
                     // supplied their combined transform on the copy.
-                    if *property == "transform" &&
+                    if property == "transform" &&
                         (std::ptr::eq(source.upcast::<Node>(), source_root) ||
                             has_motion_transform ||
                             source.svg_attribute(&local_name!("transform")).is_some())

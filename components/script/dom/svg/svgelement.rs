@@ -12,6 +12,7 @@ use script_bindings::codegen::GenericBindings::WindowBinding::ScrollBehavior;
 use script_bindings::reflector::DomObject;
 use script_bindings::str::DOMString;
 use style::attr::AttrValue;
+use style::context::QuirksMode;
 use style::parser::ParserContext;
 use style::properties::{PropertyDeclaration, PropertyId, SourcePropertyDeclaration, longhands};
 use style::stylesheets::{CssRuleType, Origin, UrlExtraData};
@@ -948,35 +949,75 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         // Parse geometry attributes based on element type
         // <circle>: https://svgwg.org/svg2-draft/shapes.html#CircleElement
         if element.downcast::<SVGCircleElement>().is_some() {
-            self.parse_svg_attribute(&parser_context, "cx", longhands::cx::parse_declared, push);
-            self.parse_svg_attribute(&parser_context, "cy", longhands::cy::parse_declared, push);
-            self.parse_svg_attribute(&parser_context, "r", longhands::r::parse_declared, push);
+            self.parse_svg_attribute(
+                &mut parser_context,
+                "cx",
+                longhands::cx::parse_declared,
+                push,
+            );
+            self.parse_svg_attribute(
+                &mut parser_context,
+                "cy",
+                longhands::cy::parse_declared,
+                push,
+            );
+            self.parse_svg_attribute(&mut parser_context, "r", longhands::r::parse_declared, push);
         }
         // <ellipse>: https://svgwg.org/svg2-draft/shapes.html#EllipseElement
         if element.downcast::<SVGEllipseElement>().is_some() {
-            self.parse_svg_attribute(&parser_context, "cx", longhands::cx::parse_declared, push);
-            self.parse_svg_attribute(&parser_context, "cy", longhands::cy::parse_declared, push);
-            self.parse_svg_attribute(&parser_context, "rx", longhands::rx::parse_declared, push);
-            self.parse_svg_attribute(&parser_context, "ry", longhands::ry::parse_declared, push);
+            self.parse_svg_attribute(
+                &mut parser_context,
+                "cx",
+                longhands::cx::parse_declared,
+                push,
+            );
+            self.parse_svg_attribute(
+                &mut parser_context,
+                "cy",
+                longhands::cy::parse_declared,
+                push,
+            );
+            self.parse_svg_attribute(
+                &mut parser_context,
+                "rx",
+                longhands::rx::parse_declared,
+                push,
+            );
+            self.parse_svg_attribute(
+                &mut parser_context,
+                "ry",
+                longhands::ry::parse_declared,
+                push,
+            );
         }
         // <rect>: https://svgwg.org/svg2-draft/shapes.html#RectElement
         if element.downcast::<SVGRectElement>().is_some() {
-            self.parse_svg_attribute(&parser_context, "x", longhands::x::parse_declared, push);
-            self.parse_svg_attribute(&parser_context, "y", longhands::y::parse_declared, push);
+            self.parse_svg_attribute(&mut parser_context, "x", longhands::x::parse_declared, push);
+            self.parse_svg_attribute(&mut parser_context, "y", longhands::y::parse_declared, push);
             self.parse_svg_attribute(
-                &parser_context,
+                &mut parser_context,
                 "width",
                 longhands::width::parse_declared,
                 push,
             );
             self.parse_svg_attribute(
-                &parser_context,
+                &mut parser_context,
                 "height",
                 longhands::height::parse_declared,
                 push,
             );
-            self.parse_svg_attribute(&parser_context, "rx", longhands::rx::parse_declared, push);
-            self.parse_svg_attribute(&parser_context, "ry", longhands::ry::parse_declared, push);
+            self.parse_svg_attribute(
+                &mut parser_context,
+                "rx",
+                longhands::rx::parse_declared,
+                push,
+            );
+            self.parse_svg_attribute(
+                &mut parser_context,
+                "ry",
+                longhands::ry::parse_declared,
+                push,
+            );
         }
         // <image> and <foreignObject> have the same geometry attributes.
         // https://svgwg.org/svg2-draft/embedded.html#ImageElement
@@ -984,16 +1025,16 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         if element.downcast::<SVGImageElement>().is_some() ||
             element.downcast::<SVGForeignObjectElement>().is_some()
         {
-            self.parse_svg_attribute(&parser_context, "x", longhands::x::parse_declared, push);
-            self.parse_svg_attribute(&parser_context, "y", longhands::y::parse_declared, push);
+            self.parse_svg_attribute(&mut parser_context, "x", longhands::x::parse_declared, push);
+            self.parse_svg_attribute(&mut parser_context, "y", longhands::y::parse_declared, push);
             self.parse_svg_attribute(
-                &parser_context,
+                &mut parser_context,
                 "width",
                 longhands::width::parse_declared,
                 push,
             );
             self.parse_svg_attribute(
-                &parser_context,
+                &mut parser_context,
                 "height",
                 longhands::height::parse_declared,
                 push,
@@ -1077,7 +1118,7 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
 
     fn parse_svg_attribute<F>(
         self,
-        parser_context: &ParserContext,
+        parser_context: &mut ParserContext,
         attr_name: &str,
         parse: F,
         push: &mut impl FnMut(PropertyDeclaration),
@@ -1090,9 +1131,9 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         let element = self.upcast::<Element>();
         if let Some(value) = element.get_attr_val_for_layout(&ns!(), &LocalName::from(attr_name)) {
             // A presentation attribute does nothing when its property is disabled by a preference.
-            if PropertyId::parse_enabled_for_all_content(attr_name).is_err() {
+            let Ok(property_id) = PropertyId::parse_enabled_for_all_content(attr_name) else {
                 return;
-            }
+            };
             // SVG geometry attributes use a non-negative length or percentage,
             // even though the corresponding CSS properties can accept `auto`.
             if matches!(attr_name, "r" | "rx" | "ry" | "width" | "height") &&
@@ -1102,10 +1143,36 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
                 return;
             }
             let mut parser = cssparser::Parser::new(value);
-            if let Ok(property) =
-                parser.parse_entirely(|parse_input| parse(parser_context, parse_input))
-            {
+            if let Ok(property) = parser.parse_entirely(|input| parse(parser_context, input)) {
                 push(property);
+            } else if value.contains("var(") {
+                // A geometry attribute can contain var(). Its value is parsed at computed-value
+                // time, after the element's custom properties have been cascaded. Unitless
+                // substituted lengths are accepted in quirks mode, but not in standards mode.
+                let original_parsing_mode = parser_context.parsing_mode;
+                if parser_context.quirks_mode != QuirksMode::Quirks {
+                    parser_context
+                        .parsing_mode
+                        .remove(ParsingMode::ALLOW_UNITLESS_LENGTH);
+                }
+                let mut declarations = SourcePropertyDeclaration::default();
+                let mut parser = cssparser::Parser::new(value);
+                let parsed = parser
+                    .parse_entirely(|input| {
+                        PropertyDeclaration::parse_into(
+                            &mut declarations,
+                            property_id,
+                            parser_context,
+                            input,
+                        )
+                    })
+                    .is_ok();
+                parser_context.parsing_mode = original_parsing_mode;
+                if parsed {
+                    for declaration in declarations.drain().declarations {
+                        push(declaration);
+                    }
+                }
             }
         }
     }
