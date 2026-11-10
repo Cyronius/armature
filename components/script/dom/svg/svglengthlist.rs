@@ -339,7 +339,7 @@ impl SVGLengthList {
             .items
             .borrow()
             .iter()
-            .map(|item| item.length(cx).to_string())
+            .map(|item| item.serialized_value(cx))
             .collect::<Vec<_>>()
             .join(" ");
         *self.synchronized_value.borrow_mut() = Some(Some(value.clone()));

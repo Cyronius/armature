@@ -15,7 +15,7 @@ use crate::dom::element::Element;
 use crate::dom::node::NodeTraits;
 use crate::dom::svg::svganimationelement::trim_one_trailing_semicolon;
 use crate::dom::svg::svgelement::SVGElement;
-use crate::dom::svg::svglength::{ElementLengthContext, SVGLength};
+use crate::dom::svg::svglength::{ElementLengthContext, SVGLength, is_unresolved_length};
 use crate::dom::svg::svgtypes::{SVGLengthContext, SVGLengthDirection, SVGLengthValue};
 
 #[derive(Clone, Copy)]
@@ -259,6 +259,16 @@ impl SVGAnimatedLength {
         Self::base_value_for(&self.element, &self.attribute, self.initial)
     }
 
+    pub(crate) fn unresolved_value(&self) -> Option<String> {
+        self.element
+            .svg_attribute(&self.attribute)
+            .filter(|value| is_unresolved_length(value))
+    }
+
+    pub(crate) fn set_base_value_raw(&self, cx: &mut JSContext, value: String) {
+        self.element.set_svg_attribute(cx, &self.attribute, value);
+    }
+
     fn base_value_for(
         element: &SVGElement,
         attribute: &LocalName,
@@ -271,7 +281,10 @@ impl SVGAnimatedLength {
         );
         element
             .svg_attribute(attribute)
-            .and_then(|value| SVGLengthValue::parse(&value))
+            .and_then(|value| {
+                SVGLengthValue::parse(&value)
+                    .or_else(|| is_unresolved_length(&value).then(|| SVGLengthValue::new(0.0, 0)))
+            })
             .filter(|value| !non_negative || value.value >= 0.0)
             .unwrap_or(initial)
     }

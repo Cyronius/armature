@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
+use cssparser::Parser;
 use dom_struct::dom_struct;
 use html5ever::LocalName;
 use js::context::JSContext;
@@ -35,6 +36,7 @@ enum SVGLengthStorage {
     /// a list, which reflects an attribute.
     Own {
         value: Cell<SVGLengthValue>,
+        unresolved: RefCell<Option<String>>,
         list: MutNullableDom<SVGLengthList>,
     },
     /// The base or animated value of an `SVGAnimatedLength`, which reflects a content
@@ -71,6 +73,7 @@ impl SVGLength {
                 reflector_: Reflector::new(),
                 storage: SVGLengthStorage::Own {
                     value: Cell::new(value),
+                    unresolved: RefCell::new(None),
                     list: MutNullableDom::new(list),
                 },
                 read_only: Cell::new(read_only),
@@ -115,8 +118,12 @@ impl SVGLength {
 
     /// Set the value of a length that is an element of a list, without serializing the list.
     pub(crate) fn set_raw_length(&self, length: SVGLengthValue) {
-        if let SVGLengthStorage::Own { value, .. } = &self.storage {
+        if let SVGLengthStorage::Own {
+            value, unresolved, ..
+        } = &self.storage
+        {
             value.set(length);
+            *unresolved.borrow_mut() = None;
         }
     }
 
@@ -158,15 +165,60 @@ impl SVGLength {
         }
     }
 
+    fn unresolved_value(&self, cx: &mut JSContext) -> Option<String> {
+        match &self.storage {
+            SVGLengthStorage::Own { unresolved, .. } => unresolved.borrow().clone(),
+            SVGLengthStorage::Reflected(animated) => {
+                if self.read_only.get() && animated.animated_value(cx).unit_type != 0 {
+                    return None;
+                }
+                animated.unresolved_value()
+            },
+        }
+    }
+
+    /// Serialize without synchronizing a containing list during its commit.
+    pub(crate) fn serialized_value(&self, cx: &mut JSContext) -> String {
+        self.unresolved_value(cx)
+            .unwrap_or_else(|| self.length(cx).to_string())
+    }
+
+    fn set_unresolved_value(&self, cx: &mut JSContext, value: String) -> ErrorResult {
+        self.check_writable()?;
+        match &self.storage {
+            SVGLengthStorage::Own {
+                value: length,
+                unresolved,
+                list,
+            } => {
+                if let Some(list) = list.get() {
+                    list.synchronize(cx);
+                }
+                length.set(SVGLengthValue::new(0.0, 0));
+                *unresolved.borrow_mut() = Some(value);
+                if let Some(list) = list.get() {
+                    list.commit(cx);
+                }
+            },
+            SVGLengthStorage::Reflected(animated) => animated.set_base_value_raw(cx, value),
+        }
+        Ok(())
+    }
+
     fn set_length(&self, cx: &mut JSContext, length: SVGLengthValue) -> ErrorResult {
         self.check_writable()?;
         match &self.storage {
-            SVGLengthStorage::Own { value, list } => {
+            SVGLengthStorage::Own {
+                value,
+                unresolved,
+                list,
+            } => {
                 // The other elements of the list must be up to date before it is serialized.
                 if let Some(list) = list.get() {
                     list.synchronize(cx);
                 }
                 value.set(length);
+                *unresolved.borrow_mut() = None;
                 if let Some(list) = list.get() {
                     list.commit(cx);
                 }
@@ -219,16 +271,42 @@ fn not_supported() -> Error {
     ))
 }
 
+/// SVGLength preserves a substitution function as an unresolved length in the DOM.
+pub(crate) fn is_unresolved_length(value: &str) -> bool {
+    let mut parser = Parser::new(value);
+    let parsed: Result<(), cssparser::ParseError<()>> = parser.parse_entirely(|parser| {
+        parser.expect_function_matching("var")?;
+        parser.parse_nested_block(|parser| {
+            let name = parser.expect_ident()?;
+            if !name.starts_with("--") {
+                return Err(cssparser::ParseError::custom(()));
+            }
+            if !parser.is_exhausted() {
+                parser.expect_comma()?;
+                while parser.next().is_ok() {}
+            }
+            Ok(())
+        })
+    });
+    parsed.is_ok()
+}
+
 impl SVGLengthMethods<crate::DomTypeHolder> for SVGLength {
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__unitType>
     fn UnitType(&self, cx: &mut JSContext) -> u16 {
         self.synchronize(cx);
+        if self.unresolved_value(cx).is_some() {
+            return 0;
+        }
         self.length(cx).dom_unit_type()
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__value>
     fn GetValue(&self, cx: &mut JSContext) -> Fallible<Finite<f32>> {
         self.synchronize(cx);
+        if self.unresolved_value(cx).is_some() {
+            return Ok(Finite::wrap(0.0));
+        }
         let length = self.length(cx);
         let value = self
             .with_context(cx, |cx, context| length.to_user_units(cx, context))
@@ -240,6 +318,9 @@ impl SVGLengthMethods<crate::DomTypeHolder> for SVGLength {
     fn SetValue(&self, cx: &mut JSContext, value: Finite<f32>) -> ErrorResult {
         self.synchronize(cx);
         self.check_writable()?;
+        if self.unresolved_value(cx).is_some() {
+            return self.set_length(cx, SVGLengthValue::number(*value));
+        }
         let unit_type = self.length(cx).unit_type;
         let length = self
             .with_context(cx, |cx, context| {
@@ -259,6 +340,9 @@ impl SVGLengthMethods<crate::DomTypeHolder> for SVGLength {
     fn SetValueInSpecifiedUnits(&self, cx: &mut JSContext, value: Finite<f32>) -> ErrorResult {
         self.synchronize(cx);
         self.check_writable()?;
+        if self.unresolved_value(cx).is_some() {
+            return self.set_length(cx, SVGLengthValue::number(*value));
+        }
         let unit_type = self.length(cx).unit_type;
         self.set_length(cx, SVGLengthValue::new(*value, unit_type))
     }
@@ -266,16 +350,22 @@ impl SVGLengthMethods<crate::DomTypeHolder> for SVGLength {
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__valueAsString>
     fn ValueAsString(&self, cx: &mut JSContext) -> DOMString {
         self.synchronize(cx);
-        DOMString::from(self.length(cx).to_string())
+        DOMString::from(self.serialized_value(cx))
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__valueAsString>
     fn SetValueAsString(&self, cx: &mut JSContext, value: DOMString) -> ErrorResult {
         self.synchronize(cx);
         self.check_writable()?;
-        let length = SVGLengthValue::parse(&value.str())
-            .ok_or_else(|| Error::Syntax(Some("The value is not a valid length".into())))?;
-        self.set_length(cx, length)
+        if let Some(length) = SVGLengthValue::parse(&value.str()) {
+            self.set_length(cx, length)
+        } else if is_unresolved_length(&value.str()) {
+            self.set_unresolved_value(cx, value.str().to_string())
+        } else {
+            Err(Error::Syntax(Some(
+                "The value is not a valid length".into(),
+            )))
+        }
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGLength__newValueSpecifiedUnits>
