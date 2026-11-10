@@ -235,6 +235,10 @@ Notes on the numbers:
 - **Keyframe offsets**: in keyframes given to `element.animate()` and `KeyframeEffect`, `offset` is the keyframe
   offset again and the CSS `offset` property is `cssOffset`, as the Web Animations spec says (enabling the motion path
   properties had made `offset` name the CSS property, which broke about 50 subtests).
+- **CSS Box Alignment flow aliases**: `flow-start` and `flow-end` parse for the six alignment longhands and the
+  `place-*` shorthands. Specified styles keep their spelling, while computed styles serialize both these values and
+  `flex-start`/`flex-end` as `flow-start`/`flow-end` (AS-517). In the focused 54-file WPT run, 112 subtests newly pass,
+  including alignment parsing, computed serialization and discrete Web Animations comparisons.
 - **Web Animations API**, on in experimental mode (`dom_web_animations_enabled`): `Animation` has the playback model of
   the spec (`play()`, `pause()`, `finish()`, `cancel()`, `reverse()`, `updatePlaybackRate()`, `currentTime`,
   `startTime`, `overallProgress`, `playbackRate`, `playState`, `pending`, the `ready` and `finished` promises, and
