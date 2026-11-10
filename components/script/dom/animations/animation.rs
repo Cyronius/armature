@@ -124,6 +124,10 @@ pub(crate) struct Animation {
     /// The element that style currently applies this animation to.
     style_target: MutNullableDom<Element>,
 
+    /// The pseudo-element that style currently applies this animation to, if any.
+    #[no_trace]
+    style_pseudo: Cell<Option<PseudoElement>>,
+
     /// The values last given to style for this animation.
     last_style_sample: Cell<Option<StyleSample>>,
 
@@ -202,6 +206,7 @@ impl Animation {
             finished_promise: Default::default(),
             registered: Default::default(),
             style_target: Default::default(),
+            style_pseudo: Default::default(),
             last_style_sample: Default::default(),
             css: Default::default(),
             owning_element: Default::default(),
@@ -1136,7 +1141,7 @@ impl Animation {
     ///
     /// Returns the target of the effect when this animation is replaceable. Removed animations
     /// are left out, since they are no longer part of the effect stack.
-    pub(crate) fn replaceable_target(&self) -> Option<DomRoot<Element>> {
+    pub(crate) fn replaceable_target(&self) -> Option<(DomRoot<Element>, Option<PseudoElement>)> {
         // > The existence of the animation is not prescribed by markup. That is, it is not
         // > a CSS animation with an owning element, nor a CSS transition with an owning
         // > element.
@@ -1164,7 +1169,8 @@ impl Animation {
             return None;
         }
         let effect = self.associated_effect.get()?;
-        effect.downcast::<KeyframeEffect>()?.target_for_style()
+        let effect = effect.downcast::<KeyframeEffect>()?;
+        Some((effect.target_for_style()?, effect.target_pseudo_for_style()))
     }
 
     /// The target properties of the associated effect, resolved with `writing_mode`.
@@ -1319,6 +1325,7 @@ impl Animation {
             .as_ref()
             .and_then(|effect| effect.downcast::<KeyframeEffect>());
         let target = keyframe_effect.and_then(|effect| effect.target_for_style());
+        let target_pseudo = keyframe_effect.and_then(|effect| effect.target_pseudo_for_style());
 
         let global = self.global();
         let document = global.as_window().Document();
@@ -1327,14 +1334,16 @@ impl Animation {
         // Remove this animation from the element that it no longer targets.
         let old_target = self.style_target.get();
         if let Some(old_target) = old_target.as_ref() {
-            if target.as_deref() != Some(&**old_target) {
+            if target.as_deref() != Some(&**old_target) || self.style_pseudo.get() != target_pseudo
+            {
                 let node = old_target.upcast::<Node>();
                 animations.remove_script_animation(
-                    &AnimationSetKey::new_for_non_pseudo(node.to_opaque()),
+                    &AnimationSetKey::new(node.to_opaque(), self.style_pseudo.get()),
                     self.unique_id,
                 );
                 node.dirty(cx.no_gc(), NodeDamage::Style);
                 self.style_target.set(None);
+                self.style_pseudo.set(None);
                 self.last_style_sample.set(None);
             }
         }
@@ -1356,11 +1365,12 @@ impl Animation {
             if old_target.is_some() {
                 let node = target.upcast::<Node>();
                 animations.remove_script_animation(
-                    &AnimationSetKey::new_for_non_pseudo(node.to_opaque()),
+                    &AnimationSetKey::new(node.to_opaque(), target_pseudo),
                     self.unique_id,
                 );
                 node.dirty(cx.no_gc(), NodeDamage::Style);
                 self.style_target.set(None);
+                self.style_pseudo.set(None);
                 self.last_style_sample.set(None);
             }
             return;
@@ -1379,7 +1389,7 @@ impl Animation {
 
         let node = target.upcast::<Node>();
         animations.update_script_animation(
-            AnimationSetKey::new_for_non_pseudo(node.to_opaque()),
+            AnimationSetKey::new(node.to_opaque(), target_pseudo),
             ScriptAnimation::new(
                 self.unique_id,
                 keyframe_effect.keyframes_for_style(),
@@ -1392,6 +1402,7 @@ impl Animation {
         node.set_flag(NodeFlags::HAS_EVER_ANIMATED, true);
         node.dirty(cx.no_gc(), NodeDamage::Style);
         self.style_target.set(Some(&target));
+        self.style_pseudo.set(target_pseudo);
         self.register_with_document();
     }
 }
@@ -1840,11 +1851,12 @@ impl Animation {
         let document = global.as_window().Document();
         let node = old_target.upcast::<Node>();
         document.animation_manager().sets().remove_script_animation(
-            &AnimationSetKey::new_for_non_pseudo(node.to_opaque()),
+            &AnimationSetKey::new(node.to_opaque(), self.style_pseudo.get()),
             self.unique_id,
         );
         node.dirty(cx.no_gc(), NodeDamage::Style);
         self.style_target.set(None);
+        self.style_pseudo.set(None);
         self.last_style_sample.set(None);
     }
 

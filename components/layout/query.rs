@@ -289,12 +289,14 @@ pub fn process_resolved_style_request(
         Some(pseudo_element_type) => {
             match layout_element.with_pseudo(*pseudo_element_type) {
                 Some(layout_element) => layout_element,
-                None => {
-                    // The pseudo doesn't exist, return nothing.  Chrome seems to query
-                    // the element itself in this case, Firefox uses the resolved value.
-                    // https://www.w3.org/Bugs/Public/show_bug.cgi?id=29006
-                    return String::new();
+                // `getComputedStyle()` also resolves the style of an ungenerated
+                // ::before or ::after pseudo-element.
+                None if pseudo_element_type.is_before_or_after() => {
+                    return process_resolved_style_request_for_unstyled_node(
+                        context, node, pseudo, property,
+                    );
                 },
+                None => return String::new(),
             }
         },
         None => layout_element,
@@ -595,8 +597,11 @@ pub fn resolved_style_for_unstyled_node(
     node: ServoLayoutNode<'_>,
     pseudo: &Option<PseudoElement>,
 ) -> Option<ServoArc<ComputedValues>> {
-    // In a display: none subtree. No pseudo-element exists.
-    if pseudo.is_some() {
+    // The manual resolver supports the eager generated-content pseudos here.
+    if pseudo
+        .as_ref()
+        .is_some_and(|pseudo| !pseudo.is_before_or_after())
+    {
         return None;
     }
 
@@ -617,7 +622,7 @@ pub fn resolved_style_for_unstyled_node(
     // A display:none descendant does not participate in normal style traversal.
     // Resolve its script animation keyframes here so the second style query can
     // include their sampled declarations (including SMIL effects).
-    if element.may_have_animations() {
+    if pseudo.is_none() && element.may_have_animations() {
         let key = AnimationSetKey::new_for_non_pseudo(element.as_node().opaque());
         let animation_set = context.shared.animations.sets.write().remove(&key);
         if let Some(mut animation_set) = animation_set {
@@ -647,7 +652,10 @@ pub fn resolved_style_for_unstyled_node(
             }
         }
     }
-    Some(styles.primary().clone())
+    match pseudo {
+        Some(pseudo) => styles.pseudos.get(pseudo).cloned(),
+        None => Some(styles.primary().clone()),
+    }
 }
 
 pub fn process_resolved_style_request_for_unstyled_node(

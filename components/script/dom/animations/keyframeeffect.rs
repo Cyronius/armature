@@ -53,6 +53,7 @@ use style::properties::{
     Importance, NonCustomPropertyId, PropertyDeclarationBlock, PropertyDeclarationId,
     PropertyDeclarationIdSet, PropertyId, SourcePropertyDeclaration,
 };
+use style::selector_parser::PseudoElement;
 use style::stylesheets::CssRuleType;
 use style::values::computed::TimingFunction as ComputedTimingFunction;
 use style::values::specified::TimingFunction as SpecifiedTimingFunction;
@@ -74,11 +75,6 @@ pub(crate) struct KeyframeEffect {
     animationeffect: AnimationEffect,
 
     /// <https://drafts.csswg.org/web-animations-1/#effect-target-target-element>
-    // FIXME: Store a target pseudo-selector
-    // to fully match the concept of the effect target
-    //
-    // https://drafts.csswg.org/web-animations-1/#effect-target-target-pseudo-selector
-    // https://drafts.csswg.org/web-animations-1/#keyframe-effect-effect-target.
     target_element: MutNullableDom<Element>,
 
     /// <https://drafts.csswg.org/web-animations-1/#keyframe>
@@ -89,7 +85,6 @@ pub(crate) struct KeyframeEffect {
 
     /// <https://drafts.csswg.org/web-animations-1/#effect-target-target-pseudo-selector>
     ///
-    /// Style does not support animations of pseudo-elements created by script yet.
     target_pseudo_selector: DomRefCell<Option<DOMString>>,
 
     /// The keyframes in the form that style uses, built when first needed after the
@@ -153,14 +148,16 @@ impl KeyframeEffect {
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#effect-target-target-element>
-    /// The element whose style this effect changes. Effects that target a pseudo-element
-    /// change no style, since style does not support animations of pseudo-elements created
-    /// by script.
+    /// The originating element whose style or pseudo-element style this effect changes.
     pub(crate) fn target_for_style(&self) -> Option<DomRoot<Element>> {
-        if self.target_pseudo_selector.borrow().is_some() {
-            return None;
-        }
         self.target_element.get()
+    }
+
+    pub(crate) fn target_pseudo_for_style(&self) -> Option<PseudoElement> {
+        self.target_pseudo_selector
+            .borrow()
+            .as_ref()
+            .and_then(|selector| pseudo_element_from_selector(&selector.str()))
     }
 
     /// The composite operation of this effect, in the form that style uses.
@@ -1014,17 +1011,35 @@ fn normalize_pseudo_selector(selector: Option<DOMString>) -> Fallible<Option<DOM
     let Some(selector) = selector else {
         return Ok(None);
     };
-    let string = selector.str().to_string();
-    if matches!(
-        &*string,
-        ":before" | ":after" | ":first-letter" | ":first-line"
-    ) {
-        return Ok(Some(DOMString::from(format!(":{string}"))));
-    }
-    if string.len() > 2 && string.starts_with("::") {
-        return Ok(Some(selector));
-    }
-    Err(Error::Syntax(None))
+    let string = selector.str().to_ascii_lowercase();
+    let canonical = match string.as_str() {
+        ":before" | ":after" | ":first-letter" | ":first-line" => format!(":{string}"),
+        _ => string,
+    };
+    pseudo_element_from_selector(&canonical)
+        .map(|_| Some(DOMString::from(canonical)))
+        .ok_or(Error::Syntax(None))
+}
+
+fn pseudo_element_from_selector(selector: &str) -> Option<PseudoElement> {
+    Some(match selector {
+        "::before" => PseudoElement::Before,
+        "::after" => PseudoElement::After,
+        "::selection" => PseudoElement::Selection,
+        "::first-letter" => PseudoElement::FirstLetter,
+        "::first-line" => PseudoElement::FirstLine,
+        "::backdrop" => PseudoElement::Backdrop,
+        "::details-content" => PseudoElement::DetailsContent,
+        "::marker" => PseudoElement::Marker,
+        "::color-swatch" => PseudoElement::ColorSwatch,
+        "::file-selector-button" => PseudoElement::FileSelectorButton,
+        "::placeholder" => PseudoElement::Placeholder,
+        "::slider-fill" => PseudoElement::SliderFill,
+        "::slider-thumb" => PseudoElement::SliderThumb,
+        "::slider-track" => PseudoElement::SliderTrack,
+        "::-moz-progress-bar" => PseudoElement::MozProgressBar,
+        _ => return None,
+    })
 }
 
 /// Parse an easing function, as for the `easing` member of `EffectTiming`.

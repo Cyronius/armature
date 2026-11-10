@@ -388,34 +388,43 @@ impl AnimationManager {
         // > animation effect associated with animation, an animation effect associated with
         // > a replaceable animation with a higher composite order than animation that
         // > includes the same target property, perform the following steps.
-        let mut replaceable: Vec<(DomRoot<DomAnimation>, DomRoot<Element>)> = self
+        let mut replaceable: Vec<(
+            DomRoot<DomAnimation>,
+            DomRoot<Element>,
+            Option<PseudoElement>,
+        )> = self
             .script_animations
             .borrow()
             .iter()
             .filter_map(|animation| {
                 let animation = animation.as_rooted();
-                let target = animation.replaceable_target()?;
-                Some((animation, target))
+                let (target, pseudo) = animation.replaceable_target()?;
+                Some((animation, target, pseudo))
             })
             .collect();
         if replaceable.len() < 2 {
             return;
         }
-        replaceable.sort_by(|(a, _), (b, _)| a.composite_order(b, cx.no_gc()));
+        replaceable.sort_by(|(a, _, _), (b, _, _)| a.composite_order(b, cx.no_gc()));
 
-        let mut by_target: Vec<(DomRoot<Element>, Vec<DomRoot<DomAnimation>>)> = Vec::new();
-        for (animation, target) in replaceable {
+        let mut by_target: Vec<(
+            DomRoot<Element>,
+            Option<PseudoElement>,
+            Vec<DomRoot<DomAnimation>>,
+        )> = Vec::new();
+        for (animation, target, pseudo) in replaceable {
             match by_target
                 .iter_mut()
-                .find(|(other_target, _)| *other_target == target)
-            {
-                Some((_, animations)) => animations.push(animation),
-                None => by_target.push((target, vec![animation])),
+                .find(|(other_target, other_pseudo, _)| {
+                    *other_target == target && *other_pseudo == pseudo
+                }) {
+                Some((_, _, animations)) => animations.push(animation),
+                None => by_target.push((target, pseudo, vec![animation])),
             }
         }
 
         let mut removed = Vec::new();
-        for (target, animations) in by_target {
+        for (target, _, animations) in by_target {
             if animations.len() < 2 {
                 continue;
             }
