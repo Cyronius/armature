@@ -307,6 +307,9 @@ pub fn process_resolved_style_request(
     let longhand_id = match *property {
         PropertyId::NonCustom(id) => match id.longhand_or_shorthand() {
             Ok(longhand_id) => longhand_id,
+            // The legacy shorthand has only `transform` as a subproperty, so
+            // its resolved value uses the same matrix serialization.
+            Err(ShorthandId::WebkitTransform) => LonghandId::Transform,
             Err(shorthand_id) => return shorthand_to_css_string(shorthand_id, style),
         },
         PropertyId::Custom(ref name) => {
@@ -334,15 +337,14 @@ pub fn process_resolved_style_request(
             let reference_box = box_fragment.transform_reference_box(&box_fragment.border_rect());
             au_rect_to_length_rect(&reference_box).to_untyped()
         });
-        let (transform, is_3d) = transform_list.to_transform_3d_matrix(length_rect.as_ref())?;
+        let (transform, _) = transform_list.to_transform_3d_matrix(length_rect.as_ref())?;
 
         // > 3. Chose between <matrix()> or <matrix3d()> serialization:
         // >   ↪ If transform is a 2D matrix: Serialize transform to a <matrix()> function.
-        // >   ↪ Otherwise: Serialize transform to a <matrix3d()> function. Chose between
-        // >     <matrix()> or <matrix3d()> serialization:
+        // >   ↪ Otherwise: Serialize transform to a <matrix3d()> function.
         let matrix = Matrix3D::from(transform);
-        if !is_3d {
-            Ok(matrix.into_2d()?.to_css_string())
+        if let Ok(matrix_2d) = matrix.clone().into_2d() {
+            Ok(matrix_2d.to_css_string())
         } else {
             Ok(matrix.to_css_string())
         }
