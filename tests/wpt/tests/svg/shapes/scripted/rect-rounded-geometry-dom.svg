@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml"
+     width="200" height="100" viewBox="0 0 200 100">
+  <title>Rounded SVG rectangles in geometry DOM methods</title>
+  <metadata>
+    <h:link rel="help" href="https://www.w3.org/TR/SVG2/shapes.html#RectElement"/>
+    <h:link rel="help" href="https://www.w3.org/TR/SVG2/types.html#InterfaceSVGGeometryElement"/>
+  </metadata>
+  <h:script src="/resources/testharness.js"/>
+  <h:script src="/resources/testharnessreport.js"/>
+
+  <rect id="rounded" x="10" y="20" width="100" height="40" rx="20" ry="10"/>
+  <ellipse id="arcs" cx="150" cy="50" rx="20" ry="10"/>
+  <rect id="css" x="10" y="20" width="100" height="40" rx="1" ry="1"
+        style="rx: 20px; ry: 10px"/>
+  <rect id="auto" x="0" y="0" width="40" height="20" style="rx: 30px"/>
+  <rect id="percentage" x="0" y="0" width="80" height="40"
+        style="rx: 25%; ry: 50%"/>
+  <rect id="dynamic" x="0" y="0" width="50" height="30"/>
+  <rect id="zero" x="0" y="0" width="50" height="30"
+        style="rx: 0; ry: 10px"/>
+
+  <script><![CDATA[
+    test(() => {
+      const rect = document.getElementById("rounded");
+      assert_false(rect.isPointInFill({x: 11, y: 21}));
+      assert_true(rect.isPointInFill({x: 60, y: 40}));
+      const box = rect.getBBox();
+      assert_equals(box.x, 10);
+      assert_equals(box.y, 20);
+      assert_equals(box.width, 100);
+      assert_equals(box.height, 40);
+    }, "Elliptical rounded corners affect fill but preserve the bounding box");
+
+    test(() => {
+      const rect = document.getElementById("rounded");
+      const start = rect.getPointAtLength(0);
+      assert_equals(start.x, 30);
+      assert_equals(start.y, 20);
+      const arcs = document.getElementById("arcs").getTotalLength();
+      assert_approx_equals(rect.getTotalLength(), 160 + arcs, 0.2);
+    }, "Rounded rectangle path begins after rx and includes four elliptical arcs");
+
+    test(() => {
+      const rect = document.getElementById("css");
+      assert_equals(rect.getPointAtLength(0).x, 30);
+      assert_false(rect.isPointInFill({x: 11, y: 21}));
+    }, "CSS rx and ry override rectangle radius presentation attributes");
+
+    test(() => {
+      const rect = document.getElementById("auto");
+      assert_equals(rect.getPointAtLength(0).x, 20);
+      assert_false(rect.isPointInFill({x: 1, y: 1}));
+    }, "An auto radius takes the other radius before both are clamped to half size");
+
+    test(() => {
+      const rect = document.getElementById("percentage");
+      assert_equals(rect.getPointAtLength(0).x, 20);
+      assert_false(rect.isPointInFill({x: 1, y: 1}));
+    }, "Rectangle radius percentages resolve against its own width and height");
+
+    test(() => {
+      const rect = document.getElementById("dynamic");
+      assert_true(rect.isPointInFill({x: 1, y: 1}));
+      rect.style.rx = "10px";
+      rect.style.ry = "5px";
+      assert_false(rect.isPointInFill({x: 1, y: 1}));
+      assert_equals(rect.getPointAtLength(0).x, 10);
+    }, "Changing CSS radii updates rectangle geometry DOM methods");
+
+    test(() => {
+      const rect = document.getElementById("zero");
+      assert_true(rect.isPointInFill({x: 1, y: 1}));
+      assert_equals(rect.getPointAtLength(0).x, 0);
+    }, "An explicit zero radius leaves rectangle corners square");
+  ]]></script>
+</svg>
