@@ -156,6 +156,7 @@ struct ViewportDependentSvg {
     text: Arc<String>,
     width: OutermostSvgSize,
     height: OutermostSvgSize,
+    force_viewport_size: bool,
 }
 
 impl ViewportDependentSvg {
@@ -169,11 +170,13 @@ impl ViewportDependentSvg {
         let text = with_outermost_svg_sizes(
             &self.text,
             &document,
-            self.width
-                .resolve_against_viewport(viewport_width)
+            self.force_viewport_size
+                .then_some(viewport_width)
+                .or_else(|| self.width.resolve_against_viewport(viewport_width))
                 .map(Some),
-            self.height
-                .resolve_against_viewport(viewport_height)
+            self.force_viewport_size
+                .then_some(viewport_height)
+                .or_else(|| self.height.resolve_against_viewport(viewport_height))
                 .map(Some),
         );
         usvg::Tree::from_str(&text, usvg_options).ok()
@@ -263,6 +266,164 @@ struct ParsedSvgDocument {
     viewport_dependent: Option<ViewportDependentSvg>,
 }
 
+/// View attributes selected by an SVG fragment identifier. Only attributes supplied by the
+/// fragment replace those on the outermost `<svg>` element.
+struct SvgViewFragment {
+    view_box: Option<String>,
+    preserve_aspect_ratio: Option<String>,
+    transform: Option<String>,
+}
+
+impl SvgViewFragment {
+    fn from_url_fragment(fragment: &str, document: &usvg::roxmltree::Document) -> Option<Self> {
+        let decoded = percent_encoding::percent_decode_str(fragment)
+            .decode_utf8()
+            .ok()?;
+        let mut components = decoded.split('&');
+        let view = components.next()?.trim();
+        // An SVG view can be followed by time segments, but not by a spatial segment.
+        if components.any(|component| !component.starts_with("t=")) {
+            return None;
+        }
+
+        if let Some(attributes) = view
+            .strip_prefix("svgView(")
+            .and_then(|view| view.strip_suffix(')'))
+        {
+            let mut result = Self {
+                view_box: None,
+                preserve_aspect_ratio: None,
+                transform: None,
+            };
+            if attributes.trim().is_empty() {
+                return None;
+            }
+            for attribute in attributes.split(';') {
+                let attribute = attribute.trim();
+                if let Some(value) = attribute
+                    .strip_prefix("viewBox(")
+                    .and_then(|value| value.strip_suffix(')'))
+                {
+                    if result.view_box.is_some() {
+                        return None;
+                    }
+                    result.view_box = Some(Self::view_box(value)?);
+                } else if let Some(value) = attribute
+                    .strip_prefix("preserveAspectRatio(")
+                    .and_then(|value| value.strip_suffix(')'))
+                {
+                    if result.preserve_aspect_ratio.is_some() {
+                        return None;
+                    }
+                    result.preserve_aspect_ratio = Some(Self::preserve_aspect_ratio(value)?);
+                } else if let Some(value) = attribute
+                    .strip_prefix("transform(")
+                    .and_then(|value| value.strip_suffix(')'))
+                {
+                    if result.transform.is_some() {
+                        return None;
+                    }
+                    result.transform = Some(Self::transform(value)?);
+                } else {
+                    return None;
+                }
+            }
+            return Some(result);
+        }
+
+        // A bare name addresses a predefined `<view>` in the referenced SVG.
+        let node = document.descendants().find(|node| {
+            node.is_element() &&
+                node.tag_name().name() == "view" &&
+                node.tag_name().namespace() == Some("http://www.w3.org/2000/svg") &&
+                node.attribute("id") == Some(view)
+        })?;
+        Some(Self {
+            view_box: node.attribute("viewBox").and_then(Self::view_box),
+            preserve_aspect_ratio: node
+                .attribute("preserveAspectRatio")
+                .and_then(Self::preserve_aspect_ratio),
+            transform: None,
+        })
+    }
+
+    fn view_box(value: &str) -> Option<String> {
+        let box_ = value.parse::<svgtypes::ViewBox>().ok()?;
+        if ![box_.x, box_.y, box_.w, box_.h]
+            .iter()
+            .all(|value| value.is_finite()) ||
+            box_.w < 0. ||
+            box_.h < 0.
+        {
+            return None;
+        }
+        Some(format!("{} {} {} {}", box_.x, box_.y, box_.w, box_.h))
+    }
+
+    fn preserve_aspect_ratio(value: &str) -> Option<String> {
+        let value = value.trim();
+        if !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character.is_ascii_whitespace()) ||
+            value.parse::<svgtypes::AspectRatio>().is_err()
+        {
+            return None;
+        }
+        Some(value.to_owned())
+    }
+
+    fn transform(value: &str) -> Option<String> {
+        let value = value.trim();
+        if !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() ||
+                character.is_ascii_whitespace() ||
+                matches!(character, '.' | ',' | '+' | '-' | '(' | ')')
+        }) {
+            return None;
+        }
+        let mut transforms = svgtypes::TransformListParser::from(value);
+        transforms.next()?.ok()?;
+        if transforms.any(|transform| transform.is_err()) {
+            return None;
+        }
+        Some(value.to_owned())
+    }
+}
+
+fn with_outermost_svg_view(
+    text: &str,
+    document: &usvg::roxmltree::Document,
+    view: &SvgViewFragment,
+) -> String {
+    let root = document.root_element();
+    let element_start = root.range().start;
+    let after_element_name = text[element_start..]
+        .find(|character: char| character.is_whitespace() || matches!(character, '/' | '>'))
+        .map_or(element_start, |offset| element_start + offset);
+    let mut edits: Vec<_> = [
+        ("viewBox", view.view_box.as_ref()),
+        ("preserveAspectRatio", view.preserve_aspect_ratio.as_ref()),
+        ("transform", view.transform.as_ref()),
+    ]
+    .into_iter()
+    .filter_map(|(name, value)| {
+        let range = root
+            .attributes()
+            .find(|attribute| attribute.namespace().is_none() && attribute.name() == name)
+            .map_or(after_element_name..after_element_name, |attribute| {
+                attribute.range()
+            });
+        Some((range, format!(" {name}=\"{}\" ", value?)))
+    })
+    .collect();
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    let mut text = text.to_owned();
+    for (range, replacement) in edits {
+        text.replace_range(range, &replacement);
+    }
+    text
+}
+
 /// A rectangular media fragment in the source image's CSS pixel coordinates.
 /// <https://www.w3.org/TR/media-frags/#naming-space>
 #[derive(Clone, Copy, Debug, MallocSizeOf)]
@@ -346,6 +507,7 @@ impl SpatialFragment {
 
 fn parse_svg_document_in_memory(
     bytes: &[u8],
+    url_fragment: Option<&str>,
     usvg_options: Arc<usvg::Options>,
 ) -> Result<ParsedSvgDocument, &'static str> {
     // usvg throws away whether the root `width`, `height` and `viewBox` attributes were
@@ -360,9 +522,14 @@ fn parse_svg_document_in_memory(
     let text = std::str::from_utf8(bytes).map_err(|_| INVALID_SVG_DOCUMENT)?;
     let document = parse_xml(text)?;
     let root = document.root_element();
+    let view =
+        url_fragment.and_then(|fragment| SvgViewFragment::from_url_fragment(fragment, &document));
     let width = OutermostSvgSize::parse(root.attribute("width"));
     let height = OutermostSvgSize::parse(root.attribute("height"));
-    let view_box_attribute = root.attribute("viewBox");
+    let view_box_attribute = view
+        .as_ref()
+        .and_then(|view| view.view_box.as_deref())
+        .or_else(|| root.attribute("viewBox"));
     let view_box =
         view_box_attribute.and_then(|view_box| view_box.parse::<svgtypes::ViewBox>().ok());
     let natural_dimensions = natural_dimensions_of_outermost_svg_element(width, height, view_box);
@@ -404,14 +571,21 @@ fn parse_svg_document_in_memory(
         remove_if_negative(width),
         remove_if_negative(height),
     );
+    let text = if let Some(view) = view.as_ref() {
+        let document = parse_xml(&text)?;
+        with_outermost_svg_view(&text, &document, view)
+    } else {
+        text
+    };
     let tree = usvg::Tree::from_str(&text, &usvg_options).map_err(to_parse_error)?;
     let has_absolute_size = |size| matches!(size, OutermostSvgSize::Absolute(_));
-    let viewport_dependent = (view_box.is_none() &&
-        !(has_absolute_size(width) && has_absolute_size(height)))
+    let viewport_dependent = (view.is_some() ||
+        view_box.is_none() && !(has_absolute_size(width) && has_absolute_size(height)))
     .then(|| ViewportDependentSvg {
         text: Arc::new(text),
         width,
         height,
+        force_viewport_size: view.is_some(),
     });
     Ok(ParsedSvgDocument {
         tree,
@@ -437,7 +611,7 @@ fn decode_bytes_sync(
     });
 
     let image = if is_svg_document {
-        parse_svg_document_in_memory(bytes, usvg_options)
+        parse_svg_document_in_memory(bytes, url_fragment, usvg_options)
             .ok()
             .map(|document| {
                 let size = document.tree.size();
