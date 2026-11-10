@@ -239,14 +239,25 @@ where
             let total = path.len() - 1;
             let mut i = 1;
             while i < total {
+                // Armature: When a drawn segment already returns to the subpath start,
+                // closepath does not introduce another vertex at that position.
+                if matches!(path[i], Segment::LineTo(_) | Segment::CubicTo(_, _, _)) &&
+                    matches!(path[i + 1], Segment::Close)
+                {
+                    let end = match path[i] {
+                        Segment::LineTo(point) | Segment::CubicTo(_, _, point) => point,
+                        _ => unreachable!(),
+                    };
+                    if end == get_subpath_start(path, i) {
+                        i += 1;
+                        continue;
+                    }
+                }
                 let p = match path[i] {
                     Segment::MoveTo(p) => p,
                     Segment::LineTo(p) => p,
                     Segment::CubicTo(_, _, p) => p,
-                    _ => {
-                        i += 1;
-                        continue;
-                    }
+                    Segment::Close => get_subpath_start(path, i),
                 };
 
                 draw_marker(p, i);
@@ -274,6 +285,27 @@ where
 }
 
 fn calc_vertex_angle(path: &[Segment], idx: usize) -> f32 {
+    // Armature: The first and last vertices of a closed subpath share the same
+    // position and bisect its incoming and outgoing directions.
+    if let Segment::MoveTo(_) = path[idx] {
+        if let Some(offset) = path[idx + 1..]
+            .iter()
+            .position(|segment| matches!(segment, Segment::MoveTo(_) | Segment::Close))
+        {
+            let end = idx + offset + 1;
+            if matches!(path[end], Segment::Close) {
+                return closed_subpath_angle(path, idx, end);
+            }
+        }
+    } else if matches!(path[idx], Segment::Close) {
+        if let Some(start) = path[..idx]
+            .iter()
+            .rposition(|segment| matches!(segment, Segment::MoveTo(_)))
+        {
+            return closed_subpath_angle(path, start, idx);
+        }
+    }
+
     if idx == 0 {
         // First segment.
 
@@ -383,6 +415,46 @@ fn calc_vertex_angle(path: &[Segment], idx: usize) -> f32 {
             (_, Segment::MoveTo(_)) | (Segment::Close, _) => 0.0,
         }
     }
+}
+
+fn closed_subpath_angle(path: &[Segment], start_idx: usize, close_idx: usize) -> f32 {
+    let Segment::MoveTo(start) = path[start_idx] else {
+        return 0.0;
+    };
+
+    let outgoing = match path.get(start_idx + 1) {
+        Some(Segment::LineTo(point)) => *point,
+        Some(Segment::CubicTo(first, second, end)) => {
+            if *first != start {
+                *first
+            } else if *second != start {
+                *second
+            } else {
+                *end
+            }
+        },
+        _ => return 0.0,
+    };
+
+    let incoming = match path[close_idx - 1] {
+        Segment::LineTo(end) if end != start => end,
+        Segment::CubicTo(_, _, end) if end != start => end,
+        Segment::LineTo(_) => get_prev_vertex(path, close_idx - 1),
+        Segment::CubicTo(first, second, end) => {
+            if second != end {
+                second
+            } else if first != end {
+                first
+            } else {
+                get_prev_vertex(path, close_idx - 1)
+            }
+        },
+        Segment::MoveTo(_) | Segment::Close => return 0.0,
+    };
+
+    calc_angle(
+        incoming.x, incoming.y, start.x, start.y, start.x, start.y, outgoing.x, outgoing.y,
+    )
 }
 
 fn calc_line_angle(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
