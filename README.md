@@ -618,6 +618,11 @@ Notes on the numbers:
   Twelve gradient and pattern reftests now pass, including three that clear a transform list
   through the SVG DOM. CSS pixel lengths in `translate()`, `translateX()` and `translateY()` now
   work on paint servers; the dynamic pattern translation reftest also passes.
+- **SVG fragment references**: Percent-encoded fragment IDs now resolve in rasterized fill,
+  stroke, filter, clipping, masking and `href` references. The encoded gradient fill and stroke
+  reftest passes. Two gradient reftests that resize text also pass consistently after earlier
+  font and rendering fixes; their failure expectations have been removed. All 33 paint-server
+  reftests now match expectations.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
@@ -681,6 +686,7 @@ Notes on the numbers:
   measures its reference before Ahem loads, so its expected value can change with font-loading timing.
 - SVG DOM stroke hit testing does not yet project non-scaling strokes through 3D CSS transforms.
 - SVG clip-path hit testing does not yet cover text outlines or the viewBox of a referenced `<symbol>` inside a clip path.
+- CSS `filter: url(...)` remains unsupported in computed style, even for an unencoded local fragment.
 - Some SVG non-scaling stroke reftests still differ at raster edges or under CSS transforms. The embedded SVG viewport
   correction currently covers data URL images with a `viewBox` and a `vector-effect` attribute.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
