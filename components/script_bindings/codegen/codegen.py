@@ -5877,8 +5877,12 @@ def getUnionTypeTemplateVars(type: IDLType, descriptorProvider: DescriptorProvid
             typeName += "<D>"
     elif type.isSequence() or type.isRecord():
         name = type.name
-        inner = getUnionTypeTemplateVars(innerContainerType(type), descriptorProvider)
-        typeName = wrapInNativeContainerType(type, CGGeneric(inner["typeName"])).define()
+        inner_type = innerContainerType(type)
+        inner = getUnionTypeTemplateVars(inner_type, descriptorProvider)
+        inner_name = inner["typeName"]
+        if inner_type.nullable():
+            inner_name = f"Option<{inner_name}>"
+        typeName = wrapInNativeContainerType(type, CGGeneric(inner_name)).define()
     elif type.isUnion():
         name = type.name
         typeName = union_native_type(type)

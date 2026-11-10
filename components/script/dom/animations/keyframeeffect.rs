@@ -701,9 +701,7 @@ fn process_a_property_indexed_keyframe(
         None => vec![],
         Some(None) => vec![None],
         Some(Some(DoubleOrDoubleOrNullSequence::Double(offset))) => vec![Some(offset)],
-        Some(Some(DoubleOrDoubleOrNullSequence::DoubleOrNullSequence(offsets))) => {
-            offsets.into_iter().map(Some).collect()
-        },
+        Some(Some(DoubleOrDoubleOrNullSequence::DoubleOrNullSequence(offsets))) => offsets,
     };
 
     // Step 5.6. Assign each value in offsets to the keyframe offset of the keyframe with the
