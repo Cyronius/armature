@@ -588,8 +588,9 @@ Notes on the numbers:
   overrides of presentation attributes and live transform changes. All six transform subtests pass. One 103-file SVG
   scripted run matched expectations; two font-dependent differences on a repeat run passed when rerun separately.
 - **SVG clip-path hit testing**: `elementFromPoint()` now rejects shapes outside a resolved clip
-  path's fill silhouette, including clips on ancestor groups and `objectBoundingBox` clips. All
-  three previously failing clipped-shape subtests and a new three-subtest regression test pass.
+  path's fill silhouette, including clips on ancestor groups, `objectBoundingBox` clips, and
+  shapes referenced through `<use>`. Cyclic `<use>` references contribute no hit region. All
+  three previously failing clipped-shape subtests and a new five-subtest regression test pass.
   Ten older SVG shape reftests also pass consistently after earlier geometry and stroke work;
   their stale failure expectations are removed. All 36 `svg/shapes` files and the combined
   162-file shapes, interaction and SVG types run match expectations.
@@ -679,7 +680,7 @@ Notes on the numbers:
   `lh`/`rlh` tests compare the 32-bit `SVGLength.value` with a layout double using exact equality. One `ex` test
   measures its reference before Ahem loads, so its expected value can change with font-loading timing.
 - SVG DOM stroke hit testing does not yet project non-scaling strokes through 3D CSS transforms.
-- SVG clip-path hit testing does not yet cover text outlines or referenced `<use>` content inside a clip path.
+- SVG clip-path hit testing does not yet cover text outlines or the viewBox of a referenced `<symbol>` inside a clip path.
 - Some SVG non-scaling stroke reftests still differ at raster edges or under CSS transforms. The embedded SVG viewport
   correction currently covers data URL images with a `viewBox` and a `vector-effect` attribute.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
