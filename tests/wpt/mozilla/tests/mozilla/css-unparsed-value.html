@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS unparsed values and variable references</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#cssunparsedvalue">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+'use strict';
+
+test(() => {
+  const fallback = new CSSUnparsedValue(['fallback']);
+  const reference = new CSSVariableReferenceValue('--accent', fallback);
+  const value = new CSSUnparsedValue(['red', reference]);
+  assert_equals(value.length, 2);
+  assert_equals(value[0], 'red');
+  assert_equals(value[1], reference);
+  assert_array_equals([...value], ['red', reference]);
+  assert_equals(value.toString(), 'redvar(--accent,fallback)');
+}, 'unparsed values retain ordered string and variable fragments');
+
+test(() => {
+  const value = new CSSUnparsedValue(['first']);
+  value[0] = 'changed';
+  value[1] = 'last';
+  assert_equals(value.length, 2);
+  assert_equals(value.toString(), 'changed/**/last');
+  assert_throws_js(RangeError, () => { value[3] = 'invalid'; });
+}, 'indexed writes replace or append one fragment');
+
+test(() => {
+  const element = document.createElement('div');
+  element.style.setProperty('--accent', 'red');
+  const value = element.attributeStyleMap.get('--accent');
+  assert_true(value instanceof CSSUnparsedValue);
+  assert_equals(value[0], 'red');
+}, 'inline custom properties reify as unparsed values');
+
+test(() => {
+  const value = new CSSUnparsedValue([]);
+  value[0] = new CSSVariableReferenceValue('--loop', value);
+  assert_equals(typeof value.toString(), 'string');
+}, 'a cyclic fallback does not recurse indefinitely');
+</script>

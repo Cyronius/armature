@@ -18,6 +18,8 @@ test_interfaces([
   "CompressionStream",
   "CSSKeywordValue",
   "CSSStyleValue",
+  "CSSUnparsedValue",
+  "CSSVariableReferenceValue",
   "CountQueuingStrategy",
   "CustomEvent",
   "DecompressionStream",
