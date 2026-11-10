@@ -43,3 +43,8 @@
 
 - Files: `src/parser/units.rs`, `src/parser/converter.rs`, `src/parser/shapes.rs`
 - Why: SVG 2 geometry properties accept CSS `calc()` expressions in presentation attributes and CSS declarations. Resolve their lengths and percentages in the current SVG viewport, including when an embedding viewport changes, and apply the negative-radius rules after evaluating the expression.
+
+### AU-009: Resolve viewport units in standalone SVG geometry
+
+- Files: `src/parser/converter.rs`, `src/parser/units.rs`
+- Why: CSS viewport units on SVG geometry refer to the initial SVG viewport. Keep that viewport while converting nested SVG content and resolve `vw`, `vh`, `vmin` and `vmax` in lengths and `calc()` expressions.

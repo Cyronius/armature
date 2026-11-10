@@ -53,7 +53,7 @@ impl CalcValue {
 struct CalcParser<'a> {
     text: &'a str,
     offset: usize,
-    convert: &'a dyn Fn(Length) -> f32,
+    convert: &'a dyn Fn(&str) -> Option<f32>,
 }
 
 impl CalcParser<'_> {
@@ -185,9 +185,41 @@ impl CalcParser<'_> {
                 .ok()
                 .map(CalcValue::Number);
         }
-        let length = self.text[start..self.offset].parse::<Length>().ok()?;
-        Some(CalcValue::Length((self.convert)(length)))
+        Some(CalcValue::Length(
+            (self.convert)(&self.text[start..self.offset])?,
+        ))
     }
+}
+
+// Armature (AU-009): SVG's length parser does not include CSS viewport units.
+// Use the initial SVG viewport, not a nested element's current viewBox.
+pub(crate) fn convert_viewport_length(text: &str, state: &converter::State) -> Option<f32> {
+    viewport_length(text, state.initial_viewport.width(), state.initial_viewport.height())
+}
+
+fn viewport_length(text: &str, width: f32, height: f32) -> Option<f32> {
+    let text = text.trim();
+    let units = [
+        ("vmin", width.min(height)),
+        ("vmax", width.max(height)),
+        ("vw", width),
+        ("vh", height),
+    ];
+    for (unit, basis) in units {
+        let Some(split) = text.len().checked_sub(unit.len()) else {
+            continue;
+        };
+        let Some((number, suffix)) = text.get(..split).zip(text.get(split..)) else {
+            continue;
+        };
+        if suffix.eq_ignore_ascii_case(unit) &&
+            let Ok(number) = number.parse::<f32>() &&
+            number.is_finite()
+        {
+            return Some(number * basis / 100.0);
+        }
+    }
+    None
 }
 
 pub(crate) fn convert_calc_length(
@@ -197,11 +229,16 @@ pub(crate) fn convert_calc_length(
     object_units: Units,
     state: &converter::State,
 ) -> Option<f32> {
-    let convert = |length| convert_length(length, node, aid, object_units, state);
+    let convert = |text: &str| {
+        text.parse::<Length>()
+            .ok()
+            .map(|length| convert_length(length, node, aid, object_units, state))
+            .or_else(|| convert_viewport_length(text, state))
+    };
     parse_calc_length(text, &convert)
 }
 
-fn parse_calc_length(text: &str, convert: &dyn Fn(Length) -> f32) -> Option<f32> {
+fn parse_calc_length(text: &str, convert: &dyn Fn(&str) -> Option<f32>) -> Option<f32> {
     let mut parser = CalcParser {
         text: text.trim(),
         offset: 0,
@@ -225,26 +262,36 @@ fn parse_calc_length(text: &str, convert: &dyn Fn(Length) -> f32) -> Option<f32>
 
 #[cfg(test)]
 mod calc_tests {
-    use super::{Length, Unit, parse_calc_length};
+    use super::{Length, Unit, parse_calc_length, viewport_length};
 
     #[test]
     fn arithmetic_and_types() {
-        let convert = |length: Length| match length.unit {
-            Unit::None | Unit::Px => length.number as f32,
-            Unit::Percent => length.number as f32 * 2.0,
-            Unit::Em => length.number as f32 * 40.0,
-            _ => panic!("unexpected unit"),
+        let convert = |text: &str| {
+            if let Ok(length) = text.parse::<Length>() {
+                Some(match length.unit {
+                    Unit::None | Unit::Px => length.number as f32,
+                    Unit::Percent => length.number as f32 * 2.0,
+                    Unit::Em => length.number as f32 * 40.0,
+                    _ => panic!("unexpected unit"),
+                })
+            } else {
+                viewport_length(text, 200.0, 100.0)
+            }
         };
         assert_eq!(parse_calc_length("calc(80px + 60% - 2em)", &convert), Some(120.0));
         assert_eq!(parse_calc_length("calc(5 * 5%)", &convert), Some(50.0));
         assert_eq!(parse_calc_length("calc(3 * (10px + 2px))", &convert), Some(36.0));
         assert_eq!(parse_calc_length("calc(10px / 2)", &convert), Some(5.0));
+        assert_eq!(parse_calc_length("calc(10vw + 5px)", &convert), Some(25.0));
         assert_eq!(parse_calc_length("calc(10px + 2)", &convert), None);
         assert_eq!(parse_calc_length("calc(10px * 10px)", &convert), None);
         assert_eq!(parse_calc_length("calc(10px+2px)", &convert), None);
         assert_eq!(parse_calc_length("calc(10px / 0)", &convert), None);
         let nested = format!("calc({}1px{})", "(".repeat(65), ")".repeat(65));
         assert_eq!(parse_calc_length(&nested, &convert), None);
+        assert_eq!(viewport_length("10vh", 200.0, 100.0), Some(10.0));
+        assert_eq!(viewport_length("10vmin", 200.0, 100.0), Some(10.0));
+        assert_eq!(viewport_length("10vmax", 200.0, 100.0), Some(20.0));
     }
 }
 

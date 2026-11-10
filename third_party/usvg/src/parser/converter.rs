@@ -35,6 +35,8 @@ pub struct State<'a> {
     pub(crate) fe_image_link: bool,
     /// A viewBox of the parent SVG element.
     pub(crate) view_box: NonZeroRect,
+    // Armature (AU-009): CSS viewport units refer to the initial SVG viewport.
+    pub(crate) initial_viewport: Size,
     /// A size of the parent `use` element.
     /// Used only during nested `svg` size resolving.
     /// Width and height can be set independently.
@@ -325,7 +327,9 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
             return Some(units::convert_length(length, *self, aid, object_units, state));
         }
         let value: &str = self.attribute(aid)?;
-        units::convert_calc_length(value, *self, aid, object_units, state)
+        // Armature (AU-009): The SVG length parser predates CSS viewport units.
+        units::convert_viewport_length(value, state)
+            .or_else(|| units::convert_calc_length(value, *self, aid, object_units, state))
     }
 
     pub fn has_valid_transform(&self, aid: AId) -> bool {
@@ -421,6 +425,7 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
         parent_markers: Vec::new(),
         fe_image_link: false,
         view_box: view_box.rect,
+        initial_viewport: size,
         use_size: (None, None),
         opt,
     };
@@ -527,6 +532,7 @@ fn resolve_svg_size(svg: &SvgNode, opt: &Options) -> (Result<Size, Error>, bool)
         parent_markers: Vec::new(),
         fe_image_link: false,
         view_box: NonZeroRect::from_xywh(0.0, 0.0, 100.0, 100.0).unwrap(),
+        initial_viewport: opt.default_size,
         use_size: (None, None),
         opt,
     };
