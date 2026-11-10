@@ -1865,6 +1865,39 @@ fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool 
     false
 }
 
+/// Hit the rendered descendants of a referenced `<use>` source. Its copy is not
+/// represented by DOM nodes, so the normal SVG hit test cannot visit it.
+fn hits_use_content(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    transform: Affine,
+    point: Point,
+) -> bool {
+    if transform.determinant() == 0.0 || is_display_none(element) {
+        return false;
+    }
+    if shape_geometry_kind(element) ||
+        matches!(
+            element.upcast::<Element>().local_name(),
+            &local_name!("text") | &local_name!("image")
+        )
+    {
+        return hits_element(cx, element, transform.inverse() * point);
+    }
+    let children: Vec<DomRoot<SVGElement>> = element
+        .upcast::<Node>()
+        .children()
+        .filter_map(DomRoot::downcast::<SVGElement>)
+        .collect();
+    for child in children.into_iter().rev() {
+        let child_transform = transform * element_transform(cx, &child);
+        if hits_use_content(cx, &child, child_transform, point) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Whether `element` is inside an element whose content is never rendered directly, like
 /// `defs` or `clipPath`, or is not displayed.
 pub(crate) fn is_never_rendered(element: &SVGElement) -> bool {
@@ -1931,9 +1964,6 @@ pub(crate) fn hit_test_svg(
             let Some(referenced) = referenced_element(cx.no_gc(), element) else {
                 continue;
             };
-            if !shape_geometry_kind(&referenced) {
-                continue;
-            }
             let x = length(
                 cx,
                 element,
@@ -1946,7 +1976,7 @@ pub(crate) fn hit_test_svg(
             if transform.determinant() == 0.0 {
                 continue;
             }
-            if hits_element(cx, &referenced, transform.inverse() * point) {
+            if hits_use_content(cx, &referenced, transform, point) {
                 return Some(element.clone());
             }
             continue;

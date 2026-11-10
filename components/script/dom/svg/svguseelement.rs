@@ -3,15 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use dom_struct::dom_struct;
-use html5ever::{LocalName, Prefix};
+use html5ever::{LocalName, Prefix, local_name, ns};
 use js::rust::HandleObject;
 
+use crate::dom::activation::Activatable;
 use crate::dom::bindings::codegen::Bindings::SVGUseElementBinding::SVGUseElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::document::Document;
+use crate::dom::element::Element;
+use crate::dom::event::Event;
+use crate::dom::eventtarget::EventTarget;
+use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
+use crate::dom::svg::svgaelement::SVGAElement;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
 use crate::dom::svg::svgtypes::{SVGLengthValue, svg_animated_length, svg_uri_reference};
@@ -22,6 +28,23 @@ pub(crate) struct SVGUseElement {
 }
 
 impl SVGUseElement {
+    fn referenced_anchor(&self) -> Option<DomRoot<SVGAElement>> {
+        let element = self.upcast::<Element>();
+        let href = element
+            .get_attribute_string_value_with_namespace(&ns!(), &local_name!("href"))
+            .or_else(|| {
+                element.get_attribute_string_value_with_namespace(&ns!(xlink), &local_name!("href"))
+            })?;
+        let id = href.trim().strip_prefix('#')?;
+        self.upcast::<Node>()
+            .owner_doc()
+            .upcast::<Node>()
+            .traverse_preorder(ShadowIncluding::No)
+            .filter_map(DomRoot::downcast::<Element>)
+            .find(|candidate| candidate.get_id().is_some_and(|value| &*value == id))
+            .and_then(DomRoot::downcast::<SVGAElement>)
+    }
+
     fn new_inherited(
         local_name: LocalName,
         prefix: Option<Prefix>,
@@ -51,6 +74,29 @@ impl SVGUseElement {
 impl VirtualMethods for SVGUseElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<SVGGraphicsElement>() as &dyn VirtualMethods)
+    }
+}
+
+impl Activatable for SVGUseElement {
+    fn as_element(&self) -> &Element {
+        self.upcast::<Element>()
+    }
+
+    fn is_instance_activatable(&self) -> bool {
+        self.referenced_anchor()
+            .is_some_and(|anchor| anchor.is_instance_activatable())
+    }
+
+    fn activation_behavior(
+        &self,
+        cx: &mut js::context::JSContext,
+        event: &Event,
+        target: &EventTarget,
+    ) {
+        // The rendered copy has no DOM shadow tree, so use its source anchor.
+        if let Some(anchor) = self.referenced_anchor() {
+            anchor.activation_behavior(cx, event, target);
+        }
     }
 }
 

@@ -4,7 +4,7 @@
 
 //! Defines shared hyperlink behaviour for `<link>`, `<a>`, `<area>` and `<form>` elements.
 
-use html5ever::local_name;
+use html5ever::{local_name, ns};
 use js::context::JSContext;
 use malloc_size_of::malloc_size_of_is_0;
 use net_traits::request::Referrer;
@@ -20,6 +20,7 @@ use crate::dom::html::htmlareaelement::HTMLAreaElement;
 use crate::dom::html::htmlformelement::HTMLFormElement;
 use crate::dom::html::htmllinkelement::HTMLLinkElement;
 use crate::dom::node::NodeTraits;
+use crate::dom::svg::svgaelement::SVGAElement;
 use crate::dom::types::Element;
 use crate::navigation::navigate;
 
@@ -203,7 +204,10 @@ impl LinkRelations {
 
         let allowed_relations = if element.is::<HTMLLinkElement>() {
             Self::ALLOWED_LINK_RELATIONS
-        } else if element.is::<HTMLAnchorElement>() || element.is::<HTMLAreaElement>() {
+        } else if element.is::<HTMLAnchorElement>() ||
+            element.is::<HTMLAreaElement>() ||
+            element.is::<SVGAElement>()
+        {
             Self::ALLOWED_ANCHOR_OR_AREA_RELATIONS
         } else if element.is::<HTMLFormElement>() {
             Self::ALLOWED_FORM_RELATIONS
@@ -345,6 +349,7 @@ pub(crate) fn get_element_target(
     assert!(
         subject.is::<HTMLAreaElement>() ||
             subject.is::<HTMLAnchorElement>() ||
+            subject.is::<SVGAElement>() ||
             subject.is::<HTMLFormElement>()
     );
 
@@ -405,19 +410,21 @@ pub(crate) fn follow_hyperlink(
     // Also allow the user to open links in a new WebView by pressing either the meta or
     // control key (depending on the platform).
     let document = subject.owner_document();
-    let target_attribute_value =
-        if subject.is::<HTMLAreaElement>() || subject.is::<HTMLAnchorElement>() {
-            if document
-                .event_handler()
-                .alternate_action_keyboard_modifier_active()
-            {
-                Some(DOMString::from_static("_blank"))
-            } else {
-                get_element_target(subject, None)
-            }
+    let target_attribute_value = if subject.is::<HTMLAreaElement>() ||
+        subject.is::<HTMLAnchorElement>() ||
+        subject.is::<SVGAElement>()
+    {
+        if document
+            .event_handler()
+            .alternate_action_keyboard_modifier_active()
+        {
+            Some(DOMString::from_static("_blank"))
         } else {
-            None
-        };
+            get_element_target(subject, None)
+        }
+    } else {
+        None
+    };
 
     // Step 4: Let urlRecord be the result of encoding-parsing a URL given subject's href
     //         attribute value, relative to subject's node document.
@@ -460,9 +467,21 @@ pub(crate) fn follow_hyperlink(
         // Step 9: Let urlString be the result of applying the URL serializer to urlRecord.
         // TODO: Implement this.
 
-        let mut href = subject
+        let Some(mut href) = subject
             .get_attribute_string_value(&local_name!("href"))
-            .unwrap();
+            .or_else(|| {
+                if subject.is::<SVGAElement>() {
+                    subject.get_attribute_string_value_with_namespace(
+                        &ns!(xlink),
+                        &local_name!("href"),
+                    )
+                } else {
+                    None
+                }
+            })
+        else {
+            return;
+        };
 
         // Step 10: If hyperlinkSuffix is non-null, then append it to urlString.
         if let Some(suffix) = hyperlink_suffix {

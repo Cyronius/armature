@@ -181,9 +181,11 @@ use crate::dom::raredata::ElementRareData;
 use crate::dom::sanitizer::Sanitizer;
 use crate::dom::servoparser::ServoParser;
 use crate::dom::shadowroot::shadowroot::{IsUserAgentWidget, ShadowRoot};
+use crate::dom::svg::svgaelement::SVGAElement;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svggeometry;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
+use crate::dom::svg::svguseelement::SVGUseElement;
 use crate::dom::text::Text;
 use crate::dom::trustedtypes::trustedhtml::TrustedHTML;
 use crate::dom::trustedtypes::trustedtypepolicyfactory::TrustedTypePolicyFactory;
@@ -5481,6 +5483,14 @@ impl Element {
     }
 
     pub(crate) fn as_maybe_activatable(&self) -> Option<&dyn Activatable> {
+        if let Some(anchor) = self.downcast::<SVGAElement>() {
+            let activatable = anchor as &dyn Activatable;
+            return activatable.is_instance_activatable().then_some(activatable);
+        }
+        if let Some(use_element) = self.downcast::<SVGUseElement>() {
+            let activatable = use_element as &dyn Activatable;
+            return activatable.is_instance_activatable().then_some(activatable);
+        }
         let element = match self.upcast::<Node>().type_id() {
             NodeTypeId::Element(ElementTypeId::HTMLElement(
                 HTMLElementTypeId::HTMLInputElement,

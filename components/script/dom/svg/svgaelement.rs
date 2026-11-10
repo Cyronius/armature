@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use dom_struct::dom_struct;
-use html5ever::{LocalName, Prefix, local_name};
+use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::NoGC;
 use js::rust::HandleObject;
 use net_traits::blob_url_store::UrlWithBlobClaim;
@@ -12,15 +12,19 @@ use script_bindings::str::{DOMString, USVString};
 use style::attr::AttrValue;
 use stylo_atoms::Atom;
 
+use crate::dom::activation::Activatable;
 use crate::dom::bindings::codegen::Bindings::SVGAElementBinding::SVGAElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::document::Document;
 use crate::dom::domtokenlist::DOMTokenList;
 use crate::dom::element::{Element, reflect_referrer_policy_attribute};
+use crate::dom::event::Event;
+use crate::dom::eventtarget::EventTarget;
 use crate::dom::html::links::htmlhyperlinkelementutils::{
     HyperlinkElement, HyperlinkElementTraits,
 };
+use crate::dom::html::links::relations::{LinkRelations, follow_hyperlink};
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
@@ -84,6 +88,33 @@ impl VirtualMethods for SVGAElement {
                 .unwrap()
                 .parse_plain_attribute(name, value),
         }
+    }
+}
+
+impl Activatable for SVGAElement {
+    fn as_element(&self) -> &Element {
+        self.upcast::<Element>()
+    }
+
+    fn is_instance_activatable(&self) -> bool {
+        self.as_element().has_attribute(&local_name!("href")) ||
+            self.as_element()
+                .get_attribute_string_value_with_namespace(&ns!(xlink), &local_name!("href"))
+                .is_some()
+    }
+
+    fn activation_behavior(
+        &self,
+        cx: &mut js::context::JSContext,
+        _event: &Event,
+        _target: &EventTarget,
+    ) {
+        follow_hyperlink(
+            cx,
+            self.as_element(),
+            LinkRelations::for_element(self.as_element()),
+            None,
+        );
     }
 }
 
