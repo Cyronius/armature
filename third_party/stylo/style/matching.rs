@@ -755,9 +755,10 @@ trait PrivateMatchMethods: TElement {
             );
         }
 
-        // Armature (AS-506): Resolve the keyframes of script animations against the new style,
-        // before transitions, which do not start for the properties they animate.
-        if pseudo_element.is_none() && !animation_set.script_animations.is_empty() {
+        // Armature (AS-515): Resolve script keyframes for pseudo-element styles too.
+        // Armature (AS-506): Resolve them before transitions, which do not start for
+        // the properties they animate.
+        if !animation_set.script_animations.is_empty() {
             let mut resolver = StyleResolverForElement::new(
                 *self,
                 context,

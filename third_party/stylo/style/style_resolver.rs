@@ -6,7 +6,8 @@
 
 use crate::applicable_declarations::ApplicableDeclarationList;
 use crate::computed_value_flags::ComputedValueFlags;
-use crate::context::{CascadeInputs, ElementCascadeInputs, StyleContext};
+// Armature (AS-515): Check the animation set before dropping an ungenerated pseudo style.
+use crate::context::{CascadeInputs, ElementCascadeInputs, SharedStyleContext, StyleContext};
 use crate::data::{EagerPseudoStyles, ElementStyles};
 use crate::dom::{TElement, TNode};
 use crate::matching::MatchMethods;
@@ -142,9 +143,11 @@ fn layout_parent_style_for_pseudo<'a>(
     }
 }
 
-fn eager_pseudo_is_definitely_not_generated(
+fn eager_pseudo_is_definitely_not_generated<E: TElement>(
     pseudo: &PseudoElement,
     style: &ComputedValues,
+    element: E,
+    context: &SharedStyleContext,
 ) -> bool {
     if !pseudo.is_before_or_after() {
         return false;
@@ -157,7 +160,29 @@ fn eager_pseudo_is_definitely_not_generated(
         return false;
     }
 
-    *style.get_box().get_display() == Display::None || style.ineffective_content_property()
+    if *style.get_box().get_display() != Display::None && !style.ineffective_content_property() {
+        return false;
+    }
+
+    // Armature (AS-515): Keep the style of an ungenerated pseudo-element while a script
+    // animation targets it, so style can resolve its keyframes and CSSOM can query it.
+    #[cfg(feature = "servo")]
+    {
+        use crate::animation::AnimationSetKey;
+        let key = AnimationSetKey::new_for_pseudo(element.as_node().opaque(), *pseudo);
+        if context
+            .animations
+            .sets
+            .read()
+            .get(&key)
+            .is_some_and(|set| !set.script_animations.is_empty())
+        {
+            return false;
+        }
+    }
+    #[cfg(not(feature = "servo"))]
+    let _ = (element, context);
+    true
 }
 
 impl<'a, 'ctx, 'le, E> StyleResolverForElement<'a, 'ctx, 'le, E>
@@ -314,8 +339,14 @@ where
                 );
 
                 if let Some(style) = pseudo_style {
+                    // Armature (AS-515): Retain an ungenerated pseudo when script animates it.
                     if !matches!(self.pseudo_resolution, PseudoElementResolution::Force)
-                        && eager_pseudo_is_definitely_not_generated(&pseudo, &style.0)
+                        && eager_pseudo_is_definitely_not_generated(
+                            &pseudo,
+                            &style.0,
+                            self.element,
+                            self.context.shared,
+                        )
                     {
                         return;
                     }
@@ -437,8 +468,14 @@ where
                             Some(&pseudo),
                         );
 
+                        // Armature (AS-515): Retain an ungenerated pseudo when script animates it.
                         if !matches!(self.pseudo_resolution, PseudoElementResolution::Force)
-                            && eager_pseudo_is_definitely_not_generated(&pseudo, &style.0)
+                            && eager_pseudo_is_definitely_not_generated(
+                                &pseudo,
+                                &style.0,
+                                self.element,
+                                self.context.shared,
+                            )
                         {
                             continue;
                         }

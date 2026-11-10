@@ -384,3 +384,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: CSS Typed OM math values compose numeric types in Stylo, and script needs each base type's
   exponent to return the corresponding `CSSNumericType` dictionary from `type()`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-515: Resolve script animations on pseudo-elements
+- Files: `style/matching.rs`, `style/style_resolver.rs`
+- Why: Resolve Web Animations keyframes against `::before` and `::after` styles, then apply their
+  declarations through the existing pseudo-element animation sets. Preserve a pseudo-element's
+  style while script animates it even if its `content` does not generate a box. This lets a
+  `KeyframeEffect` animate a pseudo-element and follow changes to its target or pseudo selector.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
