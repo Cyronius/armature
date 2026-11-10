@@ -18,6 +18,7 @@ use html5ever::{LocalName, local_name, ns};
 use icu_locale_core::subtags::Language;
 use js::context::JSContext;
 use kurbo::Rect;
+use unicode_vo::{Orientation, char_orientation};
 
 use crate::dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterDataMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
@@ -28,12 +29,14 @@ use crate::dom::element::Element;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::{Node, NodeTraits};
 use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::svggeometry;
 use crate::dom::svg::svglength::resolve_value;
 use crate::dom::svg::svgtypes::{SVGLengthDirection, SVGLengthValue, parse_number, split_list};
 use crate::dom::text::Text;
 
 /// A laid out character of SVG text.
 pub(crate) struct SVGTextCharacter {
+    pub(crate) character: char,
     /// The source text node and its UTF-16 offset before whitespace collapsing.
     pub(crate) source: DomRoot<Text>,
     pub(crate) source_offset: u32,
@@ -50,6 +53,79 @@ pub(crate) struct SVGTextCharacter {
     pub(crate) descent: f64,
     /// The rotation of the glyph, in degrees.
     pub(crate) rotate: f64,
+}
+
+/// The rotation exposed by `getRotationOfChar`, including the glyph orientation and
+/// the tangent when the character is on a text path.
+pub(crate) fn character_rotation(cx: &mut JSContext, glyph: &SVGTextCharacter) -> f64 {
+    let writing_mode = svggeometry::computed_value(&glyph.elements[0], "writing-mode");
+    let orientation = svggeometry::computed_value(&glyph.elements[0], "text-orientation");
+    let upright = matches!(
+        char_orientation(glyph.character),
+        Orientation::Upright | Orientation::TransformedOrUpright
+    );
+
+    let path_angle = glyph
+        .elements
+        .iter()
+        .find(|element| element.upcast::<Element>().local_name() == &local_name!("textPath"))
+        .and_then(|text_path| {
+            let geometry = if let Some(data) = text_path.svg_attribute(&local_name!("path")) {
+                svggeometry::SVGShapeGeometry::Path(svggeometry::parse_path_data(&data))
+            } else {
+                let element = text_path.upcast::<Element>();
+                let href = element
+                    .get_attribute_string_value_with_namespace(&ns!(), &local_name!("href"))
+                    .or_else(|| {
+                        element.get_attribute_string_value_with_namespace(
+                            &ns!(xlink),
+                            &local_name!("href"),
+                        )
+                    })?;
+                let id = href.trim().strip_prefix('#')?;
+                let document = text_path.upcast::<Node>().owner_doc();
+                let referenced =
+                    document.get_element_by_id(cx.no_gc(), &stylo_atoms::Atom::from(id))?;
+                let path = DomRoot::downcast::<SVGElement>(referenced)?;
+                svggeometry::shape_geometry(cx, &path)?
+            };
+            let center = glyph.x + glyph.advance / 2.0;
+            let start = geometry.point_at_length((center - 0.01).max(0.0))?;
+            let end = geometry.point_at_length(center + 0.01)?;
+            Some((end.y - start.y).atan2(end.x - start.x).to_degrees())
+        });
+
+    let orientation_angle = match writing_mode.as_str() {
+        "sideways-rl" => {
+            if path_angle.is_some() {
+                0.0
+            } else {
+                90.0
+            }
+        },
+        "sideways-lr" => {
+            if path_angle.is_some() {
+                180.0
+            } else {
+                -90.0
+            }
+        },
+        "vertical-rl" | "vertical-lr" => {
+            if path_angle.is_some() {
+                if orientation == "mixed" && upright {
+                    -90.0
+                } else {
+                    0.0
+                }
+            } else if orientation == "sideways" || (orientation == "mixed" && !upright) {
+                90.0
+            } else {
+                0.0
+            }
+        },
+        _ => 0.0,
+    };
+    glyph.rotate + path_angle.unwrap_or(0.0) + orientation_angle
 }
 
 impl SVGTextCharacter {
@@ -309,6 +385,7 @@ pub(crate) fn layout_text(cx: &mut JSContext, root: &SVGElement) -> Vec<SVGTextC
         let next = characters.get(index + 1).map(|(next, _, _, _)| *next);
         let (advance, ascent, descent) = glyph_metrics(&elements[0], *character, next);
         laid_out.push(SVGTextCharacter {
+            character: *character,
             source: source.clone(),
             source_offset: *source_offset,
             elements: elements.clone(),

@@ -9508,6 +9508,7 @@ dependencies = [
  "tracing",
  "unicode-bidi",
  "unicode-script",
+ "unicode-vo",
  "url",
  "urlpattern",
  "uuid",

@@ -574,7 +574,7 @@ fn computed_path_data(element: &SVGElement) -> Option<String> {
 /// Parse path data. When the data has an error, the path up to the error is used.
 ///
 /// <https://svgwg.org/svg2-draft/paths.html#PathDataErrorHandling>
-fn parse_path_data(data: &str) -> BezPath {
+pub(crate) fn parse_path_data(data: &str) -> BezPath {
     let (parsed, valid) = SVGPathData::parse_bytes(data.as_bytes());
     if valid {
         if let Ok(path) = BezPath::from_svg(data) {

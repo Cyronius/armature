@@ -115,6 +115,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "layout_css_view_transitions_enabled",
     "layout_css_white_space_collapse_preserve_spaces_enabled",
     "layout_css_word_break_break_word_enabled",
+    "layout_css_writing_mode_enabled",
     "layout_css_writing_mode_sideways_enabled",
     "layout_css_writing_mode_text_orientation_enabled",
     "layout_css_zoom_enabled",

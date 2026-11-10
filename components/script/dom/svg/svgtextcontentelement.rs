@@ -164,7 +164,10 @@ impl SVGTextContentElementMethods<crate::DomTypeHolder> for SVGTextContentElemen
 
     /// <https://svgwg.org/svg2-draft/text.html#__svg__SVGTextContentElement__getRotationOfChar>
     fn GetRotationOfChar(&self, cx: &mut JSContext, charnum: u32) -> Fallible<Finite<f32>> {
-        Ok(Finite::wrap(self.character(cx, charnum)?.rotate as f32))
+        let character = self.character(cx, charnum)?;
+        Ok(Finite::wrap(
+            svgtext::character_rotation(cx, &character) as f32
+        ))
     }
 
     /// <https://svgwg.org/svg2-draft/text.html#__svg__SVGTextContentElement__getCharNumAtPosition>

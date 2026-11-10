@@ -284,6 +284,7 @@ tungstenite = "0.30"
 unicode-bidi = "0.3.18"
 unicode-properties = { version = "0.1.4", features = ["emoji"] }
 unicode-script = "0.5"
+unicode-vo = "0.1"
 unicode-segmentation = "1.13.3"
 unicode_categories = "0.1.1"
 url = "2.5"
