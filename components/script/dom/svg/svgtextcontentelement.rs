@@ -140,7 +140,14 @@ impl SVGTextContentElementMethods<crate::DomTypeHolder> for SVGTextContentElemen
         charnum: u32,
     ) -> Fallible<DomRoot<DOMPoint>> {
         let character = self.character(cx, charnum)?;
-        let angle = character.rotate.to_radians();
+        let angle = if character.path_angle.is_some() {
+            svgtext::character_rotation(&character)
+        } else if character.vertical_direction != 0 {
+            character.rotate + 90.0 * character.vertical_direction as f64
+        } else {
+            character.rotate
+        }
+        .to_radians();
         Ok(DOMPoint::new_svg(
             cx,
             &self.owner_global(),
@@ -165,9 +172,7 @@ impl SVGTextContentElementMethods<crate::DomTypeHolder> for SVGTextContentElemen
     /// <https://svgwg.org/svg2-draft/text.html#__svg__SVGTextContentElement__getRotationOfChar>
     fn GetRotationOfChar(&self, cx: &mut JSContext, charnum: u32) -> Fallible<Finite<f32>> {
         let character = self.character(cx, charnum)?;
-        Ok(Finite::wrap(
-            svgtext::character_rotation(cx, &character) as f32
-        ))
+        Ok(Finite::wrap(svgtext::character_rotation(&character) as f32))
     }
 
     /// <https://svgwg.org/svg2-draft/text.html#__svg__SVGTextContentElement__getCharNumAtPosition>

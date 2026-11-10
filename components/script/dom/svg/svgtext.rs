@@ -17,7 +17,10 @@
 use html5ever::{LocalName, local_name, ns};
 use icu_locale_core::subtags::Language;
 use js::context::JSContext;
-use kurbo::Rect;
+use kurbo::{Point, Rect};
+use style::values::animated::{Animate, Procedure};
+use style::values::specified::SVGPathData;
+use style_traits::CssWriter;
 use unicode_vo::{Orientation, char_orientation};
 
 use crate::dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterDataMethods;
@@ -28,10 +31,13 @@ use crate::dom::characterdata::CharacterData;
 use crate::dom::element::Element;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::{Node, NodeTraits};
+use crate::dom::svg::svganimatedlength::SVGAnimatedLength;
 use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svggeometry;
 use crate::dom::svg::svglength::resolve_value;
-use crate::dom::svg::svgtypes::{SVGLengthDirection, SVGLengthValue, parse_number, split_list};
+use crate::dom::svg::svgtypes::{
+    SVG_LENGTHTYPE_PERCENTAGE, SVGLengthDirection, SVGLengthValue, parse_number, split_list,
+};
 use crate::dom::text::Text;
 
 /// A laid out character of SVG text.
@@ -51,13 +57,17 @@ pub(crate) struct SVGTextCharacter {
     pub(crate) advance: f64,
     pub(crate) ascent: f64,
     pub(crate) descent: f64,
+    /// Zero for horizontal, positive for downward and negative for upward text.
+    pub(crate) vertical_direction: i8,
     /// The rotation of the glyph, in degrees.
     pub(crate) rotate: f64,
+    /// The angle of the path tangent at the glyph's midpoint, when on a text path.
+    pub(crate) path_angle: Option<f64>,
 }
 
 /// The rotation exposed by `getRotationOfChar`, including the glyph orientation and
 /// the tangent when the character is on a text path.
-pub(crate) fn character_rotation(cx: &mut JSContext, glyph: &SVGTextCharacter) -> f64 {
+pub(crate) fn character_rotation(glyph: &SVGTextCharacter) -> f64 {
     let writing_mode = svggeometry::computed_value(&glyph.elements[0], "writing-mode");
     let orientation = svggeometry::computed_value(&glyph.elements[0], "text-orientation");
     let upright = matches!(
@@ -65,35 +75,7 @@ pub(crate) fn character_rotation(cx: &mut JSContext, glyph: &SVGTextCharacter) -
         Orientation::Upright | Orientation::TransformedOrUpright
     );
 
-    let path_angle = glyph
-        .elements
-        .iter()
-        .find(|element| element.upcast::<Element>().local_name() == &local_name!("textPath"))
-        .and_then(|text_path| {
-            let geometry = if let Some(data) = text_path.svg_attribute(&local_name!("path")) {
-                svggeometry::SVGShapeGeometry::Path(svggeometry::parse_path_data(&data))
-            } else {
-                let element = text_path.upcast::<Element>();
-                let href = element
-                    .get_attribute_string_value_with_namespace(&ns!(), &local_name!("href"))
-                    .or_else(|| {
-                        element.get_attribute_string_value_with_namespace(
-                            &ns!(xlink),
-                            &local_name!("href"),
-                        )
-                    })?;
-                let id = href.trim().strip_prefix('#')?;
-                let document = text_path.upcast::<Node>().owner_doc();
-                let referenced =
-                    document.get_element_by_id(cx.no_gc(), &stylo_atoms::Atom::from(id))?;
-                let path = DomRoot::downcast::<SVGElement>(referenced)?;
-                svggeometry::shape_geometry(cx, &path)?
-            };
-            let center = glyph.x + glyph.advance / 2.0;
-            let start = geometry.point_at_length((center - 0.01).max(0.0))?;
-            let end = geometry.point_at_length(center + 0.01)?;
-            Some((end.y - start.y).atan2(end.x - start.x).to_degrees())
-        });
+    let path_angle = glyph.path_angle;
 
     let orientation_angle = match writing_mode.as_str() {
         "sideways-rl" => {
@@ -131,6 +113,15 @@ pub(crate) fn character_rotation(cx: &mut JSContext, glyph: &SVGTextCharacter) -
 impl SVGTextCharacter {
     /// The box of the glyph, its advance by the ascent and descent of its font.
     pub(crate) fn extent(&self) -> Rect {
+        if self.vertical_direction != 0 && self.path_angle.is_none() {
+            let end = self.y + self.advance * self.vertical_direction as f64;
+            return Rect::new(
+                self.x - self.ascent,
+                self.y.min(end),
+                self.x + self.descent,
+                self.y.max(end),
+            );
+        }
         Rect::new(
             self.x,
             self.y - self.ascent,
@@ -320,14 +311,213 @@ fn glyph_metrics(element: &SVGElement, character: char, next: Option<char>) -> (
 
 /// The value of `text-anchor` of `element`: 0 for start, 1 for middle and 2 for end.
 fn text_anchor(element: &SVGElement) -> u8 {
-    use style::properties::longhands::text_anchor::computed_value::T as TextAnchor;
-    element
-        .inherited_style()
-        .map_or(0, |style| match style.get_inherited_svg().text_anchor {
-            TextAnchor::Start => 0,
-            TextAnchor::Middle => 1,
-            TextAnchor::End => 2,
-        })
+    match svggeometry::computed_value(element, "text-anchor").as_str() {
+        "middle" => 1,
+        "end" => 2,
+        _ => 0,
+    }
+}
+
+/// The XML `path` value with any sampled SMIL effect applied.
+fn animated_text_path_data(cx: &mut JSContext, text_path: &SVGElement) -> Option<String> {
+    let mut result = text_path.svg_attribute(&local_name!("path"));
+    let mut animations = text_path
+        .owner_document()
+        .smil_animations_targeting(cx, text_path);
+    animations.sort_by(|left, right| {
+        left.last_begin_time()
+            .unwrap_or(f64::NEG_INFINITY)
+            .total_cmp(&right.last_begin_time().unwrap_or(f64::NEG_INFINITY))
+    });
+    for animation in animations {
+        let child = animation.upcast::<Element>();
+        if child.local_name() != &local_name!("animate") ||
+            animation
+                .upcast::<SVGElement>()
+                .svg_attribute(&local_name!("attributeName"))
+                .as_deref() !=
+                Some("path")
+        {
+            continue;
+        }
+        let Some((progress, _)) = animation.sample_iteration() else {
+            continue;
+        };
+        let animated = animation.upcast::<SVGElement>();
+        let (Some(from), Some(to)) = (
+            animated.svg_attribute(&local_name!("from")),
+            animated.svg_attribute(&local_name!("to")),
+        ) else {
+            continue;
+        };
+        let (from, from_valid) = SVGPathData::parse_bytes(from.as_bytes());
+        let (to, to_valid) = SVGPathData::parse_bytes(to.as_bytes());
+        if !from_valid || !to_valid {
+            continue;
+        }
+        let Some((_, fraction)) = animation.sample_value_interval(2, progress) else {
+            continue;
+        };
+        let Ok(sampled) = from.animate(
+            &to,
+            Procedure::Interpolate {
+                progress: fraction as f64,
+            },
+        ) else {
+            continue;
+        };
+        let mut data = String::new();
+        if sampled
+            .to_css(&mut CssWriter::new(&mut data), false)
+            .is_ok()
+        {
+            result = Some(data);
+        }
+    }
+    result
+}
+
+/// The path selected by a `textPath`, and a declared length for distance calibration.
+fn text_path_geometry(
+    cx: &mut JSContext,
+    text_path: &SVGElement,
+) -> Option<(svggeometry::SVGShapeGeometry, Option<f64>)> {
+    if let Some(data) = animated_text_path_data(cx, text_path) {
+        let path = svggeometry::parse_path_data(&data);
+        if !path.elements().is_empty() {
+            return Some((svggeometry::SVGShapeGeometry::Path(path), None));
+        }
+    }
+    let element = text_path.upcast::<Element>();
+    let href = element
+        .get_attribute_string_value_with_namespace(&ns!(), &local_name!("href"))
+        .or_else(|| {
+            element.get_attribute_string_value_with_namespace(&ns!(xlink), &local_name!("href"))
+        })?;
+    let id = href.trim().strip_prefix('#')?;
+    let document = text_path.upcast::<Node>().owner_doc();
+    let referenced = document.get_element_by_id(cx.no_gc(), &stylo_atoms::Atom::from(id))?;
+    let path = DomRoot::downcast::<SVGElement>(referenced)?;
+    let declared_length = path
+        .svg_attribute(&local_name!("pathLength"))
+        .and_then(|value| parse_number(&value))
+        .filter(|value| *value >= 0.0)
+        .map(f64::from);
+    Some((svggeometry::shape_geometry(cx, &path)?, declared_length))
+}
+
+/// Resolve `startOffset` against the actual path length. `pathLength` changes only
+/// non-percentage distances and leaves zero at the start of the path.
+fn text_path_start_offset(
+    cx: &mut JSContext,
+    text_path: &SVGElement,
+    length: f64,
+    declared_length: Option<f64>,
+) -> f64 {
+    let value = SVGAnimatedLength::sample_value(
+        cx,
+        text_path,
+        &local_name!("startOffset"),
+        SVGLengthDirection::Horizontal,
+        SVGLengthValue::number(0.0),
+    );
+    if value.unit_type == SVG_LENGTHTYPE_PERCENTAGE {
+        return value.value as f64 * length / 100.0;
+    }
+    let offset = resolve_value(cx, text_path, value, SVGLengthDirection::Horizontal) as f64;
+    match declared_length {
+        Some(0.0) if offset > 0.0 => f64::INFINITY,
+        Some(declared) if declared > 0.0 && offset > 0.0 => offset * length / declared,
+        _ => offset,
+    }
+}
+
+/// Find the position and tangent of a glyph whose midpoint is at `distance`.
+fn path_position(geometry: &svggeometry::SVGShapeGeometry, distance: f64) -> Option<(Point, f64)> {
+    let midpoint = geometry.point_at_length(distance)?;
+    let before = geometry.point_at_length((distance - 0.01).max(0.0))?;
+    let after = geometry.point_at_length(distance + 0.01)?;
+    let angle = (after.y - before.y).atan2(after.x - before.x);
+    Some((midpoint, angle))
+}
+
+/// Apply `textLength` to each text content element, from descendants outward.
+/// Spacing changes positions only; spacing-and-glyphs also changes advances.
+fn adjust_text_lengths(cx: &mut JSContext, glyphs: &mut [SVGTextCharacter]) {
+    let mut elements = Vec::new();
+    for glyph in glyphs.iter() {
+        for (index, element) in glyph.elements.iter().enumerate() {
+            if !elements
+                .iter()
+                .any(|(other, _): &(DomRoot<SVGElement>, usize)| other == element)
+            {
+                elements.push((element.clone(), glyph.elements.len() - index));
+            }
+        }
+    }
+    elements.sort_by_key(|(_, depth)| std::cmp::Reverse(*depth));
+    for (element, _) in elements {
+        let Some(specified) = element
+            .svg_attribute(&local_name!("textLength"))
+            .and_then(|value| SVGLengthValue::parse(&value))
+        else {
+            continue;
+        };
+        if specified.value < 0.0 {
+            continue;
+        }
+        let target = resolve_value(cx, &element, specified, SVGLengthDirection::Horizontal) as f64;
+        let Some(first) = glyphs.iter().position(|glyph| glyph.belongs_to(&element)) else {
+            continue;
+        };
+        let last = glyphs
+            .iter()
+            .rposition(|glyph| glyph.belongs_to(&element))
+            .unwrap_or(first);
+        let count = last - first + 1;
+        let natural: f64 = glyphs[first..=last].iter().map(|glyph| glyph.advance).sum();
+        if natural <= 0.0 {
+            continue;
+        }
+        let direction = glyphs[first].vertical_direction;
+        if element
+            .svg_attribute(&local_name!("lengthAdjust"))
+            .as_deref() ==
+            Some("spacingAndGlyphs")
+        {
+            let factor = target / natural;
+            let start = if direction == 0 {
+                glyphs[first].x
+            } else {
+                glyphs[first].y
+            };
+            for glyph in &mut glyphs[first..=last] {
+                if direction == 0 {
+                    glyph.x = start + (glyph.x - start) * factor;
+                } else {
+                    glyph.y = start + (glyph.y - start) * factor;
+                }
+                glyph.advance *= factor;
+            }
+        } else if count > 1 {
+            let gap = (target - natural) / (count - 1) as f64;
+            for (index, glyph) in glyphs[first..=last].iter_mut().enumerate() {
+                if direction == 0 {
+                    glyph.x += index as f64 * gap;
+                } else {
+                    glyph.y += index as f64 * gap * direction as f64;
+                }
+            }
+        }
+        let shift = target - natural;
+        for glyph in &mut glyphs[last + 1..] {
+            if direction == 0 {
+                glyph.x += shift;
+            } else {
+                glyph.y += shift * direction as f64;
+            }
+        }
+    }
 }
 
 /// Lay out the characters of the `text` element `root`.
@@ -384,6 +574,12 @@ pub(crate) fn layout_text(cx: &mut JSContext, root: &SVGElement) -> Vec<SVGTextC
         pen_y += dy.unwrap_or(0.0);
         let next = characters.get(index + 1).map(|(next, _, _, _)| *next);
         let (advance, ascent, descent) = glyph_metrics(&elements[0], *character, next);
+        let writing_mode = svggeometry::computed_value(&elements[0], "writing-mode");
+        let vertical_direction = match writing_mode.as_str() {
+            "vertical-rl" | "vertical-lr" | "sideways-rl" => 1,
+            "sideways-lr" => -1,
+            _ => 0,
+        };
         laid_out.push(SVGTextCharacter {
             character: *character,
             source: source.clone(),
@@ -395,10 +591,18 @@ pub(crate) fn layout_text(cx: &mut JSContext, root: &SVGElement) -> Vec<SVGTextC
             advance,
             ascent,
             descent,
+            vertical_direction,
             rotate: rotate.unwrap_or(0.0),
+            path_angle: None,
         });
-        pen_x += advance;
+        if vertical_direction == 0 {
+            pen_x += advance;
+        } else {
+            pen_y += advance * vertical_direction as f64;
+        }
     }
+
+    adjust_text_lengths(cx, &mut laid_out);
 
     // Align each text chunk by its text-anchor.
     chunk_starts.push(laid_out.len());
@@ -411,18 +615,101 @@ pub(crate) fn layout_text(cx: &mut JSContext, root: &SVGElement) -> Vec<SVGTextC
         if anchor == 0 {
             continue;
         }
+        let direction = laid_out[start].vertical_direction;
         let left = laid_out[start..end]
             .iter()
-            .map(|character| character.x)
+            .map(|character| {
+                let position = if direction == 0 {
+                    character.x
+                } else {
+                    character.y
+                };
+                position.min(
+                    position +
+                        character.advance *
+                            if direction == 0 {
+                                1.0
+                            } else {
+                                direction as f64
+                            },
+                )
+            })
             .fold(f64::INFINITY, f64::min);
         let right = laid_out[start..end]
             .iter()
-            .map(|character| character.x + character.advance)
+            .map(|character| {
+                let position = if direction == 0 {
+                    character.x
+                } else {
+                    character.y
+                };
+                position.max(
+                    position +
+                        character.advance *
+                            if direction == 0 {
+                                1.0
+                            } else {
+                                direction as f64
+                            },
+                )
+            })
             .fold(f64::NEG_INFINITY, f64::max);
-        let shift = (right - left) * anchor as f64 / 2.0;
+        let shift = (right - left) * anchor as f64 / 2.0 *
+            if direction == 0 {
+                1.0
+            } else {
+                direction as f64
+            };
         for character in &mut laid_out[start..end] {
-            character.x -= shift;
+            if direction == 0 {
+                character.x -= shift;
+            } else {
+                character.y -= shift;
+            }
         }
+    }
+
+    // Map the glyph midpoints from the straightened text layout onto their paths.
+    // Resolve each path once so its `path`, `href`, and animated offset are shared
+    // by all characters in that text path for this geometry query.
+    let mut paths: Vec<(DomRoot<SVGElement>, svggeometry::SVGShapeGeometry, f64)> = Vec::new();
+    for glyph in &mut laid_out {
+        let Some(text_path) = glyph
+            .elements
+            .iter()
+            .find(|element| element.upcast::<Element>().local_name() == &local_name!("textPath"))
+        else {
+            continue;
+        };
+        let path_index = match paths
+            .iter()
+            .position(|(element, _, _)| element == text_path)
+        {
+            Some(index) => index,
+            None => {
+                let Some((geometry, declared_length)) = text_path_geometry(cx, text_path) else {
+                    continue;
+                };
+                let offset =
+                    text_path_start_offset(cx, text_path, geometry.total_length(), declared_length);
+                paths.push((text_path.clone(), geometry, offset));
+                paths.len() - 1
+            },
+        };
+        let (_, geometry, offset) = &paths[path_index];
+        let (inline_position, baseline_offset) = if glyph.vertical_direction == 0 {
+            (glyph.x, glyph.y)
+        } else {
+            (glyph.y * glyph.vertical_direction as f64, glyph.x)
+        };
+        let distance = inline_position + glyph.advance / 2.0 + offset;
+        let Some((midpoint, angle)) = path_position(geometry, distance) else {
+            continue;
+        };
+        let (sin, cos) = angle.sin_cos();
+        glyph.x = midpoint.x - glyph.advance / 2.0 * cos - baseline_offset * sin;
+        glyph.y = midpoint.y - glyph.advance / 2.0 * sin + baseline_offset * cos;
+        glyph.path_angle = Some(angle.to_degrees());
     }
     laid_out
 }
