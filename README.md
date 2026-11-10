@@ -325,6 +325,8 @@ Notes on the numbers:
   `textLength` adjusts character spacing or glyph advances, and character position and hit-testing methods handle
   vertical writing modes. The 27-file scripted text run now passes 35 subtests that previously failed; two expected
   failures remain in that directory.
+  SVG DOM hit testing now uses the stroked path outline, including caps, joins and dash gaps, so the six mitered
+  rectangle corner cases in `elementFromPoint()` pass. The 24-file scripted interaction run has no new failures.
   SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
   `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
   scripted linking files; the full 25-file scripted linking directory matches expectations.
