@@ -475,6 +475,7 @@ pub(crate) fn shape_geometry(cx: &mut JSContext, element: &SVGElement) -> Option
                 (None, Some(attribute)) => attribute,
                 (None, None) => String::new(),
             };
+            let data = super::svgpathbearing::expand_bearing(&data).unwrap_or(data);
             SVGShapeGeometry::Path(parse_path_data(&data))
         },
         _ => return None,

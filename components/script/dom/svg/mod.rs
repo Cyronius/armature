@@ -70,6 +70,7 @@ pub(crate) mod svgmetadataelement;
 pub(crate) mod svgmpathelement;
 pub(crate) mod svgnumber;
 pub(crate) mod svgnumberlist;
+pub(crate) mod svgpathbearing;
 pub(crate) mod svgpathelement;
 pub(crate) mod svgpatternelement;
 pub(crate) mod svgpointlist;

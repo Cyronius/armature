@@ -368,6 +368,12 @@ impl SVGSVGElement {
             if style.len() != original_style_len {
                 clone.set_svg_attribute(cx, &local_name!("style"), style);
             }
+            if source.upcast::<Element>().local_name() == &local_name!("path") &&
+                let Some(data) = source.svg_attribute(&local_name!("d")) &&
+                let Some(expanded) = super::svgpathbearing::expand_bearing(&data)
+            {
+                clone.set_svg_attribute(cx, &local_name!("d"), expanded);
+            }
         }
     }
 
