@@ -330,6 +330,9 @@ Notes on the numbers:
   SVG `stroke-width`, `stroke-dashoffset` and `stroke-dasharray` now preserve unitless numbers in specified CSS values,
   including number-only `calc()` expressions, and compute them as user-unit lengths (AS-513). Thirteen painting
   parsing subtests now pass; the 61-file painting parsing directory matches expectations.
+  HTML and SVG elements now expose a live `attributeStyleMap` backed by their inline style declaration. The map
+  supports reading and changing properties, and `CSSKeywordValue` is available in windows and workers. All 61 SVG
+  `attributeStyleMap` subtests now pass; broader CSS Typed OM value types and iteration remain unfinished.
   SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
   `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
   scripted linking files; the full 25-file scripted linking directory matches expectations.
