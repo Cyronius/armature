@@ -25,7 +25,9 @@ use style_traits::{ParsingMode, ToCss};
 use crate::css::css::parser_context_for_document;
 use crate::dom::Window;
 use crate::dom::animation::Animation;
-use crate::dom::bindings::codegen::UnionTypes::UnrestrictedDoubleOrString;
+use crate::dom::bindings::codegen::UnionTypes::{
+    DoubleOrCSSNumericValue, UnrestrictedDoubleOrString,
+};
 use crate::dom::bindings::root::MutNullableDom;
 
 /// <https://drafts.csswg.org/web-animations-1/#animationeffect>
@@ -524,7 +526,7 @@ impl AnimationEffectMethods<crate::DomTypeHolder> for AnimationEffect {
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#dom-animationeffect-getcomputedtiming>
-    fn GetComputedTiming(&self) -> ComputedEffectTiming {
+    fn GetComputedTiming(&self) -> ComputedEffectTiming<crate::DomTypeHolder> {
         // > Returns the calculated timing properties for this animation effect.
         // > localTime: The local time of the animation effect, its associated
         // > animation's current time, or null if it has none.
@@ -572,6 +574,9 @@ impl AnimationEffectMethods<crate::DomTypeHolder> for AnimationEffect {
                 iterationStart: specified_timing_properties.iteration_start,
                 iterations: specified_timing_properties.iteration_count,
             },
+            // Group effects are not supported, so the effect begins at the origin of
+            // its inherited time space.
+            startTime: Some(DoubleOrCSSNumericValue::Double(Finite::wrap(0.0))),
             endTime: Some(end_time),
             activeDuration: Some(active_duration),
             localTime: Some(local_time.map(Finite::wrap)),

@@ -2422,6 +2422,21 @@ impl AnimationMethods<crate::DomTypeHolder> for Animation {
             .and_then(|current_time| Finite::new(current_time + 0.0))
     }
 
+    /// <https://drafts.csswg.org/web-animations-2/#the-overall-progress-of-an-animation>
+    fn GetOverallProgress(&self) -> Option<Finite<f64>> {
+        let current_time = self.current_time()?;
+        let effect = self.associated_effect.get()?;
+        let end_time = effect.end_time();
+        let progress = if end_time == 0.0 {
+            if current_time < 0.0 { 0.0 } else { 1.0 }
+        } else if end_time.is_infinite() {
+            0.0
+        } else {
+            (current_time / end_time).clamp(0.0, 1.0)
+        };
+        Some(Finite::wrap(progress))
+    }
+
     /// <https://drafts.csswg.org/web-animations-1/#dom-animation-currenttime>
     fn SetCurrentTime(&self, cx: &mut JSContext, current_time: Option<Finite<f64>>) -> ErrorResult {
         self.set_the_current_time(cx, current_time.map(|time| *time))

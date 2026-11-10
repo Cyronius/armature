@@ -14,6 +14,8 @@ interface Animation : EventTarget {
               attribute double?                  startTime;
   [SetterThrows]
               attribute double?                  currentTime;
+  // https://drafts.csswg.org/web-animations-2/#dom-animation-overallprogress
+  readonly attribute double?                  overallProgress;
               attribute double                   playbackRate;
   readonly attribute AnimationPlayState       playState;
   readonly attribute AnimationReplaceState    replaceState;

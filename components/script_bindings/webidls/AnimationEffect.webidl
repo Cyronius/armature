@@ -41,6 +41,8 @@ enum PlaybackDirection { "normal", "reverse", "alternate", "alternate-reverse" }
 
 // https://drafts.csswg.org/web-animations-1/#the-computedeffecttiming-dictionary
 dictionary ComputedEffectTiming : EffectTiming {
+  // https://drafts.csswg.org/web-animations-2/#dom-computedeffecttiming-starttime
+  CSSNumberish         startTime;
   unrestricted double  endTime;
   unrestricted double  activeDuration;
   double?              localTime;
