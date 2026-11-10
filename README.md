@@ -132,7 +132,9 @@ Notes on the numbers:
   light-dismiss open popovers; six more subtests pass. Light dismiss now ignores right clicks and touch scrolls, and
   leaves a popover open if its press target is removed; three more subtests pass. Activation now uses the original
   click target across shadow boundaries, so a nested popover stays open when clicked; one more subtest passes.
-  `html/semantics/popovers` has 27 failures in the latest run, down from 3,902. Pressing Escape now also closes
+  A displayed popover with an otherwise generic accessibility role now maps to `group`, and its role updates when
+  display or the `popover` attribute changes; two more subtests pass. `html/semantics/popovers` has 25 failures in
+  the latest run, down from 3,902. Pressing Escape now also closes
   dialogs and close watchers.
 - **WebCrypto hybrid KEMs**: MLKEM768-P256 and MLKEM1024-P384, next to the existing MLKEM768-X25519. The
   `WebCryptoAPI/modern-algos` tests have no failures left (2,036 fixed).
@@ -448,7 +450,7 @@ Notes on the numbers:
   kept, which the spec drops.
 - About 1,200 `mimesniff` Blob/File subtests expect `new Blob([], {type})` to parse and re-serialise the type, which
   Servo does not do; about 190 more need header values with control characters, which Servo's header storage rejects.
-- 27 popover subtests still fail in the latest run: layout has no real top layer or `::backdrop` (open popovers are
+- 25 popover subtests still fail in the latest run: layout has no real top layer or `::backdrop` (open popovers are
   drawn as `position: fixed`), some focus navigation cases remain incomplete, four inactive-document cases expect
   listeners to run despite the DOM Standard's fully active document check, and 6 other tests contradict the spec.
 - `TextEncoder.encodeInto()` and `TextDecoder` streaming into a `SharedArrayBuffer` (about 210 subtests) fail because
