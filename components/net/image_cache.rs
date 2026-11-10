@@ -263,6 +263,87 @@ struct ParsedSvgDocument {
     viewport_dependent: Option<ViewportDependentSvg>,
 }
 
+/// A rectangular media fragment in the source image's CSS pixel coordinates.
+/// <https://www.w3.org/TR/media-frags/#naming-space>
+#[derive(Clone, Copy, Debug, MallocSizeOf)]
+struct SpatialFragment {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+impl SpatialFragment {
+    fn from_url_fragment(fragment: &str, image_width: f32, image_height: f32) -> Option<Self> {
+        // An SVG view specification cannot be combined with a spatial media fragment.
+        // <https://svgwg.org/svg2-draft/linking.html#SVGFragmentIdentifiersDefinitions>
+        if fragment.split('&').any(|part| {
+            percent_encoding::percent_decode_str(part)
+                .decode_utf8()
+                .is_ok_and(|part| part.starts_with("svgView("))
+        }) {
+            return None;
+        }
+        let mut result = None;
+        for component in fragment.split('&') {
+            let Some((name, value)) = component.split_once('=') else {
+                continue;
+            };
+            let (Ok(name), Ok(value)) = (
+                percent_encoding::percent_decode_str(name).decode_utf8(),
+                percent_encoding::percent_decode_str(value).decode_utf8(),
+            ) else {
+                continue;
+            };
+            if name != "xywh" {
+                continue;
+            }
+            let (percent, coordinates) = match value.split_once(':') {
+                Some(("pixel", coordinates)) => (false, coordinates),
+                Some(("percent", coordinates)) => (true, coordinates),
+                Some(_) => continue,
+                None => (false, value.as_ref()),
+            };
+            let coordinates = coordinates
+                .split(',')
+                .map(str::parse::<u32>)
+                .collect::<Result<Vec<_>, _>>();
+            let Ok(coordinates) = coordinates else {
+                continue;
+            };
+            let [x, y, width, height] = coordinates.as_slice() else {
+                continue;
+            };
+            if *width == 0 ||
+                *height == 0 ||
+                percent && [x, y, width, height].iter().any(|n| **n > 100)
+            {
+                continue;
+            }
+            let (x, y, width, height) = if percent {
+                (
+                    *x as f32 * image_width / 100.,
+                    *y as f32 * image_height / 100.,
+                    *width as f32 * image_width / 100.,
+                    *height as f32 * image_height / 100.,
+                )
+            } else {
+                (*x as f32, *y as f32, *width as f32, *height as f32)
+            };
+            if x >= image_width || y >= image_height {
+                continue;
+            }
+            result = Some(Self {
+                x,
+                y,
+                width: width.min(image_width - x),
+                height: height.min(image_height - y),
+            });
+        }
+        result
+    }
+}
+
 fn parse_svg_document_in_memory(
     bytes: &[u8],
     usvg_options: Arc<usvg::Options>,
@@ -344,6 +425,7 @@ fn decode_bytes_sync(
     bytes: &[u8],
     cors: CorsStatus,
     content_type: Option<Mime>,
+    url_fragment: Option<&str>,
     usvg_options: Arc<usvg::Options>,
 ) -> DecoderMsg {
     let is_svg_document = content_type.is_some_and(|content_type| {
@@ -358,10 +440,23 @@ fn decode_bytes_sync(
         parse_svg_document_in_memory(bytes, usvg_options)
             .ok()
             .map(|document| {
+                let size = document.tree.size();
+                let spatial_fragment = url_fragment.and_then(|fragment| {
+                    SpatialFragment::from_url_fragment(fragment, size.width(), size.height())
+                });
+                let natural_dimensions =
+                    spatial_fragment.map_or(document.natural_dimensions, |clip| {
+                        VectorImageNaturalDimensions {
+                            width: Some(clip.width),
+                            height: Some(clip.height),
+                            ratio: Some(clip.width / clip.height),
+                        }
+                    });
                 DecodedImage::Vector(VectorImageData {
                     svg_tree: Arc::new(document.tree),
-                    natural_dimensions: document.natural_dimensions,
+                    natural_dimensions,
                     viewport_dependent: document.viewport_dependent,
+                    spatial_fragment,
                     cors_status: cors,
                 })
             })
@@ -499,6 +594,7 @@ struct VectorImageData {
     svg_tree: Arc<usvg::Tree>,
     natural_dimensions: VectorImageNaturalDimensions,
     viewport_dependent: Option<ViewportDependentSvg>,
+    spatial_fragment: Option<SpatialFragment>,
     cors_status: CorsStatus,
 }
 
@@ -939,8 +1035,14 @@ impl ImageCacheStore {
                 self.vector_images.insert(key, vector_image.clone());
                 let natural_dimensions = vector_image.svg_tree.size().to_int_size();
                 let metadata = ImageMetadata {
-                    width: natural_dimensions.width(),
-                    height: natural_dimensions.height(),
+                    width: vector_image
+                        .spatial_fragment
+                        .map_or(natural_dimensions.width(), |clip| clip.width.ceil() as u32),
+                    height: vector_image
+                        .spatial_fragment
+                        .map_or(natural_dimensions.height(), |clip| {
+                            clip.height.ceil() as u32
+                        }),
                 };
 
                 let vector_image = VectorImage {
@@ -1486,9 +1588,19 @@ impl ImageCache for ImageCacheImpl {
                 });
                 let svg_tree = viewport_tree.as_ref().unwrap_or(&vector_image.svg_tree);
                 let natural_size = svg_tree.size().to_int_size();
-                let transform = tiny_skia::Transform::from_scale(
-                    tinyskia_requested_size.width() as f32 / natural_size.width() as f32,
-                    tinyskia_requested_size.height() as f32 / natural_size.height() as f32,
+                let (x, y, width, height) = vector_image.spatial_fragment.map_or_else(
+                    || (0., 0., natural_size.width() as f32, natural_size.height() as f32),
+                    |clip| (clip.x, clip.y, clip.width, clip.height),
+                );
+                let scale_x = tinyskia_requested_size.width() as f32 / width;
+                let scale_y = tinyskia_requested_size.height() as f32 / height;
+                let transform = tiny_skia::Transform::from_row(
+                    scale_x,
+                    0.,
+                    0.,
+                    scale_y,
+                    -x * scale_x,
+                    -y * scale_y,
                 );
                 resvg::render(svg_tree, transform, &mut pixmap.as_mut());
 
@@ -1668,7 +1780,7 @@ impl ImageCache for ImageCacheImpl {
                 debug!("Received EOF for {:?}", key);
                 match result {
                     Ok(_) => {
-                        let (bytes, cors_status, content_type) = {
+                        let (bytes, cors_status, content_type, url_fragment) = {
                             let mut store = self.store.lock();
                             if let Some(pending_load) = store.pending_loads.get_by_key_mut(&id) {
                                 pending_load.result = Some(Ok(()));
@@ -1680,6 +1792,7 @@ impl ImageCache for ImageCacheImpl {
                                     pending_load.bytes.mark_complete(),
                                     pending_load.cors_status,
                                     pending_load.content_type.clone(),
+                                    pending_load.url.fragment().map(str::to_owned),
                                 )
                             } else {
                                 debug!("Pending load for id {:?} already evicted from cache", id);
@@ -1695,6 +1808,7 @@ impl ImageCache for ImageCacheImpl {
                                 &bytes,
                                 cors_status,
                                 content_type,
+                                url_fragment.as_deref(),
                                 usvg_options,
                             );
                             local_store.lock().handle_decoder(msg);

@@ -9185,6 +9185,7 @@ dependencies = [
  "mime_guess",
  "nom 8.0.0",
  "parking_lot",
+ "percent-encoding",
  "postcard",
  "quick_cache",
  "rand 0.10.3",

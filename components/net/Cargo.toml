@@ -59,6 +59,7 @@ net_traits = { workspace = true }
 nom = { workspace = true }
 paint_api = { workspace = true }
 parking_lot = { workspace = true }
+percent-encoding = { workspace = true }
 pixels = { workspace = true }
 profile_traits = { workspace = true }
 postcard = { workspace = true }
