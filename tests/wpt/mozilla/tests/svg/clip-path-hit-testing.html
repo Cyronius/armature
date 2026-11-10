@@ -1,0 +1,41 @@
+<!doctype html>
+<title>SVG clip paths limit pointer hit testing</title>
+<link rel="help" href="https://www.w3.org/TR/SVG2/interact.html#PointerEventsProperty">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<svg id="svg" style="position:absolute;left:20px;top:30px;width:400px;height:100px">
+  <defs>
+    <clipPath id="circleClip"><circle cx="50" cy="50" r="20"/></clipPath>
+    <clipPath id="groupClip"><circle cx="150" cy="50" r="20"/></clipPath>
+    <clipPath id="boxClip" clipPathUnits="objectBoundingBox">
+      <rect width="0.5" height="1"/>
+    </clipPath>
+  </defs>
+  <rect id="direct" x="30" y="30" width="40" height="40" clip-path="url(#circleClip)"/>
+  <g clip-path="url(#groupClip)">
+    <rect id="grouped" x="130" y="30" width="40" height="40"/>
+  </g>
+  <rect id="boxed" x="230" y="30" width="40" height="40" clip-path="url(#boxClip)"/>
+</svg>
+<script>
+const svg = document.getElementById('svg');
+function hit(x, y) {
+  const box = svg.getBoundingClientRect();
+  return document.elementFromPoint(box.left + x, box.top + y);
+}
+
+test(() => {
+  assert_equals(hit(50, 50).id, 'direct');
+  assert_equals(hit(68, 68), svg);
+}, 'A clip path uses its fill silhouette, including points inside its bounds');
+
+test(() => {
+  assert_equals(hit(150, 50).id, 'grouped');
+  assert_equals(hit(168, 68), svg);
+}, 'A clip path on an ancestor group clips its children');
+
+test(() => {
+  assert_equals(hit(240, 50).id, 'boxed');
+  assert_equals(hit(260, 50), svg);
+}, 'Object bounding box clip path coordinates use the target bounds');
+</script>
