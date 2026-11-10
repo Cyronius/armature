@@ -410,10 +410,13 @@ Notes on the numbers:
   Cyclic SVG pattern paint references now use their declared fallback color instead of overflowing
   the image parser's stack. All 23 SVG crashtests pass, including the pattern cycle test that
   previously reported PASS immediately before the browser crashed.
-- **SVG image media fragments**: External SVG images now crop `xywh` URL fragments in pixel or percent units, clamp
-  the selection to the source image, and expose the cropped intrinsic size. The image cache applies the crop for
-  both CSS backgrounds and `<img>`. All 19 spatial fragment reftests pass, including 12 that previously failed;
-  `svg/linking/reftests` has 18 failures in the latest 55-test run, down from 30.
+- **SVG image URL fragments**: External SVG images crop `xywh` fragments in pixel or percent units, clamp the
+  selection to the source image, and expose the cropped intrinsic size for CSS backgrounds and `<img>`. All 19
+  spatial fragment reftests pass, including 12 that previously failed. `svgView(...)` fragments now override root
+  view attributes, including `viewBox`, `preserveAspectRatio`, and `transform`; named `<view>` elements work in SVG
+  data URLs loaded by `<object>`.
+  The renderer resolves selected views against the image viewport, preserving aspect ratio behavior. Eleven more
+  linking reftests pass, leaving 7 expected failures in the latest 55-test run, down from 30 before fragment support.
 - **SVG geometry properties**: Negative `r`, `rx`, `ry`, `width` and `height` presentation attributes are ignored, and
   `<foreignObject>` maps its geometry attributes to CSS properties. `getComputedStyle()` resolves the used width and
   height of SVG rectangles, images and foreign objects against their SVG viewport, including percentages and
