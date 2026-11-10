@@ -555,7 +555,10 @@ Notes on the numbers:
   height of SVG rectangles, images and foreign objects against their SVG viewport, including percentages and
   `calc()`. A nested `<svg>` keeps its width and height attributes for viewport sizing without treating them as CSS
   sizing declarations. All 308 subtests in `svg/geometry/parsing` now pass, including 60 that previously failed; the
-  surrounding 86-file `svg/geometry` run matches expectations.
+  surrounding 86-file `svg/geometry` run matches expectations. The SVG image parser now accepts CSS geometry
+  declarations on circles, ellipses, rectangles and images, and resolves `vw` and `vh` in nested SVG images against
+  the embedding viewport. Eleven geometry reftests and both embedded viewport-unit reftests now pass; the 113-file
+  embedded and geometry run matches expectations.
 - **SVG bounding boxes**: `getBBox()` now includes stroked path and line outlines when requested, preserves the
   position of move-only paths and single-point polygons, measures foreign objects, and excludes images with no
   source or nonpositive dimensions. In the 97-file `svg/types/scripted` run, 22 previously failing subtests now pass
