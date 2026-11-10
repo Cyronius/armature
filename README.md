@@ -560,7 +560,10 @@ Notes on the numbers:
   the embedding viewport. Eleven geometry reftests and both embedded viewport-unit reftests now pass; the 113-file
   embedded and geometry run matches expectations. The SVG renderer also evaluates `calc()` geometry lengths and
   percentages in the current viewport, including after a container resize. Six more reftests now pass, so all 25
-  `svg/geometry/reftests` files pass; the 113-file embedded and geometry run still matches expectations.
+  `svg/geometry/reftests` files pass; the 113-file embedded and geometry run still matches expectations. Standalone
+  SVG shape geometry now resolves `vw`, `vh`, `vmin` and `vmax` against the initial viewport, including inside `calc()`.
+  The existing rectangle reftest and a new `vmin`/`vmax` visual reftest pass; the 117-file focused run matches
+  expectations.
 - **SVG bounding boxes**: `getBBox()` now includes stroked path and line outlines when requested, preserves the
   position of move-only paths and single-point polygons, measures foreign objects, and excludes images with no
   source or nonpositive dimensions. In the 97-file `svg/types/scripted` run, 22 previously failing subtests now pass
