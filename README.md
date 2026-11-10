@@ -558,7 +558,9 @@ Notes on the numbers:
   surrounding 86-file `svg/geometry` run matches expectations. The SVG image parser now accepts CSS geometry
   declarations on circles, ellipses, rectangles and images, and resolves `vw` and `vh` in nested SVG images against
   the embedding viewport. Eleven geometry reftests and both embedded viewport-unit reftests now pass; the 113-file
-  embedded and geometry run matches expectations.
+  embedded and geometry run matches expectations. The SVG renderer also evaluates `calc()` geometry lengths and
+  percentages in the current viewport, including after a container resize. Six more reftests now pass, so all 25
+  `svg/geometry/reftests` files pass; the 113-file embedded and geometry run still matches expectations.
 - **SVG bounding boxes**: `getBBox()` now includes stroked path and line outlines when requested, preserves the
   position of move-only paths and single-point polygons, measures foreign objects, and excludes images with no
   source or nonpositive dimensions. In the 97-file `svg/types/scripted` run, 22 previously failing subtests now pass
