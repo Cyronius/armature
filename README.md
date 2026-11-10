@@ -393,7 +393,8 @@ Notes on the numbers:
   relative and zero-bearing reftests pass; the 72-test `svg/path` run matches expectations.
   SVG markers at closed subpaths now bisect the incoming and outgoing directions, draw middle markers at nonfinal
   closing vertices, and avoid duplicate markers when a segment already ends at its subpath start. Four more
-  `svg/painting` marker reftests pass.
+  `svg/painting` marker reftests pass. Arc markers now use the vertices of the original path commands instead of
+  placing extra middle markers where an arc was approximated by multiple cubic curves; three more marker reftests pass.
   Seeking an SVG animation clock refreshes its cached raster image. The serializer also applies active `<animate>`
   and `<set>` presentation property values to the rendering copy, so the scripted motion and rewind/freeze reftests
   now pass.
