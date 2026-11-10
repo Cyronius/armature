@@ -795,7 +795,9 @@ fn process_a_property_indexed_keyframe(
         })
         .collect::<Fallible<Vec<_>>>()?;
     for (index, keyframe) in keyframes.iter_mut().enumerate() {
-        keyframe.easing_function = easings[index % easings.len()].clone();
+        keyframe.easing_function = timing_functions[index % easings.len()]
+            .to_css_string()
+            .into();
         keyframe.timing_function = timing_functions[index % easings.len()].clone();
     }
 
@@ -892,7 +894,7 @@ fn process_a_keyframe_like_object(
     let mut keyframe_output = Keyframe {
         offset: keyframe_output.offset,
         computed_offset: 0.0,
-        easing_function: keyframe_output.easing,
+        easing_function: timing_function.to_css_string().into(),
         timing_function,
         composite: keyframe_output.composite,
         declarations: Vec::new(),
@@ -934,7 +936,7 @@ fn get_property_values(
     // if they're animated properties, that's easier.
     let mut ids = IdVector::new(cx);
     if !GetPropertyKeys(cx, object, JSITER_OWNONLY, ids.handle_mut()) {
-        return Ok(Vec::new());
+        return Err(Error::JSFailed);
     }
 
     let mut values = Vec::with_capacity(ids.len());
@@ -979,7 +981,7 @@ fn get_property_values(
                 property_value.handle_mut().into_handle_mut(),
             )
         } {
-            continue;
+            return Err(Error::JSFailed);
         }
 
         // Step 6.3 Convert raw value to a DOMString or to a sequence of DOMStrings property values as follows:
