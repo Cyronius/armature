@@ -200,6 +200,9 @@ Notes on the numbers:
   and Stylo now zooms the `thin`/`medium`/`thick` line widths, the initial values of the line widths, `font-size` and
   `stroke-width`, and explicitly inherited lengths of many more properties (AS-502, AS-504 and AS-505). The `css-
   viewport` tests, which are mostly about zoom, now run: 143 tests, of which 83% pass.
+- **CSSOM border-box sizes**: `getComputedStyle()` now reports the used border-box width and height when
+  `box-sizing: border-box`, including when padding and borders exceed the specified size. This fixes the
+  `css/css-values/lh-unit-004.html` subtest for a `<select>` whose width uses `lh`.
 - **Style sheet encoding**: an external style sheet without a byte order mark, an `@charset` rule or a charset in its
   `Content-Type` is decoded with its environment encoding (the `charset` attribute of its `<link>` or pseudo-attribute
   of its `xml-stylesheet` processing instruction, and otherwise the document's encoding) instead of UTF-8. This fixes
