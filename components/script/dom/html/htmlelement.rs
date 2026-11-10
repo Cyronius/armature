@@ -41,6 +41,7 @@ use crate::dom::characterdata::CharacterData;
 use crate::dom::css::cssstyledeclaration::{
     CSSModificationAccess, CSSStyleDeclaration, CSSStyleOwner,
 };
+use crate::dom::css::stylepropertymap::StylePropertyMap;
 use crate::dom::customelementregistry::{
     CallbackReaction, CustomElementRegistry, CustomElementState,
 };
@@ -84,6 +85,7 @@ use crate::event_loop::script_thread::ScriptThread;
 pub(crate) struct HTMLElement {
     element: Element,
     style_decl: MutNullableDom<CSSStyleDeclaration>,
+    attribute_style_map: MutNullableDom<StylePropertyMap>,
     dataset: MutNullableDom<DOMStringMap>,
 }
 
@@ -111,6 +113,7 @@ impl HTMLElement {
                 document,
             ),
             style_decl: Default::default(),
+            attribute_style_map: Default::default(),
             dataset: Default::default(),
         }
     }
@@ -333,6 +336,14 @@ impl HTMLElement {
 }
 
 impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-elementcssinlinestyle-attributestylemap>
+    fn AttributeStyleMap(&self, cx: &mut JSContext) -> DomRoot<StylePropertyMap> {
+        self.attribute_style_map.or_init(|| {
+            let style = self.Style(cx);
+            StylePropertyMap::new(cx, &self.owner_window(), &style)
+        })
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#the-style-attribute>
     fn Style(&self, cx: &mut JSContext) -> DomRoot<CSSStyleDeclaration> {
         self.style_decl.or_init(|| {

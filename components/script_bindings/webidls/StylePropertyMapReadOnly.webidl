@@ -3,12 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // https://drafts.css-houdini.org/css-typed-om-1/#stylepropertymapreadonly
-// NOTE: should this be exposed to Window?
-[Pref="dom_worklet_enabled", Exposed=(Worklet)]
+[Exposed=(Window, Worker, Worklet)]
 interface StylePropertyMapReadOnly {
-    CSSStyleValue? get(DOMString property);
-    // sequence<CSSStyleValue> getAll(DOMString property);
-    boolean has(DOMString property);
+    [Throws] any get(DOMString property);
+    [Throws] sequence<CSSStyleValue> getAll(DOMString property);
+    [Throws] boolean has(DOMString property);
+    readonly attribute unsigned long size;
     // iterable<DOMString, (CSSStyleValue or sequence<CSSStyleValue>)>;
     sequence<DOMString> getProperties();
     // https://github.com/w3c/css-houdini-drafts/issues/268

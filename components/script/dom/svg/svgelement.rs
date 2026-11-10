@@ -28,6 +28,7 @@ use crate::dom::bindings::root::{Dom, DomRoot, LayoutDom, MutNullableDom};
 use crate::dom::css::cssstyledeclaration::{
     CSSModificationAccess, CSSStyleDeclaration, CSSStyleOwner,
 };
+use crate::dom::css::stylepropertymap::StylePropertyMap;
 use crate::dom::document::Document;
 use crate::dom::document::focus::FocusableArea;
 use crate::dom::domstringmap::DOMStringMap;
@@ -164,6 +165,7 @@ pub(crate) const PRESENTATION_ATTRIBUTES: &[&str] = &[
 pub(crate) struct SVGElement {
     element: Element,
     style_decl: MutNullableDom<CSSStyleDeclaration>,
+    attribute_style_map: MutNullableDom<StylePropertyMap>,
     dataset: MutNullableDom<DOMStringMap>,
     /// The objects of the SVG DOM that reflect the attributes of this element.
     animated_properties: DomRefCell<Vec<SVGAnimatedPropertyEntry>>,
@@ -234,6 +236,7 @@ impl SVGElement {
         SVGElement {
             element: Element::new_inherited_with_state(state, tag_name, ns!(svg), prefix, document),
             style_decl: Default::default(),
+            attribute_style_map: Default::default(),
             dataset: Default::default(),
             animated_properties: Default::default(),
         }
@@ -716,6 +719,14 @@ impl VirtualMethods for SVGElement {
 }
 
 impl SVGElementMethods<crate::DomTypeHolder> for SVGElement {
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-elementcssinlinestyle-attributestylemap>
+    fn AttributeStyleMap(&self, cx: &mut JSContext) -> DomRoot<StylePropertyMap> {
+        self.attribute_style_map.or_init(|| {
+            let style = self.Style(cx);
+            StylePropertyMap::new(cx, &self.owner_window(), &style)
+        })
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-dataset>
     fn Dataset(&self, cx: &mut JSContext) -> DomRoot<DOMStringMap> {
         self.dataset
