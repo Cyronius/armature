@@ -346,7 +346,10 @@ Notes on the numbers:
   conversion WPT pages went from 74 failing subtests to 43. The seven CSS math DOM subclasses and indexed
   `CSSNumericArray` now expose constructors, operands, operators, numeric types and basic stringification in windows
   and workers. All 63 subtests in five focused window WPT pages pass, as do seven interface and worker type subtests.
-  CSS numeric arithmetic, parsing math expressions and worker `CSS` factories remain to do.
+  `CSSNumericValue` arithmetic now simplifies compatible unit values, builds math expressions for mixed units,
+  rejects incompatible types and division by zero, and compares math values structurally. The `CSS` numeric factories
+  are available in workers. The arithmetic and equality pages went from 68 failing subtests to all 78 passing in
+  windows; the worker arithmetic page passes all 67 subtests. Parsing math expressions and `toSum()` remain to do.
   SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
   `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
   scripted linking files; the full 25-file scripted linking directory matches expectations.
