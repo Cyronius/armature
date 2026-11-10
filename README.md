@@ -600,6 +600,10 @@ Notes on the numbers:
   WebRender's default image sampling, and `optimizespeed` uses crisp edges. Nine previously failing
   parsing, computed style and inheritance subtests now pass; all 87 nearby CSS Images and SVG
   painting parsing tests run as expected.
+- **Inline SVG currentColor repainting**: Changes to an HTML ancestor's class, ID, or style now
+  refresh the serialized SVG raster. Resolved fill and stroke colors use legacy sRGB syntax in the
+  rendering copy so the rasterizer can paint `color-mix()` results. Both focused repaint reftests
+  now pass; three separate paint-server currentColor reftests still have expected failures.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
