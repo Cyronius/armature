@@ -3,15 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use std::cell::Cell;
-use std::str::{self, FromStr};
+use std::str::FromStr;
 
 use dom_struct::dom_struct;
 use http::header::{HeaderMap as HyperHeaders, HeaderName, HeaderValue};
 use js::context::JSContext;
 use js::rust::HandleObject;
 use net_traits::fetch::headers::{
-    extract_mime_type, get_decode_and_split_header_value, get_value_from_header_list,
-    is_forbidden_method,
+    extract_mime_type_from_values, get_decode_and_split_header_value, is_forbidden_method,
 };
 use net_traits::request::is_cors_safelisted_request_header;
 use net_traits::trim_http_whitespace;
@@ -31,8 +30,11 @@ use crate::dom::globalscope::GlobalScope;
 pub(crate) struct Headers {
     reflector_: Reflector,
     guard: Cell<Guard>,
+    /// Values representable by the HTTP library, for network requests and responses.
     #[no_trace]
     header_list: DomRefCell<HyperHeaders>,
+    /// Fetch permits control bytes that the HTTP library rejects, so DOM operations use this list.
+    dom_header_list: DomRefCell<Vec<(String, Vec<u8>)>>,
 }
 
 /// <https://fetch.spec.whatwg.org/#concept-headers-guard>
@@ -51,6 +53,7 @@ impl Headers {
             reflector_: Reflector::new(),
             guard: Cell::new(Guard::None),
             header_list: DomRefCell::new(HyperHeaders::new()),
+            dom_header_list: DomRefCell::new(Vec::new()),
         }
     }
 
@@ -105,6 +108,9 @@ impl HeadersMethods<crate::DomTypeHolder> for Headers {
 
         // 3. If this’s header list does not contain name, then return.
         // 4. Delete name from this’s header list.
+        self.dom_header_list
+            .borrow_mut()
+            .retain(|(name, _)| name != &valid_name);
         self.header_list.borrow_mut().remove(valid_name);
 
         // 5. If this’s guard is "request-no-cors", then remove privileged no-CORS request-headers from this.
@@ -118,11 +124,11 @@ impl HeadersMethods<crate::DomTypeHolder> for Headers {
     /// <https://fetch.spec.whatwg.org/#dom-headers-get>
     fn Get(&self, name: ByteString) -> Fallible<Option<ByteString>> {
         // 1. If name is not a header name, then throw a TypeError.
-        let valid_name = validate_name(name)?;
+        let valid_name = validate_name(name)?.to_ascii_lowercase();
 
         // 2. Return the result of getting name from this’s header list.
         Ok(
-            get_value_from_header_list(&valid_name, &self.header_list.borrow())
+            get_value_from_dom_header_list(&valid_name, &self.dom_header_list.borrow())
                 .map(ByteString::new),
         )
     }
@@ -132,20 +138,24 @@ impl HeadersMethods<crate::DomTypeHolder> for Headers {
         // 1. If this’s header list does not contain `Set-Cookie`, then return « ».
         // 2. Return the values of all headers in this’s header list whose name is a
         // byte-case-insensitive match for `Set-Cookie`, in order.
-        self.header_list
+        self.dom_header_list
             .borrow()
-            .get_all("set-cookie")
             .iter()
-            .map(|v| ByteString::new(v.as_bytes().to_vec()))
+            .filter(|(name, _)| name == "set-cookie")
+            .map(|(_, value)| ByteString::new(value.clone()))
             .collect()
     }
 
     /// <https://fetch.spec.whatwg.org/#dom-headers-has>
     fn Has(&self, name: ByteString) -> Fallible<bool> {
         // 1. If name is not a header name, then throw a TypeError.
-        let valid_name = validate_name(name)?;
+        let valid_name = validate_name(name)?.to_ascii_lowercase();
         // 2. Return true if this’s header list contains name; otherwise false.
-        Ok(self.header_list.borrow_mut().get(&valid_name).is_some())
+        Ok(self
+            .dom_header_list
+            .borrow()
+            .iter()
+            .any(|(name, _)| name == &valid_name))
     }
 
     /// <https://fetch.spec.whatwg.org/#dom-headers-set>
@@ -170,17 +180,30 @@ impl HeadersMethods<crate::DomTypeHolder> for Headers {
 
         // 4. Set (name, value) in this’s header list.
         // https://fetch.spec.whatwg.org/#concept-header-list-set
-        match (
-            HeaderName::from_str(&valid_name),
-            HeaderValue::from_bytes(value),
-        ) {
-            (Ok(name), Ok(value)) => {
-                self.header_list.borrow_mut().insert(name, value);
-            },
-            _ => {
-                warn!("Could not set header:  \"{valid_name:?}: {value:?}\"");
-            },
-        };
+        let mut dom_headers = self.dom_header_list.borrow_mut();
+        if let Some(first) = dom_headers.iter().position(|(name, _)| name == &valid_name) {
+            dom_headers[first].1 = value.to_vec();
+            let mut index = first + 1;
+            while index < dom_headers.len() {
+                if dom_headers[index].0 == valid_name {
+                    dom_headers.remove(index);
+                } else {
+                    index += 1;
+                }
+            }
+        } else {
+            dom_headers.push((valid_name.clone(), value.to_vec()));
+        }
+        drop(dom_headers);
+
+        if let Ok(name) = HeaderName::from_str(&valid_name) {
+            let mut headers = self.header_list.borrow_mut();
+            if let Ok(value) = HeaderValue::from_bytes(value) {
+                headers.insert(name, value);
+            } else {
+                headers.remove(name);
+            }
+        }
 
         // 5. If this’s guard is "request-no-cors", then remove privileged no-CORS request-headers from this.
         if self.guard.get() == Guard::RequestNoCors {
@@ -193,10 +216,10 @@ impl HeadersMethods<crate::DomTypeHolder> for Headers {
 
 impl Headers {
     pub(crate) fn copy_from_headers(&self, headers: &Headers) -> ErrorResult {
-        for (name, value) in headers.header_list.borrow().iter() {
+        for (name, value) in headers.dom_header_list.borrow().iter() {
             self.Append(
-                ByteString::new(Vec::from(name.as_str())),
-                ByteString::new(Vec::from(value.as_bytes())),
+                ByteString::new(name.as_bytes().to_vec()),
+                ByteString::new(value.clone()),
             )?;
         }
         Ok(())
@@ -218,7 +241,7 @@ impl Headers {
         if self.guard.get() == Guard::RequestNoCors {
             // 3.1. Let temporaryValue be the result of getting name from headers’s header list.
             let tmp_value = if let Some(mut tmp_value) =
-                get_value_from_header_list(&valid_name, &self.header_list.borrow())
+                get_value_from_dom_header_list(&valid_name, &self.dom_header_list.borrow())
             {
                 // 3.3. Otherwise, set temporaryValue to temporaryValue, followed by 0x2C 0x20, followed by value.
                 tmp_value.extend(b", ");
@@ -235,17 +258,15 @@ impl Headers {
         }
 
         // 4. Append (name, value) to headers’s header list.
-        match (
+        self.dom_header_list
+            .borrow_mut()
+            .push((valid_name.clone(), value.to_vec()));
+        if let (Ok(name), Ok(value)) = (
             HeaderName::from_str(&valid_name),
             HeaderValue::from_bytes(value),
         ) {
-            (Ok(name), Ok(value)) => {
-                self.header_list.borrow_mut().append(name, value);
-            },
-            _ => {
-                warn!("Could not set header \"{valid_name:?}: {value:?}\"");
-            },
-        };
+            self.header_list.borrow_mut().append(name, value);
+        }
 
         // 5. If headers’s guard is "request-no-cors", then remove privileged no-CORS request-headers from headers.
         if self.guard.get() == Guard::RequestNoCors {
@@ -302,6 +323,10 @@ impl Headers {
     }
 
     pub(crate) fn set_headers(&self, hyper_headers: HyperHeaders) {
+        *self.dom_header_list.borrow_mut() = hyper_headers
+            .iter()
+            .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
+            .collect();
         *self.header_list.borrow_mut() = hyper_headers;
     }
 
@@ -311,32 +336,39 @@ impl Headers {
 
     /// <https://fetch.spec.whatwg.org/#concept-header-extract-mime-type>
     pub(crate) fn extract_mime_type(&self) -> Vec<u8> {
-        extract_mime_type(&self.header_list.borrow()).unwrap_or_default()
+        get_value_from_dom_header_list("content-type", &self.dom_header_list.borrow())
+            .map(get_decode_and_split_header_value)
+            .and_then(|values| extract_mime_type_from_values(&values))
+            .map(|mime| mime.to_string().into_bytes())
+            .unwrap_or_default()
     }
 
     /// <https://fetch.spec.whatwg.org/#concept-header-list-sort-and-combine>
     pub(crate) fn sort_and_combine(&self) -> Vec<(String, Vec<u8>)> {
-        let borrowed_header_list = self.header_list.borrow();
+        let mut sorted_headers = self.dom_header_list.borrow().clone();
+        sorted_headers.sort_by(|a, b| a.0.cmp(&b.0));
         let mut header_vec = vec![];
-
-        for name in borrowed_header_list.keys() {
-            let name = name.as_str();
-            if name == "set-cookie" {
-                for value in borrowed_header_list.get_all(name).iter() {
-                    header_vec.push((name.to_owned(), value.as_bytes().to_vec()));
-                }
-            } else if let Some(value) = get_value_from_header_list(name, &borrowed_header_list) {
-                header_vec.push((name.to_owned(), value));
+        for (name, value) in sorted_headers {
+            if name == "set-cookie" ||
+                header_vec
+                    .last()
+                    .is_none_or(|(last_name, _)| last_name != &name)
+            {
+                header_vec.push((name, value));
+            } else if let Some((_, combined_value)) = header_vec.last_mut() {
+                combined_value.extend_from_slice(b", ");
+                combined_value.extend(value);
             }
         }
-
-        header_vec.sort_by(|a, b| a.0.cmp(&b.0));
         header_vec
     }
 
     /// <https://fetch.spec.whatwg.org/#ref-for-privileged-no-cors-request-header-name>
     pub(crate) fn remove_privileged_no_cors_request_headers(&self) {
         // <https://fetch.spec.whatwg.org/#privileged-no-cors-request-header-name>
+        self.dom_header_list
+            .borrow_mut()
+            .retain(|(name, _)| name != "range");
         self.header_list.borrow_mut().remove("range");
     }
 
@@ -392,6 +424,19 @@ impl Iterable for Headers {
                 .0
                 .into_bytes(),
         )
+    }
+}
+
+fn get_value_from_dom_header_list(name: &str, headers: &[(String, Vec<u8>)]) -> Option<Vec<u8>> {
+    let values = headers
+        .iter()
+        .filter(|(header_name, _)| header_name == name)
+        .map(|(_, value)| value.as_slice())
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.join(&b", "[..]))
     }
 }
 
@@ -493,13 +538,7 @@ fn is_field_name(name: &ByteString) -> bool {
     is_token(name)
 }
 
-// As of December 2019, WHATWG has no formal grammar production for value;
-// https://fetch.spec.whatwg.org/#concept-header-value just says not to have
-// newlines, nulls, or leading/trailing whitespace. It even allows
-// octets that aren't a valid UTF-8 encoding, and WPT tests reflect this.
-// The HeaderValue class does not fully reflect this, so headers
-// containing bytes with values 1..31 or 127 can't be created, failing
-// WPT tests but probably not affecting anything important on the real Internet.
+// Fetch permits any bytes except NUL, newline, and leading or trailing HTTP tab or space.
 /// <https://fetch.spec.whatwg.org/#concept-header-value>
 fn is_legal_header_value(value: &[u8]) -> bool {
     let value_len = value.len();
@@ -521,19 +560,6 @@ fn is_legal_header_value(value: &[u8]) -> bool {
         }
     }
     true
-    // If accepting non-UTF8 header values causes breakage,
-    // removing the above "true" and uncommenting the below code
-    // would ameliorate it while still accepting most reasonable headers:
-    // match str::from_utf8(value) {
-    //    Ok(_) => true,
-    //    Err(_) => {
-    //        warn!(
-    //            "Rejecting spec-legal but non-UTF8 header value: {:?}",
-    //            value
-    //        );
-    //        false
-    //    },
-    // }
 }
 
 /// <https://tools.ietf.org/html/rfc5234#appendix-B.1>

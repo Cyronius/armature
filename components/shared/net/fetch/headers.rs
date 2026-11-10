@@ -198,17 +198,20 @@ fn collect_http_quoted_string(position: &mut Peekable<Chars>, extract_value: boo
 /// mime::Mime does not provide a parser following the Fetch spec
 /// see <https://github.com/hyperium/mime/issues/106>
 pub fn extract_mime_type_as_dataurl_mime(headers: &HeaderMap) -> Option<DataUrlMime> {
+    // Get, decode, and split `Content-Type` before extracting its MIME type.
+    let headers_values = get_decode_and_split_header_name("content-type", headers)?;
+    extract_mime_type_from_values(&headers_values)
+}
+
+/// Extract a MIME type from the decoded and split `Content-Type` values.
+/// <https://fetch.spec.whatwg.org/#concept-header-extract-mime-type>
+pub fn extract_mime_type_from_values(headers_values: &[String]) -> Option<DataUrlMime> {
     // > 1: Let charset be null.
     let mut charset = None;
     // > 2: Let essence be null.
     let mut essence = String::new();
     // > 3: Let mimeType be null.
     let mut mime_type = None;
-
-    // > 4: Let values be the result of getting, decoding, and splitting `Content-Type`
-    // from headers.
-    // > 5: If values is null, then return failure.
-    let headers_values = get_decode_and_split_header_name("content-type", headers)?;
 
     // > 6: For each value of values:
     for header_value in headers_values.iter() {
