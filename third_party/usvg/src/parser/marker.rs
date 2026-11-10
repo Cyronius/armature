@@ -163,7 +163,22 @@ fn resolve(
         }
     }
 
+    // Armature: Arc commands are approximated by multiple cubic segments for painting,
+    // but only the end of the original arc is a marker vertex.
+    let arc_vertices = if matches!(marker_kind, MarkerKind::Middle) &&
+        shape_node.tag_name() == Some(EId::Path)
+    {
+        shape_node
+            .attribute::<&str>(AId::D)
+            .and_then(|data| arc_vertex_mask(data, segments.len()))
+    } else {
+        None
+    };
+
     let draw_marker = |p: tiny_skia_path::Point, idx: usize| {
+        if arc_vertices.as_ref().is_some_and(|vertices| !vertices[idx]) {
+            return;
+        }
         let mut ts = Transform::from_translate(p.x, p.y);
 
         let angle = match convert_orientation(marker_node) {
@@ -212,6 +227,110 @@ fn resolve(
     draw_markers(&segments, marker_kind, draw_marker);
 
     Some(())
+}
+
+fn arc_vertex_mask(data: &str, segment_count: usize) -> Option<Vec<bool>> {
+    let mut vertices = vec![true; segment_count];
+    let mut current = (0.0, 0.0);
+    let mut subpath_start = current;
+    let mut index = 0usize;
+    let mut closed = false;
+
+    for segment in svgtypes::PathParser::from(data) {
+        let Ok(segment) = segment else {
+            break;
+        };
+        if closed &&
+            !matches!(
+                segment,
+                svgtypes::PathSegment::MoveTo { .. } | svgtypes::PathSegment::ClosePath { .. }
+            )
+        {
+            // SimplifyingPathParser inserts a moveto after a closepath.
+            index += 1;
+        }
+
+        match segment {
+            svgtypes::PathSegment::MoveTo { abs, x, y } => {
+                current = absolute_endpoint(current, abs, x, y);
+                subpath_start = current;
+                index += 1;
+                closed = false;
+            },
+            svgtypes::PathSegment::LineTo { abs, x, y } |
+            svgtypes::PathSegment::CurveTo { abs, x, y, .. } |
+            svgtypes::PathSegment::SmoothCurveTo { abs, x, y, .. } |
+            svgtypes::PathSegment::Quadratic { abs, x, y, .. } |
+            svgtypes::PathSegment::SmoothQuadratic { abs, x, y } => {
+                current = absolute_endpoint(current, abs, x, y);
+                index += 1;
+                closed = false;
+            },
+            svgtypes::PathSegment::HorizontalLineTo { abs, x } => {
+                current.0 = if abs { x } else { current.0 + x };
+                index += 1;
+                closed = false;
+            },
+            svgtypes::PathSegment::VerticalLineTo { abs, y } => {
+                current.1 = if abs { y } else { current.1 + y };
+                index += 1;
+                closed = false;
+            },
+            svgtypes::PathSegment::EllipticalArc {
+                abs,
+                rx,
+                ry,
+                x_axis_rotation,
+                large_arc,
+                sweep,
+                x,
+                y,
+            } => {
+                let end = absolute_endpoint(current, abs, x, y);
+                let svg_arc = kurbo::SvgArc {
+                    from: kurbo::Point::new(current.0, current.1),
+                    to: kurbo::Point::new(end.0, end.1),
+                    radii: kurbo::Vec2::new(rx, ry),
+                    x_rotation: x_axis_rotation.to_radians(),
+                    large_arc,
+                    sweep,
+                };
+                let count = match kurbo::Arc::from_svg_arc(&svg_arc) {
+                    Some(arc) => {
+                        let mut count = 0;
+                        arc.to_cubic_beziers(0.1, |_, _, _| count += 1);
+                        count
+                    },
+                    None => 1,
+                };
+                if index + count > segment_count {
+                    return None;
+                }
+                for vertex in &mut vertices[index..index + count.saturating_sub(1)] {
+                    *vertex = false;
+                }
+                index += count;
+                current = end;
+                closed = false;
+            },
+            svgtypes::PathSegment::ClosePath { .. } => {
+                if !closed {
+                    index += 1;
+                }
+                current = subpath_start;
+                closed = true;
+            },
+        }
+        if index > segment_count {
+            return None;
+        }
+    }
+
+    (index == segment_count).then_some(vertices)
+}
+
+fn absolute_endpoint(current: (f64, f64), abs: bool, x: f64, y: f64) -> (f64, f64) {
+    if abs { (x, y) } else { (current.0 + x, current.1 + y) }
 }
 
 fn stroke_scale(
