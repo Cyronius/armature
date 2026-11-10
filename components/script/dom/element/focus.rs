@@ -148,6 +148,7 @@ impl Element {
                 // >    the user to begin drag operations for those elements without the use of a pointing device
                 self.downcast::<HTMLElement>().is_some_and(|html_element| {
                     html_element.is_a_summary_for_its_parent_details() ||
+                        html_element.is_implicit_summary_element() ||
                         html_element.is_editing_host()
                 }) || self.get_string_attribute(&local_name!("draggable")) == "true"
             },

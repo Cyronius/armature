@@ -1352,14 +1352,15 @@ impl HTMLElement {
 
     /// Whether or not this is an implicitly generated `<summary>`
     /// element for a UA `<details>` shadow tree
-    fn is_implicit_summary_element(&self) -> bool {
+    pub(crate) fn is_implicit_summary_element(&self) -> bool {
         // Note that non-implicit summary elements are not actually inside
         // the UA shadow tree, they're only assigned to a slot inside it.
         // Therefore they don't cause false positives here
-        self.containing_shadow_root()
-            .as_deref()
-            .map(ShadowRoot::Host)
-            .is_some_and(|host| host.is::<HTMLDetailsElement>())
+        self.as_element().local_name() == &local_name!("summary") &&
+            self.containing_shadow_root()
+                .as_deref()
+                .map(ShadowRoot::Host)
+                .is_some_and(|host| host.is::<HTMLDetailsElement>())
     }
 
     /// <https://html.spec.whatwg.org/multipage/#rendered-text-fragment>

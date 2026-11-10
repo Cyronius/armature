@@ -3055,10 +3055,10 @@ impl Element {
         {
             return 0;
         }
-        if self
-            .downcast::<HTMLElement>()
-            .is_some_and(|html_element| html_element.is_a_summary_for_its_parent_details())
-        {
+        if self.downcast::<HTMLElement>().is_some_and(|html_element| {
+            html_element.is_a_summary_for_its_parent_details() ||
+                html_element.is_implicit_summary_element()
+        }) {
             return 0;
         }
 

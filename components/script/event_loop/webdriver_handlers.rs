@@ -1318,7 +1318,12 @@ pub(crate) fn handle_will_send_keys(
 
         // Step 7.6. If element is not keyboard-interactable,
         // return ErrorStatus::ElementNotInteractable.
-        if !element.is_keyboard_interactable(cx.no_gc()) {
+        // document.activeElement is the shadow host when focus is inside its shadow tree.
+        // Keep sending keys to the focused descendant in that case, even if the host
+        // delegates focus and is therefore not itself a focusable area.
+        if !element.is_keyboard_interactable(cx.no_gc()) &&
+            !(element.shadow_root().is_some() && element.is_active_element())
+        {
             let _ = reply.send(Err(ErrorStatus::ElementNotInteractable));
             return;
         }
