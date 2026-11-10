@@ -8545,6 +8545,34 @@
       ]
      ]
     }
+   },
+   "svg": {
+    "inline-external-image-change.html": [
+     "0f15b831449d18bb068b52df3f2bd03505962b86",
+     [
+      null,
+      [
+       [
+        "/_mozilla/svg/inline-external-image-ref.html",
+        "=="
+       ]
+      ],
+      {}
+     ]
+    ],
+    "inline-external-image.html": [
+     "4fbf994f1845bddd46c670b99c8c47eba83ad599",
+     [
+      null,
+      [
+       [
+        "/_mozilla/svg/inline-external-image-ref.html",
+        "=="
+       ]
+      ],
+      {}
+     ]
+    ]
    }
   },
   "support": {
@@ -11581,6 +11609,12 @@
       []
      ]
     }
+   },
+   "svg": {
+    "inline-external-image-ref.html": [
+     "bb03229a0386b79160fe4a690d7212e913832e44",
+     []
+    ]
    },
    "webxr": {
     "resources": {
