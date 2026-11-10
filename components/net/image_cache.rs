@@ -579,8 +579,15 @@ fn parse_svg_document_in_memory(
     };
     let tree = usvg::Tree::from_str(&text, &usvg_options).map_err(to_parse_error)?;
     let has_absolute_size = |size| matches!(size, OutermostSvgSize::Absolute(_));
+    // A non-scaling stroke is outlined in the outer SVG viewport. If the root
+    // uses a viewBox but has an automatic size, rasterizing at a natural size
+    // and scaling the bitmap would scale that stroke as well. Resolve the root
+    // size against the actual image viewport before constructing its paths.
+    let inline_non_scaling_stroke = root.attribute("data-armature-inline-svg") == Some("true") &&
+        text.contains("non-scaling-stroke");
     let viewport_dependent = (view.is_some() ||
-        view_box.is_none() && !(has_absolute_size(width) && has_absolute_size(height)))
+        (view_box.is_none() || inline_non_scaling_stroke) &&
+            !(has_absolute_size(width) && has_absolute_size(height)))
     .then(|| ViewportDependentSvg {
         text: Arc::new(text),
         width,

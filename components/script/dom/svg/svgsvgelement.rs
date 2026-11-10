@@ -64,8 +64,9 @@ use crate::dom::svg::svgtypes::{
 };
 
 /// Document CSS lies outside an inline SVG's serialized rendering copy. Transfer the resolved
-/// fill while keeping other paint and text properties in the rasterizer's existing path.
-const RASTERIZED_SVG_STYLE_PROPERTIES: &[&str] = &["fill"];
+/// paint properties that the rasterizer needs to construct non-scaling strokes.
+const RASTERIZED_SVG_STYLE_PROPERTIES: &[&str] =
+    &["fill", "stroke", "stroke-width", "vector-effect"];
 
 #[dom_struct]
 pub(crate) struct SVGSVGElement {
@@ -174,6 +175,16 @@ impl SVGSVGElement {
             error!("Unable to clone SVG tree");
             *self.cached_serialized_data_url.borrow_mut() = Some(Err(()));
             return;
+        }
+
+        // The image cache needs the inline SVG's layout viewport to outline
+        // non-scaling strokes. This marker exists only on the rendering copy.
+        if let Some(svg_clone) = cloned_node.downcast::<SVGElement>() {
+            svg_clone.set_svg_attribute(
+                cx,
+                &LocalName::from("data-armature-inline-svg"),
+                "true".to_owned(),
+            );
         }
 
         self.apply_sampled_effects_to_copy(cx, self.upcast(), &cloned_node);

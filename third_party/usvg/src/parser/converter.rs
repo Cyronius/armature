@@ -1073,6 +1073,37 @@ fn convert_path(
         None => return,
     };
 
+    // Armature (AU-005): A non-scaling stroke is outlined in the outer SVG
+    // viewport, then brought back to the path's local coordinates for painting.
+    // This also handles non-uniform scales and shears, for which changing the
+    // stroke width alone cannot produce the correct outline.
+    if node.attribute::<&str>(AId::VectorEffect) == Some("non-scaling-stroke") {
+        if let Some(mut stroke_path) = non_scaling_stroke_path(&path) {
+            let mut fill_path = path.clone();
+            fill_path.stroke = None;
+            if fill_path.fill.is_none() {
+                stroke_path.id = fill_path.id.clone();
+            }
+            for kind in raw_paint_order.order {
+                match kind {
+                    PaintOrderKind::Fill if fill_path.fill.is_some() => {
+                        parent.children.push(Node::Path(Box::new(fill_path.clone())));
+                    }
+                    PaintOrderKind::Stroke => {
+                        parent.children.push(Node::Path(Box::new(stroke_path.clone())));
+                    }
+                    PaintOrderKind::Markers => {
+                        if let Some(markers_node) = marker.take() {
+                            parent.children.push(Node::Group(Box::new(markers_node)));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            return;
+        }
+    }
+
     match (raw_paint_order.order, marker) {
         ([PaintOrderKind::Markers, _, _], Some(markers_node)) => {
             parent.children.push(Node::Group(Box::new(markers_node)));
@@ -1089,6 +1120,34 @@ fn convert_path(
         }
         _ => parent.children.push(Node::Path(Box::new(path.clone()))),
     }
+}
+
+fn non_scaling_stroke_path(path: &Path) -> Option<Path> {
+    let stroke = path.stroke.as_ref()?;
+    let transform = path.abs_transform;
+    let outline = path
+        .data
+        .as_ref()
+        .clone()
+        .transform(transform)?
+        .stroke(&stroke.to_tiny_skia(), 1.0)?
+        .transform(transform.invert()?)?;
+
+    Path::new(
+        String::new(),
+        path.visible,
+        Some(Fill {
+            paint: stroke.paint.clone(),
+            opacity: stroke.opacity,
+            rule: FillRule::NonZero,
+            context_element: None,
+        }),
+        None,
+        PaintOrder::FillAndStroke,
+        path.rendering_mode,
+        Arc::new(outline),
+        transform,
+    )
 }
 
 fn append_single_paint_path(paint_order_kind: PaintOrderKind, path: &Path, parent: &mut Group) {
