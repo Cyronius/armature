@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSSStyleValue parsing and property association</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#dom-cssstylevalue-parse">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+'use strict';
+
+test(() => {
+  const values = CSSStyleValue.parseAll(
+    'transition-timing-function', 'cubic-bezier(0, 0, 1, 1), ease');
+  assert_equals(values.length, 2);
+  assert_equals(values[0].toString(), 'cubic-bezier(0, 0, 1, 1)');
+  assert_equals(values[1].toString(), 'ease');
+  assert_equals(
+    CSSStyleValue.parse('transition-timing-function', 'ease, linear').toString(),
+    'ease');
+}, 'parseAll splits at top-level commas and parse returns the first value');
+
+test(() => {
+  const map = document.createElement('div').attributeStyleMap;
+  const value = CSSStyleValue.parse('margin', '1px 2px');
+  assert_throws_js(TypeError, () => map.set('padding', value));
+  map.set('margin', value);
+  assert_equals(map.get('margin').toString(), '1px 2px');
+}, 'a direct CSSStyleValue can only be set on its associated property');
+</script>
