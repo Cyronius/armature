@@ -16,7 +16,7 @@ use crate::FxHashMap;
 use crate::context::QuirksMode;
 use crate::derives::*;
 use crate::parser::{Parse, ParserContext};
-use crate::rule_tree::CascadeOrigin;
+use crate::rule_tree::RuleCascadeFlags;
 use crate::typed_om::NumericBaseType;
 use crate::values::computed;
 use crate::values::specified::calc::PercentageContext;
@@ -362,9 +362,11 @@ impl ToComputedValue for Opacity {
     #[inline]
     fn to_computed_value(&self, context: &Context) -> CSSFloat {
         let value = self.0.to_computed_value(context).value();
-        // Armature (AS-518): Keep keyframe opacity out of range until effects
-        // have been interpolated and composited.
-        if context.for_smil_animation || context.scope.origin() == CascadeOrigin::Animations {
+        // Armature (AS-519): Only keyframe resolution defers clamping; the
+        // final animation declaration is cascaded at the same origin.
+        if context.for_smil_animation ||
+            context.included_cascade_flags.contains(RuleCascadeFlags::ANIMATION_KEYFRAME)
+        {
             value
         } else {
             value.min(1.0).max(0.0)

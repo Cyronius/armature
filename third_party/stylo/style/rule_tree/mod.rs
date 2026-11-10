@@ -33,6 +33,8 @@ bitflags! {
         const STARTING_STYLE = 1 << 0;
         /// Whether the rule is inside an @appearance-base block.
         const APPEARANCE_BASE = 1 << 1;
+        /// Armature (AS-519): Preserve out-of-range values when resolving animation keyframes.
+        const ANIMATION_KEYFRAME = 1 << 2;
     }
 }
 

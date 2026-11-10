@@ -496,9 +496,17 @@ impl AnimationValue {
                 % else:
                     value.clone();
                 % endif
-                % if prop.ident == "opacity":
-                // Armature (AS-518): Clamp opacity after the complete effect stack is sampled.
+                % if prop.ident in ("opacity", "flood_opacity", "shape_image_threshold", "stop_opacity"):
+                // Armature (AS-519): Clamp each scalar opacity after the effect stack is sampled.
                 let value = value.clamp(0.0, 1.0);
+                % elif prop.ident in ("fill_opacity", "stroke_opacity"):
+                // Armature (AS-519): Clamp SVG opacity without changing context-opacity keywords.
+                let value = match value {
+                    crate::values::computed::SVGOpacity::Opacity(opacity) => {
+                        crate::values::computed::SVGOpacity::Opacity(opacity.clamp(0.0, 1.0))
+                    },
+                    keyword => keyword,
+                };
                 % endif
                 style.mutate_${prop.style_struct.name_lower}().set_${prop.ident}(value);
             }

@@ -306,7 +306,8 @@ impl IntermediateComputedKeyframe {
             rules: new_node,
             visited_rules: base_style.visited_rules().cloned(),
             flags: base_style.flags.for_cascade_inputs(),
-            included_cascade_flags: RuleCascadeFlags::empty(),
+            // Armature (AS-519): Only keyframe resolution defers opacity clamping.
+            included_cascade_flags: RuleCascadeFlags::ANIMATION_KEYFRAME,
         };
         resolver
             .cascade_style_and_visited_with_default_parents(inputs)

@@ -415,3 +415,12 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   composition use the authored values. Clamp the final sampled opacity when applying the effect
   stack to computed style. Ordinary computed opacity remains clamped during the cascade.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-519: Clamp SVG opacity after animation composition
+- Files: `style/properties/helpers/animated_properties.mako.rs`, `style/rule_tree/mod.rs`,
+  `style/servo/animation.rs`, `style/values/specified/mod.rs`
+- Why: SVG opacity properties share opacity's keyframe value type and also retain out-of-range
+  values until composition. Mark only keyframe resolution to defer clamping; final animation
+  declarations cascade at the same origin and must clamp. Directly applied animated styles
+  also clamp their final numeric values, preserving context-opacity keywords.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
