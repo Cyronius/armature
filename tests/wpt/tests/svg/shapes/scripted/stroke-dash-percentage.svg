@@ -1,0 +1,59 @@
+<svg id="svg" xmlns="http://www.w3.org/2000/svg" xmlns:html="http://www.w3.org/1999/xhtml"
+     viewBox="0 0 100 100" width="100" height="100">
+  <title>Percentage stroke lengths use the normalized SVG viewport diagonal for hit testing</title>
+  <metadata>
+    <html:link rel="help" href="https://www.w3.org/TR/SVG2/painting.html#StrokeDashing"/>
+  </metadata>
+  <html:script src="/resources/testharness.js"/>
+  <html:script src="/resources/testharnessreport.js"/>
+  <path id="dashes" d="M0 20H100" stroke="black" stroke-width="4"
+        stroke-dasharray="20% 20%" fill="none"/>
+  <path id="calculated" d="M0 30H100" stroke="black" stroke-width="4"
+        stroke-dasharray="calc(10% + 10px) 20%" fill="none"/>
+  <path id="offset" d="M0 40H100" stroke="black" stroke-width="4"
+        stroke-dasharray="20% 20%" stroke-dashoffset="10%" fill="none"/>
+  <path id="width" d="M0 50H100" stroke="black" stroke-width="10%" fill="none"/>
+  <script><![CDATA[
+    const svg = document.getElementById("svg");
+    const dashes = document.getElementById("dashes");
+    const calculated = document.getElementById("calculated");
+    const offset = document.getElementById("offset");
+    const width = document.getElementById("width");
+
+    test(() => {
+      assert_true(dashes.isPointInStroke({x: 10, y: 20}));
+      assert_false(dashes.isPointInStroke({x: 30, y: 20}));
+      assert_true(dashes.isPointInStroke({x: 50, y: 20}));
+    }, "Percentage dash lengths have painted dashes and gaps");
+
+    test(() => {
+      assert_true(calculated.isPointInStroke({x: 10, y: 30}));
+      assert_false(calculated.isPointInStroke({x: 30, y: 30}));
+      assert_true(calculated.isPointInStroke({x: 50, y: 30}));
+    }, "Calculated dash lengths resolve their percentage component");
+
+    test(() => {
+      assert_true(offset.isPointInStroke({x: 5, y: 40}));
+      assert_false(offset.isPointInStroke({x: 15, y: 40}));
+      assert_true(offset.isPointInStroke({x: 35, y: 40}));
+    }, "Percentage dash offsets shift painted dashes");
+
+    test(() => {
+      assert_true(width.isPointInStroke({x: 5, y: 54}));
+      assert_false(width.isPointInStroke({x: 5, y: 56}));
+    }, "Percentage stroke width changes the hit area");
+
+    test(() => {
+      svg.setAttribute("viewBox", "0 0 200 100");
+      assert_true(dashes.isPointInStroke({x: 25, y: 20}));
+      assert_false(dashes.isPointInStroke({x: 40, y: 20}));
+    }, "Changing the viewBox changes percentage dash lengths");
+
+    test(() => {
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x2", "100");
+      line.setAttribute("stroke-width", "4");
+      assert_true(line.isPointInStroke({x: 50, y: 0}));
+    }, "Detached geometry still uses its stroke attributes");
+  ]]></script>
+</svg>
