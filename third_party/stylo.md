@@ -408,3 +408,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   the flow spelling, and keep their layout behavior equivalent. This also fixes discrete Web
   Animations comparisons for the alignment properties.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-518: Clamp opacity after animation composition
+- Files: `style/values/specified/mod.rs`, `style/properties/helpers/animated_properties.mako.rs`
+- Why: Retain out-of-range opacity values while resolving keyframes so interpolation and
+  composition use the authored values. Clamp the final sampled opacity when applying the effect
+  stack to computed style. Ordinary computed opacity remains clamped during the cascade.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

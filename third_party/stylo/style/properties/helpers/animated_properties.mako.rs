@@ -496,6 +496,10 @@ impl AnimationValue {
                 % else:
                     value.clone();
                 % endif
+                % if prop.ident == "opacity":
+                // Armature (AS-518): Clamp opacity after the complete effect stack is sampled.
+                let value = value.clamp(0.0, 1.0);
+                % endif
                 style.mutate_${prop.style_struct.name_lower}().set_${prop.ident}(value);
             }
             % else:
