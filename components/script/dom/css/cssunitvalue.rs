@@ -55,6 +55,14 @@ impl CSSUnitValue {
         };
         format!("{}{}", self.value.get(), suffix)
     }
+
+    pub(crate) fn numeric_value(&self) -> f64 {
+        self.value.get()
+    }
+
+    pub(crate) fn unit_str(&self) -> &str {
+        &self.unit
+    }
 }
 
 impl CSSUnitValueMethods<crate::DomTypeHolder> for CSSUnitValue {
