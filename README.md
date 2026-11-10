@@ -268,7 +268,9 @@ Notes on the numbers:
   while `AnimationTimeline.duration` is exposed as null for document timelines. Seven previously expected failures
   pass across the constructor, duration and IDL tests; the full 207-test `web-animations` run has no new failures.
   Keyframe sequences now read every keyframe and property before reporting an invalid easing, so both ordering
-  subtests in the focused WPT pass.
+  subtests in the focused WPT pass. Playback events now sort by scheduled time and CSS composite order, and the
+  event queues are snapshotted before callbacks run. Four event-ordering subtests now pass, the focused 19-test timing
+  and CSS event run matches expectations, and the full 207-test `web-animations` run has no new failures.
 - **`CSSAnimation`, `CSSTransition` and `getAnimations()`**: CSS animations and transitions are now `CSSAnimation`
   and `CSSTransition` objects that `Document`, `ShadowRoot` and `Element.getAnimations()` return in composite order,
   so script can pause, seek, reverse, finish or cancel them and read their timing and keyframes
