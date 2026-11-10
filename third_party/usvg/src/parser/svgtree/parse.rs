@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-// Armature (AU-002): Decode CSS path() strings before handing them to the SVG path parser.
-use cssparser::Parser;
+// Armature (AU-002, AU-012): Parse CSS paths and paint-server translations.
+use cssparser::{Parser, Token};
 use roxmltree::Error;
 use simplecss::Declaration;
 use svgtypes::FontShorthand;
@@ -40,6 +40,62 @@ fn parse_css_d(value: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+// Armature (AU-012): Convert CSS pixel translations to SVG user units before
+// the paint-server transform parser reads the transform list.
+fn css_translate_length(input: &mut Parser<'_>) -> Option<f32> {
+    match input.next().ok()? {
+        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("px") => Some(*value),
+        Token::Number { value, .. } if *value == 0.0 => Some(*value),
+        _ => None,
+    }
+}
+
+fn parse_css_paint_server_transform(value: &str) -> Option<String> {
+    if svgtypes::Transform::from_str(value).is_ok() {
+        return Some(value.to_owned());
+    }
+    let mut input = Parser::new(value);
+    let mut result = String::new();
+    while !input.is_exhausted() {
+        let start = input.position();
+        let function = input.expect_function().ok()?.to_string();
+        let replacement = input
+            .parse_nested_block(|args| {
+                if function.eq_ignore_ascii_case("translate") ||
+                    function.eq_ignore_ascii_case("translateX") ||
+                    function.eq_ignore_ascii_case("translateY")
+                {
+                    let first = css_translate_length(args)
+                        .ok_or_else(|| args.new_error_for_next_token::<()>())?;
+                    let second = if function.eq_ignore_ascii_case("translate") &&
+                        args.try_parse(|args| args.expect_comma()).is_ok()
+                    {
+                        css_translate_length(args)
+                            .ok_or_else(|| args.new_error_for_next_token::<()>())?
+                    } else {
+                        0.0
+                    };
+                    let (x, y) = if function.eq_ignore_ascii_case("translateY") {
+                        (0.0, first)
+                    } else {
+                        (first, second)
+                    };
+                    Ok::<_, cssparser::ParseError<()>>(Some(format!("translate({x} {y})")))
+                } else {
+                    args.expect_no_error_token()?;
+                    Ok(None)
+                }
+            })
+            .ok()?;
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(&replacement.unwrap_or_else(|| input.slice_from(start).to_owned()));
+    }
+    svgtypes::Transform::from_str(&result).ok()?;
+    Some(result)
 }
 
 impl<'input> Document<'input> {
@@ -422,18 +478,18 @@ pub(crate) fn parse_svg_element<'input>(
         } else if declaration.name == "transform" &&
             matches!(tag_name, EId::LinearGradient | EId::RadialGradient | EId::Pattern)
         {
-            // Armature (AU-011): gradientTransform and patternTransform are
-            // presentation attributes for CSS transform on paint servers.
-            if !val.trim().is_empty() &&
-                (val.trim().eq_ignore_ascii_case("none") ||
-                    svgtypes::Transform::from_str(val).is_ok())
+            // Armature (AU-011, AU-012): CSS transform overrides the matching
+            // paint-server presentation attribute when its value is valid.
+            if let Some(transform) = val.trim().eq_ignore_ascii_case("none")
+                .then(|| "none".to_owned())
+                .or_else(|| parse_css_paint_server_transform(val))
             {
                 let aid = if tag_name == EId::Pattern {
                     AId::PatternTransform
                 } else {
                     AId::GradientTransform
                 };
-                insert_attribute(aid, val, imp);
+                insert_attribute(aid, &transform, imp);
             }
         } else if declaration.name == "d" {
             // Armature (AU-002): Invalid CSS declarations leave the XML path data intact.

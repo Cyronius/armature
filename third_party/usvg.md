@@ -58,3 +58,8 @@
 
 - Files: `src/parser/paint_server.rs`, `src/parser/svgtree/parse.rs`
 - Why: Gradient and pattern transforms inherit through `href` when their own declaration is absent, empty, or invalid. CSS `transform` declarations with supported SVG transform syntax set their presentation attributes, and singular transforms make the paint server unavailable so a paint fallback can be used.
+
+### AU-012: Parse CSS pixel translations on paint servers
+
+- Files: `src/parser/svgtree/parse.rs`
+- Why: CSS `translate()`, `translateX()` and `translateY()` accept pixel lengths. Convert those values to SVG user units before applying a gradient or pattern transform, while preserving the existing SVG transform syntax.
