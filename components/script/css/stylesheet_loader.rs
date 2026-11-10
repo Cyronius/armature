@@ -8,8 +8,8 @@ use std::io::{Read, Seek, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytes::{Bytes, BytesMut};
-use cssparser::SourceLocation;
-use encoding_rs::Encoding;
+use cssparser::{EncodingSupport, SourceLocation, stylesheet_encoding};
+use encoding_rs::{Encoding, UTF_8, UTF_16BE, UTF_16LE};
 use html5ever::local_name;
 use js::context::JSContext;
 use net_traits::mime_classifier::MimeClassifier;
@@ -27,8 +27,8 @@ use style::media_queries::MediaList;
 use style::shared_lock::{Locked, SharedRwLock};
 use style::stylesheets::import_rule::{ImportLayer, ImportSheet, ImportSupportsCondition};
 use style::stylesheets::{
-    ImportRule, Origin, Stylesheet, StylesheetLoader as StyleStylesheetLoader, StylesheetReferrer,
-    UrlExtraData,
+    AllowImportRules, ImportRule, Origin, Stylesheet, StylesheetLoader as StyleStylesheetLoader,
+    StylesheetReferrer, UrlExtraData,
 };
 use style::values::CssUrl;
 
@@ -97,8 +97,30 @@ pub(crate) enum StylesheetContextSource {
     LinkElement,
     /// The style sheet of an `xml-stylesheet` processing instruction.
     ProcessingInstruction,
-    /// An `@import` rule, and the referrer of the external style sheet that contains it, if any.
-    Import(Arc<Locked<ImportRule>>, Option<Arc<StylesheetReferrer>>),
+    /// An `@import` rule, its referrer, and the encoding of the style sheet that contains it.
+    Import(
+        Arc<Locked<ImportRule>>,
+        Option<Arc<StylesheetReferrer>>,
+        &'static Encoding,
+    ),
+}
+
+struct StylesheetEncodingSupport;
+
+impl EncodingSupport for StylesheetEncodingSupport {
+    type Encoding = &'static Encoding;
+
+    fn utf8() -> Self::Encoding {
+        UTF_8
+    }
+
+    fn is_utf16_be_or_le(encoding: &Self::Encoding) -> bool {
+        *encoding == UTF_16BE || *encoding == UTF_16LE
+    }
+
+    fn from_label(ascii_label: &[u8]) -> Option<Self::Encoding> {
+        Encoding::for_label(ascii_label)
+    }
 }
 
 /// The context required for asynchronously loading an external stylesheet.
@@ -201,17 +223,23 @@ impl StylesheetContext {
         };
 
         let _span = profile_traits::trace_span!("ParseStylesheet").entered();
-        Arc::new(Stylesheet::from_bytes(
+        let fallback_encoding = stylesheet_encoding::<StylesheetEncodingSupport>(
             &self.data,
-            url_data,
-            metadata.charset.as_deref(),
+            metadata.charset.as_deref().map(str::as_bytes),
             Some(environment_encoding),
+        );
+        let (css, used_encoding, _) = fallback_encoding.decode(&self.data);
+        let loader = loader.with_encoding(used_encoding);
+        Arc::new(Stylesheet::from_str(
+            &css,
+            url_data,
             Origin::Author,
             self.media.clone(),
             shared_lock,
             Some(&loader),
             Some(css_error_reporter),
             quirks_mode,
+            AllowImportRules::Yes,
         ))
     }
 
@@ -340,7 +368,7 @@ impl StylesheetContext {
                 }
                 processing_instruction.set_stylesheet(cx.no_gc(), stylesheet);
             },
-            StylesheetContextSource::Import(import_rule, _) => {
+            StylesheetContextSource::Import(import_rule, _, _) => {
                 let mut guard = document.style_shared_author_lock().write();
                 import_rule.write_with(&mut guard).stylesheet = ImportSheet::Sheet(stylesheet);
             },
@@ -471,9 +499,15 @@ impl FetchResponseListener for StylesheetContext {
         self.unminify_css(&document, metadata.final_url.clone());
 
         let loader = if pref!(dom_parallel_css_parsing_enabled) {
-            ElementStylesheetLoader::Asynchronous(AsynchronousStylesheetLoader::new(&element))
+            ElementStylesheetLoader::Asynchronous {
+                loader: AsynchronousStylesheetLoader::new(&element),
+                encoding: document.encoding(),
+            }
         } else {
-            ElementStylesheetLoader::Synchronous { element: &element }
+            ElementStylesheetLoader::Synchronous {
+                element: &element,
+                encoding: document.encoding(),
+            }
         };
         loader.parse(self, &element, &document, cx);
     }
@@ -504,13 +538,35 @@ impl ResourceTimingListener for StylesheetContext {
 }
 
 pub(crate) enum ElementStylesheetLoader<'a> {
-    Synchronous { element: &'a Node },
-    Asynchronous(AsynchronousStylesheetLoader),
+    Synchronous {
+        element: &'a Node,
+        encoding: &'static Encoding,
+    },
+    Asynchronous {
+        loader: AsynchronousStylesheetLoader,
+        encoding: &'static Encoding,
+    },
 }
 
 impl<'a> ElementStylesheetLoader<'a> {
     pub(crate) fn new(element: &'a Node) -> Self {
-        ElementStylesheetLoader::Synchronous { element }
+        ElementStylesheetLoader::Synchronous {
+            element,
+            encoding: element.owner_document().encoding(),
+        }
+    }
+
+    fn with_encoding(self, encoding: &'static Encoding) -> Self {
+        match self {
+            Self::Synchronous { element, .. } => Self::Synchronous { element, encoding },
+            Self::Asynchronous { loader, .. } => Self::Asynchronous { loader, encoding },
+        }
+    }
+
+    fn encoding(&self) -> &'static Encoding {
+        match self {
+            Self::Synchronous { encoding, .. } | Self::Asynchronous { encoding, .. } => encoding,
+        }
     }
 }
 
@@ -581,7 +637,7 @@ impl ElementStylesheetLoader<'_> {
         let global = element.global();
         // An `@import` rule of an external style sheet uses the style sheet's referrer.
         let (referrer, referrer_policy) = match &context.source {
-            StylesheetContextSource::Import(_, Some(referrer)) => {
+            StylesheetContextSource::Import(_, Some(referrer), _) => {
                 stylesheet_referrer(&global, Some(referrer))
             },
             _ => (global.get_referrer(), owner_referrer_policy),
@@ -624,7 +680,10 @@ impl ElementStylesheetLoader<'_> {
                 );
                 listener.do_post_parse_tasks(true, stylesheet, cx);
             },
-            ElementStylesheetLoader::Asynchronous(asynchronous_loader) => {
+            ElementStylesheetLoader::Asynchronous {
+                loader: asynchronous_loader,
+                ..
+            } => {
                 let css_error_reporter = window.css_error_reporter().clone();
                 let task_source = window
                     .as_global_scope()
@@ -633,7 +692,10 @@ impl ElementStylesheetLoader<'_> {
                     .to_sendable();
 
                 let parse_stylesheet = move || {
-                    let loader = ElementStylesheetLoader::Asynchronous(asynchronous_loader);
+                    let loader = ElementStylesheetLoader::Asynchronous {
+                        loader: asynchronous_loader,
+                        encoding: environment_encoding,
+                    };
                     let stylesheet = listener.parse(
                         environment_encoding,
                         quirks_mode,
@@ -682,11 +744,7 @@ fn environment_encoding(
         StylesheetContextSource::ProcessingInstruction => element
             .downcast::<ProcessingInstruction>()
             .and_then(ProcessingInstruction::stylesheet_charset),
-        // TODO: The environment encoding of an imported style sheet is the encoding of the
-        // style sheet that imports it, which is only known once that is decoded. Until it
-        // is recorded, use the document's encoding, which is what that style sheet falls
-        // back to.
-        StylesheetContextSource::Import(..) => None,
+        StylesheetContextSource::Import(_, _, encoding) => return encoding,
     };
     if let Some(encoding) =
         charset.and_then(|charset| Encoding::for_label(charset.trim().as_bytes()))
@@ -745,10 +803,11 @@ impl StyleStylesheetLoader for ElementStylesheetLoader<'_> {
 
         // TODO (mrnayak) : Whether we should use the original loader's CORS
         // setting? Fix this when spec has more details.
-        let source = StylesheetContextSource::Import(import_rule.clone(), referrer);
+        let source =
+            StylesheetContextSource::Import(import_rule.clone(), referrer, self.encoding());
 
         match self {
-            ElementStylesheetLoader::Synchronous { element } => {
+            ElementStylesheetLoader::Synchronous { element, .. } => {
                 // TODO: https://github.com/servo/servo/issues/44685
                 #[expect(unsafe_code)]
                 let mut cx = unsafe { script_bindings::script_runtime::temp_cx() };
@@ -762,10 +821,14 @@ impl StyleStylesheetLoader for ElementStylesheetLoader<'_> {
                     String::new(),
                 );
             },
-            ElementStylesheetLoader::Asynchronous(AsynchronousStylesheetLoader {
-                element,
-                task_source,
-            }) => {
+            ElementStylesheetLoader::Asynchronous {
+                loader:
+                    AsynchronousStylesheetLoader {
+                        element,
+                        task_source,
+                    },
+                ..
+            } => {
                 let element = element.clone();
                 task_source.queue(task!(load_import_stylesheet_on_main_thread: move |cx| {
                     Self::load_with_element(
