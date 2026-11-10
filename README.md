@@ -280,8 +280,10 @@ Notes on the numbers:
   including `normal` from the first available font. Four more SVG scripted subtests and one CSS line-height subtest
   pass. `isPointInFill()` now includes points on circle, ellipse, path and line boundaries, so another SVG scripted
   subtest passes. `SVGFECompositeElement` now reflects the `lighter` operator through its animated enumeration, and
-  SVG text geometry removes CSS zoom from font metrics when answering `getBBox()`. Two more scripted subtests pass;
-  the 97-file cluster has 12 repeatable failures, down from 19.
+  SVG text geometry removes CSS zoom from font metrics when answering `getBBox()`. SVG path geometry now uses the
+  computed CSS `d` coordinates directly, preserving path length precision after `setPathData()` without changing
+  CSSOM `d` serialization. Three more scripted subtests pass from these fixes; the 97-file cluster now has 11
+  failures, down from 19.
   SVG `systemLanguage` now preserves empty comma-separated tokens in its DOM list, excludes nonmatching graphics from
   geometry, hit testing and focus, and selects the first matching `<switch>` child. The SVG rasterizer uses the
   browser's language preference, so image pixels follow the same conditions. All 27 focused parsing and matching
