@@ -155,10 +155,14 @@ impl ToWebRender for ComputedImageRendering {
     type Type = ImageRendering;
 
     fn to_webrender(&self) -> Self::Type {
+        // Prepare for Stylo's additional image-rendering keywords. WebRender's
+        // Auto mode provides smooth sampling for values that need it.
+        #[allow(unreachable_patterns)]
         match self {
             ComputedImageRendering::Auto => ImageRendering::Auto,
             ComputedImageRendering::CrispEdges => ImageRendering::CrispEdges,
             ComputedImageRendering::Pixelated => ImageRendering::Pixelated,
+            _ => ImageRendering::Auto,
         }
     }
 }
