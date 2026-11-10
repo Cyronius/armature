@@ -242,14 +242,15 @@ Notes on the numbers:
   `KeyframeEffect` takes timing options, property-indexed
   keyframes (including nullable offset arrays and CSS custom properties) and a composite operation, and
   its copy constructor preserves the target, keyframes, composition and timing, including a snapshot of CSS animation
-  keyframes. `element.animate()` plays the animation. Custom properties also affect computed style and `commitStyles()`.
+  keyframes. Easing values are fully parsed and serialized, and exceptions from keyframe property getters propagate.
+  `element.animate()` plays the animation. Custom properties also affect computed style and `commitStyles()`.
   Animations created by script now change the style of their targets, including `::before` and `::after` even when
   they generate no box. Retargeting an effect moves it between elements and pseudo-elements without leaving an old
   effect behind (AS-515). Stylo resolves their keyframes and composites them (`replace`, `add` and `accumulate`)
   over CSS animations (AS-506). The "Web Animations" and
   "Compositing Web Animations" subtests of the interpolation tests throughout `css/` went from about 12,100 failing
   to about 2,300, and `web-animations/interfaces`
-  from 625 failing subtests to 61 in the 47-file interface run (809 passing subtests).
+  from 625 failing subtests to 52 in the 47-file interface run (818 passing subtests).
 - **`CSSAnimation`, `CSSTransition` and `getAnimations()`**: CSS animations and transitions are now `CSSAnimation`
   and `CSSTransition` objects that `Document`, `ShadowRoot` and `Element.getAnimations()` return in composite order,
   so script can pause, seek, reverse, finish or cancel them and read their timing and keyframes
