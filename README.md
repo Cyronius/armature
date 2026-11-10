@@ -349,7 +349,9 @@ Notes on the numbers:
   `CSSNumericValue` arithmetic now simplifies compatible unit values, builds math expressions for mixed units,
   rejects incompatible types and division by zero, and compares math values structurally. The `CSS` numeric factories
   are available in workers. The arithmetic and equality pages went from 68 failing subtests to all 78 passing in
-  windows; the worker arithmetic page passes all 67 subtests. Parsing math expressions and `toSum()` remain to do.
+  windows; the worker arithmetic page passes all 67 subtests. `to()` now evaluates math expressions through canonical
+  unit sums, and `toSum()` converts or sorts their unit terms. The three focused conversion pages went from 22 failing
+  subtests to all 49 passing, including worker conversion. Parsing math expressions remains to do.
   SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
   `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
   scripted linking files; the full 25-file scripted linking directory matches expectations.
