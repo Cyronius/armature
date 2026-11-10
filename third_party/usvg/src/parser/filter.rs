@@ -135,7 +135,8 @@ pub(crate) fn convert(
                 create_base_filter_func(convert_saturate_function(amount), &mut filters, cache);
             }
             svgtypes::FilterValue::Url(url) => {
-                if let Some(link) = node.document().element_by_id(url) {
+                // Armature (AU-013): Filter URLs use decoded fragment IDs.
+                if let Some(link) = node.document().element_by_fragment(url) {
                     if let Ok(res) = convert_url(link, state, object_bbox, cache) {
                         if let Some(f) = res {
                             filters.push(f);

@@ -1,6 +1,8 @@
 // Copyright 2021 the Resvg Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+// Armature (AU-013): Borrow unchanged fragment IDs and own decoded ones.
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::str::FromStr;
@@ -63,6 +65,15 @@ impl<'input> Document<'input> {
         Some(self.get(*node_id))
     }
 
+    // Armature (AU-013): URI fragment references name the UTF-8-decoded ID,
+    // while `element_by_id` itself keeps its exact-ID lookup semantics.
+    pub(crate) fn element_by_fragment<'a>(
+        &'a self,
+        fragment: &str,
+    ) -> Option<SvgNode<'a, 'input>> {
+        self.element_by_id(&percent_decode_fragment(fragment))
+    }
+
     #[inline]
     fn get<'a>(&'a self, id: NodeId) -> SvgNode<'a, 'input> {
         SvgNode {
@@ -71,6 +82,33 @@ impl<'input> Document<'input> {
             doc: self,
         }
     }
+}
+
+// Armature (AU-013): Decode valid percent triplets in SVG URI fragments.
+// Invalid triplets keep their literal percent sign, as in the URL Standard.
+pub(crate) fn percent_decode_fragment(fragment: &str) -> Cow<'_, str> {
+    if !fragment.as_bytes().contains(&b'%') {
+        return Cow::Borrowed(fragment);
+    }
+    let input = fragment.as_bytes();
+    let mut output = Vec::with_capacity(input.len());
+    let mut index = 0;
+    while index < input.len() {
+        if input[index] == b'%' && index + 2 < input.len() {
+            if let (Some(high), Some(low)) = (
+                (input[index + 1] as char).to_digit(16),
+                (input[index + 2] as char).to_digit(16),
+            ) {
+                output.push(((high << 4) | low) as u8);
+                index += 3;
+                continue;
+            }
+        }
+        output.push(input[index]);
+        index += 1;
+    }
+    let decoded = String::from_utf8_lossy(&output);
+    Cow::Owned(decoded.strip_prefix('\u{feff}').unwrap_or(&decoded).to_owned())
 }
 
 impl std::fmt::Debug for Document<'_> {
@@ -330,7 +368,8 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
             svgtypes::FuncIRI::from_str(value).ok().map(|v| v.0)
         }?;
 
-        self.document().element_by_id(id)
+        // Armature (AU-013): Resolve a URL fragment after percent-decoding it.
+        self.document().element_by_fragment(id)
     }
 
     /// Checks if an attribute is present.
@@ -1086,6 +1125,7 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for SvgNode<'a, 'input> {
             svgtypes::FuncIRI::from_str(value).ok().map(|v| v.0)
         }?;
 
-        node.document().element_by_id(id)
+        // Armature (AU-013): Resolve a URL fragment after percent-decoding it.
+        node.document().element_by_fragment(id)
     }
 }

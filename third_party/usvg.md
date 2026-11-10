@@ -63,3 +63,8 @@
 
 - Files: `src/parser/svgtree/parse.rs`
 - Why: CSS `translate()`, `translateX()` and `translateY()` accept pixel lengths. Convert those values to SVG user units before applying a gradient or pattern transform, while preserving the existing SVG transform syntax.
+
+### AU-013: Decode percent-encoded SVG fragment references
+
+- Files: `src/parser/svgtree/mod.rs`, `src/parser/svgtree/parse.rs`, `src/parser/style.rs`, `src/parser/filter.rs`
+- Why: URL fragment references in paint, filters, clipping, masking and `href` resolve decoded element IDs. Keep exact-ID lookup separate from URL lookup, preserve malformed percent triplets, and detect pattern cycles through encoded references.

@@ -217,7 +217,8 @@ fn convert_paint(
             Some((Paint::Color(color), None))
         }
         svgtypes::Paint::FuncIRI(func_iri, fallback) => {
-            if let Some(link) = node.document().element_by_id(func_iri) {
+            // Armature (AU-013): Paint server URLs use decoded fragment IDs.
+            if let Some(link) = node.document().element_by_fragment(func_iri) {
                 let tag_name = link.tag_name().unwrap();
                 if tag_name.is_paint_server() {
                     match paint_server::convert(link, state, cache) {

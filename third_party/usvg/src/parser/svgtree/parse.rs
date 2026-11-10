@@ -10,7 +10,8 @@ use roxmltree::Error;
 use simplecss::Declaration;
 use svgtypes::FontShorthand;
 
-use super::{AId, Attribute, Document, EId, NodeData, NodeId, NodeKind, ShortRange};
+// Armature (AU-013): Decode URL fragments before matching SVG IDs.
+use super::{AId, Attribute, Document, EId, NodeData, NodeId, NodeKind, ShortRange, percent_decode_fragment};
 
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
@@ -696,7 +697,8 @@ fn resolve_href<'a, 'input: 'a>(
 
     let link_id = svgtypes::IRI::from_str(link_value).ok()?.0;
 
-    id_map.get(link_id).copied()
+    // Armature (AU-013): A percent-encoded href fragment names the decoded ID.
+    id_map.get(percent_decode_fragment(link_id).as_ref()).copied()
 }
 
 fn parse_svg_use_element<'input>(
@@ -863,6 +865,8 @@ fn find_recursive_pattern(aid: AId, doc: &mut Document) -> Option<NodeId> {
             };
 
             if let Ok(svgtypes::Paint::FuncIRI(link_id, _)) = svgtypes::Paint::from_str(value) {
+                // Armature (AU-013): Detect cycles through encoded fragment IDs too.
+                let link_id = percent_decode_fragment(link_id);
                 if link_id == pattern_node.element_id() {
                     // If a pattern child has a link to the pattern itself
                     // then we have to replace it with `none`.
@@ -870,7 +874,7 @@ fn find_recursive_pattern(aid: AId, doc: &mut Document) -> Option<NodeId> {
                     return Some(node.id);
                 } else {
                     // Check that linked node children doesn't link this pattern.
-                    if let Some(linked_node) = doc.element_by_id(link_id) {
+                    if let Some(linked_node) = doc.element_by_id(&link_id) {
                         for node2 in linked_node.descendants() {
                             let value2 = match node2.attribute(aid) {
                                 Some(v) => v,
@@ -880,7 +884,8 @@ fn find_recursive_pattern(aid: AId, doc: &mut Document) -> Option<NodeId> {
                             if let Ok(svgtypes::Paint::FuncIRI(link_id2, _)) =
                                 svgtypes::Paint::from_str(value2)
                             {
-                                if link_id2 == pattern_node.element_id() {
+                                // Armature (AU-013): The second link may also be encoded.
+                                if percent_decode_fragment(link_id2) == pattern_node.element_id() {
                                     return Some(node2.id);
                                 }
                             }
