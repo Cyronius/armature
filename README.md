@@ -605,6 +605,12 @@ Notes on the numbers:
   rendering copy so the rasterizer can paint `color-mix()` results. Both focused repaint reftests
   now pass. The SVG rasterizer also accepts case-insensitive `currentcolor` in fill and stroke,
   including after a paint-server URL. Three more paint-server reftests now pass.
+- **SVG paint-server transforms**: Gradients and patterns inherit transforms from `href` templates
+  when their own transform is absent, empty, or invalid. Supported CSS `transform` declarations
+  also affect paint servers. Singular transforms now use the referring paint's fallback color.
+  Twelve gradient and pattern reftests now pass, including three that clear a transform list
+  through the SVG DOM. CSS `translate()` with length units in a pattern remains unsupported by the
+  rasterizer.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
