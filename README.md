@@ -517,6 +517,9 @@ Notes on the numbers:
   Imported IDs are tracked so changes in their source subtree refresh the visible SVG raster. The
   two hidden-symbol animation reftests now pass; the media-fragment override is the one remaining
   expected-fail reftest in the SVG animation run.
+  SVG font IDs are now cached with their issuing font database, so reparsing a viewport-dependent SVG retains its
+  text. A local reftest comparing viewport-dependent and fixed-size SVG text passes. The existing local `textPath`
+  reference now renders; its last mismatch is one antialiased edge column.
   Cyclic SVG pattern paint references now use their declared fallback color instead of overflowing
   the image parser's stack. All 23 SVG crashtests pass, including the pattern cycle test that
   previously reported PASS immediately before the browser crashed.
