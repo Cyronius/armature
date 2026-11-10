@@ -23,3 +23,8 @@
 
 - Files: `src/parser/converter.rs`, `src/parser/paint_server.rs`
 - Why: A pattern child can paint itself with a pattern that inherits that child through `href`. Track paint servers while converting them so a cyclic reference uses its fallback paint instead of overflowing the parser stack.
+
+### AU-005: Use the image-rendering viewport for embedded SVG images
+
+- Files: `src/parser/image.rs`
+- Why: Fit an embedded SVG using its intrinsic size, then parse viewBox-based images with non-scaling strokes in the resulting image viewport. This keeps their stroke at the specified width when the image is stretched, including non-uniform scaling.

@@ -190,10 +190,11 @@ pub(crate) fn convert(
     let rect = NonZeroRect::from_xywh(x, y, width, height);
     let rect = rect.log_none(|| log::warn!("Image has an invalid size. Skipped."))?;
 
-    // Armature (AU-003): Parse relative nested SVG sizes against this image's viewport.
-    // The first parse establishes an intrinsic size for resolving a missing image dimension.
+    // Armature (AU-005): The first parse supplies the intrinsic size for fitting.
+    // A non-scaling stroke with an absolute root size needs the fitted viewport.
+    let viewport_size = fit_view_box(actual_size, rect, aspect);
     let kind = if matches!(kind, ImageKind::SVG(_)) && actual_size != rect.size() {
-        nested_svg_for_viewport(href, rect.size(), state.opt).unwrap_or(kind)
+        nested_svg_for_viewport(href, rect.size(), viewport_size, state.opt).unwrap_or(kind)
     } else {
         kind
     };
@@ -212,10 +213,14 @@ pub(crate) fn convert(
     )
 }
 
-// Armature (AU-003): The default 100px SVG viewport is wrong for a size-less nested SVG.
-// Reparse only when its root depends on the embedding viewport; the resized parse then passes
-// that viewport to deeper data URL images without repeatedly reparsing every level.
-fn nested_svg_for_viewport(href: &str, size: Size, opt: &Options) -> Option<ImageKind> {
+// Armature (AU-005): Relative SVG sizes already inherit the image viewport. An SVG
+// with absolute sizes and non-scaling strokes needs its fitted viewport instead.
+fn nested_svg_for_viewport(
+    href: &str,
+    size: Size,
+    fitted_size: Size,
+    opt: &Options,
+) -> Option<ImageKind> {
     let url = data_url::DataUrl::process(href).ok()?;
     let (data, _) = url.decode_to_vec().ok()?;
     let text = std::str::from_utf8(&data).ok()?;
@@ -227,10 +232,43 @@ fn nested_svg_for_viewport(href: &str, size: Size, opt: &Options) -> Option<Imag
             value.ends_with('%') || value.eq_ignore_ascii_case("auto")
         })
     };
-    if !relative("width") || !relative("height") {
+    if relative("width") && relative("height") {
+        return Tree::from_data_nested_with_size(&data, opt, size)
+            .ok()
+            .map(ImageKind::SVG);
+    }
+    if root.attribute("viewBox").is_none() ||
+        !root
+            .descendants()
+            .any(|node| node.attribute("vector-effect") == Some("non-scaling-stroke"))
+    {
         return None;
     }
-    Tree::from_data_nested_with_size(&data, opt, size)
+
+    let root_start = root.range().start;
+    let after_name = text[root_start..]
+        .find(|character: char| character.is_whitespace() || matches!(character, '/' | '>'))
+        .map_or(root_start, |offset| root_start + offset);
+    let mut edits = [
+        ("width", fitted_size.width().to_string()),
+        ("height", fitted_size.height().to_string()),
+        ("preserveAspectRatio", "none".to_owned()),
+    ]
+    .into_iter()
+    .map(|(name, value)| {
+        let range = root
+            .attributes()
+            .find(|attribute| attribute.namespace().is_none() && attribute.name() == name)
+            .map_or(after_name..after_name, |attribute| attribute.range());
+        (range, format!(" {name}=\"{value}\" "))
+    })
+    .collect::<Vec<_>>();
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    let mut text = text.to_owned();
+    for (range, replacement) in edits {
+        text.replace_range(range, &replacement);
+    }
+    Tree::from_data_nested_with_size(text.as_bytes(), opt, fitted_size)
         .ok()
         .map(ImageKind::SVG)
 }
