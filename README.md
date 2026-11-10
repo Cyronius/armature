@@ -272,8 +272,8 @@ Notes on the numbers:
   `isPointInStroke()` and the character methods of text elements (`getNumberOfChars()`, `getExtentOfChar()` and
   so on). Servo draws SVG with resvg, so layout knows nothing about SVG geometry; these compute it from the attributes
   (with kurbo) and, for text, from the fonts. Lengths convert between all the units of CSS, resolving font-relative
-  ones with the metrics of the element's font. `<style>` elements in SVG now apply their style sheets, every
-  presentation attribute of SVG 2 maps to its property, and hit testing (`elementFromPoint()` and the targets of
+  ones with the metrics of the element's font. `<style>` elements in SVG now apply their style sheets, SVG
+  presentation attributes map to CSS properties, and hit testing (`elementFromPoint()` and the targets of
   mouse events) finds the shape under the point inside an `svg` element, which layout treats as one box. The SVG
   area went from 36.5% to 49.2% before hit testing (the table above was measured earlier still, at 46.7%), and hit
   testing, with the SVG values of `pointer-events` that Stylo now builds for Servo (AS-508), makes about 4,700 more
@@ -417,7 +417,11 @@ Notes on the numbers:
   playback. Redraw waits for the document load and initial font readiness, and screenshot capture lets the current
   frame settle. Evicting an in-flight SVG image wakes its pending listeners so canceled frames cannot block a
   screenshot. A new mid-animation fill reftest passes alongside the existing indefinite fill and motion reftests.
-  All 86 path interface subtests and 33 SVG image sizing subtests pass. Across the same 343 SVG animation subtests,
+  Presentation hints now map `transform`, `patternTransform` and `gradientTransform` to CSS `transform`, apply
+  `transform-origin` on SVG elements, and leave the SMIL `fill` attribute on animation elements out of CSS paint.
+  Fourteen more SVG presentation-attribute subtests pass; the three remaining focused failures require URL-valued CSS
+  `filter` support in Stylo's Servo build. All 86 path interface subtests and 33 SVG image sizing subtests pass.
+  Across the same 343 SVG animation subtests,
   the broader run moved from 145 PASS / 151 FAIL / 47 TIMEOUT to 343 PASS / 0 FAIL / 0 TIMEOUT, with no previously
   passing subtest regressing. Animations excluded by `systemLanguage` or an unselected `<switch>` branch no longer
   affect their targets. The rasterized SVG copy receives sampled geometry lengths as attributes, so both `<switch>`
