@@ -587,6 +587,12 @@ Notes on the numbers:
   transforms on the shape and its SVG ancestors for non-scaling strokes, including nonuniform scales, skew, CSS
   overrides of presentation attributes and live transform changes. All six transform subtests pass. One 103-file SVG
   scripted run matched expectations; two font-dependent differences on a repeat run passed when rerun separately.
+- **Filtered child selector invalidation**: Attribute and pseudo-class state changes now restyle
+  siblings whose index may change under `:nth-child(... of <selector>)` or
+  `:nth-last-child(... of <selector>)`. SVG rendering copies receive Stylo's resolved paint values
+  for those children, since the image parser does not support the selector filter. Eighteen CSS
+  selector invalidation reftests and two SVG styling reftests now pass. The 249-file CSS and SVG
+  regression run has no pass-to-fail changes against the preceding run.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
