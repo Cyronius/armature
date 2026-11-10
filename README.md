@@ -270,7 +270,10 @@ Notes on the numbers:
   Keyframe sequences now read every keyframe and property before reporting an invalid easing, so both ordering
   subtests in the focused WPT pass. Playback events now sort by scheduled time and CSS composite order, and the
   event queues are snapshotted before callbacks run. Four event-ordering subtests now pass, the focused 19-test timing
-  and CSS event run matches expectations, and the full 207-test `web-animations` run has no new failures.
+  and CSS event run matches expectations, and the full 207-test `web-animations` run has no new failures. Animation
+  ticks now wait for the 120 Hz refresh interval when the previous frame was too recent, so finish events for CSS
+  transitions, CSS animations and script animations arrive in composite order. All nine subtests of the focused event
+  timing test pass; the 225-test animation and frame-callback run has no new failures.
 - **`CSSAnimation`, `CSSTransition` and `getAnimations()`**: CSS animations and transitions are now `CSSAnimation`
   and `CSSTransition` objects that `Document`, `ShadowRoot` and `Element.getAnimations()` return in composite order,
   so script can pause, seek, reverse, finish or cancel them and read their timing and keyframes
