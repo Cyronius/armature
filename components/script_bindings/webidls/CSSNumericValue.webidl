@@ -28,6 +28,7 @@ interface CSSNumericValue : CSSStyleValue {
     [Throws] CSSNumericValue max(CSSNumberish... values);
     boolean equals(CSSNumberish... values);
     [Throws] CSSUnitValue to(USVString unit);
+    [Throws] CSSMathSum toSum(USVString... units);
     CSSNumericType type();
     [Exposed=Window, Throws] static CSSNumericValue parse(USVString cssText);
 };

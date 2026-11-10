@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+use std::collections::BTreeMap;
+
 use cssparser::{Parser, Token};
 use dom_struct::dom_struct;
 use js::context::JSContext;
@@ -50,6 +52,25 @@ enum ArithmeticOp {
     Max,
 }
 
+#[derive(Clone)]
+struct SumItem {
+    value: f64,
+    units: BTreeMap<String, i32>,
+}
+
+impl SumItem {
+    fn unit_value(&self) -> Option<(f64, &str)> {
+        match self.units.len() {
+            0 => Some((self.value, "number")),
+            1 => {
+                let (unit, exponent) = self.units.first_key_value()?;
+                (*exponent == 1).then_some((self.value, unit.as_str()))
+            },
+            _ => None,
+        }
+    }
+}
+
 impl CSSNumericValue {
     pub(crate) fn new_inherited() -> Self {
         Self {
@@ -75,6 +96,117 @@ impl CSSNumericValue {
                 .expect("Every CSSNumericValue is a unit or math value")
                 .serialize()
         }
+    }
+
+    /// Represent the value as a sum of values and unit powers, using canonical units where
+    /// absolute units can be converted without a style or layout context.
+    fn sum_value(&self) -> Option<Vec<SumItem>> {
+        if let Some(unit) = self.downcast::<CSSUnitValue>() {
+            let mut value = unit.numeric_value();
+            let mut name = unit.unit_str();
+            if let Some((group, factor)) = canonical_factor(name) {
+                value *= factor;
+                name = canonical_unit(group);
+            }
+            let mut units = BTreeMap::new();
+            if name != "number" {
+                units.insert(name.to_owned(), 1);
+            }
+            return Some(vec![SumItem { value, units }]);
+        }
+        if let Some(sum) = self.downcast::<CSSMathSum>() {
+            let mut result: Vec<SumItem> = Vec::new();
+            for value in sum.values() {
+                for item in value.sum_value()? {
+                    if let Some(existing) =
+                        result.iter_mut().find(|entry| entry.units == item.units)
+                    {
+                        existing.value += item.value;
+                    } else {
+                        result.push(item);
+                    }
+                }
+            }
+            return Some(result);
+        }
+        if let Some(negate) = self.downcast::<CSSMathNegate>() {
+            let mut result = negate.value().sum_value()?;
+            for item in &mut result {
+                item.value = -item.value;
+            }
+            return Some(result);
+        }
+        if let Some(product) = self.downcast::<CSSMathProduct>() {
+            let mut result = vec![SumItem {
+                value: 1.0,
+                units: BTreeMap::new(),
+            }];
+            for value in product.values() {
+                let factors = value.sum_value()?;
+                let mut next = Vec::new();
+                for item in &result {
+                    for factor in &factors {
+                        let mut units = item.units.clone();
+                        for (unit, power) in &factor.units {
+                            *units.entry(unit.clone()).or_default() += power;
+                        }
+                        units.retain(|_, power| *power != 0);
+                        next.push(SumItem {
+                            value: item.value * factor.value,
+                            units,
+                        });
+                    }
+                }
+                result = next;
+            }
+            return Some(result);
+        }
+        if let Some(invert) = self.downcast::<CSSMathInvert>() {
+            let mut result = invert.value().sum_value()?;
+            if result.len() != 1 || result[0].value == 0.0 {
+                return None;
+            }
+            result[0].value = 1.0 / result[0].value;
+            for power in result[0].units.values_mut() {
+                *power = -*power;
+            }
+            return Some(result);
+        }
+        let operands = if let Some(min) = self.downcast::<CSSMathMin>() {
+            min.values()
+        } else if let Some(max) = self.downcast::<CSSMathMax>() {
+            max.values()
+        } else {
+            self.downcast::<crate::dom::css::cssmathclamp::CSSMathClamp>()?
+                .values()
+                .into_iter()
+                .collect()
+        };
+        let mut items = Vec::new();
+        for operand in operands {
+            let mut values = operand.sum_value()?;
+            if values.len() != 1 {
+                return None;
+            }
+            items.push(values.remove(0));
+        }
+        let units = &items.first()?.units;
+        if items.iter().any(|item| &item.units != units) {
+            return None;
+        }
+        let mut chosen = items[0].clone();
+        if self.is::<CSSMathMin>() {
+            for item in items.iter().skip(1) {
+                chosen.value = chosen.value.min(item.value);
+            }
+        } else if self.is::<CSSMathMax>() {
+            for item in items.iter().skip(1) {
+                chosen.value = chosen.value.max(item.value);
+            }
+        } else {
+            chosen.value = items[0].value.max(items[1].value.min(items[2].value));
+        }
+        Some(vec![chosen])
     }
 
     fn negate(cx: &mut JSContext, value: DomRoot<Self>) -> DomRoot<Self> {
@@ -360,25 +492,77 @@ impl CSSNumericValueMethods<crate::DomTypeHolder> for CSSNumericValue {
         let unit = unit.to_string().to_ascii_lowercase();
         NumericType::try_from_unit(&unit)
             .map_err(|_| Error::Syntax(Some("Unknown CSS unit".into())))?;
-        let source = self.downcast::<CSSUnitValue>().ok_or_else(|| {
-            Error::Type(c"CSS math value cannot be converted to one unit".to_owned())
-        })?;
-        let value = if source.unit_str() == unit {
-            source.numeric_value()
-        } else if let (Some((from_type, from_factor)), Some((to_type, to_factor))) =
-            (canonical_factor(source.unit_str()), canonical_factor(&unit))
-        {
-            if from_type != to_type {
-                return Err(Error::Type(c"Incompatible CSS units".to_owned()));
-            }
-            source.numeric_value() * from_factor / to_factor
-        } else {
-            return Err(Error::Type(c"Incompatible CSS units".to_owned()));
-        };
-        if !value.is_finite() {
-            return Err(Error::Type(c"CSS unit conversion overflowed".to_owned()));
+        let mut sum = self
+            .sum_value()
+            .ok_or_else(|| Error::Type(c"CSS value cannot be expressed as a sum".to_owned()))?;
+        if sum.len() != 1 {
+            return Err(Error::Type(c"CSS value has multiple units".to_owned()));
         }
+        let item = sum.remove(0);
+        let (value, source_unit) = item
+            .unit_value()
+            .ok_or_else(|| Error::Type(c"CSS value has compound units".to_owned()))?;
+        let value = convert_number(value, source_unit, &unit)
+            .ok_or_else(|| Error::Type(c"Incompatible CSS units".to_owned()))?;
         Ok(CSSUnitValue::new(cx, &self.global(), value, &unit))
+    }
+
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-tosum>
+    fn ToSum(&self, cx: &mut JSContext, units: Vec<USVString>) -> Fallible<DomRoot<CSSMathSum>> {
+        let units = units
+            .into_iter()
+            .map(|unit| {
+                let unit = unit.to_string().to_ascii_lowercase();
+                NumericType::try_from_unit(&unit)
+                    .map_err(|_| Error::Syntax(Some("Unknown CSS unit".into())))?;
+                Ok(unit)
+            })
+            .collect::<Fallible<Vec<_>>>()?;
+        let sum = self
+            .sum_value()
+            .ok_or_else(|| Error::Type(c"CSS value cannot be expressed as a sum".to_owned()))?;
+        let mut values = sum
+            .iter()
+            .map(|item| {
+                let (value, unit) = item
+                    .unit_value()
+                    .ok_or_else(|| Error::Type(c"CSS value has compound units".to_owned()))?;
+                Ok((value, unit.to_owned()))
+            })
+            .collect::<Fallible<Vec<_>>>()?;
+        let result = if units.is_empty() {
+            values.sort_by(|left, right| left.1.cmp(&right.1));
+            values
+        } else {
+            let mut result = Vec::new();
+            for unit in units {
+                let mut total = 0.0;
+                let mut remaining = Vec::new();
+                for (value, source) in values {
+                    if let Some(converted) = convert_number(value, &source, &unit) {
+                        total += converted;
+                    } else {
+                        remaining.push((value, source));
+                    }
+                }
+                values = remaining;
+                result.push((total, unit));
+            }
+            if !values.is_empty() {
+                return Err(Error::Type(c"CSS value has leftover units".to_owned()));
+            }
+            result
+        };
+        let global = self.global();
+        let arguments = result
+            .into_iter()
+            .map(|(value, unit)| {
+                DoubleOrCSSNumericValue::CSSNumericValue(DomRoot::upcast(CSSUnitValue::new(
+                    cx, &global, value, &unit,
+                )))
+            })
+            .collect();
+        CSSMathSum::Constructor(cx, &global, None, arguments)
     }
 
     /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-parse>
@@ -468,4 +652,29 @@ fn canonical_factor(unit: &str) -> Option<(u8, f64)> {
         "dpcm" => (4, 2.54 / 96.0),
         _ => return None,
     })
+}
+
+fn canonical_unit(group: u8) -> &'static str {
+    match group {
+        0 => "px",
+        1 => "deg",
+        2 => "s",
+        3 => "hz",
+        4 => "dppx",
+        _ => unreachable!("Unknown canonical CSS unit group"),
+    }
+}
+
+fn convert_number(value: f64, from: &str, to: &str) -> Option<f64> {
+    let converted = if from == to {
+        value
+    } else {
+        let (from_group, from_factor) = canonical_factor(from)?;
+        let (to_group, to_factor) = canonical_factor(to)?;
+        if from_group != to_group {
+            return None;
+        }
+        value * from_factor / to_factor
+    };
+    converted.is_finite().then_some(converted)
 }
