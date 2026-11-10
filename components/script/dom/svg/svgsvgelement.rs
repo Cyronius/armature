@@ -65,8 +65,13 @@ use crate::dom::svg::svgtypes::{
 
 /// Document CSS lies outside an inline SVG's serialized rendering copy. Transfer the resolved
 /// paint properties that the rasterizer needs to construct non-scaling strokes.
-const RASTERIZED_SVG_STYLE_PROPERTIES: &[&str] =
-    &["fill", "stroke", "stroke-width", "vector-effect"];
+const RASTERIZED_SVG_STYLE_PROPERTIES: &[&str] = &[
+    "fill",
+    "stroke",
+    "stroke-width",
+    "vector-effect",
+    "transform",
+];
 
 #[dom_struct]
 pub(crate) struct SVGSVGElement {
@@ -224,7 +229,8 @@ impl SVGSVGElement {
             ) else {
                 continue;
             };
-            if svggeometry::motion_transform(cx, &source).is_some() {
+            let has_motion_transform = svggeometry::motion_transform(cx, &source).is_some();
+            if has_motion_transform {
                 let [a, b, c, d, e, f] = svggeometry::element_transform(cx, &source).as_coeffs();
                 clone.set_svg_attribute(
                     cx,
@@ -256,6 +262,17 @@ impl SVGSVGElement {
                             )
                     });
                 for property in RASTERIZED_SVG_STYLE_PROPERTIES {
+                    // Layout applies the outer SVG's CSS transform to its
+                    // replaced box. Descendant transforms must be applied by
+                    // the SVG rasterizer, except when motion has already
+                    // supplied their combined transform on the copy.
+                    if *property == "transform" &&
+                        (std::ptr::eq(source.upcast::<Node>(), source_root) ||
+                            has_motion_transform ||
+                            source.svg_attribute(&local_name!("transform")).is_some())
+                    {
+                        continue;
+                    }
                     let Ok(PropertyId::NonCustom(id)) =
                         PropertyId::parse_enabled_for_all_content(property)
                     else {
