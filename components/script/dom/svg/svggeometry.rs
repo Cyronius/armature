@@ -23,7 +23,9 @@ use kurbo::{
 };
 use layout_api::BoxAreaType;
 use style::values::computed::transform::TransformBox;
-use style::values::computed::{DProperty, Length as CSSLength, Size as ComputedSize};
+use style::values::computed::{
+    DProperty, Length as CSSLength, NonNegativeLengthPercentageOrAuto, Size as ComputedSize,
+};
 use style::values::generics::basic_shape::GenericShapeCommand;
 use style::values::generics::length::LengthPercentageOrAuto;
 use style::values::generics::svg::{SVGLength, SVGStrokeDashArray};
@@ -44,7 +46,8 @@ use crate::dom::svg::svglength::{resolve_length, resolve_value};
 use crate::dom::svg::svgpointlist::parse_point_list;
 use crate::dom::svg::svgtransformlist::{animated_transform_values, parse_transform_items};
 use crate::dom::svg::svgtypes::{
-    SVGLengthDirection, SVGLengthValue, is_svg_whitespace, parse_number_prefix,
+    SVG_LENGTHTYPE_PERCENTAGE, SVGLengthDirection, SVGLengthValue, is_svg_whitespace,
+    parse_number_prefix,
 };
 
 /// The accuracy of lengths along curves, in user units.
@@ -53,6 +56,7 @@ const ACCURACY: f64 = 1e-4;
 /// The geometry of a basic shape or path.
 pub(crate) enum SVGShapeGeometry {
     Path(BezPath),
+    RoundedRect { path: BezPath, bounds: Rect },
     Ellipse(Ellipse),
     Line(Line),
 }
@@ -79,6 +83,7 @@ impl SVGShapeGeometry {
                 }
                 path.bounding_box()
             },
+            Self::RoundedRect { bounds, .. } => *bounds,
             Self::Ellipse(ellipse) => ellipse.bounding_box(),
             Self::Line(line) => line.bounding_box(),
         }
@@ -111,7 +116,7 @@ impl SVGShapeGeometry {
             .with_join(join)
             .with_miter_limit(miter_limit);
         let path = match self {
-            Self::Path(path) => path.clone(),
+            Self::Path(path) | Self::RoundedRect { path, .. } => path.clone(),
             Self::Ellipse(ellipse) => ellipse.to_path(ACCURACY),
             Self::Line(line) => {
                 let mut path = BezPath::new();
@@ -155,7 +160,7 @@ impl SVGShapeGeometry {
 
     pub(crate) fn total_length(&self) -> f64 {
         let length = match self {
-            Self::Path(path) => path.perimeter(ACCURACY),
+            Self::Path(path) | Self::RoundedRect { path, .. } => path.perimeter(ACCURACY),
             Self::Ellipse(ellipse) => ellipse.perimeter(ACCURACY),
             Self::Line(line) => line.perimeter(ACCURACY),
         };
@@ -164,7 +169,7 @@ impl SVGShapeGeometry {
 
     pub(crate) fn winding(&self, point: Point) -> i32 {
         match self {
-            Self::Path(path) => path.winding(point),
+            Self::Path(path) | Self::RoundedRect { path, .. } => path.winding(point),
             Self::Ellipse(ellipse) => ellipse.winding(point),
             Self::Line(_) => 0,
         }
@@ -176,7 +181,7 @@ impl SVGShapeGeometry {
             return false;
         }
         match self {
-            Self::Path(path) => path.segments().any(|segment| {
+            Self::Path(path) | Self::RoundedRect { path, .. } => path.segments().any(|segment| {
                 kurbo::ParamCurveNearest::nearest(&segment, point, ACCURACY).distance_sq <= 1e-12
             }),
             Self::Ellipse(ellipse) => {
@@ -193,7 +198,7 @@ impl SVGShapeGeometry {
 
     fn segments(&self) -> Vec<PathSeg> {
         match self {
-            Self::Path(path) => path.segments().collect(),
+            Self::Path(path) | Self::RoundedRect { path, .. } => path.segments().collect(),
             Self::Ellipse(ellipse) => ellipse.path_segments(ACCURACY).collect(),
             Self::Line(line) => vec![PathSeg::Line(*line)],
         }
@@ -323,7 +328,7 @@ impl SVGShapeGeometry {
         }
 
         let path = match self {
-            Self::Path(path) => path.clone(),
+            Self::Path(path) | Self::RoundedRect { path, .. } => path.clone(),
             Self::Ellipse(ellipse) => ellipse.to_path(ACCURACY),
             Self::Line(line) => {
                 let mut path = BezPath::new();
@@ -401,6 +406,45 @@ fn geometry_length(
     style.effective_zoom.unzoom(value) as f64
 }
 
+/// Resolve the corner radii of a rect. Unlike ellipse radii, percentages use the rect's
+/// own width and height. An auto radius takes the other radius before each is clamped.
+fn rect_radii(cx: &mut JSContext, element: &SVGElement, width: f64, height: f64) -> (f64, f64) {
+    let (rx, ry) = if let Some(style) = element.upcast::<Element>().style() {
+        let zoom = style.effective_zoom.value();
+        let svg = style.get_svg();
+        let resolve = |radius: &NonNegativeLengthPercentageOrAuto, basis| match radius {
+            LengthPercentageOrAuto::Auto => None,
+            LengthPercentageOrAuto::LengthPercentage(value) => Some(
+                style
+                    .effective_zoom
+                    .unzoom(value.0.resolve(CSSLength::new(basis as f32 * zoom)).px())
+                    as f64,
+            ),
+        };
+        (resolve(&svg.rx, width), resolve(&svg.ry, height))
+    } else {
+        let mut resolve = |name: LocalName, direction, basis| {
+            let value = element
+                .svg_attribute(&name)
+                .and_then(|text| SVGLengthValue::parse(&text))
+                .filter(|value| value.value >= 0.0)?;
+            if value.unit_type == SVG_LENGTHTYPE_PERCENTAGE {
+                Some(f64::from(value.value) * basis / 100.0)
+            } else {
+                Some(resolve_value(cx, element, value, direction) as f64)
+            }
+        };
+        (
+            resolve(local_name!("rx"), SVGLengthDirection::Horizontal, width),
+            resolve(local_name!("ry"), SVGLengthDirection::Vertical, height),
+        )
+    };
+    (
+        rx.or(ry).unwrap_or(0.0).min(width / 2.0),
+        ry.or(rx).unwrap_or(0.0).min(height / 2.0),
+    )
+}
+
 /// The used width and height of an SVG image's positioning rectangle.
 /// <https://svgwg.org/svg2-draft/embedded.html#Placement>
 pub(crate) fn image_size(cx: &mut JSContext, element: &SVGElement) -> (f64, f64) {
@@ -459,7 +503,41 @@ pub(crate) fn shape_geometry(cx: &mut JSContext, element: &SVGElement) -> Option
             if width <= 0.0 || height <= 0.0 {
                 return Some(SVGShapeGeometry::Path(BezPath::new()));
             }
-            SVGShapeGeometry::Path(Rect::new(x, y, x + width, y + height).to_path(ACCURACY))
+            let (rx, ry) = rect_radii(cx, element, width, height);
+            if rx <= 0.0 || ry <= 0.0 {
+                SVGShapeGeometry::Path(Rect::new(x, y, x + width, y + height).to_path(ACCURACY))
+            } else {
+                let path = format!(
+                    "M {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} \
+                     H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} Z",
+                    x + rx,
+                    y,
+                    x + width - rx,
+                    rx,
+                    ry,
+                    x + width,
+                    y + ry,
+                    y + height - ry,
+                    rx,
+                    ry,
+                    x + width - rx,
+                    y + height,
+                    x + rx,
+                    rx,
+                    ry,
+                    x,
+                    y + height - ry,
+                    y + ry,
+                    rx,
+                    ry,
+                    x + rx,
+                    y,
+                );
+                SVGShapeGeometry::RoundedRect {
+                    path: parse_path_data(&path),
+                    bounds: Rect::new(x, y, x + width, y + height),
+                }
+            }
         },
         local_name!("circle") => {
             let cx_ = geometry_length(cx, element, local_name!("cx"), Horizontal);
@@ -817,7 +895,10 @@ pub(crate) fn motion_transform(cx: &mut JSContext, element: &SVGElement) -> Opti
                 attributes
                     .svg_attribute(&local_name!("keyPoints"))
                     .is_none() &&
-                let SVGShapeGeometry::Path(ref bezier) = path
+                let SVGShapeGeometry::Path(ref bezier) |
+                SVGShapeGeometry::RoundedRect {
+                    path: ref bezier, ..
+                } = path
             {
                 let Some((position, tangent)) = discrete_path_point(bezier, animation, progress)
                 else {
@@ -1261,7 +1342,7 @@ fn marker_bounding_box(
     active_clips: &mut HashSet<String>,
 ) -> Option<Rect> {
     let subpaths = match geometry {
-        SVGShapeGeometry::Path(path) => {
+        SVGShapeGeometry::Path(path) | SVGShapeGeometry::RoundedRect { path, .. } => {
             let mut subpaths = Vec::new();
             let mut points = Vec::new();
             for segment in path.elements() {
