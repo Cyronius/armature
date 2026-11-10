@@ -33,3 +33,8 @@
 
 - Files: `src/parser/converter.rs`
 - Why: Outlining a stroke and filling the outline changes edge antialiasing. Transform solid-painted path geometry into the outer viewport and let the rasterizer stroke it there, then cancel the ancestor transform so the requested width is unchanged.
+
+### AU-007: Resolve viewport units in embedded SVG images
+
+- Files: `src/parser/mod.rs`, `src/parser/svgtree/parse.rs`
+- Why: The SVG length parser does not recognize `vw` and `vh`. Resolve these units in nested SVG length attributes and inline styles against the embedding image viewport before parsing the image. Accept SVG 2 geometry properties from CSS declarations so inline `width` and `height` styles can size shapes.

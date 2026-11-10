@@ -98,6 +98,167 @@ impl<T> OptionLog for Option<T> {
     }
 }
 
+// Armature (AU-007): svgtypes predates CSS viewport units. Replace dimensions
+// in SVG length attributes and inline styles before handing a nested image to
+// the SVG parser. Leave XML markup and unrelated attributes intact.
+fn resolve_viewport_lengths(text: &str, viewport: crate::Size) -> Option<String> {
+    if !text.contains("vw") && !text.contains("vh") {
+        return None;
+    }
+    let document = roxmltree::Document::parse(text).ok()?;
+    let mut edits = Vec::new();
+    for node in document.descendants().filter(roxmltree::Node::is_element) {
+        for attribute in node.attributes() {
+            let is_length = matches!(
+                attribute.name(),
+                "width" | "height" | "x" | "y" | "x1" | "y1" | "x2" | "y2" | "cx" |
+                    "cy" | "r" | "rx" | "ry" | "dx" | "dy" | "stroke-width" |
+                    "stroke-dashoffset" | "stroke-dasharray" | "font-size" |
+                    "letter-spacing" | "word-spacing" | "startOffset" | "style"
+            );
+            if !is_length || attribute.namespace().is_some() {
+                continue;
+            }
+            let range = attribute.range();
+            let source = &text[range.clone()];
+            let Some(quote_start) = source.find(['\'', '"']) else {
+                continue;
+            };
+            let quote = source.as_bytes()[quote_start];
+            let Some(quote_end) = source[quote_start + 1..]
+                .bytes()
+                .position(|byte| byte == quote)
+                .map(|offset| quote_start + 1 + offset)
+            else {
+                continue;
+            };
+            let value_range = range.start + quote_start + 1..range.start + quote_end;
+            let value = &text[value_range.clone()];
+            let replacement = if attribute.name() == "style" {
+                replace_viewport_style_dimensions(value, viewport.width(), viewport.height())
+            } else {
+                replace_viewport_dimensions(value, viewport.width(), viewport.height())
+            };
+            if let Some(value) = replacement {
+                edits.push((value_range, value));
+            }
+        }
+    }
+    if edits.is_empty() {
+        return None;
+    }
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    let mut resolved = text.to_owned();
+    for (range, value) in edits {
+        resolved.replace_range(range, &value);
+    }
+    Some(resolved)
+}
+
+// Armature (AU-007): Only CSS declarations with length values are rewritten;
+// URLs and strings in paint declarations must retain their original bytes.
+fn replace_viewport_style_dimensions(style: &str, width: f32, height: f32) -> Option<String> {
+    let mut result = String::new();
+    let mut changed = false;
+    for declaration in style.split_inclusive(';') {
+        if let Some((name, value)) = declaration.split_once(':') &&
+            matches!(
+                name.trim(),
+                "width" | "height" | "x" | "y" | "cx" | "cy" | "r" | "rx" | "ry" |
+                    "stroke-width" | "stroke-dashoffset" | "stroke-dasharray" |
+                    "font-size" | "letter-spacing" | "word-spacing" | "transform-origin"
+            ) &&
+            let Some(value) = replace_viewport_dimensions(value, width, height)
+        {
+            result.push_str(name);
+            result.push(':');
+            result.push_str(&value);
+            changed = true;
+        } else {
+            result.push_str(declaration);
+        }
+    }
+    changed.then_some(result)
+}
+
+// Armature (AU-007): Replace CSS dimensions rather than substrings, so
+// identifiers such as `icon50vw` and longer units are left alone.
+fn replace_viewport_dimensions(value: &str, width: f32, height: f32) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut result = String::new();
+    let mut last = 0;
+    let mut index = 0;
+    while index < bytes.len() {
+        let start = index;
+        if start > 0 &&
+            (bytes[start - 1].is_ascii_alphanumeric() || matches!(bytes[start - 1], b'_' | b'-'))
+        {
+            index += 1;
+            continue;
+        }
+        if matches!(bytes[index], b'+' | b'-') {
+            index += 1;
+        }
+        let digits_start = index;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+        }
+        let mut has_digits = index != digits_start;
+        if index < bytes.len() && bytes[index] == b'.' {
+            index += 1;
+            let fractional_start = index;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+            }
+            has_digits |= index != fractional_start;
+        }
+        if !has_digits {
+            index = start + 1;
+            continue;
+        }
+        if index < bytes.len() && matches!(bytes[index], b'e' | b'E') {
+            let exponent_start = index;
+            index += 1;
+            if index < bytes.len() && matches!(bytes[index], b'+' | b'-') {
+                index += 1;
+            }
+            let digits_start = index;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+            }
+            if index == digits_start {
+                index = exponent_start;
+            }
+        }
+        let dimension = if value[index..].starts_with("vw") {
+            width
+        } else if value[index..].starts_with("vh") {
+            height
+        } else {
+            index = start + 1;
+            continue;
+        };
+        let end = index + 2;
+        if end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
+            index = start + 1;
+            continue;
+        }
+        if let Ok(number) = value[start..index].parse::<f32>() && number.is_finite() {
+            result.push_str(&value[last..start]);
+            result.push_str(&(number * dimension / 100.).to_string());
+            result.push_str("px");
+            last = end;
+        }
+        index = end;
+    }
+    if last == 0 {
+        None
+    } else {
+        result.push_str(&value[last..]);
+        Some(result)
+    }
+}
+
 impl crate::Tree {
     /// Parses `Tree` from an SVG data.
     ///
@@ -161,6 +322,12 @@ impl crate::Tree {
             ..Options::default()
         };
 
+        // Armature (AU-007): svgtypes does not recognize viewport units. Resolve
+        // them while the embedding image's viewport is available, before parsing.
+        let viewport_data = std::str::from_utf8(data)
+            .ok()
+            .and_then(|text| resolve_viewport_lengths(text, default_size));
+        let data = viewport_data.as_deref().map_or(data, str::as_bytes);
         let mut tree = Self::from_data(data, &nested_opt)?;
         // Armature (AU-003): Content outside a relative nested SVG viewport must not
         // enlarge its intrinsic size and scale all of its descendants on embedding.

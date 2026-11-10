@@ -427,8 +427,20 @@ pub(crate) fn parse_svg_element<'input>(
             // Armature (AU-001): CSS uses `path-length`; the XML attribute is `pathLength`.
             .or_else(|| (declaration.name == "path-length").then_some(AId::PathLength))
         {
-            // Parse only the presentation attributes.
-            if aid.is_presentation() {
+            // Armature (AU-007): SVG 2 geometry properties are CSS properties as
+            // well as attributes, but are not inherited presentation properties.
+            let is_geometry_property = match aid {
+                AId::Cx | AId::Cy => matches!(tag_name, EId::Circle | EId::Ellipse),
+                AId::R => tag_name == EId::Circle,
+                AId::Rx | AId::Ry => matches!(tag_name, EId::Ellipse | EId::Rect),
+                AId::X | AId::Y => matches!(tag_name, EId::Svg | EId::Rect | EId::Image),
+                AId::Width | AId::Height => {
+                    matches!(tag_name, EId::Rect | EId::Image) ||
+                        tag_name == EId::Svg && xml_node.parent_element().is_none()
+                },
+                _ => false,
+            };
+            if aid.is_presentation() || is_geometry_property {
                 insert_attribute(aid, val, imp);
             }
         }
