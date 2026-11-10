@@ -32,6 +32,7 @@ use style::computed_values::visibility::T as Visibility;
 use style::computed_values::white_space_collapse::T as WhiteSpaceCollapseValue;
 use style::context::{QuirksMode, SharedStyleContext, StyleContext, ThreadLocalStyleContext};
 use style::dom::{NodeInfo, OpaqueNode, TElement, TNode};
+use style::properties::longhands::box_sizing::computed_value::T as BoxSizing;
 use style::properties::style_structs::Font;
 use style::properties::{
     ComputedValues, Importance, LonghandId, PropertyDeclarationBlock, PropertyDeclarationId,
@@ -472,6 +473,18 @@ pub fn process_resolved_style_request(
         // even if the property doesn't apply: https://github.com/w3c/csswg-drafts/issues/10391
         let content_rect =
             LazyCell::new(|| fragment.base().map(|base| base.rect()).unwrap_or_default());
+        // The used width and height of a border-box-sized element refer to its border box.
+        // <https://drafts.csswg.org/css-sizing-3/#box-sizing>
+        let used_size = LazyCell::new(|| {
+            if style.get_position().box_sizing == BoxSizing::BorderBox {
+                fragment
+                    .retrieve_box_fragment()
+                    .map(|box_fragment| box_fragment.border_rect().size)
+                    .unwrap_or(content_rect.size)
+            } else {
+                content_rect.size
+            }
+        });
         let margins = LazyCell::new(|| {
             fragment
                 .retrieve_box_fragment()
@@ -485,12 +498,8 @@ pub fn process_resolved_style_request(
                 .unwrap_or_default()
         });
         let used_value = match longhand_id {
-            LonghandId::Width if resolved_size_should_be_used_value(fragment) => {
-                content_rect.size.width
-            },
-            LonghandId::Height if resolved_size_should_be_used_value(fragment) => {
-                content_rect.size.height
-            },
+            LonghandId::Width if resolved_size_should_be_used_value(fragment) => used_size.width,
+            LonghandId::Height if resolved_size_should_be_used_value(fragment) => used_size.height,
             LonghandId::MarginBottom => margins.bottom,
             LonghandId::MarginTop => margins.top,
             LonghandId::MarginLeft => margins.left,
