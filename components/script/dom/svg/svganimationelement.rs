@@ -1238,10 +1238,11 @@ impl SVGAnimationElement {
         if !self.passes_conditional_processing() {
             return None;
         }
-        let Some(root) = self.upcast::<SVGElement>().viewport_element() else {
-            return None;
-        };
-        if root.animations_are_paused() || !self.upcast::<Node>().is_connected() {
+        // Pausing holds the SVG clock at its current time, but an animation inserted
+        // while paused can still begin at that time.
+        if self.upcast::<SVGElement>().viewport_element().is_none() ||
+            !self.upcast::<Node>().is_connected()
+        {
             return None;
         }
         self.next_timing_boundary_before(self.current_time())
