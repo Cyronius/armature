@@ -248,7 +248,9 @@ impl NumericType {
         self.percent_hint
     }
 
-    fn exponent(&self, base_type: NumericBaseType) -> i32 {
+    /// Returns the exponent for a numeric base type.
+    // Armature (AS-514): Script needs exponents when returning CSSNumericValue.type().
+    pub fn exponent(&self, base_type: NumericBaseType) -> i32 {
         self.exponents[base_type as usize]
     }
 

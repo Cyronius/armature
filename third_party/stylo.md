@@ -378,3 +378,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   while serializing `stroke-width`, `stroke-dashoffset`, and `stroke-dasharray`. Convert them to
   user-unit lengths at computed-value time. Affects `svg/painting/parsing/stroke-*-valid.svg`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-514: Expose numeric type exponents to script
+- Files: `style/typed_om/numeric_type.rs`
+- Why: CSS Typed OM math values compose numeric types in Stylo, and script needs each base type's
+  exponent to return the corresponding `CSSNumericType` dictionary from `type()`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
