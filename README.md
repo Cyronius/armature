@@ -239,6 +239,9 @@ Notes on the numbers:
   `place-*` shorthands. Specified styles keep their spelling, while computed styles serialize both these values and
   `flex-start`/`flex-end` as `flow-start`/`flow-end` (AS-517). In the focused 54-file WPT run, 112 subtests newly pass,
   including alignment parsing, computed serialization and discrete Web Animations comparisons.
+- **Animated opacity clamping**: keyframe opacity values remain out of range through interpolation and effect
+  composition, then the final computed opacity is clamped to `[0, 1]` (AS-518). All 10 previously failing subtests in
+  the two focused Web Animations clamping tests now pass; normal CSS computed opacity still passes its parsing test.
 - **Web Animations API**, on in experimental mode (`dom_web_animations_enabled`): `Animation` has the playback model of
   the spec (`play()`, `pause()`, `finish()`, `cancel()`, `reverse()`, `updatePlaybackRate()`, `currentTime`,
   `startTime`, `overallProgress`, `playbackRate`, `playState`, `pending`, the `ready` and `finished` promises, and
