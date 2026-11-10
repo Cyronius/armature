@@ -112,7 +112,9 @@ Notes on the numbers:
 - **Fetch priority reflection**: `fetchPriority` reflects `fetchpriority` on HTML `img`, `link` and `script`, and SVG
   `image` and `script` elements. All 10 focused subtests now pass across five files.
 - **`ProcessingInstruction` attributes** (`getAttribute()`, `setAttribute()` and friends), behind the
-  `dom_processing_instruction_attributes_enabled` preference: 140 failing subtests down to 26.
+  `dom_processing_instruction_attributes_enabled` preference: all 140 focused subtests pass. An
+  `xml-stylesheet` processing instruction now updates its style sheet when inserting or removing the document
+  element changes whether the instruction is in the prolog.
 - **Events**: `DragEvent`, `DeviceMotionEvent` and `DeviceOrientationEvent` and their `createEvent()` aliases; the
   `<body>`/`<frameset>` window event-handler attributes now forward `onblur` and the frameset handlers.
 - **MIME types**: Request and Response `blob()` keep non-ASCII MIME parameters, and navigation quotes parameters it
@@ -426,9 +428,8 @@ Notes on the numbers:
 
 ## What has not been done
 
-- `xml-stylesheet` processing instructions do not yet react when inserting or removing the document element moves them
-  into or out of the prolog, and a style sheet loaded by `@import` falls back to the document's encoding instead of
-  the encoding of the style sheet that imports it.
+- A style sheet loaded by `@import` falls back to the document's encoding instead of the encoding of the style sheet
+  that imports it.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
   expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
   contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
