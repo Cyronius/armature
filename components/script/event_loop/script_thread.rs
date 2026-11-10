@@ -1957,7 +1957,21 @@ impl ScriptThread {
                 *self.receivers.webgpu_receiver.borrow_mut() = port.route_preserving_errors();
             },
             ScriptThreadMessage::TickAllAnimations(_webviews) => {
-                self.set_needs_rendering_update();
+                // Paint can send a tick when animation state changes while a refresh-driver
+                // frame is already pending. Keep animation frames at the refresh driver's
+                // cadence instead of running rAF callbacks a fraction of a millisecond apart.
+                let minimum_frame_interval = Duration::from_millis(1000 / 120);
+                let delay = self
+                    .last_render_opportunity_time
+                    .get()
+                    .map_or(Duration::ZERO, |last| {
+                        minimum_frame_interval.saturating_sub(last.elapsed())
+                    });
+                if delay.is_zero() {
+                    self.set_needs_rendering_update();
+                } else {
+                    self.schedule_update_the_rendering_timer_if_necessary(delay);
+                }
             },
             ScriptThreadMessage::NoLongerWaitingOnAsychronousImageUpdates(pipeline_id) => {
                 if let Some(document) = self.documents.borrow().find_document(pipeline_id) {
