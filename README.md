@@ -389,6 +389,8 @@ Notes on the numbers:
   SVG path geometry now keeps complete segments before malformed parameters, rejects trailing decimal points, and
   returns positive zero for empty paths. Empty shapes no longer enlarge their parent group's bounding box. Thirteen
   more path error-handling subtests pass across four files.
+  SVG bearing commands now orient relative path segments for both rendering and DOM geometry queries. The absolute,
+  relative and zero-bearing reftests pass; the 72-test `svg/path` run matches expectations.
   Seeking an SVG animation clock refreshes its cached raster image. The serializer also applies active `<animate>`
   and `<set>` presentation property values to the rendering copy, so the scripted motion and rewind/freeze reftests
   now pass.
