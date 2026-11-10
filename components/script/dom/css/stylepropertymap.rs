@@ -44,15 +44,29 @@ impl StylePropertyMap {
         self.style_property_map_read_only.style().unwrap()
     }
 
-    fn serialize_values(values: Vec<CSSStyleValueOrString>) -> Result<DOMString, Error> {
+    fn serialize_values(
+        property: &DOMString,
+        values: Vec<CSSStyleValueOrString>,
+    ) -> Result<DOMString, Error> {
         if values.is_empty() {
             return Err(Error::Type(c"A CSS value is required".to_owned()));
         }
-        let values = values.into_iter().map(|value| match value {
-            CSSStyleValueOrString::CSSStyleValue(value) => value.Stringifier().to_string(),
-            CSSStyleValueOrString::String(value) => value.to_string(),
-        });
-        Ok(DOMString::from(values.collect::<Vec<_>>().join(", ")))
+        let values = values
+            .into_iter()
+            .map(|value| match value {
+                CSSStyleValueOrString::CSSStyleValue(value) => {
+                    if value
+                        .associated_property()
+                        .is_some_and(|associated| property.str() != associated)
+                    {
+                        return Err(Error::Type(c"Value belongs to another property".to_owned()));
+                    }
+                    Ok(value.Stringifier().to_string())
+                },
+                CSSStyleValueOrString::String(value) => Ok(value.to_string()),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(DOMString::from(values.join(", ")))
     }
 
     fn validate_value(&self, property: &DOMString, value: &DOMString) -> ErrorResult {
@@ -74,7 +88,7 @@ impl StylePropertyMapMethods<crate::DomTypeHolder> for StylePropertyMap {
         values: Vec<CSSStyleValueOrString>,
     ) -> ErrorResult {
         let property = StylePropertyMapReadOnly::validated_property(property)?;
-        let value = Self::serialize_values(values)?;
+        let value = Self::serialize_values(&property, values)?;
         self.validate_value(&property, &value)?;
         self.style()
             .SetProperty(cx, property, value, DOMString::new())
@@ -91,7 +105,7 @@ impl StylePropertyMapMethods<crate::DomTypeHolder> for StylePropertyMap {
         if values.is_empty() {
             return Ok(());
         }
-        let value = Self::serialize_values(values)?;
+        let value = Self::serialize_values(&property, values)?;
         let previous = self.style().GetPropertyValue(property.clone());
         let value = if previous.is_empty() {
             value

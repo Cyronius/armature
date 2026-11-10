@@ -6,4 +6,6 @@
 [Exposed=(Window, Worker, Worklet)]
 interface CSSStyleValue {
     stringifier;
+    [Exposed=Window, Throws] static CSSStyleValue parse(USVString property, USVString cssText);
+    [Exposed=Window, Throws] static sequence<CSSStyleValue> parseAll(USVString property, USVString cssText);
 };

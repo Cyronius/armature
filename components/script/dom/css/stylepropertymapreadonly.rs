@@ -75,7 +75,7 @@ impl StylePropertyMapReadOnly {
 
     fn get_value(&self, cx: &mut JSContext, property: DOMString) -> Option<DomRoot<CSSStyleValue>> {
         if let Some(style) = self.style() {
-            let value = style.GetPropertyValue(property).to_string();
+            let value = style.GetPropertyValue(property.clone()).to_string();
             if value.is_empty() {
                 return None;
             }
@@ -91,7 +91,12 @@ impl StylePropertyMapReadOnly {
                     value.into(),
                 )));
             }
-            return Some(CSSStyleValue::new(cx, &global, value.into()));
+            return Some(CSSStyleValue::new_for_property(
+                cx,
+                &global,
+                value,
+                property.to_string(),
+            ));
         }
         self.entries
             .get(&Atom::from(property))
