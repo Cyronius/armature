@@ -86,7 +86,7 @@ Notes on the numbers:
   WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
   Servo's CI would measure.
 - The table predates the SVG hit-testing, path DOM, image sizing, canvas image, focus, conditional processing and
-  SMIL work described below; their gains are not included in these scores.
+  SMIL work, as well as the final HTML reflection fixes described below; their gains are not included in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
@@ -102,10 +102,12 @@ Notes on the numbers:
   promises. `tests/wpt/tests/dom/observable` went from 523 failing subtests to 1.
 - **HTML reflecting attributes**: about 130 missing IDL attributes (table, table cell, row and column, heading and
   `body` colors, `ol`/`li`/`dl`, `embed`/`object`/`param`/`area`, frames, `marquee`, form controls, `meta.media`,
-  `a.download`/`ping`, `enterKeyHint`, `inputMode` and more). The `html/dom/reflection-*` tests went from about
-  5,300 failing subtests to 47 across seven representative files. Table `span`, `colSpan` and `rowSpan` now keep
-  the assigned content attribute while clamping the reflected value, fixing 38 more subtests. The enumerated ARIA
-  attributes (`ariaBusy`, `ariaLive`, ...) are behind the
+  `a.download`/`ping`, `enterKeyHint`, `inputMode` and more). The 11 automated `html/dom/reflection-*` files now
+  pass all 61,302 subtests, down from about 5,300 failures. Table `span`, `colSpan` and `rowSpan` keep the assigned
+  content attribute while clamping the reflected value, fixing 38 subtests. HTML floating-point reflection now
+  parses numeric prefixes after ASCII whitespace and serializes exponent values as JavaScript does; `textarea`
+  positive-value fallback, negative `pre.width`, and empty `track.kind` reflection close the remaining 47 failures
+  in the seven-file baseline. The enumerated ARIA attributes (`ariaBusy`, `ariaLive`, ...) are behind the
   `dom_aria_enumerated_reflection_enabled` preference.
 - **Fetch priority reflection**: `fetchPriority` reflects `fetchpriority` on HTML `img`, `link` and `script`, and SVG
   `image` and `script` elements. All 10 focused subtests now pass across five files.
@@ -464,8 +466,7 @@ Notes on the numbers:
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
-- Some reflection subtests still fail (`col.span`, `progress.max`, `meter`, `textarea.rows`/`cols`, `pre.width`), as
-  do 30 in the tentative ARIA test.
+- The tentative ARIA reflection test still has 30 failing subtests.
 - Conformance outside the directories above has not been measured or improved, and other missing features have not
   been implemented.
 - Nothing here has been reviewed by the upstream Servo maintainers.
