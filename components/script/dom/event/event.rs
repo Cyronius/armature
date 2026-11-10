@@ -778,7 +778,7 @@ impl Event {
                 // Step 12.1. If event’s canceled flag is unset, then run activationTarget’s
                 // activation behavior with event.
                 if !self.DefaultPrevented() {
-                    activatable.activation_behavior(cx, self, &target);
+                    activatable.activation_behavior(cx, self, &original_target);
                 }
                 // Step 12.2. Otherwise, if activationTarget has legacy-canceled-activation behavior, then run
                 // activationTarget’s legacy-canceled-activation behavior.

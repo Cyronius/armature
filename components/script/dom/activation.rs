@@ -30,8 +30,8 @@ pub(crate) trait Activatable {
     }
 
     // https://dom.spec.whatwg.org/#eventtarget-activation-behavior
-    // event and target are used only by HTMLAnchorElement, in the case
-    // where the target is an <img ismap> so the href gets coordinates appended
+    // `target` is the original dispatch target, before retargeting across shadow
+    // boundaries. Activation behaviors use it for image maps and nested popovers.
     fn activation_behavior(
         &self,
         cx: &mut js::context::JSContext,
