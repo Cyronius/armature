@@ -371,7 +371,16 @@ impl HTMLTextAreaElementMethods<crate::DomTypeHolder> for HTMLTextAreaElement {
     make_uint_getter!(Cols, "cols", DEFAULT_COLS);
 
     // https://html.spec.whatwg.org/multipage/#dom-textarea-cols
-    make_limited_uint_setter!(SetCols, "cols", DEFAULT_COLS);
+    fn SetCols(&self, cx: &mut JSContext, value: u32) -> ErrorResult {
+        let value = if value == 0 || value > crate::dom::values::UNSIGNED_LONG_MAX {
+            DEFAULT_COLS
+        } else {
+            value
+        };
+        self.upcast::<Element>()
+            .set_attribute(cx, &local_name!("cols"), value.into());
+        Ok(())
+    }
 
     // https://html.spec.whatwg.org/multipage/#dom-input-dirName
     make_getter!(DirName, "dirname");
@@ -430,7 +439,16 @@ impl HTMLTextAreaElementMethods<crate::DomTypeHolder> for HTMLTextAreaElement {
     make_uint_getter!(Rows, "rows", DEFAULT_ROWS);
 
     // https://html.spec.whatwg.org/multipage/#dom-textarea-rows
-    make_limited_uint_setter!(SetRows, "rows", DEFAULT_ROWS);
+    fn SetRows(&self, cx: &mut JSContext, value: u32) -> ErrorResult {
+        let value = if value == 0 || value > crate::dom::values::UNSIGNED_LONG_MAX {
+            DEFAULT_ROWS
+        } else {
+            value
+        };
+        self.upcast::<Element>()
+            .set_attribute(cx, &local_name!("rows"), value.into());
+        Ok(())
+    }
 
     // https://html.spec.whatwg.org/multipage/#dom-textarea-wrap
     make_getter!(Wrap, "wrap");

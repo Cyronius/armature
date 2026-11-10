@@ -55,7 +55,7 @@ impl VirtualMethods for HTMLPreElement {
 
     fn parse_plain_attribute(&self, name: &LocalName, value: DOMString) -> AttrValue {
         match *name {
-            local_name!("width") => AttrValue::from_limited_i32(value.into(), 0),
+            local_name!("width") => AttrValue::from_i32(value.into(), 0),
             _ => self
                 .super_type()
                 .unwrap()

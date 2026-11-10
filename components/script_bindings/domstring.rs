@@ -681,8 +681,21 @@ impl TracedDOMString {
         if let Some(val) = self.parse_floating_point_number() {
             // [tc39] Step 2: If x is either +0 or -0, return "0".
             let parsed_value = if val.is_zero() { 0.0_f64 } else { val };
+            let representation =
+                if parsed_value != 0.0 && !(1e-6..1e21).contains(&parsed_value.abs()) {
+                    let scientific = format!("{parsed_value:e}");
+                    let (significand, exponent) = scientific.split_once('e').unwrap();
+                    let exponent = exponent.parse::<i32>().unwrap();
+                    if exponent >= 0 {
+                        format!("{significand}e+{exponent}")
+                    } else {
+                        format!("{significand}e{exponent}")
+                    }
+                } else {
+                    parsed_value.to_string()
+                };
 
-            *self.0.borrow_mut() = DOMStringType::Rust(parsed_value.to_string());
+            *self.0.borrow_mut() = DOMStringType::Rust(representation);
         }
     }
 
@@ -962,16 +975,55 @@ impl TracedDOMString {
 
 /// <https://html.spec.whatwg.org/multipage/#rules-for-parsing-floating-point-number-values>
 pub fn parse_floating_point_number(input: &str) -> Option<f64> {
-    // Steps 15-16 are telling us things about IEEE rounding modes
-    // for floating-point significands; this code assumes the Rust
-    // compiler already matches them in any cases where
-    // that actually matters. They are not
-    // related to f64::round(), which is for rounding to integers.
-    input.trim().parse::<f64>().ok().filter(|value| {
-        // A valid number is the same as what rust considers to be valid,
-        // except for +1., NaN, and Infinity.
-        !(value.is_infinite() || value.is_nan() || input.ends_with('.') || input.starts_with('+'))
-    })
+    // HTML floating-point parsing accepts an ASCII-whitespace prefix and stops
+    // after the numeric prefix. Rust's `FromStr` requires the entire input.
+    let bytes = input.as_bytes();
+    let mut end = 0;
+    while end < bytes.len() && matches!(bytes[end], b'\t' | b'\n' | b'\x0c' | b'\r' | b' ') {
+        end += 1;
+    }
+    let start = end;
+    if end < bytes.len() && matches!(bytes[end], b'+' | b'-') {
+        end += 1;
+    }
+
+    let integer_start = end;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
+    }
+    let mut has_digits = end > integer_start;
+    if end < bytes.len() && bytes[end] == b'.' {
+        end += 1;
+        let fraction_start = end;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        has_digits |= end > fraction_start;
+    }
+    if !has_digits {
+        return None;
+    }
+
+    if end < bytes.len() && matches!(bytes[end], b'e' | b'E') {
+        let exponent_start = end;
+        end += 1;
+        if end < bytes.len() && matches!(bytes[end], b'+' | b'-') {
+            end += 1;
+        }
+        let digits_start = end;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        if end == digits_start {
+            end = exponent_start;
+        }
+    }
+
+    input[start..end]
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+        .map(|value| if value == 0.0 { 0.0 } else { value })
 }
 
 pub struct BytesView<'a> {

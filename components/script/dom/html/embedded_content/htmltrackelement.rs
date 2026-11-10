@@ -249,15 +249,15 @@ impl HTMLTrackElementMethods<crate::DomTypeHolder> for HTMLTrackElement {
         // Get the value of "kind" and transform all uppercase
         // chars into lowercase.
         let kind = element
-            .get_string_attribute(&local_name!("kind"))
-            .to_lowercase();
-        match &*kind {
-            "subtitles" | "captions" | "descriptions" | "chapters" | "metadata" => {
+            .get_attribute_string_value(&local_name!("kind"))
+            .map(|kind| kind.to_lowercase());
+        match kind.as_deref() {
+            Some(kind @ ("subtitles" | "captions" | "descriptions" | "chapters" | "metadata")) => {
                 // The value of "kind" is valid. Return the lowercase version
                 // of it.
                 DOMString::from(kind)
             },
-            _ if kind.is_empty() => {
+            None => {
                 // The default value should be "subtitles". If "kind" has not
                 // been set, the real value for "kind" is "subtitles"
                 DOMString::from_static("subtitles")
