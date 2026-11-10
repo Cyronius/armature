@@ -625,6 +625,9 @@ Notes on the numbers:
   reftest passes. Two gradient reftests that resize text also pass consistently after earlier
   font and rendering fixes; their failure expectations have been removed. All 33 paint-server
   reftests now match expectations.
+- **SVG filter DOM tests**: The filter-effects IDL harness and `SVGFEBlendElement.mode` test now
+  match the implementation. Their 492 stale failure expectations were removed; all three window
+  and worker test variants run as expected.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
