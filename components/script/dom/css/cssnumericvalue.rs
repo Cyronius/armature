@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use cssparser::{Parser, Token};
+use cssparser::{ParseError as CssParseError, Parser, Token};
 use dom_struct::dom_struct;
 use js::context::JSContext;
 use script_bindings::codegen::GenericBindings::CSSNumericValueBinding::{
@@ -13,6 +13,7 @@ use script_bindings::codegen::GenericBindings::CSSNumericValueBinding::{
 use style::typed_om::numeric_type::{NumericBaseType, NumericType};
 use style::values::generics::Optional;
 
+use super::cssmathclamp::CSSMathClamp;
 use super::cssmathinvert::CSSMathInvert;
 use super::cssmathmax::CSSMathMax;
 use super::cssmathmin::CSSMathMin;
@@ -21,6 +22,7 @@ use super::cssmathproduct::CSSMathProduct;
 use super::cssmathsum::CSSMathSum;
 use super::cssmathvalue::CSSMathValue;
 use super::cssstylevalue::CSSStyleValue;
+use crate::dom::bindings::codegen::Bindings::CSSMathClampBinding::CSSMathClampMethods;
 use crate::dom::bindings::codegen::Bindings::CSSMathInvertBinding::CSSMathInvertMethods;
 use crate::dom::bindings::codegen::Bindings::CSSMathMaxBinding::CSSMathMaxMethods;
 use crate::dom::bindings::codegen::Bindings::CSSMathMinBinding::CSSMathMinMethods;
@@ -573,24 +575,173 @@ impl CSSNumericValueMethods<crate::DomTypeHolder> for CSSNumericValue {
     ) -> Fallible<DomRoot<CSSNumericValue>> {
         let css_text = css_text.to_string();
         let mut input = Parser::new(&css_text);
-        input.skip_whitespace();
-        let start = input.position();
-        let token = input.next().ok().cloned();
-        let token_text = input.slice_from(start).to_owned();
-        let unit = match token {
-            Some(Token::Number { .. }) => "number".to_owned(),
-            Some(Token::Percentage { .. }) => "percent".to_owned(),
-            Some(Token::Dimension { unit, .. }) => unit.to_ascii_lowercase(),
-            _ => return Err(Error::Syntax(Some("Invalid CSS numeric value".into()))),
-        };
-        let value = parse_numeric_prefix(&token_text)
-            .ok_or_else(|| Error::Syntax(Some("Invalid CSS numeric value".into())))?;
-        if input.next().is_ok() || !value.is_finite() || NumericType::try_from_unit(&unit).is_err()
-        {
-            return Err(Error::Syntax(Some("Invalid CSS numeric value".into())));
-        }
-        Ok(DomRoot::upcast(CSSUnitValue::new(cx, global, value, &unit)))
+        input
+            .parse_entirely(|input| parse_math_atom(cx, global, input, false))
+            .map_err(|_| Error::Syntax(Some("Invalid CSS numeric value".into())))
     }
+}
+
+fn math_parse_error() -> CssParseError<()> {
+    CssParseError::custom(())
+}
+
+fn parse_math_operator<'i>(
+    input: &mut Parser<'i>,
+    operators: &str,
+) -> Result<char, CssParseError<()>> {
+    match input.next()? {
+        Token::Delim(operator) if operators.contains(*operator) => Ok(*operator),
+        _ => Err(math_parse_error()),
+    }
+}
+
+fn parse_math_atom<'i>(
+    cx: &mut JSContext,
+    global: &GlobalScope,
+    input: &mut Parser<'i>,
+    allow_group: bool,
+) -> Result<DomRoot<CSSNumericValue>, CssParseError<()>> {
+    let start = input.position();
+    let token = input.next()?.clone();
+    let unit = match &token {
+        Token::Number { .. } => Some("number".to_owned()),
+        Token::Percentage { .. } => Some("percent".to_owned()),
+        Token::Dimension { unit, .. } => Some(unit.to_ascii_lowercase()),
+        _ => None,
+    };
+    if let Some(unit) = unit {
+        let value = parse_numeric_prefix(input.slice_from(start).trim_start())
+            .filter(|value| value.is_finite())
+            .ok_or_else(math_parse_error)?;
+        NumericType::try_from_unit(&unit).map_err(|_| math_parse_error())?;
+        return Ok(DomRoot::upcast(CSSUnitValue::new(cx, global, value, &unit)));
+    }
+
+    match token {
+        Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
+            let result = input.parse_nested_block(|input| parse_math_sum(cx, global, input))?;
+            if result.is::<CSSUnitValue>() {
+                CSSMathSum::Constructor(
+                    cx,
+                    global,
+                    None,
+                    vec![DoubleOrCSSNumericValue::CSSNumericValue(result)],
+                )
+                .map(DomRoot::upcast)
+                .map_err(|_| math_parse_error())
+            } else {
+                Ok(result)
+            }
+        },
+        Token::Function(name)
+            if name.eq_ignore_ascii_case("min") || name.eq_ignore_ascii_case("max") =>
+        {
+            let values = input.parse_nested_block(|input| {
+                input.parse_comma_separated(|input| parse_math_sum(cx, global, input))
+            })?;
+            let arguments = values
+                .into_iter()
+                .map(DoubleOrCSSNumericValue::CSSNumericValue)
+                .collect();
+            if name.eq_ignore_ascii_case("min") {
+                CSSMathMin::Constructor(cx, global, None, arguments)
+                    .map(DomRoot::upcast)
+                    .map_err(|_| math_parse_error())
+            } else {
+                CSSMathMax::Constructor(cx, global, None, arguments)
+                    .map(DomRoot::upcast)
+                    .map_err(|_| math_parse_error())
+            }
+        },
+        Token::Function(name) if name.eq_ignore_ascii_case("clamp") => {
+            let mut values = input.parse_nested_block(|input| {
+                input.parse_comma_separated(|input| parse_math_sum(cx, global, input))
+            })?;
+            if values.len() != 3 {
+                return Err(math_parse_error());
+            }
+            let upper = DoubleOrCSSNumericValue::CSSNumericValue(values.pop().unwrap());
+            let value = DoubleOrCSSNumericValue::CSSNumericValue(values.pop().unwrap());
+            let lower = DoubleOrCSSNumericValue::CSSNumericValue(values.pop().unwrap());
+            CSSMathClamp::Constructor(cx, global, None, lower, value, upper)
+                .map(DomRoot::upcast)
+                .map_err(|_| math_parse_error())
+        },
+        Token::ParenthesisBlock if allow_group => {
+            input.parse_nested_block(|input| parse_math_sum(cx, global, input))
+        },
+        Token::Delim('+') if allow_group => parse_math_atom(cx, global, input, true),
+        Token::Delim('-') if allow_group => {
+            let value = parse_math_atom(cx, global, input, true)?;
+            Ok(DomRoot::upcast(CSSMathNegate::Constructor(
+                cx,
+                global,
+                None,
+                DoubleOrCSSNumericValue::CSSNumericValue(value),
+            )))
+        },
+        _ => Err(math_parse_error()),
+    }
+}
+
+fn parse_math_product<'i>(
+    cx: &mut JSContext,
+    global: &GlobalScope,
+    input: &mut Parser<'i>,
+) -> Result<DomRoot<CSSNumericValue>, CssParseError<()>> {
+    let mut value = parse_math_atom(cx, global, input, true)?;
+    while let Ok(operator) = input.try_parse(|input| parse_math_operator(input, "*/")) {
+        let other = parse_math_atom(cx, global, input, true)?;
+        let argument = DoubleOrCSSNumericValue::CSSNumericValue(other);
+        value = if operator == '*' {
+            value.Mul(cx, vec![argument])
+        } else {
+            value.Div(cx, vec![argument])
+        }
+        .map_err(|_| math_parse_error())?;
+    }
+    Ok(value)
+}
+
+fn parse_math_sum<'i>(
+    cx: &mut JSContext,
+    global: &GlobalScope,
+    input: &mut Parser<'i>,
+) -> Result<DomRoot<CSSNumericValue>, CssParseError<()>> {
+    let mut values = vec![parse_math_product(cx, global, input)?];
+    while let Ok(operator) = input.try_parse(|input| parse_math_operator(input, "+-")) {
+        let mut value = parse_math_product(cx, global, input)?;
+        if operator == '-' {
+            value = DomRoot::upcast(CSSMathNegate::Constructor(
+                cx,
+                global,
+                None,
+                DoubleOrCSSNumericValue::CSSNumericValue(value),
+            ));
+        }
+        values.push(value);
+    }
+    if values.len() == 1 {
+        return Ok(values.remove(0));
+    }
+    let sum = CSSMathSum::Constructor(
+        cx,
+        global,
+        None,
+        values
+            .into_iter()
+            .map(DoubleOrCSSNumericValue::CSSNumericValue)
+            .collect(),
+    )
+    .map_err(|_| math_parse_error())?;
+    if let Some(items) = sum.upcast::<CSSNumericValue>().sum_value() {
+        if items.len() == 1 {
+            if let Some((value, unit)) = items[0].unit_value() {
+                return Ok(DomRoot::upcast(CSSUnitValue::new(cx, global, value, unit)));
+            }
+        }
+    }
+    Ok(DomRoot::upcast(sum))
 }
 
 /// Read the number from the original token, before cssparser narrows it to f32.
