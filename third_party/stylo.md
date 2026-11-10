@@ -424,3 +424,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   declarations cascade at the same origin and must clamp. Directly applied animated styles
   also clamp their final numeric values, preserving context-opacity keywords.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-520: Preserve parsing mode through CSS variable substitution
+- Files: `style/properties/mod.rs`
+- Why: Declarations with `var()` are reparsed after substitution. Retain the declaration's parsing
+  mode so SVG geometry attributes in quirks mode can resolve unitless custom property values as
+  user units, while standards mode continues to reject those values.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

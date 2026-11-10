@@ -998,6 +998,8 @@ impl PropertyDeclaration {
                                     value: Arc::new(UnparsedValue {
                                         variable_value,
                                         from_shorthand: None,
+                                        // Armature (AS-520): Preserve SVG presentation-attribute parsing mode.
+                                        parsing_mode: context.parsing_mode.bits(),
                                     }),
                                 },
                             ))
@@ -1027,6 +1029,8 @@ impl PropertyDeclaration {
                             let unparsed = Arc::new(UnparsedValue {
                                 variable_value,
                                 from_shorthand: Some(shorthand_id),
+                                // Armature (AS-520): Preserve SVG presentation-attribute parsing mode.
+                                parsing_mode: context.parsing_mode.bits(),
                             });
                             if shorthand_id == ShorthandId::All {
                                 declarations.all_shorthand = AllShorthand::WithVariables(unparsed)
@@ -1581,6 +1585,8 @@ pub struct UnparsedValue {
     pub(super) variable_value: custom_properties::VariableValue,
     /// The shorthand this came from.
     from_shorthand: Option<ShorthandId>,
+    // Armature (AS-520): Variables in SVG presentation attributes retain unitless length syntax.
+    parsing_mode: u8,
 }
 
 impl ToCss for UnparsedValue {
@@ -1684,7 +1690,8 @@ impl UnparsedValue {
             Origin::Author,
             &self.variable_value.url_data,
             None,
-            ParsingMode::DEFAULT,
+            // Armature (AS-520): Reparse substituted values in the original declaration mode.
+            ParsingMode::from_bits_truncate(self.parsing_mode),
             computed_context.quirks_mode,
             /* namespaces = */ Default::default(),
             None,
