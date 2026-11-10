@@ -392,3 +392,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   style while script animates it even if its `content` does not generate a box. This lets a
   `KeyframeEffect` animate a pseudo-element and follow changes to its target or pseudo selector.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-516: Accumulate keyframe values across iterations
+- Files: `style/servo/animation.rs`
+- Why: A script animation can request `iterationComposite: accumulate`. Compose the final
+  property keyframe value onto each sampled interval endpoint for every preceding iteration,
+  using the property's accumulation procedure. Unsupported properties retain their normal
+  per-iteration value. Servo supplies the current iteration count to this sampler.
+- Upstream: Could go upstream as part of script animation support.

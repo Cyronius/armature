@@ -1975,6 +1975,8 @@ pub struct ScriptAnimation {
     pub composite: AnimationComposition,
     /// The iteration progress of the effect, or `None` if it is not in effect.
     pub iteration_progress: Option<f64>,
+    /// Armature (AS-516): Number of prior iterations to accumulate onto this effect.
+    iteration_accumulation_count: u64,
     /// The before flag used to evaluate step easing functions.
     pub before_flag: bool,
     /// Whether the animation is running, so the document needs animation ticks.
@@ -1999,10 +2001,18 @@ impl ScriptAnimation {
             keyframes,
             composite,
             iteration_progress,
+            // Armature (AS-516): Ordinary effects replace their value each iteration.
+            iteration_accumulation_count: 0,
             before_flag,
             needs_ticks,
             resolved: None,
         }
+    }
+
+    /// Armature (AS-516): Apply the effect's iteration composite operation.
+    pub fn with_iteration_accumulation_count(mut self, count: u64) -> Self {
+        self.iteration_accumulation_count = count;
+        self
     }
 
     /// Resolve the values of the keyframes against `base_style`, the style of the
@@ -2136,6 +2146,10 @@ impl ScriptAnimation {
                 keyframes.push(neutral(1.));
             }
 
+            // Armature (AS-516): The last keyframe supplies the value accumulated
+            // onto each interval endpoint in later iterations.
+            let final_value = keyframes.last().unwrap().value;
+
             // Step 5-6. The interval endpoints.
             let count_at = |offset: f64| keyframes.iter().filter(|k| k.offset == offset).count();
             let endpoints: (usize, Option<usize>) = if progress < 0. && count_at(0.) > 1 {
@@ -2158,11 +2172,25 @@ impl ScriptAnimation {
 
             // Step 7. Composite the endpoint values with the underlying value.
             let composite = |keyframe: &PropertyKeyframe| -> AnimationValue {
-                composite_animation_value(
+                let value = composite_animation_value(
                     &underlying_value,
                     keyframe.value.clone(),
                     keyframe.composite,
-                )
+                );
+                // Armature (AS-516): Compose the final keyframe value once for
+                // each preceding iteration. Unsupported accumulation keeps the
+                // independently composed endpoint.
+                if self.iteration_accumulation_count == 0 {
+                    return value;
+                }
+                final_value
+                    .animate(
+                        &value,
+                        Procedure::Accumulate {
+                            count: self.iteration_accumulation_count,
+                        },
+                    )
+                    .unwrap_or(value)
             };
             let start = &keyframes[endpoints.0];
             let start_value = composite(start);
