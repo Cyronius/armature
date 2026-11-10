@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CSS numeric values preserve precision and convert compatible units</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-typed-om-1/#cssnumericvalue">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+'use strict';
+
+for (const text of ['0.1', '0.1%', '0.1px', '0.1p\\78']) {
+  test(() => {
+    assert_equals(CSSNumericValue.parse(text).value, 0.1);
+  }, `parsing ${text} preserves double precision`);
+}
+
+test(() => {
+  assert_approx_equals(CSS.rad(Math.PI).to('deg').value, 180, 1e-10);
+  assert_equals(CSS.ms(500).to('s').value, 0.5);
+  assert_equals(CSS.kHz(1).to('Hz').value, 1000);
+  assert_equals(CSS.dpi(96).to('dppx').value, 1);
+}, 'converting compatible angle, time, frequency and resolution units');
+</script>
