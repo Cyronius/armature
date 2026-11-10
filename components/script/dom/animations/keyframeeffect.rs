@@ -25,6 +25,7 @@ use script_bindings::cell::DomRefCell;
 use script_bindings::codegen::GenericBindings::AnimationEffectBinding::{
     FillMode, OptionalEffectTiming, PlaybackDirection,
 };
+use script_bindings::codegen::GenericBindings::CSSNumericValueBinding::CSSNumericValueMethods;
 use script_bindings::codegen::GenericBindings::KeyframeEffectBinding::{
     BaseKeyframe, BasePropertyIndexedKeyframe, CompositeOperation, CompositeOperationOrAuto,
     IterationCompositeOperation,
@@ -43,7 +44,7 @@ use script_bindings::js::{
 use script_bindings::num::Finite;
 use script_bindings::reflector::reflect_dom_object_with_proto;
 use script_bindings::root::DomRoot;
-use script_bindings::str::DOMString;
+use script_bindings::str::{DOMString, USVString};
 use servo_arc::Arc;
 use style::animation::ScriptKeyframe;
 use style::logical_geometry::WritingMode;
@@ -66,7 +67,9 @@ use crate::dom::animationeffect::AnimationEffect;
 use crate::dom::bindings::codegen::Bindings::KeyframeEffectBinding::{
     BaseComputedKeyframe, KeyframeEffectMethods,
 };
+use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::MutNullableDom;
+use crate::dom::css::cssnumericvalue::CSSNumericValue;
 use crate::dom::element::Element;
 use crate::dom::window::Window;
 
@@ -907,11 +910,47 @@ fn process_a_keyframe_like_object(
     //
     // Note: The property-indexed case, where allow lists is true, is in
     // `process_a_property_indexed_keyframe`.
-    let Ok(keyframe_output) = BaseKeyframe::from_jsval(cx, keyframe_input, ()) else {
+    let Ok(keyframe_output) = BaseKeyframe::new(cx, keyframe_input) else {
         return Err(Error::JSFailed);
     };
     let ConversionResult::Success(keyframe_output) = keyframe_output else {
         return Err(Error::Operation(None));
+    };
+    rooted!(&in(cx) let offset_value = keyframe_output.offset.get());
+    let css_offset = if offset_value.is_string() {
+        let text =
+            DOMString::from_jsval(cx, offset_value.handle(), StringificationBehavior::Default)
+                .map_err(|_| Error::JSFailed)?;
+        let ConversionResult::Success(text) = text else {
+            return Err(Error::Type(c"Invalid keyframe offset".to_owned()));
+        };
+        if text.str().trim_start().starts_with("calc(") {
+            let numeric = CSSNumericValue::Parse(
+                cx,
+                &document.global(),
+                USVString::from(text.str().to_owned()),
+            )
+            .map_err(|_| Error::Type(c"Invalid keyframe offset".to_owned()))?;
+            let number = numeric
+                .To(cx, USVString::from("number".to_owned()))
+                .map_err(|_| Error::Type(c"Invalid keyframe offset".to_owned()))?;
+            Some(number.numeric_value())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let offset = if let Some(value) = css_offset {
+        Some(Finite::new(value).ok_or_else(|| Error::Type(c"Invalid keyframe offset".to_owned()))?)
+    } else {
+        match Option::<Finite<f64>>::from_jsval(cx, offset_value.handle(), ()) {
+            Ok(ConversionResult::Success(offset)) => offset,
+            Ok(ConversionResult::Failure(message)) => {
+                return Err(Error::Type(message.into_owned()));
+            },
+            Err(_) => return Err(Error::JSFailed),
+        }
     };
     // Step 8 of <https://drafts.csswg.org/web-animations-1/#process-a-keyframes-argument>:
     // > For each frame in processed keyframes, perform the following steps: [..] Let the timing
@@ -921,7 +960,7 @@ fn process_a_keyframe_like_object(
     let timing_function = parse_easing(document, &keyframe_output.easing.str())
         .ok_or_else(|| Error::Type(c"\"easing\" is not a valid timing function".to_owned()))?;
     let mut keyframe_output = Keyframe {
-        offset: keyframe_output.offset,
+        offset,
         computed_offset: 0.0,
         easing_function: timing_function.to_css_string().into(),
         timing_function,

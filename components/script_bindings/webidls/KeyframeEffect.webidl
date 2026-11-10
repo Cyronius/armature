@@ -41,7 +41,9 @@ dictionary BasePropertyIndexedKeyframe {
   (CompositeOperationOrAuto or sequence<CompositeOperationOrAuto>) composite;
 };
 dictionary BaseKeyframe {
-   double?                  offset = null;
+   // Level 2 also accepts CSS offsets. Convert the value during keyframe processing so
+   // CSS expressions can be parsed before numeric WebIDL conversion rejects them.
+   any                      offset = null;
    DOMString                easing = "linear";
    CompositeOperationOrAuto composite = "auto";
 };
