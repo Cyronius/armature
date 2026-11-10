@@ -277,7 +277,9 @@ Notes on the numbers:
   (with kurbo) and, for text, from the fonts. Lengths convert between all the units of CSS, resolving font-relative
   ones with the metrics of the element's font. `<style>` elements in SVG now apply their style sheets, SVG
   presentation attributes map to CSS properties, and hit testing (`elementFromPoint()` and the targets of
-  mouse events) finds the shape under the point inside an `svg` element, which layout treats as one box. The SVG
+  mouse events) finds the shape under the point inside an `svg` element, which layout treats as one box. `SVGLength`
+  preserves unresolved `var()` text and reports an unknown unit with a zero numeric value until script replaces it.
+  Eight more SVG styling subtests pass, and the 97-file scripted SVG types directory matches expectations. The SVG
   area went from 36.5% to 49.2% before hit testing (the table above was measured earlier still, at 46.7%), and hit
   testing, with the SVG values of `pointer-events` that Stylo now builds for Servo (AS-508), makes about 4,700 more
   subtests pass. SVG 2 `pointer-events: bounding-box` (AS-511) now parses and hit-tests group, shape, text and image
