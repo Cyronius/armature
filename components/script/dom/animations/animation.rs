@@ -66,6 +66,7 @@ pub(crate) fn next_animation_id() -> u64 {
 #[derive(Clone, Copy, Default, JSTraceable, MallocSizeOf, PartialEq)]
 struct StyleSample {
     iteration_progress: Option<f64>,
+    iteration_accumulation_count: u64,
     before_flag: bool,
     needs_ticks: bool,
 }
@@ -1082,20 +1083,27 @@ impl Animation {
         let playback_rate = self.playback_rate.get();
         let times = effect.compute_timing_with_endpoint(self.current_time(), playback_rate, true);
         let iteration_progress = times.active_time.and(times.iteration_progress);
+        let iteration_accumulation_count =
+            keyframe_effect.iteration_accumulation_count(times.current_iteration);
         let style_times = effect.compute_timing(self.current_time(), playback_rate);
         if !force &&
-            iteration_progress == style_times.active_time.and(style_times.iteration_progress)
+            iteration_progress == style_times.active_time.and(style_times.iteration_progress) &&
+            iteration_accumulation_count ==
+                keyframe_effect.iteration_accumulation_count(style_times.current_iteration)
         {
             return None;
         }
-        Some(ScriptAnimation::new(
-            self.unique_id,
-            keyframe_effect.keyframes_for_style(),
-            keyframe_effect.composite_for_style(),
-            iteration_progress,
-            times.before_flag,
-            false,
-        ))
+        Some(
+            ScriptAnimation::new(
+                self.unique_id,
+                keyframe_effect.keyframes_for_style(),
+                keyframe_effect.composite_for_style(),
+                iteration_progress,
+                times.before_flag,
+                false,
+            )
+            .with_iteration_accumulation_count(iteration_accumulation_count),
+        )
     }
 
     /// The style of `target` computed without the effects of `higher`, the animations
@@ -1379,6 +1387,8 @@ impl Animation {
         let times = effect.compute_timing(self.current_time(), self.playback_rate.get());
         let sample = StyleSample {
             iteration_progress: times.active_time.and(times.iteration_progress),
+            iteration_accumulation_count: keyframe_effect
+                .iteration_accumulation_count(times.current_iteration),
             before_flag: times.before_flag,
             needs_ticks: play_state == AnimationPlayState::Running || self.is_pending(),
         };
@@ -1397,7 +1407,8 @@ impl Animation {
                 sample.iteration_progress,
                 sample.before_flag,
                 sample.needs_ticks,
-            ),
+            )
+            .with_iteration_accumulation_count(sample.iteration_accumulation_count),
         );
         node.set_flag(NodeFlags::HAS_EVER_ANIMATED, true);
         node.dirty(cx.no_gc(), NodeDamage::Style);
@@ -1779,6 +1790,7 @@ impl Animation {
                 let times = effect.compute_timing(self.current_time(), self.playback_rate.get());
                 StyleSample {
                     iteration_progress: times.active_time.and(times.iteration_progress),
+                    iteration_accumulation_count: 0,
                     before_flag: times.before_flag,
                     needs_ticks: play_state == AnimationPlayState::Running || pending,
                 }

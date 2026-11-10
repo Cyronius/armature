@@ -12,6 +12,8 @@ interface KeyframeEffect : AnimationEffect {
    attribute Element?           target;
    [SetterThrows] attribute CSSOMString?       pseudoElement;
    attribute CompositeOperation composite;
+   // https://drafts.csswg.org/web-animations-2/#keyframeeffect-interfaces
+   attribute IterationCompositeOperation iterationComposite;
    [Throws] sequence<object> getKeyframes();
    [Throws] undefined        setKeyframes(object? keyframes);
 };
@@ -19,8 +21,12 @@ interface KeyframeEffect : AnimationEffect {
 // https://drafts.csswg.org/web-animations-1/#dictdef-keyframeeffectoptions
 dictionary KeyframeEffectOptions : EffectTiming {
     CompositeOperation composite = "replace";
+    IterationCompositeOperation iterationComposite = "replace";
     CSSOMString?       pseudoElement = null;
 };
+
+// https://drafts.csswg.org/web-animations-2/#iterationcompositeoperation
+enum IterationCompositeOperation { "replace", "accumulate" };
 
 // https://drafts.csswg.org/web-animations-1/#the-compositeoperation-enumeration
 enum CompositeOperation { "replace", "add", "accumulate" };

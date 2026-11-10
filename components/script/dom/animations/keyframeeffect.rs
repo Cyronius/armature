@@ -27,6 +27,7 @@ use script_bindings::codegen::GenericBindings::AnimationEffectBinding::{
 };
 use script_bindings::codegen::GenericBindings::KeyframeEffectBinding::{
     BaseKeyframe, BasePropertyIndexedKeyframe, CompositeOperation, CompositeOperationOrAuto,
+    IterationCompositeOperation,
 };
 use script_bindings::codegen::GenericBindings::WindowBinding::WindowMethods;
 use script_bindings::codegen::GenericUnionTypes::{
@@ -83,6 +84,9 @@ pub(crate) struct KeyframeEffect {
     /// <https://drafts.csswg.org/web-animations-1/#effect-composite-operation>
     composite: Cell<CompositeOperation>,
 
+    /// <https://drafts.csswg.org/web-animations-2/#iteration-composite-operation>
+    iteration_composite: Cell<IterationCompositeOperation>,
+
     /// <https://drafts.csswg.org/web-animations-1/#effect-target-target-pseudo-selector>
     ///
     target_pseudo_selector: DomRefCell<Option<DOMString>>,
@@ -105,6 +109,7 @@ impl KeyframeEffect {
             target_element: Default::default(),
             keyframes: Default::default(),
             composite: Cell::new(CompositeOperation::Replace),
+            iteration_composite: Cell::new(IterationCompositeOperation::Replace),
             target_pseudo_selector: Default::default(),
             keyframes_for_style: Default::default(),
             css_keyframes: Cell::new(false),
@@ -166,6 +171,15 @@ impl KeyframeEffect {
             CompositeOperation::Replace => AnimationComposition::Replace,
             CompositeOperation::Add => AnimationComposition::Add,
             CompositeOperation::Accumulate => AnimationComposition::Accumulate,
+        }
+    }
+
+    /// Number of prior iterations whose final value is accumulated onto this one.
+    pub(crate) fn iteration_accumulation_count(&self, current_iteration: Option<f64>) -> u64 {
+        if self.iteration_composite.get() == IterationCompositeOperation::Accumulate {
+            current_iteration.unwrap_or(0.0).max(0.0) as u64
+        } else {
+            0
         }
     }
 
@@ -320,6 +334,7 @@ impl KeyframeEffectMethods<crate::DomTypeHolder> for KeyframeEffect {
         if let UnrestrictedDoubleOrKeyframeEffectOptions::KeyframeEffectOptions(options) = &options
         {
             effect.composite.set(options.composite);
+            effect.iteration_composite.set(options.iterationComposite);
             // Step 3. Set the target pseudo-selector from the pseudoElement member of options.
             *effect.target_pseudo_selector.borrow_mut() =
                 normalize_pseudo_selector(options.pseudoElement.clone())?;
@@ -386,6 +401,9 @@ impl KeyframeEffectMethods<crate::DomTypeHolder> for KeyframeEffect {
         };
         effect.composite.set(source.composite.get());
         effect
+            .iteration_composite
+            .set(source.iteration_composite.get());
+        effect
             .upcast::<AnimationEffect>()
             .copy_timing_from(source.upcast::<AnimationEffect>());
         Ok(effect)
@@ -426,6 +444,17 @@ impl KeyframeEffectMethods<crate::DomTypeHolder> for KeyframeEffect {
     /// <https://drafts.csswg.org/web-animations-1/#dom-keyframeeffect-composite>
     fn SetComposite(&self, cx: &mut JSContext, composite: CompositeOperation) {
         self.composite.set(composite);
+        self.effect_changed(cx);
+    }
+
+    /// <https://drafts.csswg.org/web-animations-2/#dom-keyframeeffect-iterationcomposite>
+    fn IterationComposite(&self) -> IterationCompositeOperation {
+        self.iteration_composite.get()
+    }
+
+    /// <https://drafts.csswg.org/web-animations-2/#dom-keyframeeffect-iterationcomposite>
+    fn SetIterationComposite(&self, cx: &mut JSContext, value: IterationCompositeOperation) {
+        self.iteration_composite.set(value);
         self.effect_changed(cx);
     }
 
