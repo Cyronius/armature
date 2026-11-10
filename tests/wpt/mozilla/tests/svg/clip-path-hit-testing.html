@@ -10,12 +10,19 @@
     <clipPath id="boxClip" clipPathUnits="objectBoundingBox">
       <rect width="0.5" height="1"/>
     </clipPath>
+    <circle id="sourceCircle" cx="0" cy="0" r="15"/>
+    <clipPath id="useClip"><use href="#sourceCircle" x="350" y="50"/></clipPath>
+    <use id="cycleA" href="#cycleB"/>
+    <use id="cycleB" href="#cycleA"/>
+    <clipPath id="cycleClip"><use href="#cycleA"/></clipPath>
   </defs>
   <rect id="direct" x="30" y="30" width="40" height="40" clip-path="url(#circleClip)"/>
   <g clip-path="url(#groupClip)">
     <rect id="grouped" x="130" y="30" width="40" height="40"/>
   </g>
   <rect id="boxed" x="230" y="30" width="40" height="40" clip-path="url(#boxClip)"/>
+  <rect id="used" x="330" y="30" width="40" height="40" clip-path="url(#useClip)"/>
+  <rect id="cyclic" x="375" y="30" width="20" height="40" clip-path="url(#cycleClip)"/>
 </svg>
 <script>
 const svg = document.getElementById('svg');
@@ -38,4 +45,13 @@ test(() => {
   assert_equals(hit(240, 50).id, 'boxed');
   assert_equals(hit(260, 50), svg);
 }, 'Object bounding box clip path coordinates use the target bounds');
+
+test(() => {
+  assert_equals(hit(350, 50).id, 'used');
+  assert_equals(hit(368, 68), svg);
+}, 'A use element in a clip path contributes its referenced shape');
+
+test(() => {
+  assert_equals(hit(385, 50), svg);
+}, 'A cyclic use reference in a clip path has no hittable content');
 </script>
