@@ -86,8 +86,8 @@ Notes on the numbers:
   WebGL conformance tests and tests that depend on the fonts of the machine, so the scores should be close to what
   Servo's CI would measure.
 - The table predates the SVG hit-testing, path DOM, image sizing, non-scaling stroke, canvas image, focus, conditional
-  processing and SMIL work, as well as the final HTML reflection fixes described below; their gains are not included
-  in these scores.
+  processing, SMIL and filtered child selector invalidation work, as well as the final HTML reflection fixes described
+  below; their gains are not included in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
@@ -589,10 +589,12 @@ Notes on the numbers:
   scripted run matched expectations; two font-dependent differences on a repeat run passed when rerun separately.
 - **Filtered child selector invalidation**: Attribute and pseudo-class state changes now restyle
   siblings whose index may change under `:nth-child(... of <selector>)` or
-  `:nth-last-child(... of <selector>)`. SVG rendering copies receive Stylo's resolved paint values
-  for those children, since the image parser does not support the selector filter. Eighteen CSS
-  selector invalidation reftests and two SVG styling reftests now pass. The 249-file CSS and SVG
-  regression run has no pass-to-fail changes against the preceding run.
+  `:nth-last-child(... of <selector>)`, including direct children of shadow roots and descendants
+  of the indexed siblings. SVG rendering copies receive Stylo's resolved paint values for those
+  children, since the image parser does not support the selector filter. Twenty-two CSS selector
+  invalidation reftests and two SVG styling reftests now pass. The 249-file CSS and SVG regression
+  run had no pass-to-fail changes against the preceding run; all 145 tests in the selector
+  invalidation directory now run as expected.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
