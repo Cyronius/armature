@@ -234,18 +234,6 @@ impl SVGShapeGeometry {
         Some(kurbo::ParamCurve::end(last))
     }
 
-    /// The distance from `point` to the outline of the shape.
-    pub(crate) fn distance_to_outline(&self, point: Point) -> f64 {
-        self.segments()
-            .iter()
-            .map(|segment| {
-                kurbo::ParamCurveNearest::nearest(segment, point, ACCURACY)
-                    .distance_sq
-                    .sqrt()
-            })
-            .fold(f64::INFINITY, f64::min)
-    }
-
     /// Test the painted stroke shape, including caps, joins and dash gaps. The stroke paint
     /// itself does not affect `isPointInStroke()`.
     pub(crate) fn is_point_in_stroke(
@@ -323,14 +311,13 @@ impl SVGShapeGeometry {
         };
         let path = transform * path;
         let point = transform * point;
-        stroke(
+        let outline = stroke(
             path.elements().iter().copied(),
             &style,
             &StrokeOpts::default(),
             ACCURACY,
-        )
-        .winding(point) !=
-            0
+        );
+        outline.winding(point) != 0 || Self::Path(outline).is_on_fill_boundary(point)
     }
 }
 
@@ -1812,15 +1799,9 @@ fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool 
     } else {
         false
     };
-    let (winding, distance) = match &geometry {
-        Some(geometry) => (geometry.winding(point), geometry.distance_to_outline(point)),
-        None => (0, f64::INFINITY),
-    };
-    // Strokes wider than this are not considered.
-    const MAXIMUM_HALF_STROKE_WIDTH: f64 = 50.0;
-    if !in_box && winding == 0 && distance > MAXIMUM_HALF_STROKE_WIDTH {
-        return false;
-    }
+    let winding = geometry
+        .as_ref()
+        .map_or(0, |geometry| geometry.winding(point));
 
     let visible = computed_value(element, "visibility") == "visible";
     let fill_painted = computed_value(element, "fill") != "none";
@@ -1853,16 +1834,8 @@ fn hits_element(cx: &mut JSContext, element: &SVGElement, point: Point) -> bool 
             return true;
         }
     }
-    if stroke_sensitive {
-        let stroke_width = computed_value(element, "stroke-width")
-            .trim_end_matches("px")
-            .parse::<f64>()
-            .unwrap_or(1.0);
-        if stroke_width > 0.0 && distance <= stroke_width / 2.0 {
-            return true;
-        }
-    }
-    false
+    stroke_sensitive &&
+        geometry.is_some_and(|geometry| geometry.is_point_in_stroke(cx, element, point))
 }
 
 /// Hit the rendered descendants of a referenced `<use>` source. Its copy is not
