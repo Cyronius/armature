@@ -20,7 +20,7 @@ use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::DOMString;
 use crate::dom::css::cssunitvalue::CSSUnitValue;
-use crate::dom::window::Window;
+use crate::dom::globalscope::GlobalScope;
 use crate::dom::worklet::Worklet;
 
 #[dom_struct]
@@ -31,8 +31,12 @@ pub(crate) struct CSS {
 
 macro_rules! numeric_factory {
     ($method:ident, $unit:literal) => {
-        fn $method(cx: &mut JSContext, win: &Window, value: Finite<f64>) -> DomRoot<CSSUnitValue> {
-            CSSUnitValue::new(cx, win.as_global_scope(), *value, $unit)
+        fn $method(
+            cx: &mut JSContext,
+            global: &GlobalScope,
+            value: Finite<f64>,
+        ) -> DomRoot<CSSUnitValue> {
+            CSSUnitValue::new(cx, global, *value, $unit)
         }
     };
 }
@@ -73,14 +77,15 @@ impl CSSMethods<crate::DomTypeHolder> for CSS {
     numeric_factory!(Dppx, "dppx");
     numeric_factory!(Fr, "fr");
     /// <https://drafts.csswg.org/cssom/#the-css.escape()-method>
-    fn Escape(_: &Window, ident: DOMString) -> Fallible<DOMString> {
+    fn Escape(_: &GlobalScope, ident: DOMString) -> Fallible<DOMString> {
         let mut escaped = String::new();
         serialize_identifier(&ident.str(), &mut escaped).unwrap();
         Ok(DOMString::from(escaped))
     }
 
     /// <https://drafts.csswg.org/css-conditional/#dom-css-supports>
-    fn Supports(win: &Window, property: DOMString, value: DOMString) -> bool {
+    fn Supports(global: &GlobalScope, property: DOMString, value: DOMString) -> bool {
+        let win = global.as_window();
         let mut decl = String::new();
         serialize_identifier(&property.str(), &mut decl).unwrap();
         decl.push_str(": ");
@@ -96,7 +101,8 @@ impl CSSMethods<crate::DomTypeHolder> for CSS {
     }
 
     /// <https://drafts.csswg.org/css-conditional/#dom-css-supports>
-    fn Supports_(win: &Window, condition: DOMString) -> bool {
+    fn Supports_(global: &GlobalScope, condition: DOMString) -> bool {
+        let win = global.as_window();
         let condition = condition.str();
         let mut input = Parser::new(&condition);
         let cond = match parse_condition_or_declaration(&mut input) {
@@ -114,13 +120,17 @@ impl CSSMethods<crate::DomTypeHolder> for CSS {
     }
 
     /// <https://drafts.css-houdini.org/css-paint-api-1/#paint-worklet>
-    fn PaintWorklet(cx: &mut JSContext, win: &Window) -> DomRoot<Worklet> {
-        win.paint_worklet(cx)
+    fn PaintWorklet(cx: &mut JSContext, global: &GlobalScope) -> DomRoot<Worklet> {
+        global.as_window().paint_worklet(cx)
     }
 
     /// <https://drafts.css-houdini.org/css-properties-values-api/#the-registerproperty-function>
-    fn RegisterProperty(window: &Window, property_definition: &PropertyDefinition) -> Fallible<()> {
+    fn RegisterProperty(
+        global: &GlobalScope,
+        property_definition: &PropertyDefinition,
+    ) -> Fallible<()> {
         use RegisterCustomPropertyResult::*;
+        let window = global.as_window();
         let result = window.layout_mut().stylist_mut().register_custom_property(
             &UrlExtraData(window.get_url().get_arc()),
             &property_definition.name.str(),

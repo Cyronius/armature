@@ -20,6 +20,13 @@ dictionary CSSNumericType {
 
 [Exposed=(Window, Worker, Worklet)]
 interface CSSNumericValue : CSSStyleValue {
+    [Throws] CSSNumericValue add(CSSNumberish... values);
+    [Throws] CSSNumericValue sub(CSSNumberish... values);
+    [Throws] CSSNumericValue mul(CSSNumberish... values);
+    [Throws] CSSNumericValue div(CSSNumberish... values);
+    [Throws] CSSNumericValue min(CSSNumberish... values);
+    [Throws] CSSNumericValue max(CSSNumberish... values);
+    boolean equals(CSSNumberish... values);
     [Throws] CSSUnitValue to(USVString unit);
     CSSNumericType type();
     [Exposed=Window, Throws] static CSSNumericValue parse(USVString cssText);

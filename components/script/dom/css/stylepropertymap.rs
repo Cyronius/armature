@@ -71,7 +71,7 @@ impl StylePropertyMap {
 
     fn validate_value(&self, property: &DOMString, value: &DOMString) -> ErrorResult {
         if !property.str().starts_with("--") &&
-            !CSS::Supports(self.global().as_window(), property.clone(), value.clone())
+            !CSS::Supports(&self.global(), property.clone(), value.clone())
         {
             return Err(Error::Type(c"Invalid CSS property value".to_owned()));
         }

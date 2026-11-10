@@ -7,20 +7,20 @@
  */
 
 // https://drafts.csswg.org/cssom/#the-css.escape()-method
-[Exposed=Window]
+[Exposed=(Window, Worker)]
 namespace CSS {
-  [Throws] CSSOMString escape(CSSOMString ident);
+  [Exposed=Window, Throws] CSSOMString escape(CSSOMString ident);
 };
 
 // https://drafts.csswg.org/css-conditional-3/#dom-css-supports
 partial namespace CSS {
-  boolean supports(CSSOMString property, CSSOMString value);
-  boolean supports(CSSOMString conditionText);
+  [Exposed=Window] boolean supports(CSSOMString property, CSSOMString value);
+  [Exposed=Window] boolean supports(CSSOMString conditionText);
 };
 
 // https://drafts.css-houdini.org/css-paint-api/#dom-css-paintworklet
 partial namespace CSS {
-    [SameObject, Pref="dom_worklet_enabled"] readonly attribute Worklet paintWorklet;
+    [Exposed=Window, SameObject, Pref="dom_worklet_enabled"] readonly attribute Worklet paintWorklet;
 };
 
 // https://drafts.css-houdini.org/css-properties-values-api/#the-registerproperty-function
@@ -32,7 +32,7 @@ dictionary PropertyDefinition {
 };
 
 partial namespace CSS {
-  [Throws] undefined registerProperty(PropertyDefinition definition);
+  [Exposed=Window, Throws] undefined registerProperty(PropertyDefinition definition);
 };
 
 // https://drafts.css-houdini.org/css-typed-om-1/#numeric-factory-functions

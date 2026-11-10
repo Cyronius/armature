@@ -122,11 +122,7 @@ impl CSSStyleValue {
             StylePropertyMapReadOnly::validated_property(DOMString::from(property.to_string()))?;
         let css_text = css_text.to_string();
         if css_text.trim().is_empty() ||
-            !CSS::Supports(
-                global.as_window(),
-                property.clone(),
-                DOMString::from(css_text.clone()),
-            )
+            !CSS::Supports(global, property.clone(), DOMString::from(css_text.clone()))
         {
             return Err(Error::Type(c"Invalid CSS property value".to_owned()));
         }

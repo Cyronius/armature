@@ -45,6 +45,36 @@ impl CSSMathValue {
         self.numeric_type.clone()
     }
 
+    pub(crate) fn operator(&self) -> CSSMathOperator {
+        self.operator
+    }
+
+    pub(crate) fn operands(&self) -> Vec<DomRoot<CSSNumericValue>> {
+        if let Some(value) = self.downcast::<CSSMathSum>() {
+            return value.values();
+        }
+        if let Some(value) = self.downcast::<CSSMathProduct>() {
+            return value.values();
+        }
+        if let Some(value) = self.downcast::<CSSMathMin>() {
+            return value.values();
+        }
+        if let Some(value) = self.downcast::<CSSMathMax>() {
+            return value.values();
+        }
+        if let Some(value) = self.downcast::<CSSMathNegate>() {
+            return vec![value.value()];
+        }
+        if let Some(value) = self.downcast::<CSSMathInvert>() {
+            return vec![value.value()];
+        }
+        self.downcast::<CSSMathClamp>()
+            .expect("Every CSSMathValue has a concrete subtype")
+            .values()
+            .into_iter()
+            .collect()
+    }
+
     pub(crate) fn serialize(&self) -> String {
         if let Some(sum) = self.downcast::<CSSMathSum>() {
             return format!(

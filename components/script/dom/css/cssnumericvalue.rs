@@ -11,9 +11,22 @@ use script_bindings::codegen::GenericBindings::CSSNumericValueBinding::{
 use style::typed_om::numeric_type::{NumericBaseType, NumericType};
 use style::values::generics::Optional;
 
+use super::cssmathinvert::CSSMathInvert;
+use super::cssmathmax::CSSMathMax;
+use super::cssmathmin::CSSMathMin;
+use super::cssmathnegate::CSSMathNegate;
+use super::cssmathproduct::CSSMathProduct;
+use super::cssmathsum::CSSMathSum;
 use super::cssmathvalue::CSSMathValue;
 use super::cssstylevalue::CSSStyleValue;
+use crate::dom::bindings::codegen::Bindings::CSSMathInvertBinding::CSSMathInvertMethods;
+use crate::dom::bindings::codegen::Bindings::CSSMathMaxBinding::CSSMathMaxMethods;
+use crate::dom::bindings::codegen::Bindings::CSSMathMinBinding::CSSMathMinMethods;
+use crate::dom::bindings::codegen::Bindings::CSSMathNegateBinding::CSSMathNegateMethods;
+use crate::dom::bindings::codegen::Bindings::CSSMathProductBinding::CSSMathProductMethods;
+use crate::dom::bindings::codegen::Bindings::CSSMathSumBinding::CSSMathSumMethods;
 use crate::dom::bindings::codegen::Bindings::CSSNumericValueBinding::CSSNumericValueMethods;
+use crate::dom::bindings::codegen::UnionTypes::DoubleOrCSSNumericValue;
 use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::reflector::DomGlobal;
@@ -25,6 +38,16 @@ use crate::dom::globalscope::GlobalScope;
 #[dom_struct]
 pub(crate) struct CSSNumericValue {
     css_style_value: CSSStyleValue,
+}
+
+#[derive(Clone, Copy)]
+enum ArithmeticOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Min,
+    Max,
 }
 
 impl CSSNumericValue {
@@ -53,9 +76,257 @@ impl CSSNumericValue {
                 .serialize()
         }
     }
+
+    fn negate(cx: &mut JSContext, value: DomRoot<Self>) -> DomRoot<Self> {
+        if let Some(negate) = value.downcast::<CSSMathNegate>() {
+            return negate.value();
+        }
+        let global = value.global();
+        if let Some(unit) = value.downcast::<CSSUnitValue>() {
+            return DomRoot::upcast(CSSUnitValue::new(
+                cx,
+                &global,
+                -unit.numeric_value(),
+                unit.unit_str(),
+            ));
+        }
+        DomRoot::upcast(CSSMathNegate::Constructor(
+            cx,
+            &global,
+            None,
+            DoubleOrCSSNumericValue::CSSNumericValue(value),
+        ))
+    }
+
+    fn invert(cx: &mut JSContext, value: DomRoot<Self>) -> Fallible<DomRoot<Self>> {
+        if let Some(invert) = value.downcast::<CSSMathInvert>() {
+            return Ok(invert.value());
+        }
+        let global = value.global();
+        if let Some(unit) = value.downcast::<CSSUnitValue>() {
+            if unit.unit_str() == "number" {
+                if unit.numeric_value() == 0.0 {
+                    return Err(Error::Range(c"Cannot divide by zero".to_owned()));
+                }
+                return Ok(DomRoot::upcast(CSSUnitValue::new(
+                    cx,
+                    &global,
+                    1.0 / unit.numeric_value(),
+                    "number",
+                )));
+            }
+        }
+        Ok(DomRoot::upcast(CSSMathInvert::Constructor(
+            cx,
+            &global,
+            None,
+            DoubleOrCSSNumericValue::CSSNumericValue(value),
+        )))
+    }
+
+    fn arithmetic(
+        &self,
+        cx: &mut JSContext,
+        arguments: Vec<DoubleOrCSSNumericValue>,
+        operation: ArithmeticOp,
+    ) -> Fallible<DomRoot<Self>> {
+        let global = self.global();
+        let mut arguments = arguments
+            .into_iter()
+            .map(|value| CSSMathValue::rectify(cx, &global, value))
+            .collect::<Vec<_>>();
+        if matches!(operation, ArithmeticOp::Sub | ArithmeticOp::Div) {
+            arguments = arguments
+                .into_iter()
+                .map(|value| {
+                    if matches!(operation, ArithmeticOp::Sub) {
+                        Ok(Self::negate(cx, value))
+                    } else {
+                        Self::invert(cx, value)
+                    }
+                })
+                .collect::<Fallible<Vec<_>>>()?;
+        }
+
+        let mut values = match operation {
+            ArithmeticOp::Add | ArithmeticOp::Sub => {
+                self.downcast::<CSSMathSum>().map(CSSMathSum::values)
+            },
+            ArithmeticOp::Mul | ArithmeticOp::Div => self
+                .downcast::<CSSMathProduct>()
+                .map(CSSMathProduct::values),
+            ArithmeticOp::Min => self.downcast::<CSSMathMin>().map(CSSMathMin::values),
+            ArithmeticOp::Max => self.downcast::<CSSMathMax>().map(CSSMathMax::values),
+        }
+        .unwrap_or_else(|| vec![DomRoot::from_ref(self)]);
+        values.extend(arguments);
+
+        if matches!(operation, ArithmeticOp::Mul | ArithmeticOp::Div) {
+            let units = values
+                .iter()
+                .map(|value| value.downcast::<CSSUnitValue>())
+                .collect::<Option<Vec<_>>>();
+            if let Some(units) = units {
+                let non_number = units
+                    .iter()
+                    .filter(|unit| unit.unit_str() != "number")
+                    .collect::<Vec<_>>();
+                if non_number.len() <= 1 {
+                    let unit = non_number
+                        .first()
+                        .map_or("number", |value| value.unit_str());
+                    let value = units
+                        .iter()
+                        .fold(1.0, |product, item| product * item.numeric_value());
+                    return Ok(DomRoot::upcast(CSSUnitValue::new(cx, &global, value, unit)));
+                }
+            }
+            return CSSMathProduct::Constructor(
+                cx,
+                &global,
+                None,
+                values
+                    .into_iter()
+                    .map(DoubleOrCSSNumericValue::CSSNumericValue)
+                    .collect(),
+            )
+            .map(DomRoot::upcast);
+        }
+
+        let units = values
+            .iter()
+            .map(|value| value.downcast::<CSSUnitValue>())
+            .collect::<Option<Vec<_>>>();
+        if let Some(units) = units {
+            if units
+                .iter()
+                .all(|unit| unit.unit_str() == units[0].unit_str())
+            {
+                let value = units
+                    .iter()
+                    .skip(1)
+                    .fold(units[0].numeric_value(), |acc, unit| match operation {
+                        ArithmeticOp::Add | ArithmeticOp::Sub => acc + unit.numeric_value(),
+                        ArithmeticOp::Min => acc.min(unit.numeric_value()),
+                        ArithmeticOp::Max => acc.max(unit.numeric_value()),
+                        _ => unreachable!(),
+                    });
+                return Ok(DomRoot::upcast(CSSUnitValue::new(
+                    cx,
+                    &global,
+                    value,
+                    units[0].unit_str(),
+                )));
+            }
+        }
+        let values = values
+            .into_iter()
+            .map(DoubleOrCSSNumericValue::CSSNumericValue)
+            .collect();
+        match operation {
+            ArithmeticOp::Add | ArithmeticOp::Sub => {
+                CSSMathSum::Constructor(cx, &global, None, values).map(DomRoot::upcast)
+            },
+            ArithmeticOp::Min => {
+                CSSMathMin::Constructor(cx, &global, None, values).map(DomRoot::upcast)
+            },
+            ArithmeticOp::Max => {
+                CSSMathMax::Constructor(cx, &global, None, values).map(DomRoot::upcast)
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    fn equal_numeric(&self, other: &Self) -> bool {
+        if let (Some(left), Some(right)) = (
+            self.downcast::<CSSUnitValue>(),
+            other.downcast::<CSSUnitValue>(),
+        ) {
+            return left.unit_str() == right.unit_str() &&
+                left.numeric_value() == right.numeric_value();
+        }
+        let (Some(left), Some(right)) = (
+            self.downcast::<CSSMathValue>(),
+            other.downcast::<CSSMathValue>(),
+        ) else {
+            return false;
+        };
+        if left.operator() != right.operator() {
+            return false;
+        }
+        let left = left.operands();
+        let right = right.operands();
+        left.len() == right.len() &&
+            left.iter()
+                .zip(right.iter())
+                .all(|(left, right)| left.equal_numeric(right))
+    }
 }
 
 impl CSSNumericValueMethods<crate::DomTypeHolder> for CSSNumericValue {
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-add>
+    fn Add(
+        &self,
+        cx: &mut JSContext,
+        values: Vec<DoubleOrCSSNumericValue>,
+    ) -> Fallible<DomRoot<CSSNumericValue>> {
+        self.arithmetic(cx, values, ArithmeticOp::Add)
+    }
+
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-sub>
+    fn Sub(
+        &self,
+        cx: &mut JSContext,
+        values: Vec<DoubleOrCSSNumericValue>,
+    ) -> Fallible<DomRoot<CSSNumericValue>> {
+        self.arithmetic(cx, values, ArithmeticOp::Sub)
+    }
+
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-mul>
+    fn Mul(
+        &self,
+        cx: &mut JSContext,
+        values: Vec<DoubleOrCSSNumericValue>,
+    ) -> Fallible<DomRoot<CSSNumericValue>> {
+        self.arithmetic(cx, values, ArithmeticOp::Mul)
+    }
+
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-div>
+    fn Div(
+        &self,
+        cx: &mut JSContext,
+        values: Vec<DoubleOrCSSNumericValue>,
+    ) -> Fallible<DomRoot<CSSNumericValue>> {
+        self.arithmetic(cx, values, ArithmeticOp::Div)
+    }
+
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-min>
+    fn Min(
+        &self,
+        cx: &mut JSContext,
+        values: Vec<DoubleOrCSSNumericValue>,
+    ) -> Fallible<DomRoot<CSSNumericValue>> {
+        self.arithmetic(cx, values, ArithmeticOp::Min)
+    }
+
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-max>
+    fn Max(
+        &self,
+        cx: &mut JSContext,
+        values: Vec<DoubleOrCSSNumericValue>,
+    ) -> Fallible<DomRoot<CSSNumericValue>> {
+        self.arithmetic(cx, values, ArithmeticOp::Max)
+    }
+
+    /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-equals>
+    fn Equals(&self, cx: &mut JSContext, values: Vec<DoubleOrCSSNumericValue>) -> bool {
+        let global = self.global();
+        values.into_iter().all(|value| {
+            let value = CSSMathValue::rectify(cx, &global, value);
+            self.equal_numeric(&value)
+        })
+    }
+
     /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-type>
     fn Type(&self) -> CSSNumericType {
         let ty = self.numeric_type();
