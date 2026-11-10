@@ -312,6 +312,9 @@ Notes on the numbers:
   SVG `<script>` now exposes the `SVGURIReference.href` animated string, including `href`/`xlink:href` precedence.
   Four script-linking subtests and two SVG IDL checks now pass. The SVG IDL expectations were also refreshed for 121
   checks fixed by earlier work, and four stale scripted-geometry failure expectations were removed.
+  SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
+  `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
+  scripted linking files; the full 25-file scripted linking directory matches expectations.
   SVG `systemLanguage` now preserves empty comma-separated tokens in its DOM list, excludes nonmatching graphics from
   geometry, hit testing and focus, and selects the first matching `<switch>` child. The SVG rasterizer uses the
   browser's language preference, so image pixels follow the same conditions. All 27 focused parsing and matching
@@ -516,9 +519,10 @@ Notes on the numbers:
   style has dropped it. Container query units in keyframes are not supported, as in style sheets.
 - SVG documents are drawn by the same code as inline SVG, which handles `<use>` and some nested images
   less well than drawing the file as an image did, so a few `.svg` reftests that used to pass now fail. It only
-  draws `<image>` elements whose `href` is a `data:` URL. SMIL effects cover basic lengths, enumerations, numbers,
-  presentation properties and motion. Full repeat and syncbase
-  timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
+  draws `<image>` elements whose `href` is a `data:` URL. `<use>` still lacks a DOM shadow tree, including the
+  instance event path and synchronized event listeners; direct references to SVG anchors activate through their
+  source element. SMIL effects cover basic lengths, enumerations, numbers, presentation properties and motion. Full
+  repeat and syncbase timing, `TimeEvent` details, and many animated attributes are still missing. Most geometry
   methods still use attributes rather than CSS geometry properties, though paths now use computed `d`. Script's text
   geometry is measured glyph by glyph without shaping, `textPath`, `dominant-baseline` or vertical writing.
 - SVG `getBBox()` intersects clipping bounds as rectangles rather than calculating the exact clipped silhouette, and
