@@ -1,6 +1,8 @@
 // Copyright 2018 the Resvg Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use std::borrow::Cow;
+
 use super::converter::{self, SvgColorExt};
 use super::paint_server;
 use super::svgtree::{AId, FromValue, SvgNode};
@@ -152,7 +154,22 @@ fn convert_paint(
     opacity: &mut Opacity,
     cache: &mut converter::Cache,
 ) -> Option<(Paint, Option<ContextElement>)> {
-    let paint = match svgtypes::Paint::from_str(value) {
+    // Armature (AU-010): CSS paint keywords are case-insensitive, including a
+    // currentColor fallback after a case-sensitive paint-server fragment ID.
+    let trimmed = value.trim();
+    let normalized = if trimmed.eq_ignore_ascii_case("currentcolor") {
+        Cow::Borrowed("currentColor")
+    } else if let Some(start) = trimmed.rfind(|c: char| c.is_ascii_whitespace()) {
+        let fallback = trimmed[start..].trim();
+        if fallback.eq_ignore_ascii_case("currentcolor") {
+            Cow::Owned(format!("{}currentColor", &trimmed[..=start]))
+        } else {
+            Cow::Borrowed(value)
+        }
+    } else {
+        Cow::Borrowed(value)
+    };
+    let paint = match svgtypes::Paint::from_str(&normalized) {
         Ok(v) => v,
         Err(_) => {
             if aid == AId::Fill {

@@ -48,3 +48,8 @@
 
 - Files: `src/parser/converter.rs`, `src/parser/units.rs`
 - Why: CSS viewport units on SVG geometry refer to the initial SVG viewport. Keep that viewport while converting nested SVG content and resolve `vw`, `vh`, `vmin` and `vmax` in lengths and `calc()` expressions.
+
+### AU-010: Accept lowercase currentColor in SVG paints
+
+- Files: `src/parser/style.rs`
+- Why: CSS paint keywords are case-insensitive. Canonicalize `currentcolor` in fill and stroke values, including a fallback after a paint-server URL, while preserving case-sensitive fragment IDs.
