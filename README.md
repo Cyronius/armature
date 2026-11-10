@@ -118,8 +118,9 @@ Notes on the numbers:
   element changes whether the instruction is in the prolog.
 - **Events**: `DragEvent`, `DeviceMotionEvent` and `DeviceOrientationEvent` and their `createEvent()` aliases; the
   `<body>`/`<frameset>` window event-handler attributes now forward `onblur` and the frameset handlers.
-- **MIME types**: Request and Response `blob()` keep non-ASCII MIME parameters, and navigation quotes parameters it
-  re-parses (so `charset` is no longer lost). `mimesniff/mime-types/parsing` went from 1,916 failing subtests to 1,402.
+- **MIME types**: Request and Response `blob()` preserve MIME parameter values, including their case and non-ASCII
+  characters, and navigation quotes parameters it re-parses (so `charset` is no longer lost).
+  `mimesniff/mime-types/parsing` went from 1,916 failing subtests to 1,394.
 - **[Popover API](https://html.spec.whatwg.org/multipage/popover.html)**, behind the `dom_popover_enabled`
   preference (off by default; enabled for the tests): the `popover` attribute (`auto`, `manual` and `hint`),
   `showPopover()`/`hidePopover()`/`togglePopover()`, `beforetoggle`/`toggle` events, `popovertarget` on buttons and
