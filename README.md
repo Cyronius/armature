@@ -556,6 +556,10 @@ Notes on the numbers:
   97-file `svg/types/scripted` suite gained six passes, reaching 993 passing and 35 failing subtests without a
   previously passing subtest regressing. A fresh run also confirmed that all seven `ellipse-auto-radii.svg` geometry
   subtests and the high-scale dashed-stroke hit test pass; their stale failure expectations have been removed.
+  Stroke width, dash lengths and dash offsets now resolve percentages and `calc()` against the current SVG viewport's
+  normalized diagonal, including after a `viewBox` change and under CSS zoom. Ellipse geometry now uses computed CSS
+  radii, so a radius set to zero in style disables the shape. The new six-subtest percentage stroke test passes, and
+  the 102-file SVG scripted regression run matches expectations.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
@@ -617,7 +621,7 @@ Notes on the numbers:
   as the current [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes. Two
   `lh`/`rlh` tests compare the 32-bit `SVGLength.value` with a layout double using exact equality. One `ex` test
   measures its reference before Ahem loads, so its expected value can change with font-loading timing.
-- SVG DOM stroke hit testing does not yet resolve percentage dash lengths or CSS transforms for non-scaling strokes.
+- SVG DOM stroke hit testing does not yet resolve CSS transforms for non-scaling strokes.
 - Some SVG non-scaling stroke reftests still differ at raster edges or under CSS transforms. The embedded SVG viewport
   correction currently covers data URL images with a `viewBox` and a `vector-effect` attribute.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
