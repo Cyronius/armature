@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml"
+     width="100" height="100" viewBox="0 0 100 100">
+  <title>External SVG image in a standalone SVG document</title>
+  <metadata>
+    <h:link rel="help" href="https://www.w3.org/TR/SVG2/embedded.html#ImageElement"/>
+    <h:link rel="match" href="reference/green-rect-100x100.svg"/>
+  </metadata>
+  <image href="reference/green-rect-100x100.svg" width="100" height="100"/>
+</svg>
