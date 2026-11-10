@@ -1124,13 +1124,13 @@ fn bounding_box_impl(
             if !has_source {
                 return None;
             }
-            let x = length(
+            let x = geometry_length(
                 cx,
                 element,
                 local_name!("x"),
                 SVGLengthDirection::Horizontal,
             );
-            let y = length(cx, element, local_name!("y"), SVGLengthDirection::Vertical);
+            let y = geometry_length(cx, element, local_name!("y"), SVGLengthDirection::Vertical);
             let (width, height) = image_size(cx, element);
             if width <= 0.0 || height <= 0.0 {
                 return None;
@@ -1139,13 +1139,13 @@ fn bounding_box_impl(
         },
         local_name!("foreignObject") => {
             use SVGLengthDirection::{Horizontal, Vertical};
-            let width = length(cx, element, local_name!("width"), Horizontal);
-            let height = length(cx, element, local_name!("height"), Vertical);
+            let width = geometry_length(cx, element, local_name!("width"), Horizontal);
+            let height = geometry_length(cx, element, local_name!("height"), Vertical);
             if width <= 0.0 || height <= 0.0 {
                 return None;
             }
-            let x = length(cx, element, local_name!("x"), Horizontal);
-            let y = length(cx, element, local_name!("y"), Vertical);
+            let x = geometry_length(cx, element, local_name!("x"), Horizontal);
+            let y = geometry_length(cx, element, local_name!("y"), Vertical);
             Some(Rect::new(x, y, x + width, y + height))
         },
         local_name!("text") | local_name!("tspan") | local_name!("textPath") => {
