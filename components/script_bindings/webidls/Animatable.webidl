@@ -8,7 +8,7 @@ interface mixin Animatable {
     [Pref="dom_web_animations_enabled", Throws]
     Animation           animate(object? keyframes ,
                                 optional (unrestricted double or KeyframeAnimationOptions) options = {});
-    [Pref="dom_web_animations_enabled"]
+    [Pref="dom_web_animations_enabled", Throws]
     sequence<Animation> getAnimations(optional GetAnimationsOptions options = {});
 };
 

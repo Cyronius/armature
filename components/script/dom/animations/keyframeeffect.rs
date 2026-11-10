@@ -1007,18 +1007,53 @@ fn parse_property_values(
 /// turned into their double-colon forms.
 ///
 /// <https://drafts.csswg.org/web-animations-1/#dom-keyframeeffect-pseudoelement>
-fn normalize_pseudo_selector(selector: Option<DOMString>) -> Fallible<Option<DOMString>> {
+pub(crate) fn normalize_pseudo_selector(
+    selector: Option<DOMString>,
+) -> Fallible<Option<DOMString>> {
     let Some(selector) = selector else {
         return Ok(None);
     };
-    let string = selector.str().to_ascii_lowercase();
-    let canonical = match string.as_str() {
-        ":before" | ":after" | ":first-letter" | ":first-line" => format!(":{string}"),
-        _ => string,
+    let string = selector.str().to_string();
+    let lower = string.to_ascii_lowercase();
+    let canonical = match lower.as_str() {
+        ":before" | ":after" | ":first-letter" | ":first-line" => format!(":{lower}"),
+        _ => lower,
     };
-    pseudo_element_from_selector(&canonical)
-        .map(|_| Some(DOMString::from(canonical)))
-        .ok_or(Error::Syntax(None))
+    if pseudo_element_from_selector(&canonical).is_some() {
+        return Ok(Some(DOMString::from(canonical)));
+    }
+    if let Some((name, argument)) = string.split_once('(') {
+        // Functional pseudo-element arguments can be case-sensitive custom identifiers.
+        let canonical = format!("{}({argument}", name.to_ascii_lowercase());
+        if valid_functional_pseudo_selector(&canonical) {
+            return Ok(Some(DOMString::from(canonical)));
+        }
+    }
+    Err(Error::Syntax(None))
+}
+
+fn valid_functional_pseudo_selector(selector: &str) -> bool {
+    let Some((name, argument)) = selector.split_once('(') else {
+        return false;
+    };
+    if !matches!(name, "::part" | "::highlight") {
+        return false;
+    }
+    let Some(argument) = argument.strip_suffix(')') else {
+        return false;
+    };
+    let mut parser = Parser::new(argument);
+    if parser.expect_ident().is_err() {
+        return false;
+    }
+    if name == "::part" {
+        while !parser.is_exhausted() {
+            if parser.expect_ident().is_err() {
+                return false;
+            }
+        }
+    }
+    parser.is_exhausted()
 }
 
 fn pseudo_element_from_selector(selector: &str) -> Option<PseudoElement> {

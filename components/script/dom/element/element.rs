@@ -5027,25 +5027,29 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
         &self,
         cx: &mut JSContext,
         options: &crate::dom::bindings::codegen::Bindings::AnimatableBinding::GetAnimationsOptions,
-    ) -> Vec<DomRoot<Animation>> {
+    ) -> Fallible<Vec<DomRoot<Animation>>> {
         // > Returns the set of relevant animations for a subject element: this element or, if
         // > subtree is true, also the pseudo-elements of this element and its descendants,
         // > after flushing pending style changes.
+        let requested_pseudo =
+            crate::dom::keyframeeffect::normalize_pseudo_selector(options.pseudoElement.clone())?;
         let document = self.owner_document();
         document
             .window()
             .layout_reflow(cx, layout_api::QueryMsg::StyleQuery);
         let node = self.upcast::<Node>();
-        document.animation_manager().relevant_animations(
+        Ok(document.animation_manager().relevant_animations(
             cx.no_gc(),
-            |target, has_pseudo_selector| {
-                if options.subtree {
+            |target, pseudo_selector| {
+                if requested_pseudo.is_some() {
+                    target == self && pseudo_selector == requested_pseudo.as_ref()
+                } else if options.subtree {
                     node.is_inclusive_ancestor_of(target.upcast())
                 } else {
-                    target == self && !has_pseudo_selector
+                    target == self && pseudo_selector.is_none()
                 }
             },
-        )
+        ))
     }
 
     fn Animate(

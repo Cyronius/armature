@@ -2130,11 +2130,11 @@ impl Animation {
 
     /// The target element and pseudo-element of the effect of this animation, for
     /// `getAnimations()`.
-    pub(crate) fn effect_target(&self) -> Option<(DomRoot<Element>, bool)> {
+    pub(crate) fn effect_target(&self) -> Option<(DomRoot<Element>, Option<DOMString>)> {
         let effect = self.associated_effect.get()?;
         let effect = effect.downcast::<KeyframeEffect>()?;
         let target = crate::dom::bindings::codegen::Bindings::KeyframeEffectBinding::KeyframeEffectMethods::GetTarget(effect)?;
-        Some((target, effect.target_pseudo_selector().is_some()))
+        Some((target, effect.target_pseudo_selector()))
     }
 
     /// Compare two animations in the composite order.

@@ -284,7 +284,7 @@ impl AnimationManager {
     pub(crate) fn relevant_animations(
         &self,
         no_gc: &NoGC,
-        filter: impl Fn(&Element, bool) -> bool,
+        filter: impl Fn(&Element, Option<&DOMString>) -> bool,
     ) -> Vec<DomRoot<DomAnimation>> {
         let mut animations: Vec<DomRoot<DomAnimation>> = self
             .script_animations
@@ -295,7 +295,7 @@ impl AnimationManager {
                 animation.is_relevant() &&
                     animation
                         .effect_target()
-                        .is_some_and(|(target, pseudo)| filter(&target, pseudo))
+                        .is_some_and(|(target, pseudo)| filter(&target, pseudo.as_ref()))
             })
             .collect();
         animations.sort_by(|a, b| a.composite_order(b, no_gc));
