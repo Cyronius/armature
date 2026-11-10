@@ -563,7 +563,11 @@ Notes on the numbers:
   `svg/geometry/reftests` files pass; the 113-file embedded and geometry run still matches expectations. Standalone
   SVG shape geometry now resolves `vw`, `vh`, `vmin` and `vmax` against the initial viewport, including inside `calc()`.
   The existing rectangle reftest and a new `vmin`/`vmax` visual reftest pass; the 117-file focused run matches
-  expectations.
+  expectations. SVG geometry presentation attributes now defer `var()` substitution until custom properties have
+  cascaded, and the rendering copy receives only those attributes' resolved geometry. Unitless substituted lengths
+  remain invalid in standards mode and resolve as SVG user units in quirks mode. Four more styling reftests now pass;
+  all seven `css-var-on-length-attributes` cases match expectations. The wider SVG styling, geometry, embedded image,
+  path and painting run has no pass-to-fail changes against the saved baseline runs.
 - **SVG bounding boxes**: `getBBox()` now includes stroked path and line outlines when requested, preserves the
   position of move-only paths and single-point polygons, measures foreign objects, and excludes images with no
   source or nonpositive dimensions. In the 97-file `svg/types/scripted` run, 22 previously failing subtests now pass
