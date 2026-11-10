@@ -8,7 +8,7 @@ interface KeyframeEffect : AnimationEffect {
   [Throws] constructor(Element?       target,
                        object?        keyframes,
                        optional (unrestricted double or KeyframeEffectOptions) options = {});
-//   constructor(KeyframeEffect source);
+  [Throws] constructor(KeyframeEffect source);
    attribute Element?           target;
    [SetterThrows] attribute CSSOMString?       pseudoElement;
    attribute CompositeOperation composite;

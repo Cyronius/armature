@@ -332,6 +332,65 @@ impl KeyframeEffectMethods<crate::DomTypeHolder> for KeyframeEffect {
         Ok(effect)
     }
 
+    /// <https://drafts.csswg.org/web-animations-1/#dom-keyframeeffect-keyframeeffect-source>
+    fn Constructor_(
+        cx: &mut JSContext,
+        window: &Window,
+        proto: Option<HandleObject>,
+        source: &KeyframeEffect,
+    ) -> Fallible<DomRoot<KeyframeEffect>> {
+        let effect = KeyframeEffect::new_with_proto(cx, window, proto);
+        effect
+            .target_element
+            .set(source.target_element.get().as_deref());
+        *effect.target_pseudo_selector.borrow_mut() =
+            source.target_pseudo_selector.borrow().clone();
+        // CSS animations and transitions keep their keyframes in style. Snapshot the
+        // computed keyframes when copying, since the new effect is not associated
+        // with the CSS animation that owns them.
+        *effect.keyframes.borrow_mut() = if source.css_keyframes.get() {
+            let document = source.upcast::<AnimationEffect>().window().Document();
+            source
+                .upcast::<AnimationEffect>()
+                .associated_animation()
+                .and_then(|animation| animation.css_computed_keyframes(cx))
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|keyframe| {
+                    let timing_function = parse_easing(&document, &keyframe.easing.str())?;
+                    let values = keyframe
+                        .values
+                        .into_iter()
+                        .filter_map(|(name, value)| {
+                            let property_id = if name.starts_with("--") {
+                                PropertyId::parse_enabled_for_all_content(&name).ok()
+                            } else {
+                                lookup_css_property_by_idl_attribute_name(&name)
+                                    .map(PropertyId::NonCustom)
+                            }?;
+                            Some((property_id, DOMString::from(value)))
+                        })
+                        .collect();
+                    Some(Keyframe {
+                        offset: Some(Finite::wrap(keyframe.offset)),
+                        computed_offset: keyframe.offset,
+                        easing_function: keyframe.easing,
+                        timing_function,
+                        composite: keyframe.composite,
+                        declarations: parse_property_values(&document, values),
+                    })
+                })
+                .collect()
+        } else {
+            source.keyframes.borrow().clone()
+        };
+        effect.composite.set(source.composite.get());
+        effect
+            .upcast::<AnimationEffect>()
+            .copy_timing_from(source.upcast::<AnimationEffect>());
+        Ok(effect)
+    }
+
     /// <https://drafts.csswg.org/web-animations-1/#dom-keyframeeffect-target>
     fn GetTarget(&self) -> Option<DomRoot<Element>> {
         self.target_element.get()
@@ -764,7 +823,7 @@ fn process_a_property_indexed_keyframe(
 }
 
 /// <https://drafts.csswg.org/web-animations-1/#keyframe>
-#[derive(JSTraceable, MallocSizeOf)]
+#[derive(Clone, JSTraceable, MallocSizeOf)]
 struct Keyframe {
     offset: Option<Finite<f64>>,
     /// <https://drafts.csswg.org/web-animations-1/#computed-keyframe-offset>
@@ -777,7 +836,7 @@ struct Keyframe {
     declarations: Vec<KeyframePropertyDeclaration>,
 }
 
-#[derive(JSTraceable, MallocSizeOf)]
+#[derive(Clone, JSTraceable, MallocSizeOf)]
 struct KeyframePropertyDeclaration {
     #[no_trace]
     property_id: PropertyId,

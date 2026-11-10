@@ -153,6 +153,12 @@ impl AnimationEffect {
         self.associated_animation.set(animation);
     }
 
+    /// Copy the specified timing of another effect without associating its animation.
+    pub(crate) fn copy_timing_from(&self, source: &AnimationEffect) {
+        *self.specified_timing_properties.borrow_mut() =
+            source.specified_timing_properties.borrow().clone();
+    }
+
     /// <https://drafts.csswg.org/web-animations-1/#active-duration>
     pub(crate) fn active_duration(&self) -> f64 {
         let timing = self.specified_timing_properties.borrow();
