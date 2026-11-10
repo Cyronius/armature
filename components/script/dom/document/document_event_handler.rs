@@ -215,6 +215,9 @@ pub(crate) struct DocumentEventHandler {
     coalesced_wheel_event_ids: DomRefCell<Vec<InputEventId>>,
     /// State that is stored to track and count clicks per-mouse button.
     button_click_state: DomRefCell<MouseClickTracker>,
+    /// The primary button's down target, used to avoid dismissing popovers when
+    /// that target is removed before the button is released.
+    popover_pointerdown_node: MutNullableDom<Node>,
     /// The current button state of the mouse. This is used to ensure that
     /// `pointerup` and `pointerdown` events are only sent when transitioning from
     /// having no mouse buttons pressed to having any and vice-versa.
@@ -269,6 +272,7 @@ impl DocumentEventHandler {
             wheel_event_index: Default::default(),
             coalesced_wheel_event_ids: Default::default(),
             button_click_state: Default::default(),
+            popover_pointerdown_node: Default::default(),
             mouse_button_state: Cell::new(MouseButtons::empty()),
             current_hover_target: Default::default(),
             current_active_element: Default::default(),
@@ -1061,6 +1065,9 @@ impl DocumentEventHandler {
             self.button_click_state
                 .safe_borrow_mut(cx.no_gc())
                 .on_mouse_down(mouse_button, hit_test_result.point_in_frame);
+            if mouse_button == MouseButton::Primary {
+                self.popover_pointerdown_node.set(Some(node));
+            }
         }
 
         // From <https://w3c.github.io/pointerevents/#dfn-mousedown>
@@ -1090,6 +1097,9 @@ impl DocumentEventHandler {
             MouseButtonAction::Down => {
                 // Step 6. Dispatch pointerdown event.
                 let pointer_event_result = if is_compatibility_event_for_touch {
+                    if mouse_button == MouseButton::Primary {
+                        light_dismiss_open_popovers(cx, "pointerdown", node.upcast());
+                    }
                     true
                 } else {
                     let pointer_event_name = if self.mouse_button_state.get().is_empty() {
@@ -1125,7 +1135,9 @@ impl DocumentEventHandler {
                     self.mouse_button_state
                         .set(input_event.pressed_mouse_buttons);
 
-                    light_dismiss_open_popovers(cx, pointer_event.upcast(), &pointer_target);
+                    if mouse_button == MouseButton::Primary {
+                        light_dismiss_open_popovers(cx, "pointerdown", &pointer_target);
+                    }
                     let pointer_event_result =
                         pointer_event.upcast::<Event>().fire(cx, &pointer_target);
 
@@ -1182,6 +1194,16 @@ impl DocumentEventHandler {
             },
             // https://w3c.github.io/pointerevents/#dfn-handle-native-mouse-up
             MouseButtonAction::Up => {
+                let down_target_is_connected = if mouse_button == MouseButton::Primary {
+                    let connected = self
+                        .popover_pointerdown_node
+                        .get()
+                        .is_some_and(|down_target| down_target.is_connected());
+                    self.popover_pointerdown_node.set(None);
+                    connected
+                } else {
+                    false
+                };
                 if !is_compatibility_event_for_touch {
                     // Step 6. Dispatch pointerup event.
                     let mouse_button_state = self.mouse_button_state.get();
@@ -1215,7 +1237,9 @@ impl DocumentEventHandler {
                         .map(DomRoot::upcast::<EventTarget>)
                         .unwrap_or_else(|| DomRoot::from_ref(node.upcast::<EventTarget>()));
 
-                    light_dismiss_open_popovers(cx, pointer_event.upcast(), &pointer_target);
+                    if down_target_is_connected {
+                        light_dismiss_open_popovers(cx, "pointerup", &pointer_target);
+                    }
                     pointer_event.upcast::<Event>().fire(cx, &pointer_target);
 
                     // Update button state after firing event, so setPointerCapture/releasePointerCapture
@@ -1234,6 +1258,10 @@ impl DocumentEventHandler {
                     if exactly_one_button {
                         self.implicit_release_pointer_capture(cx, pointer_id, "mouse", true);
                     }
+                }
+
+                if is_compatibility_event_for_touch && down_target_is_connected {
+                    light_dismiss_open_popovers(cx, "pointerup", node.upcast());
                 }
 
                 if is_disabled_control {
@@ -1539,7 +1567,6 @@ impl DocumentEventHandler {
             event.is_cancelable(),
             Some(hit_test_result.point_in_node),
         );
-        light_dismiss_open_popovers(cx, pointer_event.upcast(), &pointer_target);
         pointer_event.upcast::<Event>().fire(cx, &pointer_target);
 
         // Process pending pointer capture after firing event, but skip if we just

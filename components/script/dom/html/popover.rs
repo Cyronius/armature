@@ -1389,11 +1389,15 @@ pub(crate) fn run_the_popover_target_attribute_activation_behavior(
 
 /// <https://html.spec.whatwg.org/multipage/#popover-light-dismiss>
 ///
-/// This is called with a trusted `pointerdown` or `pointerup` event and the target it is about
-/// to be dispatched to, before dispatching it.
-pub(crate) fn light_dismiss_open_popovers(cx: &mut JSContext, event: &Event, target: &EventTarget) {
-    // Step 1. Assert: event's isTrusted attribute is true.
-    // Step 2. Let target be event's target.
+/// This is called for a trusted primary pointer press or release, before
+/// dispatching that pointer event.
+pub(crate) fn light_dismiss_open_popovers(
+    cx: &mut JSContext,
+    event_type: &str,
+    target: &EventTarget,
+) {
+    // Step 1. Assert: the pointer event's isTrusted attribute is true.
+    // Step 2. Let target be the pointer event's target.
     let Some(target) = target.downcast::<Node>() else {
         return;
     };
@@ -1408,17 +1412,16 @@ pub(crate) fn light_dismiss_open_popovers(cx: &mut JSContext, event: &Event, tar
     }
 
     let popovers = document.popover_data();
-    let event_type = event.type_();
     // Step 5. If event's type is "pointerdown": set document's popover pointerdown target to the
     // result of running topmost clicked popover given target.
-    if &*event_type == "pointerdown" {
+    if event_type == "pointerdown" {
         let topmost_clicked_popover = topmost_clicked_popover(cx.no_gc(), target);
         popovers
             .pointerdown_target
             .set(topmost_clicked_popover.as_deref());
     }
     // Step 6. If event's type is "pointerup":
-    else if &*event_type == "pointerup" {
+    else if event_type == "pointerup" {
         // Step 6.1. Let ancestor be the result of running topmost clicked popover given target.
         let ancestor = topmost_clicked_popover(cx.no_gc(), target);
 
