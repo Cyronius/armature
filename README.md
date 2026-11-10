@@ -391,6 +391,9 @@ Notes on the numbers:
   more path error-handling subtests pass across four files.
   SVG bearing commands now orient relative path segments for both rendering and DOM geometry queries. The absolute,
   relative and zero-bearing reftests pass; the 72-test `svg/path` run matches expectations.
+  SVG markers at closed subpaths now bisect the incoming and outgoing directions, draw middle markers at nonfinal
+  closing vertices, and avoid duplicate markers when a segment already ends at its subpath start. Four more
+  `svg/painting` marker reftests pass.
   Seeking an SVG animation clock refreshes its cached raster image. The serializer also applies active `<animate>`
   and `<set>` presentation property values to the rendering copy, so the scripted motion and rewind/freeze reftests
   now pass.
