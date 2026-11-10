@@ -5,10 +5,13 @@
 use cssparser::{Parser, Token};
 use dom_struct::dom_struct;
 use js::context::JSContext;
-use script_bindings::codegen::GenericBindings::CSSNumericValueBinding::CSSNumericType;
-use style::typed_om::numeric_type::NumericType;
-use style::values::generics::calc::CalcType;
+use script_bindings::codegen::GenericBindings::CSSNumericValueBinding::{
+    CSSNumericBaseType, CSSNumericType,
+};
+use style::typed_om::numeric_type::{NumericBaseType, NumericType};
+use style::values::generics::Optional;
 
+use super::cssmathvalue::CSSMathValue;
 use super::cssstylevalue::CSSStyleValue;
 use crate::dom::bindings::codegen::Bindings::CSSNumericValueBinding::CSSNumericValueMethods;
 use crate::dom::bindings::error::{Error, Fallible};
@@ -30,36 +33,55 @@ impl CSSNumericValue {
             css_style_value: CSSStyleValue::new_inherited(String::new()),
         }
     }
+
+    pub(crate) fn numeric_type(&self) -> NumericType {
+        if let Some(unit) = self.downcast::<CSSUnitValue>() {
+            NumericType::from_unit_unchecked(unit.unit_str())
+        } else {
+            self.downcast::<CSSMathValue>()
+                .expect("Every CSSNumericValue is a unit or math value")
+                .numeric_type()
+        }
+    }
+
+    pub(crate) fn serialize(&self) -> String {
+        if let Some(unit) = self.downcast::<CSSUnitValue>() {
+            unit.serialize()
+        } else {
+            self.downcast::<CSSMathValue>()
+                .expect("Every CSSNumericValue is a unit or math value")
+                .serialize()
+        }
+    }
 }
 
 impl CSSNumericValueMethods<crate::DomTypeHolder> for CSSNumericValue {
     /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-type>
     fn Type(&self) -> CSSNumericType {
-        let unit = self
-            .downcast::<CSSUnitValue>()
-            .expect("CSSUnitValue is the only implemented CSSNumericValue subclass")
-            .unit_str();
-        let mut numeric_type = CSSNumericType {
-            length: None,
-            angle: None,
-            time: None,
-            frequency: None,
-            resolution: None,
-            flex: None,
-            percent: None,
-            percentHint: None,
+        let ty = self.numeric_type();
+        let exponent = |base| {
+            let power = ty.exponent(base);
+            (power != 0).then_some(power)
         };
-        match NumericType::from_unit_unchecked(unit).as_calc_type() {
-            Ok(CalcType::Length) => numeric_type.length = Some(1),
-            Ok(CalcType::Angle) => numeric_type.angle = Some(1),
-            Ok(CalcType::Time) => numeric_type.time = Some(1),
-            Ok(CalcType::Resolution) => numeric_type.resolution = Some(1),
-            Ok(CalcType::Percentage) => numeric_type.percent = Some(1),
-            Ok(CalcType::Number) => {},
-            Err(_) if unit == "fr" => numeric_type.flex = Some(1),
-            Err(_) => numeric_type.frequency = Some(1),
+        CSSNumericType {
+            length: exponent(NumericBaseType::Length),
+            angle: exponent(NumericBaseType::Angle),
+            time: exponent(NumericBaseType::Time),
+            frequency: exponent(NumericBaseType::Frequency),
+            resolution: exponent(NumericBaseType::Resolution),
+            flex: exponent(NumericBaseType::Flex),
+            percent: exponent(NumericBaseType::Percent),
+            percentHint: match ty.percent_hint() {
+                Optional::None => None,
+                Optional::Some(NumericBaseType::Length) => Some(CSSNumericBaseType::Length),
+                Optional::Some(NumericBaseType::Angle) => Some(CSSNumericBaseType::Angle),
+                Optional::Some(NumericBaseType::Time) => Some(CSSNumericBaseType::Time),
+                Optional::Some(NumericBaseType::Frequency) => Some(CSSNumericBaseType::Frequency),
+                Optional::Some(NumericBaseType::Resolution) => Some(CSSNumericBaseType::Resolution),
+                Optional::Some(NumericBaseType::Flex) => Some(CSSNumericBaseType::Flex),
+                Optional::Some(NumericBaseType::Percent) => Some(CSSNumericBaseType::Percent),
+            },
         }
-        numeric_type
     }
 
     /// <https://drafts.css-houdini.org/css-typed-om-1/#dom-cssnumericvalue-to>
@@ -67,9 +89,9 @@ impl CSSNumericValueMethods<crate::DomTypeHolder> for CSSNumericValue {
         let unit = unit.to_string().to_ascii_lowercase();
         NumericType::try_from_unit(&unit)
             .map_err(|_| Error::Syntax(Some("Unknown CSS unit".into())))?;
-        let source = self
-            .downcast::<CSSUnitValue>()
-            .expect("CSSUnitValue is the only implemented CSSNumericValue subclass");
+        let source = self.downcast::<CSSUnitValue>().ok_or_else(|| {
+            Error::Type(c"CSS math value cannot be converted to one unit".to_owned())
+        })?;
         let value = if source.unit_str() == unit {
             source.numeric_value()
         } else if let (Some((from_type, from_factor)), Some((to_type, to_factor))) =

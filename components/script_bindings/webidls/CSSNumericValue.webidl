@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // https://drafts.css-houdini.org/css-typed-om-1/#cssnumericvalue
+typedef (double or CSSNumericValue) CSSNumberish;
+
 enum CSSNumericBaseType { "length", "angle", "time", "frequency", "resolution", "flex", "percent" };
 
 dictionary CSSNumericType {

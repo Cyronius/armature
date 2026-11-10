@@ -19,6 +19,7 @@ use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::css::css::CSS;
 use crate::dom::css::csskeywordvalue::CSSKeywordValue;
+use crate::dom::css::cssmathvalue::CSSMathValue;
 use crate::dom::css::cssunitvalue::CSSUnitValue;
 use crate::dom::css::cssunparsedvalue::CSSUnparsedValue;
 use crate::dom::css::stylepropertymapreadonly::StylePropertyMapReadOnly;
@@ -195,6 +196,9 @@ impl CSSStyleValueMethods<crate::DomTypeHolder> for CSSStyleValue {
     fn Stringifier(&self) -> DOMString {
         if let Some(unit) = self.downcast::<CSSUnitValue>() {
             return DOMString::from(unit.serialize());
+        }
+        if let Some(math) = self.downcast::<CSSMathValue>() {
+            return DOMString::from(math.serialize());
         }
         if let Some(unparsed) = self.downcast::<CSSUnparsedValue>() {
             return DOMString::from(unparsed.serialize(&mut HashSet::new()));
