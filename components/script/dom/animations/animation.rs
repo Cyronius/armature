@@ -892,7 +892,7 @@ impl Animation {
             // > run those steps for animation.
             if synchronously_notify {
                 self.pending_finish_notification.set(false);
-                self.run_finish_notification_steps(cx);
+                self.run_finish_notification_steps(cx, true);
             } else {
                 self.pending_finish_notification.set(true);
                 self.register_with_document();
@@ -910,7 +910,7 @@ impl Animation {
 
     /// The finish notification steps of
     /// <https://drafts.csswg.org/web-animations-1/#update-an-animations-finished-state>.
-    fn run_finish_notification_steps(&self, cx: &mut JSContext) {
+    fn run_finish_notification_steps(&self, cx: &mut JSContext, synchronous: bool) {
         // Step 1. If animation’s play state is not equal to finished, abort these steps.
         if self.play_state() != AnimationPlayState::Finished {
             return;
@@ -928,16 +928,61 @@ impl Animation {
         // or the timeline is inactive, let timelineTime be null.
         // Step 7. If animation has a document for timing, then append finishEvent to its
         // document for timing's pending animation event queue along with its target, animation.
-        self.queue_playback_event(Atom::from("finish"), self.current_time());
+        self.queue_playback_event(Atom::from("finish"), self.current_time(), synchronous);
     }
 
-    fn queue_playback_event(&self, event_type: Atom, current_time: Option<f64>) {
+    fn queue_playback_event(
+        &self,
+        event_type: Atom,
+        current_time: Option<f64>,
+        synchronous_finish: bool,
+    ) {
         let global = self.global();
         let window = global.as_window();
         let document = window.Document();
         let manager = document.animation_manager();
-        manager.queue_playback_event(self, event_type, current_time, self.timeline_time());
+        let timeline_time = self.timeline_time();
+        let scheduled_event_time = if event_type == Atom::from("finish") && !synchronous_finish {
+            let rate = self.playback_rate.get();
+            self.start_time.get().and_then(|start| {
+                (rate != 0.0).then(|| {
+                    start +
+                        (if rate > 0.0 {
+                            self.associated_effect_end()
+                        } else {
+                            0.0
+                        }) / rate
+                })
+            })
+        } else {
+            timeline_time
+        };
+        manager.queue_playback_event(
+            self,
+            event_type,
+            current_time,
+            timeline_time,
+            scheduled_event_time,
+            self.css_event_order(),
+        );
         manager.handle_animation_presence_or_pending_events_change(window);
+    }
+
+    /// Snapshot the CSS composite order before cancellation drops the owning element.
+    pub(crate) fn css_event_order(&self) -> Option<(DomRoot<Element>, CssEventOrder)> {
+        let owner = self.owning_element.get()?;
+        let css = self.css.borrow();
+        let css = css.as_ref()?;
+        Some((
+            owner,
+            CssEventOrder {
+                is_transition: css.is_transition,
+                pseudo_element_rank: pseudo_element_rank(css.key.pseudo_element),
+                order: css.order,
+                name: css.name.clone(),
+                unique_id: self.unique_id,
+            },
+        ))
     }
 
     /// <https://drafts.csswg.org/web-animations-1/#reset-an-animations-pending-tasks>
@@ -995,7 +1040,7 @@ impl Animation {
             *self.finished_promise.borrow_mut() = Some(promise.to_traced());
             // Step 1.5. Let cancelEvent be a new AnimationPlaybackEvent with type cancel, a null
             // currentTime and the current time of the timeline as timelineTime, and queue it.
-            self.queue_playback_event(atom!("cancel"), None);
+            self.queue_playback_event(atom!("cancel"), None, false);
         }
         // Step 2. Make animation’s hold time unresolved.
         self.hold_time.set(None);
@@ -1207,7 +1252,7 @@ impl Animation {
         // currentTime is the current time of animation and timelineTime is the current time
         // of its timeline, and append it to the pending animation event queue of its
         // document for timing.
-        self.queue_playback_event(Atom::from("remove"), self.current_time());
+        self.queue_playback_event(Atom::from("remove"), self.current_time(), false);
     }
 
     /// Add this animation to the list of animations that its document updates at every
@@ -1242,7 +1287,7 @@ impl Animation {
         // > the timeline.
         self.update_finished_state(cx, false, false);
         if self.pending_finish_notification.replace(false) {
-            self.run_finish_notification_steps(cx);
+            self.run_finish_notification_steps(cx, false);
         }
         self.update_style(cx);
         self.update_css_events();

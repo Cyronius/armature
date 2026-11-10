@@ -230,7 +230,33 @@ struct PendingPlaybackEvent {
     event_type: Atom,
     current_time: Option<f64>,
     timeline_time: Option<f64>,
+    scheduled_event_time: Option<f64>,
+    target: Option<Dom<Element>>,
+    #[no_trace]
+    #[ignore_malloc_size_of = "Plain data"]
+    order: Option<CssEventOrder>,
 }
+
+struct PlaybackEventToDispatch {
+    animation: DomRoot<DomAnimation>,
+    event_type: Atom,
+    current_time: Option<f64>,
+    timeline_time: Option<f64>,
+    scheduled_event_time: Option<f64>,
+    target: Option<DomRoot<Element>>,
+    order: Option<CssEventOrder>,
+}
+
+type CssEventToDispatch = (
+    DomRoot<DomAnimation>,
+    DomRoot<Element>,
+    Option<PseudoElement>,
+    TransitionOrAnimationEventType,
+    String,
+    f64,
+    Option<f64>,
+    CssEventOrder,
+);
 
 impl AnimationManager {
     pub(crate) fn new() -> Self {
@@ -309,7 +335,13 @@ impl AnimationManager {
         event_type: Atom,
         current_time: Option<f64>,
         timeline_time: Option<f64>,
+        scheduled_event_time: Option<f64>,
+        css_order: Option<(DomRoot<Element>, CssEventOrder)>,
     ) {
+        let (target, order) = match css_order {
+            Some((target, order)) => (Some(Dom::from_ref(&*target)), Some(order)),
+            None => (None, None),
+        };
         self.pending_playback_events
             .borrow_mut()
             .push(PendingPlaybackEvent {
@@ -317,38 +349,65 @@ impl AnimationManager {
                 event_type,
                 current_time,
                 timeline_time,
+                scheduled_event_time,
+                target,
+                order,
             });
     }
 
     /// Dispatch the queued `AnimationPlaybackEvent`s, as part of
     /// <https://drafts.csswg.org/web-animations-1/#update-animations-and-send-events>.
-    pub(crate) fn send_playback_events(&self, window: &Window, cx: &mut js::context::JSContext) {
-        let events: Vec<(DomRoot<DomAnimation>, Atom, Option<f64>, Option<f64>)> = self
-            .pending_playback_events
-            .borrow_mut()
-            .drain(..)
-            .map(|event| {
-                (
-                    event.animation.as_rooted(),
-                    event.event_type,
-                    event.current_time,
-                    event.timeline_time,
-                )
+    fn send_playback_events(
+        &self,
+        window: &Window,
+        cx: &mut js::context::JSContext,
+        mut events: Vec<PlaybackEventToDispatch>,
+    ) {
+        let no_gc = cx.no_gc();
+        events.sort_by(|a, b| {
+            let time_order = match (a.scheduled_event_time, b.scheduled_event_time) {
+                (None, None) => std::cmp::Ordering::Equal,
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (Some(a), Some(b)) => a.total_cmp(&b),
+            };
+            time_order.then_with(|| match (&a.order, &b.order) {
+                (Some(a_order), Some(b_order)) => b_order
+                    .is_transition()
+                    .cmp(&a_order.is_transition())
+                    .then_with(|| {
+                        let (Some(a_target), Some(b_target)) = (&a.target, &b.target) else {
+                            return std::cmp::Ordering::Equal;
+                        };
+                        if a_target == b_target {
+                            a_order.cmp_same_target(b_order)
+                        } else if a_target
+                            .upcast::<Node>()
+                            .is_before(no_gc, b_target.upcast())
+                        {
+                            std::cmp::Ordering::Less
+                        } else {
+                            std::cmp::Ordering::Greater
+                        }
+                    }),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => a.animation.composite_order(&b.animation, no_gc),
             })
-            .collect();
-        for (animation, event_type, current_time, timeline_time) in events {
+        });
+        for event in events {
             let init = AnimationPlaybackEventInit {
                 parent: EventInit {
                     bubbles: false,
                     cancelable: false,
                     composed: false,
                 },
-                currentTime: current_time.and_then(Finite::new),
-                timelineTime: timeline_time.and_then(Finite::new),
+                currentTime: event.current_time.and_then(Finite::new),
+                timelineTime: event.timeline_time.and_then(Finite::new),
             };
-            AnimationPlaybackEvent::new(cx, window, event_type, &init)
+            AnimationPlaybackEvent::new(cx, window, event.event_type, &init)
                 .upcast::<Event>()
-                .fire(cx, animation.upcast());
+                .fire(cx, event.animation.upcast());
         }
         self.handle_animation_presence_or_pending_events_change(window);
     }
@@ -1174,10 +1233,42 @@ impl AnimationManager {
         // > 4. Let events to dispatch be a copy of doc’s pending animation event queue.
         // > 5. Clear doc’s pending animation event queue.
         //
-        // Take all of the events here, in case sending one of these events
-        // triggers adding new events by forcing a layout.
-        self.send_css_events(cx);
+        // Snapshot every queue before dispatch. A listener may queue another event, which
+        // belongs to the next update rather than this frame.
+        let playback_events: Vec<PlaybackEventToDispatch> = self
+            .pending_playback_events
+            .borrow_mut()
+            .drain(..)
+            .map(|event| PlaybackEventToDispatch {
+                animation: event.animation.as_rooted(),
+                event_type: event.event_type,
+                current_time: event.current_time,
+                timeline_time: event.timeline_time,
+                scheduled_event_time: event.scheduled_event_time,
+                target: event.target.map(|target| target.as_rooted()),
+                order: event.order,
+            })
+            .collect();
+        let css_events: Vec<CssEventToDispatch> = self
+            .css_events
+            .borrow_mut()
+            .drain(..)
+            .map(|event| {
+                (
+                    event.animation.as_rooted(),
+                    event.target.as_rooted(),
+                    event.pseudo_element,
+                    event.event_type,
+                    event.name,
+                    event.elapsed_time,
+                    event.scheduled_event_time,
+                    event.order,
+                )
+            })
+            .collect();
         let events = std::mem::take(&mut *self.pending_events.safe_borrow_mut(cx.no_gc()));
+        self.send_playback_events(window, cx, playback_events);
+        self.send_css_events(cx, css_events);
         if events.is_empty() {
             self.handle_animation_presence_or_pending_events_change(window);
             return;
@@ -1264,33 +1355,11 @@ impl AnimationManager {
 
     /// Dispatch the queued events of CSS animations and transitions, sorted in the
     /// composite order of their animations.
-    fn send_css_events(&self, cx: &mut js::context::JSContext) {
-        let mut events: Vec<(
-            DomRoot<DomAnimation>,
-            DomRoot<Element>,
-            Option<PseudoElement>,
-            TransitionOrAnimationEventType,
-            String,
-            f64,
-            Option<f64>,
-            CssEventOrder,
-        )> = self
-            .css_events
-            .borrow_mut()
-            .drain(..)
-            .map(|event| {
-                (
-                    event.animation.as_rooted(),
-                    event.target.as_rooted(),
-                    event.pseudo_element,
-                    event.event_type,
-                    event.name,
-                    event.elapsed_time,
-                    event.scheduled_event_time,
-                    event.order,
-                )
-            })
-            .collect();
+    fn send_css_events(
+        &self,
+        cx: &mut js::context::JSContext,
+        mut events: Vec<CssEventToDispatch>,
+    ) {
         if events.is_empty() {
             return;
         }

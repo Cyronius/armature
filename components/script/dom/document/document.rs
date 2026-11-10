@@ -5505,8 +5505,6 @@ impl Document {
         // Steps 4 through 7 occur inside `send_pending_events().`
         self.animation_manager()
             .send_pending_events(self.window(), cx);
-        self.animation_manager()
-            .send_playback_events(self.window(), cx);
         self.update_smil_animation_events(cx);
         self.invalidate_continuous_smil_rasters(cx);
     }
