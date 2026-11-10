@@ -15,4 +15,4 @@ interface SVGScriptElement : SVGElement {
            attribute DOMString fetchPriority;
 };
 
-//SVGScriptElement includes SVGURIReference;
+SVGScriptElement includes SVGURIReference;

@@ -23,6 +23,7 @@ use crate::dom::html::htmlscriptelement::{ScriptElement, ScriptElementState};
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{ChildrenMutation, CloneChildrenFlag, Node};
 use crate::dom::svg::svgelement::SVGElement;
+use crate::dom::svg::svgtypes::svg_uri_reference;
 
 /// <https://svgwg.org/svg2-draft/interact.html#InterfaceSVGScriptElement>
 #[dom_struct]
@@ -137,6 +138,9 @@ impl VirtualMethods for SVGScriptElement {
 }
 
 impl SVGScriptElementMethods<crate::DomTypeHolder> for SVGScriptElement {
+    // <https://svgwg.org/svg2-draft/types.html#__svg__SVGURIReference__href>
+    svg_uri_reference!();
+
     // https://svgwg.org/svg2-draft/interact.html#__svg__SVGScriptElement__type
     make_getter!(Type, "type");
     // https://svgwg.org/svg2-draft/interact.html#__svg__SVGScriptElement__type
