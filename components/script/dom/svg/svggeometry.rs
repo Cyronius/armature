@@ -25,6 +25,8 @@ use layout_api::BoxAreaType;
 use style::values::computed::transform::TransformBox;
 use style::values::computed::{DProperty, Length as CSSLength};
 use style::values::generics::basic_shape::GenericShapeCommand;
+use style::values::generics::length::LengthPercentageOrAuto;
+use style::values::generics::svg::{SVGLength, SVGStrokeDashArray};
 use style::values::specified::SVGPathData;
 use style::values::specified::box_::Display;
 use style::values::specified::svg_path::CoordPair;
@@ -242,10 +244,29 @@ impl SVGShapeGeometry {
         element: &SVGElement,
         point: Point,
     ) -> bool {
-        let width = computed_value(element, "stroke-width")
-            .trim_end_matches("px")
-            .parse::<f64>()
-            .unwrap_or(1.0);
+        let computed_style = element.upcast::<Element>().style();
+        let viewport_length = element
+            .viewport_element()
+            .and_then(|viewport| viewport.viewport_size(cx))
+            .map(|(width, height)| ((width * width + height * height) / 2.0).sqrt())
+            .unwrap_or(0.0);
+        // Computed lengths include CSS zoom, while SVG geometry is in unzoomed user units.
+        let zoom = computed_style
+            .as_ref()
+            .map_or(1.0, |style| style.effective_zoom.value());
+        let basis = CSSLength::new(viewport_length * zoom);
+        let svg_style = computed_style
+            .as_ref()
+            .map(|style| style.get_inherited_svg());
+        let width = match svg_style.as_ref().map(|style| &style.stroke_width) {
+            Some(SVGLength::LengthPercentage(value)) => {
+                value.0.resolve(basis).px() as f64 / zoom as f64
+            },
+            _ => computed_value(element, "stroke-width")
+                .trim_end_matches("px")
+                .parse::<f64>()
+                .unwrap_or(1.0),
+        };
         if !width.is_finite() || width <= 0.0 || !point.x.is_finite() || !point.y.is_finite() {
             return false;
         }
@@ -267,31 +288,38 @@ impl SVGShapeGeometry {
             .with_join(join)
             .with_miter_limit(miter_limit);
 
-        let dash_array = computed_value(element, "stroke-dasharray");
-        if dash_array != "none" {
-            let dashes: Option<Vec<f64>> = dash_array
+        let dashes: Vec<f64> = match svg_style.as_ref().map(|style| &style.stroke_dasharray) {
+            Some(SVGStrokeDashArray::Values(values)) => values
+                .iter()
+                .map(|value| value.0.resolve(basis).px() as f64 / zoom as f64)
+                .collect(),
+            _ => computed_value(element, "stroke-dasharray")
                 .split(|character: char| character == ',' || character.is_ascii_whitespace())
                 .filter(|part| !part.is_empty())
                 .map(|part| part.trim_end_matches("px").parse::<f64>().ok())
-                .collect();
-            if let Some(dashes) = dashes.filter(|dashes| {
-                !dashes.is_empty() &&
-                    dashes.iter().all(|dash| dash.is_finite() && *dash >= 0.0) &&
-                    dashes.iter().any(|dash| *dash > 0.0)
-            }) {
-                let author_length = computed_value(element, "path-length")
+                .collect::<Option<Vec<_>>>()
+                .unwrap_or_default(),
+        };
+        if !dashes.is_empty() &&
+            dashes.iter().all(|dash| dash.is_finite() && *dash >= 0.0) &&
+            dashes.iter().any(|dash| *dash > 0.0)
+        {
+            let author_length = computed_value(element, "path-length")
+                .trim_end_matches("px")
+                .parse::<f64>()
+                .ok()
+                .filter(|length| *length > 0.0 && length.is_finite());
+            let scale = author_length.map_or(1.0, |length| self.total_length() / length);
+            let offset = match svg_style.as_ref().map(|style| &style.stroke_dashoffset) {
+                Some(SVGLength::LengthPercentage(value)) => {
+                    value.resolve(basis).px() as f64 / zoom as f64
+                },
+                _ => computed_value(element, "stroke-dashoffset")
                     .trim_end_matches("px")
                     .parse::<f64>()
-                    .ok()
-                    .filter(|length| *length > 0.0 && length.is_finite());
-                let scale = author_length.map_or(1.0, |length| self.total_length() / length);
-                let offset = computed_value(element, "stroke-dashoffset")
-                    .trim_end_matches("px")
-                    .parse::<f64>()
-                    .unwrap_or(0.0);
-                style =
-                    style.with_dashes(offset * scale, dashes.into_iter().map(|dash| dash * scale));
-            }
+                    .unwrap_or(0.0),
+            };
+            style = style.with_dashes(offset * scale, dashes.into_iter().map(|dash| dash * scale));
         }
 
         let path = match self {
@@ -403,23 +431,57 @@ pub(crate) fn shape_geometry(cx: &mut JSContext, element: &SVGElement) -> Option
         local_name!("ellipse") => {
             let cx_ = length(cx, element, local_name!("cx"), Horizontal);
             let cy = length(cx, element, local_name!("cy"), Vertical);
-            let specified_rx = element
-                .svg_attribute(&local_name!("rx"))
-                .and_then(|value| SVGLengthValue::parse(&value))
-                .filter(|value| value.value >= 0.0);
-            let specified_ry = element
-                .svg_attribute(&local_name!("ry"))
-                .and_then(|value| SVGLengthValue::parse(&value))
-                .filter(|value| value.value >= 0.0);
-            let rx = if specified_rx.is_some() {
-                length(cx, element, local_name!("rx"), Horizontal)
-            } else {
-                length(cx, element, local_name!("ry"), Vertical)
-            };
-            let ry = if specified_ry.is_some() {
-                length(cx, element, local_name!("ry"), Vertical)
-            } else {
-                rx
+            let computed_radii = element.upcast::<Element>().style().map(|style| {
+                let (width, height) = element
+                    .viewport_element()
+                    .and_then(|viewport| viewport.viewport_size(cx))
+                    .unwrap_or_default();
+                let zoom = style.effective_zoom.value();
+                let svg_style = style.get_svg();
+                let rx = match &svg_style.rx {
+                    LengthPercentageOrAuto::Auto => None,
+                    LengthPercentageOrAuto::LengthPercentage(value) => Some(
+                        style
+                            .effective_zoom
+                            .unzoom(value.0.resolve(CSSLength::new(width * zoom)).px())
+                            as f64,
+                    ),
+                };
+                let ry = match &svg_style.ry {
+                    LengthPercentageOrAuto::Auto => None,
+                    LengthPercentageOrAuto::LengthPercentage(value) => Some(
+                        style
+                            .effective_zoom
+                            .unzoom(value.0.resolve(CSSLength::new(height * zoom)).px())
+                            as f64,
+                    ),
+                };
+                (rx, ry)
+            });
+            // SVG 2 resolves an auto radius to the other radius's used value.
+            let (rx, ry) = match computed_radii {
+                Some((rx, ry)) => (rx.or(ry).unwrap_or(0.0), ry.or(rx).unwrap_or(0.0)),
+                None => {
+                    let specified_rx = element
+                        .svg_attribute(&local_name!("rx"))
+                        .and_then(|value| SVGLengthValue::parse(&value))
+                        .filter(|value| value.value >= 0.0);
+                    let specified_ry = element
+                        .svg_attribute(&local_name!("ry"))
+                        .and_then(|value| SVGLengthValue::parse(&value))
+                        .filter(|value| value.value >= 0.0);
+                    let rx = if specified_rx.is_some() {
+                        length(cx, element, local_name!("rx"), Horizontal)
+                    } else {
+                        length(cx, element, local_name!("ry"), Vertical)
+                    };
+                    let ry = if specified_ry.is_some() {
+                        length(cx, element, local_name!("ry"), Vertical)
+                    } else {
+                        rx
+                    };
+                    (rx, ry)
+                },
             };
             if rx <= 0.0 || ry <= 0.0 {
                 return Some(SVGShapeGeometry::Path(BezPath::new()));
