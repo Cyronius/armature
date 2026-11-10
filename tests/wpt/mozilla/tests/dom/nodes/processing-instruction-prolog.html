@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>xml-stylesheet responds to changes in the document prolog</title>
+<link rel="help" href="https://drafts.csswg.org/cssom/#requirements-on-user-agents-implementing-the-xml-stylesheet-processing-instruction">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<body>
+<script>
+promise_test(async t => {
+  const frame = document.createElement("iframe");
+  frame.src = "support/processing-instruction-prolog.xhtml";
+  document.body.append(frame);
+  t.add_cleanup(() => frame.remove());
+  await new Promise(resolve => frame.addEventListener("load", resolve, {once: true}));
+
+  const doc = frame.contentDocument;
+  const pi = [...doc.childNodes].find(node => node.nodeType === Node.PROCESSING_INSTRUCTION_NODE);
+  const root = doc.documentElement;
+  assert_not_equals(pi.sheet, null, "a PI before the root owns a style sheet");
+
+  doc.removeChild(root);
+  doc.insertBefore(root, pi);
+  assert_equals(pi.sheet, null, "inserting the root before the PI removes its style sheet");
+
+  doc.removeChild(root);
+  for (let i = 0; i < 500 && pi.sheet === null; i++) {
+    await new Promise(resolve => t.step_timeout(resolve, 10));
+  }
+  assert_not_equals(pi.sheet, null, "removing the root loads the PI style sheet again");
+}, "An xml-stylesheet PI tracks prolog changes caused by the document element");
+</script>

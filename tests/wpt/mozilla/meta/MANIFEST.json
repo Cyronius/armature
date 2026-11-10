@@ -10924,6 +10924,16 @@
      []
     ]
    },
+   "dom": {
+    "nodes": {
+     "support": {
+      "processing-instruction-prolog.xhtml": [
+       "bb66879431f3422c2be429905fa106e21ccc836c",
+       []
+      ]
+     }
+    }
+   },
    "gfx-rs-gecko": {
     "1035611-1-ref.html": [
      "05cb06dee6e7135405332ac5767c4d8d11c7e154",
@@ -13433,6 +13443,17 @@
       {}
      ]
     ]
+   },
+   "dom": {
+    "nodes": {
+     "processing-instruction-prolog.html": [
+      "5928e0b3cfd91e0b367c6b9ec62dd1a55f6cdf99",
+      [
+       null,
+       {}
+      ]
+     ]
+    }
    },
    "incremental-layout": {
     "basic-fragment-tree-layout.html": [
