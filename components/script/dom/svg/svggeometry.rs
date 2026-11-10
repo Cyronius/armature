@@ -42,7 +42,7 @@ use crate::dom::svg::svgelement::SVGElement;
 use crate::dom::svg::svgimageelement::SVGImageElement;
 use crate::dom::svg::svglength::{resolve_length, resolve_value};
 use crate::dom::svg::svgpointlist::parse_point_list;
-use crate::dom::svg::svgtransformlist::animated_transform_values;
+use crate::dom::svg::svgtransformlist::{animated_transform_values, parse_transform_items};
 use crate::dom::svg::svgtypes::{
     SVGLengthDirection, SVGLengthValue, is_svg_whitespace, parse_number_prefix,
 };
@@ -333,7 +333,7 @@ impl SVGShapeGeometry {
             },
         };
         let transform = if computed_value(element, "vector-effect") == "non-scaling-stroke" {
-            current_transform(cx, element, true)
+            current_transform_impl(cx, element, true, true)
         } else {
             Affine::IDENTITY
         };
@@ -929,6 +929,41 @@ pub(crate) fn element_transform(cx: &mut JSContext, element: &SVGElement) -> Aff
         .iter()
         .fold(Affine::IDENTITY, |matrix, item| matrix * item.matrix);
     base * motion_transform(cx, element).unwrap_or(Affine::IDENTITY)
+}
+
+/// The linear part of an SVG element's computed CSS transform for a non-scaling stroke.
+/// Translation and transform origin cancel because the path and query point are transformed
+/// together. Keep the SVG transform-list sampling when SMIL changes the base attribute.
+fn stroke_element_transform(cx: &mut JSContext, element: &SVGElement) -> Affine {
+    let animated = animated_transform_values(cx, element, &local_name!("transform"))
+        .iter()
+        .fold(Affine::IDENTITY, |matrix, item| matrix * item.matrix);
+    let base = element
+        .svg_attribute(&local_name!("transform"))
+        .as_deref()
+        .and_then(parse_transform_items)
+        .unwrap_or_default()
+        .iter()
+        .fold(Affine::IDENTITY, |matrix, item| matrix * item.matrix);
+    let motion = motion_transform(cx, element).unwrap_or(Affine::IDENTITY);
+    if animated != base {
+        return animated * motion;
+    }
+    let Some(style) = element.upcast::<Element>().style() else {
+        return animated * motion;
+    };
+    let reference_box = CSSRect::new(
+        CSSPoint::new(CSSLength::new(0.0), CSSLength::new(0.0)),
+        CSSSize::new(CSSLength::new(0.0), CSSLength::new(0.0)),
+    );
+    let Ok((matrix, false)) = style
+        .get_box()
+        .transform
+        .to_transform_3d_matrix_f64(Some(&reference_box))
+    else {
+        return animated * motion;
+    };
+    Affine::new([matrix.m11, matrix.m12, matrix.m21, matrix.m22, 0.0, 0.0]) * motion
 }
 
 /// Whether `element` does not take part in rendering because of its `display`.
@@ -1720,9 +1755,20 @@ pub(crate) fn current_transform(
     element: &SVGElement,
     to_screen: bool,
 ) -> Affine {
+    current_transform_impl(cx, element, to_screen, false)
+}
+
+fn current_transform_impl(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    to_screen: bool,
+    for_stroke: bool,
+) -> Affine {
     let is_svg = element.upcast::<Element>().local_name() == &local_name!("svg");
     let mut transform = if is_svg {
         svg_element_transform(cx, element)
+    } else if for_stroke {
+        stroke_element_transform(cx, element)
     } else {
         element_transform(cx, element)
     };
@@ -1750,7 +1796,11 @@ pub(crate) fn current_transform(
             }
             continue;
         }
-        transform = element_transform(cx, &ancestor) * transform;
+        transform = if for_stroke {
+            stroke_element_transform(cx, &ancestor)
+        } else {
+            element_transform(cx, &ancestor)
+        } * transform;
     }
     transform
 }
