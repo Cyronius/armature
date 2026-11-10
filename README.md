@@ -240,8 +240,12 @@ Notes on the numbers:
   `flex-start`/`flex-end` as `flow-start`/`flow-end` (AS-517). In the focused 54-file WPT run, 112 subtests newly pass,
   including alignment parsing, computed serialization and discrete Web Animations comparisons.
 - **Animated opacity clamping**: keyframe opacity values remain out of range through interpolation and effect
-  composition, then the final computed opacity is clamped to `[0, 1]` (AS-518). All 10 previously failing subtests in
-  the two focused Web Animations clamping tests now pass; normal CSS computed opacity still passes its parsing test.
+  composition, then the final CSS and SVG opacity values are clamped to `[0, 1]` (AS-518, AS-519). All 10 previously
+  failing subtests in the two focused Web Animations clamping tests pass, and the SVG `stop-opacity` and
+  `stroke-opacity` accumulation cases still clamp.
+- **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
+  matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
+  subtests newly pass across CSS Transforms and Web Animations.
 - **Web Animations API**, on in experimental mode (`dom_web_animations_enabled`): `Animation` has the playback model of
   the spec (`play()`, `pause()`, `finish()`, `cancel()`, `reverse()`, `updatePlaybackRate()`, `currentTime`,
   `startTime`, `overallProgress`, `playbackRate`, `playState`, `pending`, the `ready` and `finished` promises, and
