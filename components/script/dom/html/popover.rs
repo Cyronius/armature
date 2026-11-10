@@ -1139,11 +1139,11 @@ pub(crate) fn topmost_popover_ancestor(
     let mut combined_popovers = document.showing_popover_list(PopoverMode::Auto);
     combined_popovers.extend(document.showing_popover_list(PopoverMode::Hint));
 
-    // Returns the index of the last item in combinedPopovers of which node is a flat tree
-    // descendant, if any.
+    // The source can itself be an open popover, which then becomes the new popover's parent.
+    // Returns the index of the last item in combinedPopovers that contains node, if any.
     let last_flat_tree_ancestor_index = |node: &Node| {
         combined_popovers.iter().rposition(|popover| {
-            node.ancestors_in_flat_tree_unrooted(no_gc)
+            node.inclusive_ancestors_in_flat_tree_unrooted(no_gc)
                 .any(|ancestor| &**ancestor == popover.upcast::<Node>())
         })
     };
