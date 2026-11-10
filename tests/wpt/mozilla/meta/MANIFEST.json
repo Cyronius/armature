@@ -8572,6 +8572,19 @@
       ],
       {}
      ]
+    ],
+    "viewport-dependent-text.html": [
+     "95ef7510ae09e6e879a98c39962c069680efca6f",
+     [
+      null,
+      [
+       [
+        "/_mozilla/svg/viewport-dependent-text-ref.html",
+        "=="
+       ]
+      ],
+      {}
+     ]
     ]
    }
   },
@@ -11613,6 +11626,18 @@
    "svg": {
     "inline-external-image-ref.html": [
      "bb03229a0386b79160fe4a690d7212e913832e44",
+     []
+    ],
+    "viewport-dependent-text-fixed.svg": [
+     "09ee22567bcee88d35ad32299b3ca1db0f096666",
+     []
+    ],
+    "viewport-dependent-text-image.svg": [
+     "978ff971e233f2c73a0fb891010f3e9b9c6cd3fe",
+     []
+    ],
+    "viewport-dependent-text-ref.html": [
+     "ca699069f46ff1e71f166ba5b5db33ccb209a553",
      []
     ]
    },
