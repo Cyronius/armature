@@ -338,8 +338,10 @@ Notes on the numbers:
   and parseAll subtests pass, along with the keyword serialization case that previously lacked `parse()`.
   `CSSUnparsedValue` and `CSSVariableReferenceValue` now support string and variable fragments, indexed access,
   iteration, fallbacks and serialization in windows and workers. Custom properties in `attributeStyleMap` reify as
-  unparsed values; all 11 inline style mutation callback subtests pass. Five focused upstream subtests still stop in
-  their shared helper because `CSSNumericValue` is not implemented.
+  unparsed values; all 11 inline style mutation callback subtests pass.
+  `CSSNumericValue` and `CSSUnitValue` now expose validated CSS units, mutable numeric values and stringification,
+  along with all 34 `CSS` numeric factory functions. The three focused constructor, value and factory WPT files went
+  from 71 failing subtests to all passing. Numeric parsing, arithmetic, conversion and math value types remain to do.
   SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
   `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
   scripted linking files; the full 25-file scripted linking directory matches expectations.
