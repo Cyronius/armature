@@ -272,13 +272,10 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
         state: &State,
         def: Length,
     ) -> f32 {
-        units::convert_length(
-            self.attribute(aid).unwrap_or(def),
-            *self,
-            aid,
-            object_units,
-            state,
-        )
+        // Armature (AU-008): CSS calc() geometry is resolved in the same
+        // viewport and font context as an ordinary SVG length.
+        self.try_convert_length(aid, object_units, state)
+            .unwrap_or_else(|| units::convert_length(def, *self, aid, object_units, state))
     }
 
     pub fn convert_user_length(&self, aid: AId, state: &State, def: Length) -> f32 {
@@ -322,13 +319,13 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
         object_units: Units,
         state: &State,
     ) -> Option<f32> {
-        Some(units::convert_length(
-            self.attribute(aid)?,
-            *self,
-            aid,
-            object_units,
-            state,
-        ))
+        // Armature (AU-008): CSS calc() geometry is resolved in the same
+        // viewport and font context as an ordinary SVG length.
+        if let Some(length) = self.attribute(aid) {
+            return Some(units::convert_length(length, *self, aid, object_units, state));
+        }
+        let value: &str = self.attribute(aid)?;
+        units::convert_calc_length(value, *self, aid, object_units, state)
     }
 
     pub fn has_valid_transform(&self, aid: AId) -> bool {

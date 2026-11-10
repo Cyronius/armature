@@ -38,3 +38,8 @@
 
 - Files: `src/parser/mod.rs`, `src/parser/svgtree/parse.rs`
 - Why: The SVG length parser does not recognize `vw` and `vh`. Resolve these units in nested SVG length attributes and inline styles against the embedding image viewport before parsing the image. Accept SVG 2 geometry properties from CSS declarations so inline `width` and `height` styles can size shapes.
+
+### AU-008: Resolve calc geometry in the SVG viewport
+
+- Files: `src/parser/units.rs`, `src/parser/converter.rs`, `src/parser/shapes.rs`
+- Why: SVG 2 geometry properties accept CSS `calc()` expressions in presentation attributes and CSS declarations. Resolve their lengths and percentages in the current SVG viewport, including when an embedding viewport changes, and apply the negative-radius rules after evaluating the expression.

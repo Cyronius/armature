@@ -7,7 +7,7 @@ use svgtypes::Length;
 use tiny_skia_path::Path;
 
 use super::svgtree::{AId, EId, SvgNode};
-use super::{converter, units};
+use super::converter;
 use crate::{ApproxEqUlps, IsValidLength, Rect};
 
 pub(crate) fn convert(node: SvgNode, state: &converter::State) -> Option<Arc<Path>> {
@@ -132,37 +132,21 @@ fn convert_rect(node: SvgNode, state: &converter::State) -> Option<Arc<Path>> {
 }
 
 fn resolve_rx_ry(node: SvgNode, state: &converter::State) -> (f32, f32) {
-    let mut rx_opt = node.attribute::<Length>(AId::Rx);
-    let mut ry_opt = node.attribute::<Length>(AId::Ry);
-
-    // Remove negative values first.
-    if let Some(v) = rx_opt {
-        if v.number.is_sign_negative() {
-            rx_opt = None;
-        }
-    }
-    if let Some(v) = ry_opt {
-        if v.number.is_sign_negative() {
-            ry_opt = None;
-        }
-    }
+    // Armature (AU-008): The radii can be calc() expressions. A negative used
+    // radius behaves like auto and can inherit the other radius.
+    let rx_opt = node
+        .try_convert_length(AId::Rx, crate::Units::UserSpaceOnUse, state)
+        .filter(|radius| *radius >= 0.0);
+    let ry_opt = node
+        .try_convert_length(AId::Ry, crate::Units::UserSpaceOnUse, state)
+        .filter(|radius| *radius >= 0.0);
 
     // Resolve.
     match (rx_opt, ry_opt) {
         (None, None) => (0.0, 0.0),
-        (Some(rx), None) => {
-            let rx = units::convert_user_length(rx, node, AId::Rx, state);
-            (rx, rx)
-        }
-        (None, Some(ry)) => {
-            let ry = units::convert_user_length(ry, node, AId::Ry, state);
-            (ry, ry)
-        }
-        (Some(rx), Some(ry)) => {
-            let rx = units::convert_user_length(rx, node, AId::Rx, state);
-            let ry = units::convert_user_length(ry, node, AId::Ry, state);
-            (rx, ry)
-        }
+        (Some(rx), None) => (rx, rx),
+        (None, Some(ry)) => (ry, ry),
+        (Some(rx), Some(ry)) => (rx, ry),
     }
 }
 
