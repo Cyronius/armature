@@ -667,6 +667,7 @@ fn process_a_keyframes_argument(
         Ok(()) => {
             check_keyframe_offsets(&keyframes)?;
             compute_missing_keyframe_offsets(&mut keyframes);
+            parse_keyframe_easings(document, &mut keyframes)?;
             Ok(keyframes)
         },
         Err(ForOfIterationFailure::ValueIsNotIterable) => {
@@ -679,6 +680,18 @@ fn process_a_keyframes_argument(
         Err(ForOfIterationFailure::JSFailed) => Err(Error::JSFailed),
         Err(ForOfIterationFailure::Other(error)) => Err(error),
     }
+}
+
+/// Easing validation happens after every keyframe in the sequence has been read.
+/// <https://drafts.csswg.org/web-animations-1/#process-a-keyframes-argument>
+fn parse_keyframe_easings(document: &Document, keyframes: &mut [Keyframe]) -> Fallible<()> {
+    for keyframe in keyframes {
+        let timing_function = parse_easing(document, &keyframe.easing_function.str())
+            .ok_or_else(|| Error::Type(c"\"easing\" is not a valid timing function".to_owned()))?;
+        keyframe.easing_function = timing_function.to_css_string().into();
+        keyframe.timing_function = timing_function;
+    }
+    Ok(())
 }
 
 /// Steps 6 and 7 of <https://drafts.csswg.org/web-animations-1/#process-a-keyframes-argument>.
@@ -952,18 +965,14 @@ fn process_a_keyframe_like_object(
             Err(_) => return Err(Error::JSFailed),
         }
     };
-    // Step 8 of <https://drafts.csswg.org/web-animations-1/#process-a-keyframes-argument>:
-    // > For each frame in processed keyframes, perform the following steps: [..] Let the timing
-    // > function of frame be the result of parsing the "easing" property on frame using the
-    // > CSS syntax defined for the easing member of the EffectTiming dictionary.
-    // > If parsing the "easing" property fails, throw a TypeError and abort this procedure.
-    let timing_function = parse_easing(document, &keyframe_output.easing.str())
-        .ok_or_else(|| Error::Type(c"\"easing\" is not a valid timing function".to_owned()))?;
+    // Keep the raw easing until all keyframes and their properties have been read.
+    // Step 8 parses it in `parse_keyframe_easings` after iteration completes.
+    let linear = parse_easing(document, "linear").expect("linear should be a valid easing");
     let mut keyframe_output = Keyframe {
         offset,
         computed_offset: 0.0,
-        easing_function: timing_function.to_css_string().into(),
-        timing_function,
+        easing_function: keyframe_output.easing.clone(),
+        timing_function: linear,
         composite: keyframe_output.composite,
         declarations: Vec::new(),
     };
