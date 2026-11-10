@@ -216,10 +216,16 @@ fn glyph_metrics(element: &SVGElement, character: char, next: Option<char>) -> (
         return (8.0, 12.8, 3.2);
     };
     let font = style.clone_font();
-    let font_size = font.font_size.computed_size().px() as f64;
+    // SVG text geometry is in user units, while the computed font size includes CSS zoom.
+    let font_size = style::values::computed::Length::new(
+        style
+            .effective_zoom
+            .unzoom(font.font_size.computed_size().px()),
+    );
     let window = element.owner_window();
     let font_context = window.font_context();
-    let font_group = font_context.font_group(font);
+    let font_group = font_context.font_group_with_size(font, font_size.into());
+    let font_size = font_size.px() as f64;
     let Some(font) =
         font_group.find_by_codepoint(&font_context, character, next, Language::UNKNOWN)
     else {
