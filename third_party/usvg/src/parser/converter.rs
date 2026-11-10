@@ -1073,24 +1073,24 @@ fn convert_path(
         None => return,
     };
 
-    // Armature (AU-005): A non-scaling stroke is outlined in the outer SVG
-    // viewport, then brought back to the path's local coordinates for painting.
-    // This also handles non-uniform scales and shears, for which changing the
-    // stroke width alone cannot produce the correct outline.
+    // Armature (AU-006): Paint solid non-scaling strokes as native strokes in the
+    // outer SVG viewport, preserving the rasterizer's stroke antialiasing.
     if node.attribute::<&str>(AId::VectorEffect) == Some("non-scaling-stroke") {
-        if let Some(mut stroke_path) = non_scaling_stroke_path(&path) {
-            let mut fill_path = path.clone();
-            fill_path.stroke = None;
-            if fill_path.fill.is_none() {
-                stroke_path.id = fill_path.id.clone();
-            }
+        let mut fill_path = path.clone();
+        fill_path.stroke = None;
+        let stroke_id = if fill_path.fill.is_none() {
+            fill_path.id.clone()
+        } else {
+            String::new()
+        };
+        if let Some(stroke_node) = non_scaling_stroke_node(&path, stroke_id) {
             for kind in raw_paint_order.order {
                 match kind {
                     PaintOrderKind::Fill if fill_path.fill.is_some() => {
                         parent.children.push(Node::Path(Box::new(fill_path.clone())));
                     }
                     PaintOrderKind::Stroke => {
-                        parent.children.push(Node::Path(Box::new(stroke_path.clone())));
+                        parent.children.push(stroke_node.clone());
                     }
                     PaintOrderKind::Markers => {
                         if let Some(markers_node) = marker.take() {
@@ -1122,9 +1122,32 @@ fn convert_path(
     }
 }
 
-fn non_scaling_stroke_path(path: &Path) -> Option<Path> {
+// Armature (AU-006): A solid stroke can stay a stroke after its geometry is
+// mapped into the outer viewport. Undo the ancestor transform on its wrapper
+// so the renderer applies the stroke width and antialiasing at that viewport.
+fn non_scaling_stroke_node(path: &Path, id: String) -> Option<Node> {
     let stroke = path.stroke.as_ref()?;
     let transform = path.abs_transform;
+    if matches!(stroke.paint, Paint::Color(_)) {
+        let mut group = Group::empty();
+        group.transform = transform.invert()?;
+        let data = path.data.as_ref().clone().transform(transform)?;
+        let stroke_path = Path::new(
+            id.clone(),
+            path.visible,
+            None,
+            Some(stroke.clone()),
+            PaintOrder::FillAndStroke,
+            path.rendering_mode,
+            Arc::new(data),
+            Transform::default(),
+        )?;
+        group.children.push(Node::Path(Box::new(stroke_path)));
+        group.calculate_bounding_boxes()?;
+        return Some(Node::Group(Box::new(group)));
+    }
+
+    // Armature (AU-006): Keep paint servers in the path's original coordinates.
     let outline = path
         .data
         .as_ref()
@@ -1134,7 +1157,7 @@ fn non_scaling_stroke_path(path: &Path) -> Option<Path> {
         .transform(transform.invert()?)?;
 
     Path::new(
-        String::new(),
+        id,
         path.visible,
         Some(Fill {
             paint: stroke.paint.clone(),
@@ -1148,6 +1171,7 @@ fn non_scaling_stroke_path(path: &Path) -> Option<Path> {
         Arc::new(outline),
         transform,
     )
+    .map(|path| Node::Path(Box::new(path)))
 }
 
 fn append_single_paint_path(paint_order_kind: PaintOrderKind, path: &Path, parent: &mut Group) {

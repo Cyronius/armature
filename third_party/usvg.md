@@ -28,3 +28,8 @@
 
 - Files: `src/parser/image.rs`
 - Why: Fit an embedded SVG using its intrinsic size, then parse viewBox-based images with non-scaling strokes in the resulting image viewport. This keeps their stroke at the specified width when the image is stretched, including non-uniform scaling.
+
+### AU-006: Render solid non-scaling strokes as strokes in viewport coordinates
+
+- Files: `src/parser/converter.rs`
+- Why: Outlining a stroke and filling the outline changes edge antialiasing. Transform solid-painted path geometry into the outer viewport and let the rasterizer stroke it there, then cancel the ancestor transform so the requested width is unchanged.
