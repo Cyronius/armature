@@ -11,9 +11,9 @@
 //! attributes.
 
 use std::collections::HashSet;
+use std::fmt::Write;
 
 use app_units::Au;
-use cssparser::Parser;
 use euclid::default::{Point2D as CSSPoint, Rect as CSSRect, Size2D as CSSSize};
 use html5ever::{LocalName, local_name, ns};
 use js::context::{JSContext, NoGC};
@@ -22,10 +22,12 @@ use kurbo::{
     PathEl, PathSeg, Point, Rect, Shape, Stroke, StrokeOpts, stroke,
 };
 use layout_api::BoxAreaType;
-use style::values::computed::Length as CSSLength;
 use style::values::computed::transform::TransformBox;
+use style::values::computed::{DProperty, Length as CSSLength};
+use style::values::generics::basic_shape::GenericShapeCommand;
 use style::values::specified::SVGPathData;
 use style::values::specified::box_::Display;
+use style::values::specified::svg_path::CoordPair;
 use style_traits::CssWriter;
 
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
@@ -482,20 +484,89 @@ pub(crate) fn shape_geometry(cx: &mut JSContext, element: &SVGElement) -> Option
 /// The CSS `d` property supplies the rendered path, including for `<mpath>` targets.
 /// Keep DOM path data APIs on the XML attribute's base value.
 fn computed_path_data(element: &SVGElement) -> Option<String> {
-    let value = computed_value(element, "d");
-    if value == "none" {
+    let style = element.upcast::<Element>().style()?;
+    let DProperty::Path(path) = &style.get_svg().d else {
         return Some(String::new());
+    };
+
+    // CSS serialization rounds path numbers to a few decimal places. Geometry needs the
+    // computed coordinates themselves so a style query cannot change the measured path.
+    let normalized = path.normalize(false);
+    let mut data = String::new();
+    for command in normalized.commands() {
+        use GenericShapeCommand::*;
+        if !data.is_empty() {
+            data.push(' ');
+        }
+        match *command {
+            Move { point } => {
+                let point = CoordPair::from(point);
+                write!(data, "M {} {}", point.x, point.y).unwrap();
+            },
+            Line { point } => {
+                let point = CoordPair::from(point);
+                write!(data, "L {} {}", point.x, point.y).unwrap();
+            },
+            HLine { x } => write!(data, "H {}", f32::from(x)).unwrap(),
+            VLine { y } => write!(data, "V {}", f32::from(y)).unwrap(),
+            CubicCurve {
+                point,
+                control1,
+                control2,
+            } => {
+                let point = CoordPair::from(point);
+                let control1 = CoordPair::from(control1);
+                let control2 = CoordPair::from(control2);
+                write!(
+                    data,
+                    "C {} {} {} {} {} {}",
+                    control1.x, control1.y, control2.x, control2.y, point.x, point.y
+                )
+                .unwrap();
+            },
+            QuadCurve { point, control1 } => {
+                let point = CoordPair::from(point);
+                let control1 = CoordPair::from(control1);
+                write!(
+                    data,
+                    "Q {} {} {} {}",
+                    control1.x, control1.y, point.x, point.y
+                )
+                .unwrap();
+            },
+            SmoothCubic { point, control2 } => {
+                let point = CoordPair::from(point);
+                let control2 = CoordPair::from(control2);
+                write!(
+                    data,
+                    "S {} {} {} {}",
+                    control2.x, control2.y, point.x, point.y
+                )
+                .unwrap();
+            },
+            SmoothQuad { point } => {
+                let point = CoordPair::from(point);
+                write!(data, "T {} {}", point.x, point.y).unwrap();
+            },
+            Arc {
+                point,
+                radii,
+                arc_sweep,
+                arc_size,
+                rotate,
+            } => {
+                let point = CoordPair::from(point);
+                let ry = radii.ry.as_ref().copied().unwrap_or(radii.rx);
+                write!(
+                    data,
+                    "A {} {} {} {} {} {} {}",
+                    radii.rx, ry, rotate, arc_size as u8, arc_sweep as u8, point.x, point.y
+                )
+                .unwrap();
+            },
+            Close => data.push('Z'),
+        }
     }
-    let mut parser = Parser::new(&value);
-    parser.expect_function_matching("path").ok()?;
-    let data = parser
-        .parse_nested_block(|parser| {
-            let data = parser.expect_string()?.as_ref().to_owned();
-            parser.expect_exhausted()?;
-            Ok::<String, cssparser::ParseError<()>>(data)
-        })
-        .ok()?;
-    parser.expect_exhausted().ok()?;
     Some(data)
 }
 
