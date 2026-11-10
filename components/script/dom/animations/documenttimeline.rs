@@ -7,6 +7,7 @@ use js::context::JSContext;
 use js::gc::HandleObject;
 use num_traits::ToPrimitive;
 use script_bindings::codegen::GenericBindings::DocumentTimelineBinding::DocumentTimelineOptions;
+use script_bindings::codegen::GenericBindings::WindowBinding::WindowMethods;
 use script_bindings::reflector::{reflect_dom_object, reflect_dom_object_with_proto};
 use script_bindings::root::DomRoot;
 use servo_base::cross_process_instant::CrossProcessInstant;
@@ -39,11 +40,15 @@ impl DocumentTimeline {
         origin_time: Duration,
     ) -> DomRoot<Self> {
         let duration_since_time_origin =
-            CrossProcessInstant::now() - window.navigation_start() - origin_time;
+            Duration::seconds_f64(window.Document().current_animation_timeline_value()) -
+                origin_time;
         reflect_dom_object_with_proto(
             cx,
             Box::new(Self {
-                animation_timeline: AnimationTimeline::new_inherited(duration_since_time_origin),
+                animation_timeline: AnimationTimeline::new_inherited(
+                    duration_since_time_origin,
+                    Some(origin_time),
+                ),
                 origin_offset: origin_time,
             }),
             window,
@@ -60,7 +65,7 @@ impl DocumentTimeline {
         reflect_dom_object(
             cx,
             Box::new(Self {
-                animation_timeline: AnimationTimeline::new_inherited(duration),
+                animation_timeline: AnimationTimeline::new_inherited(duration, None),
                 origin_offset: Duration::ZERO,
             }),
             window,

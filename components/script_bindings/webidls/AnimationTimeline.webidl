@@ -6,4 +6,6 @@
 [Exposed=Window]
 interface AnimationTimeline {
   readonly attribute double? currentTime;
+  // https://drafts.csswg.org/web-animations-2/#dom-animationtimeline-duration
+  readonly attribute CSSNumberish? duration;
 };
