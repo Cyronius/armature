@@ -23,7 +23,7 @@ use kurbo::{
 };
 use layout_api::BoxAreaType;
 use style::values::computed::transform::TransformBox;
-use style::values::computed::{DProperty, Length as CSSLength};
+use style::values::computed::{DProperty, Length as CSSLength, Size as ComputedSize};
 use style::values::generics::basic_shape::GenericShapeCommand;
 use style::values::generics::length::LengthPercentageOrAuto;
 use style::values::generics::svg::{SVGLength, SVGStrokeDashArray};
@@ -359,6 +359,48 @@ fn length(
     resolve_length(cx, element, &name, direction, SVGLengthValue::number(0.0)) as f64
 }
 
+/// Resolve an SVG geometry property from computed style, including CSS declarations that
+/// override its presentation attribute. Use the attribute when no style data exists.
+fn geometry_length(
+    cx: &mut JSContext,
+    element: &SVGElement,
+    name: LocalName,
+    direction: SVGLengthDirection,
+) -> f64 {
+    let Some(style) = element.upcast::<Element>().style() else {
+        return length(cx, element, name, direction);
+    };
+    let (width, height) = element
+        .viewport_element()
+        .and_then(|viewport| viewport.viewport_size(cx))
+        .unwrap_or_default();
+    let basis = match direction {
+        SVGLengthDirection::Horizontal => width,
+        SVGLengthDirection::Vertical => height,
+        SVGLengthDirection::Other => ((width * width + height * height) / 2.0).sqrt(),
+    };
+    let zoom = style.effective_zoom.value();
+    let basis = CSSLength::new(basis * zoom);
+    let svg = style.get_svg();
+    let value = match name {
+        local_name!("cx") => svg.cx.resolve(basis).px(),
+        local_name!("cy") => svg.cy.resolve(basis).px(),
+        local_name!("r") => svg.r.0.resolve(basis).px(),
+        local_name!("x") => svg.x.resolve(basis).px(),
+        local_name!("y") => svg.y.resolve(basis).px(),
+        local_name!("width") => match style.get_position().get_width() {
+            ComputedSize::LengthPercentage(value) => value.0.resolve(basis).px(),
+            _ => 0.0,
+        },
+        local_name!("height") => match style.get_position().get_height() {
+            ComputedSize::LengthPercentage(value) => value.0.resolve(basis).px(),
+            _ => 0.0,
+        },
+        _ => return length(cx, element, name, direction),
+    };
+    style.effective_zoom.unzoom(value) as f64
+}
+
 /// The used width and height of an SVG image's positioning rectangle.
 /// <https://svgwg.org/svg2-draft/embedded.html#Placement>
 pub(crate) fn image_size(cx: &mut JSContext, element: &SVGElement) -> (f64, f64) {
@@ -410,27 +452,27 @@ pub(crate) fn shape_geometry(cx: &mut JSContext, element: &SVGElement) -> Option
     let local_name = element.upcast::<Element>().local_name().clone();
     Some(match local_name {
         local_name!("rect") => {
-            let x = length(cx, element, local_name!("x"), Horizontal);
-            let y = length(cx, element, local_name!("y"), Vertical);
-            let width = length(cx, element, local_name!("width"), Horizontal);
-            let height = length(cx, element, local_name!("height"), Vertical);
+            let x = geometry_length(cx, element, local_name!("x"), Horizontal);
+            let y = geometry_length(cx, element, local_name!("y"), Vertical);
+            let width = geometry_length(cx, element, local_name!("width"), Horizontal);
+            let height = geometry_length(cx, element, local_name!("height"), Vertical);
             if width <= 0.0 || height <= 0.0 {
                 return Some(SVGShapeGeometry::Path(BezPath::new()));
             }
             SVGShapeGeometry::Path(Rect::new(x, y, x + width, y + height).to_path(ACCURACY))
         },
         local_name!("circle") => {
-            let cx_ = length(cx, element, local_name!("cx"), Horizontal);
-            let cy = length(cx, element, local_name!("cy"), Vertical);
-            let r = length(cx, element, local_name!("r"), Other);
+            let cx_ = geometry_length(cx, element, local_name!("cx"), Horizontal);
+            let cy = geometry_length(cx, element, local_name!("cy"), Vertical);
+            let r = geometry_length(cx, element, local_name!("r"), Other);
             if r <= 0.0 {
                 return Some(SVGShapeGeometry::Path(BezPath::new()));
             }
             SVGShapeGeometry::Ellipse(Ellipse::new((cx_, cy), (r, r), 0.0))
         },
         local_name!("ellipse") => {
-            let cx_ = length(cx, element, local_name!("cx"), Horizontal);
-            let cy = length(cx, element, local_name!("cy"), Vertical);
+            let cx_ = geometry_length(cx, element, local_name!("cx"), Horizontal);
+            let cy = geometry_length(cx, element, local_name!("cy"), Vertical);
             let computed_radii = element.upcast::<Element>().style().map(|style| {
                 let (width, height) = element
                     .viewport_element()
