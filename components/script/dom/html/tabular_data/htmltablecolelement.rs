@@ -7,6 +7,7 @@ use html5ever::{LocalName, Prefix, local_name, ns};
 use js::rust::HandleObject;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 
+use super::{parse_clamped_span, set_clamped_span};
 use crate::dom::bindings::codegen::Bindings::HTMLTableColElementBinding::HTMLTableColElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{DomRoot, LayoutDom};
@@ -77,7 +78,9 @@ impl HTMLTableColElementMethods<crate::DomTypeHolder> for HTMLTableColElement {
     // <https://html.spec.whatwg.org/multipage/#attr-col-span>
     // > The span IDL attribute must reflect the content attribute of the same name. It is clamped
     // > to the range [1, 1000], and its default value is 1.
-    make_clamped_uint_setter!(SetSpan, "span", 1, 1000, 1);
+    fn SetSpan(&self, cx: &mut js::context::JSContext, value: u32) {
+        set_clamped_span(self.upcast(), cx, &local_name!("span"), value, 1, 1000, 1);
+    }
 
     // <https://html.spec.whatwg.org/multipage/#dom-col-width>
     make_getter!(Width, "width");
@@ -134,16 +137,7 @@ impl VirtualMethods for HTMLTableColElement {
 
     fn parse_plain_attribute(&self, local_name: &LocalName, value: DOMString) -> AttrValue {
         match *local_name {
-            local_name!("span") => {
-                let mut attr = AttrValue::from_u32(value.into(), 1);
-                if let AttrValue::UInt(_, ref mut val) = attr {
-                    // From <https://html.spec.whatwg.org/multipage/#attr-col-span>:
-                    // > The span IDL attribute must reflect the content attribute of the same name.
-                    // > It is clamped to the range [1, 1000], and its default value is 1.
-                    *val = (*val).clamp(1, 1000);
-                }
-                attr
-            },
+            local_name!("span") => parse_clamped_span(value.into(), 1, 1000, 1),
             local_name!("width") => AttrValue::from_dimension(value.into()),
             _ => self
                 .super_type()

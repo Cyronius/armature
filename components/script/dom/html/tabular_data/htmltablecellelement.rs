@@ -8,6 +8,7 @@ use js::rust::HandleObject;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 use style::color::AbsoluteColor;
 
+use super::{parse_clamped_span, set_clamped_span};
 use crate::dom::bindings::codegen::Bindings::HTMLTableCellElementBinding::HTMLTableCellElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::inheritance::Castable;
@@ -108,7 +109,17 @@ impl HTMLTableCellElementMethods<crate::DomTypeHolder> for HTMLTableCellElement 
     // https://html.spec.whatwg.org/multipage/#dom-tdth-colspan
     // > The colSpan IDL attribute must reflect the colspan content attribute. It is clamped to
     // > the range [1, 1000], and its default value is 1.
-    make_clamped_uint_setter!(SetColSpan, "colspan", 1, 1000, 1);
+    fn SetColSpan(&self, cx: &mut js::context::JSContext, value: u32) {
+        set_clamped_span(
+            self.upcast(),
+            cx,
+            &local_name!("colspan"),
+            value,
+            1,
+            1000,
+            DEFAULT_COLSPAN,
+        );
+    }
 
     // https://html.spec.whatwg.org/multipage/#dom-tdth-rowspan
     make_uint_getter!(RowSpan, "rowspan", DEFAULT_ROWSPAN);
@@ -116,7 +127,17 @@ impl HTMLTableCellElementMethods<crate::DomTypeHolder> for HTMLTableCellElement 
     // https://html.spec.whatwg.org/multipage/#dom-tdth-rowspan
     // > The rowSpan IDL attribute must reflect the rowspan content attribute. It is clamped to
     // > the range [0, 65534], and its default value is 1.
-    make_clamped_uint_setter!(SetRowSpan, "rowspan", 0, 65534, 1);
+    fn SetRowSpan(&self, cx: &mut js::context::JSContext, value: u32) {
+        set_clamped_span(
+            self.upcast(),
+            cx,
+            &local_name!("rowspan"),
+            value,
+            0,
+            65534,
+            DEFAULT_ROWSPAN,
+        );
+    }
 
     // https://html.spec.whatwg.org/multipage/#dom-tdth-bgcolor
     make_getter!(BgColor, "bgcolor");
@@ -237,27 +258,8 @@ impl VirtualMethods for HTMLTableCellElement {
 
     fn parse_plain_attribute(&self, local_name: &LocalName, value: DOMString) -> AttrValue {
         match *local_name {
-            local_name!("colspan") => {
-                let mut attr = AttrValue::from_u32(value.into(), DEFAULT_COLSPAN);
-                if let AttrValue::UInt(_, ref mut value) = attr {
-                    // From <https://html.spec.whatwg.org/multipage/#dom-tdth-colspan>:
-                    // > The colSpan IDL attribute must reflect the colspan content attribute. It is clamped to
-                    // > the range [1, 1000], and its default value is 1.
-                    *value = (*value).clamp(1, 1000);
-                }
-                attr
-            },
-            local_name!("rowspan") => {
-                let mut attr = AttrValue::from_u32(value.into(), DEFAULT_ROWSPAN);
-                if let AttrValue::UInt(_, ref mut value) = attr {
-                    // From <https://html.spec.whatwg.org/multipage/#dom-tdth-rowspan>:
-                    // > The rowSpan IDL attribute must reflect the rowspan content attribute. It is clamped to
-                    // > the range [0, 65534], and its default value is 1.
-                    // Note Firefox floors by 1 in quirks mode, but like Chrome and Safari we don't do that.
-                    *value = (*value).clamp(0, 65534);
-                }
-                attr
-            },
+            local_name!("colspan") => parse_clamped_span(value.into(), 1, 1000, DEFAULT_COLSPAN),
+            local_name!("rowspan") => parse_clamped_span(value.into(), 0, 65534, DEFAULT_ROWSPAN),
             local_name!("bgcolor") => AttrValue::from_legacy_color(value.into()),
             local_name!("width") => AttrValue::from_nonzero_dimension(value.into()),
             local_name!("height") => AttrValue::from_nonzero_dimension(value.into()),
