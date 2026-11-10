@@ -401,7 +401,10 @@ Notes on the numbers:
   Non-scaling strokes are outlined in the outer SVG viewport before being mapped back to path coordinates, including
   under non-uniform transforms. Inline SVG rendering copies now carry computed CSS stroke and `vector-effect` values,
   and SVGs with automatic sizes resolve their layout viewport before outlining. Two more painting reftests pass,
-  including the viewBox scaling cases; external SVG images still scale their strokes with the image.
+  including the viewBox scaling cases. Embedded data URL SVGs with a `viewBox` now resolve non-scaling strokes in the
+  fitted `<image>` viewport, even when `preserveAspectRatio="none"` stretches the image non-uniformly. Solid strokes
+  are painted as strokes in that viewport, matching the raster edges of a directly drawn line. Both focused image
+  reftests now pass; all 27 `svg/embedded` tests still match expectations.
   Markers sized in stroke-width units now use that same outer viewport for non-scaling strokes, passing the focused
   marker reftest. Computed CSS transforms on SVG descendants are also transferred to the rendering copy when their
   transform does not already come from an SVG attribute or motion animation.
@@ -504,8 +507,8 @@ Notes on the numbers:
   graphics inside definitions, clip paths and masks; Armature returns their own geometry, as the current
   [SVG 2 bounding-box text](https://www.w3.org/TR/SVG2/coords.html#BoundingBoxes) describes.
 - SVG DOM stroke hit testing does not yet resolve percentage dash lengths or CSS transforms for non-scaling strokes.
-- Some SVG non-scaling stroke reftests still differ at raster edges or when CSS transforms and embedded images affect
-  the stroke viewport.
+- Some SVG non-scaling stroke reftests still differ at raster edges or under CSS transforms. The embedded SVG viewport
+  correction currently covers data URL images with a `viewBox` and a `vector-effect` attribute.
 - Many editing tests still fail: deleting across differently styled blocks, whitespace handling, and cases where the
   tests expect browser behaviour that differs from the editing spec (Armature follows the spec). `formatBlock` and
   `insertHTML` are disabled in `contenteditable=plaintext-only` hosts.
