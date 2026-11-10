@@ -19,6 +19,7 @@ use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::css::css::CSS;
 use crate::dom::css::csskeywordvalue::CSSKeywordValue;
+use crate::dom::css::cssunitvalue::CSSUnitValue;
 use crate::dom::css::cssunparsedvalue::CSSUnparsedValue;
 use crate::dom::css::stylepropertymapreadonly::StylePropertyMapReadOnly;
 use crate::dom::globalscope::GlobalScope;
@@ -192,6 +193,9 @@ impl CSSStyleValueMethods<crate::DomTypeHolder> for CSSStyleValue {
 
     /// <https://drafts.css-houdini.org/css-typed-om-1/#CSSStyleValue-stringification-behavior>
     fn Stringifier(&self) -> DOMString {
+        if let Some(unit) = self.downcast::<CSSUnitValue>() {
+            return DOMString::from(unit.serialize());
+        }
         if let Some(unparsed) = self.downcast::<CSSUnparsedValue>() {
             return DOMString::from(unparsed.serialize(&mut HashSet::new()));
         }

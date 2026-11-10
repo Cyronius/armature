@@ -6,6 +6,7 @@ use cssparser::{Parser, serialize_identifier};
 use dom_struct::dom_struct;
 use js::context::JSContext;
 use script_bindings::codegen::GenericBindings::CSSBinding::PropertyDefinition;
+use script_bindings::num::Finite;
 use script_bindings::reflector::Reflector;
 use style::stylesheets::supports_rule::{Declaration, parse_condition_or_declaration};
 use style::stylesheets::{CssRuleType, UrlExtraData};
@@ -18,6 +19,7 @@ use crate::dom::bindings::codegen::Bindings::WindowBinding::Window_Binding::Wind
 use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::DOMString;
+use crate::dom::css::cssunitvalue::CSSUnitValue;
 use crate::dom::window::Window;
 use crate::dom::worklet::Worklet;
 
@@ -27,7 +29,49 @@ pub(crate) struct CSS {
     reflector_: Reflector,
 }
 
+macro_rules! numeric_factory {
+    ($method:ident, $unit:literal) => {
+        fn $method(cx: &mut JSContext, win: &Window, value: Finite<f64>) -> DomRoot<CSSUnitValue> {
+            CSSUnitValue::new(cx, win.as_global_scope(), *value, $unit)
+        }
+    };
+}
+
 impl CSSMethods<crate::DomTypeHolder> for CSS {
+    numeric_factory!(Number, "number");
+    numeric_factory!(Percent, "percent");
+    numeric_factory!(Em, "em");
+    numeric_factory!(Ex, "ex");
+    numeric_factory!(Ch, "ch");
+    numeric_factory!(Ic, "ic");
+    numeric_factory!(Rem, "rem");
+    numeric_factory!(Lh, "lh");
+    numeric_factory!(Rlh, "rlh");
+    numeric_factory!(Vw, "vw");
+    numeric_factory!(Vh, "vh");
+    numeric_factory!(Vi, "vi");
+    numeric_factory!(Vb, "vb");
+    numeric_factory!(Vmin, "vmin");
+    numeric_factory!(Vmax, "vmax");
+    numeric_factory!(Cm, "cm");
+    numeric_factory!(Mm, "mm");
+    numeric_factory!(Q, "q");
+    numeric_factory!(In, "in");
+    numeric_factory!(Pt, "pt");
+    numeric_factory!(Pc, "pc");
+    numeric_factory!(Px, "px");
+    numeric_factory!(Deg, "deg");
+    numeric_factory!(Grad, "grad");
+    numeric_factory!(Rad, "rad");
+    numeric_factory!(Turn, "turn");
+    numeric_factory!(S, "s");
+    numeric_factory!(Ms, "ms");
+    numeric_factory!(Hz, "hz");
+    numeric_factory!(KHz, "khz");
+    numeric_factory!(Dpi, "dpi");
+    numeric_factory!(Dpcm, "dpcm");
+    numeric_factory!(Dppx, "dppx");
+    numeric_factory!(Fr, "fr");
     /// <https://drafts.csswg.org/cssom/#the-css.escape()-method>
     fn Escape(_: &Window, ident: DOMString) -> Fallible<DOMString> {
         let mut escaped = String::new();
