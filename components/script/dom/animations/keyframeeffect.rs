@@ -673,7 +673,7 @@ fn process_a_property_indexed_keyframe(
                 easing_function: DOMString::from_static("linear"),
                 timing_function: linear.clone(),
                 composite: CompositeOperationOrAuto::Auto,
-                declarations: parse_property_values(document, vec![(property_id, value)]),
+                declarations: parse_property_values(document, vec![(property_id.clone(), value)]),
             });
         }
     }
@@ -872,7 +872,7 @@ fn get_property_values(
     cx: &mut JSContext,
     object: HandleObject,
     allow_lists: bool,
-) -> Fallible<Vec<(NonCustomPropertyId, Vec<DOMString>)>> {
+) -> Fallible<Vec<(PropertyId, Vec<DOMString>)>> {
     // The spec tells us to iterate over all animatable properties and see if they're defined
     // on the object. Instead we can iterate over the own properties of the object and see
     // if they're animated properties, that's easier.
@@ -899,7 +899,14 @@ fn get_property_values(
         };
         let property_name = unsafe { jsstr_to_string(cx, js_string) };
 
-        let Some(property_id) = lookup_css_property_by_idl_attribute_name(&property_name) else {
+        let property_id = if property_name.starts_with("--") {
+            PropertyId::parse_enabled_for_all_content(&property_name)
+                .ok()
+                .filter(|id| matches!(id, PropertyId::Custom(_)))
+        } else {
+            lookup_css_property_by_idl_attribute_name(&property_name).map(PropertyId::NonCustom)
+        };
+        let Some(property_id) = property_id else {
             continue;
         };
         debug_assert!(property_id.is_animatable());
@@ -981,7 +988,7 @@ fn get_property_values(
 /// The specification keeps them as strings, but invalid values have no effect.
 fn parse_property_values(
     document: &Document,
-    values: Vec<(NonCustomPropertyId, DOMString)>,
+    values: Vec<(PropertyId, DOMString)>,
 ) -> Vec<KeyframePropertyDeclaration> {
     let urlextradata = document.url().into_url().into();
     let mut parser_context = parser_context_for_document(
@@ -1086,7 +1093,7 @@ fn compute_missing_keyframe_offsets(keyframes: &mut [Keyframe]) {
 
 /// Parses `input` as a value for `property`, returning `None` on failure.
 fn parse_single_property_declaration(
-    property: NonCustomPropertyId,
+    property: PropertyId,
     input: &str,
     parser_context: &mut ParserContext<'_>,
 ) -> Option<KeyframePropertyDeclaration> {
@@ -1098,7 +1105,7 @@ fn parse_single_property_declaration(
         .parse_entirely(|parser| {
             PropertyDeclaration::parse_into(
                 &mut declaration,
-                PropertyId::NonCustom(property),
+                property.clone(),
                 parser_context,
                 parser,
             )
@@ -1109,14 +1116,14 @@ fn parse_single_property_declaration(
     block.extend(declaration.drain(), Importance::Normal);
 
     Some(KeyframePropertyDeclaration {
-        property_id: PropertyId::NonCustom(property),
+        property_id: property,
         block,
     })
 }
 
 /// This is the inverse of <https://drafts.csswg.org/web-animations-1/#animation-property-name-to-idl-attribute-name>.
 fn lookup_css_property_by_idl_attribute_name(attribute_name: &str) -> Option<NonCustomPropertyId> {
-    // TODO: Step 1. If property follows the <custom-property-name> production, return property.
+    // Step 1, for custom properties, is handled by get_property_values before this lookup.
 
     // Steps 2 to 4 are in `animation_property_name_to_idl_attribute_name`, which maps
     // `float` to "cssFloat" and `offset` to "cssOffset", so "float" and "offset" (the
