@@ -8573,6 +8573,19 @@
       {}
      ]
     ],
+    "percent-encoded-fragments.svg": [
+     "0dae6ffc6198ebbe13600e83fc6933a6968af846",
+     [
+      null,
+      [
+       [
+        "/_mozilla/svg/percent-encoded-fragments-ref.svg",
+        "=="
+       ]
+      ],
+      {}
+     ]
+    ],
     "viewport-dependent-text.html": [
      "95ef7510ae09e6e879a98c39962c069680efca6f",
      [
@@ -11626,6 +11639,10 @@
    "svg": {
     "inline-external-image-ref.html": [
      "bb03229a0386b79160fe4a690d7212e913832e44",
+     []
+    ],
+    "percent-encoded-fragments-ref.svg": [
+     "ffdb4619261675fd5e084772748fa7d7e7714212",
      []
     ],
     "viewport-dependent-text-fixed.svg": [

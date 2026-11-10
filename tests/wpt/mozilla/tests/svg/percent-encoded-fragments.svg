@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml"
+     width="200" height="50">
+  <h:link rel="help" href="https://url.spec.whatwg.org/#percent-encoded-bytes"/>
+  <h:link rel="match" href="percent-encoded-fragments-ref.svg"/>
+  <defs>
+    <linearGradient id="base gradient"><stop stop-color="green"/></linearGradient>
+    <linearGradient id="derived" href="#base%20gradient"/>
+    <filter id="green filter" x="0" y="0" width="1" height="1">
+      <feFlood flood-color="green"/>
+    </filter>
+    <clipPath id="top half clip"><rect x="100" width="50" height="25"/></clipPath>
+    <mask id="top half mask"><rect x="150" width="50" height="25" fill="white"/></mask>
+  </defs>
+  <rect width="200" height="50" fill="red"/>
+  <rect width="50" height="50" fill="url(#derived)"/>
+  <rect x="50" width="50" height="50" fill="red" filter="url(#green%20filter)"/>
+  <rect x="100" width="50" height="50" fill="green" clip-path="url(#top%20half%20clip)"/>
+  <rect x="150" width="50" height="50" fill="green" mask="url(#top%20half%20mask)"/>
+</svg>
