@@ -122,8 +122,9 @@ Notes on the numbers:
 - **[Popover API](https://html.spec.whatwg.org/multipage/popover.html)**, behind the `dom_popover_enabled`
   preference (off by default; enabled for the tests): the `popover` attribute (`auto`, `manual` and `hint`),
   `showPopover()`/`hidePopover()`/`togglePopover()`, `beforetoggle`/`toggle` events, `popovertarget` on buttons and
-  inputs, light dismiss, nested popovers, and dialog and fullscreen integration. `html/semantics/popovers` went from
-  3,902 failing subtests to 79. Pressing Escape now also closes dialogs and close watchers.
+  inputs, button `commandForElement` reflection and activation, light dismiss, nested popovers, and dialog and
+  fullscreen integration. `html/semantics/popovers` went from 3,902 failing subtests to 63 in the latest run.
+  Pressing Escape now also closes dialogs and close watchers.
 - **WebCrypto hybrid KEMs**: MLKEM768-P256 and MLKEM1024-P384, next to the existing MLKEM768-X25519. The
   `WebCryptoAPI/modern-algos` tests have no failures left (2,036 fixed).
 - **Streams**: async iteration of `ReadableStream` (`for await`, `values()`) and `ReadableStream.from()`, built on new
@@ -438,8 +439,9 @@ Notes on the numbers:
   kept, which the spec drops.
 - About 1,200 `mimesniff` Blob/File subtests expect `new Blob([], {type})` to parse and re-serialise the type, which
   Servo does not do; about 190 more need header values with control characters, which Servo's header storage rejects.
-- 79 popover subtests still fail: layout has no real top layer or `::backdrop` (open popovers are drawn as
-  `position: fixed`), focus navigation into popovers is not implemented, and 6 tests contradict the spec.
+- 63 popover subtests still fail in the latest run: layout has no real top layer or `::backdrop` (open popovers are
+  drawn as `position: fixed`), focus navigation around popovers is incomplete, four inactive-document cases fail,
+  and 6 tests contradict the spec.
 - `TextEncoder.encodeInto()` and `TextDecoder` streaming into a `SharedArrayBuffer` (about 210 subtests) fail because
   Servo has no cross-origin isolation, so shared memory is off in every global.
 - Fetch priority hints are reflected in the DOM but do not yet affect network request scheduling.
