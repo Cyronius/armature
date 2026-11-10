@@ -240,7 +240,8 @@ Notes on the numbers:
   `startTime`, `overallProgress`, `playbackRate`, `playState`, `pending`, the `ready` and `finished` promises, and
   `finish` and `cancel` events), effects compute their timing (`getComputedTiming()`, including effect `startTime`),
   `KeyframeEffect` takes timing options, property-indexed
-  keyframes (including nullable offset arrays and CSS custom properties) and a composite operation, and
+  keyframes (including nullable offset arrays, number-valued `calc()` offsets and CSS custom properties) and a
+  composite operation, and
   its copy constructor preserves the target, keyframes, composition and timing, including a snapshot of CSS animation
   keyframes. `iterationComposite: accumulate` builds on the final keyframe value across script animation iterations.
   Easing values are fully parsed and serialized, and exceptions from keyframe property getters propagate.
@@ -569,6 +570,7 @@ Notes on the numbers:
 - Web Animations: script animations on pseudo-elements beyond `::before` and `::after` are not yet applied; CSS
   functional pseudo-elements such as `::part()` and `::highlight()` are not yet supported; and
   changing `iterationComposite` on a CSS animation does not yet affect its style-generated keyframes.
+  Script keyframe offsets do not yet accept percentage or named timeline-range strings from Web Animations 2.
   `commitStyles()` of an animation below others
   briefly recomputes the style of the target without them, which can start transitions. A `CSSAnimation` per repeated name in `animation-name` is missing
   (Stylo matches animations by name), `getKeyframes()` does not keep keyframes that share an offset but not an easing
