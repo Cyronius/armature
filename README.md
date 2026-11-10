@@ -239,11 +239,12 @@ Notes on the numbers:
   the spec (`play()`, `pause()`, `finish()`, `cancel()`, `reverse()`, `updatePlaybackRate()`, `currentTime`,
   `startTime`, `playbackRate`, `playState`, `pending`, the `ready` and `finished` promises, and `finish` and `cancel`
   events), effects compute their timing (`getComputedTiming()`), `KeyframeEffect` takes timing options, property-indexed
-  keyframes and a composite operation, and `element.animate()` plays the animation. Animations created by script now
-  change the style of their targets: Stylo resolves their keyframes and composites them (`replace`, `add` and
-  `accumulate`) over CSS animations (AS-506). The "Web Animations" and "Compositing Web Animations" subtests of the
-  interpolation tests throughout `css/` went from about 12,100 failing to about 2,300, and `web-animations/interfaces`
-  from 625 failing subtests to 211.
+  keyframes (including nullable offset arrays) and a composite operation, and `element.animate()` plays the animation.
+  Animations created by script now change the style of their targets: Stylo resolves their keyframes and composites
+  them (`replace`, `add` and `accumulate`) over CSS animations (AS-506). The "Web Animations" and
+  "Compositing Web Animations" subtests of the interpolation tests throughout `css/` went from about 12,100 failing
+  to about 2,300, and `web-animations/interfaces`
+  from 625 failing subtests to 116 in the 47-file interface run (753 passing subtests).
 - **`CSSAnimation`, `CSSTransition` and `getAnimations()`**: CSS animations and transitions are now `CSSAnimation`
   and `CSSTransition` objects that `Document`, `ShadowRoot` and `Element.getAnimations()` return in composite order,
   so script can pause, seek, reverse, finish or cancel them and read their timing and keyframes
