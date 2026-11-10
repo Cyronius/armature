@@ -554,7 +554,8 @@ Notes on the numbers:
 - **SVG stroke hit testing**: `isPointInStroke()` now uses the stroked outline, including caps, joins, dash patterns
   and offsets, `pathLength` calibration, and non-scaling strokes. Both focused stroke files pass all subtests. The
   97-file `svg/types/scripted` suite gained six passes, reaching 993 passing and 35 failing subtests without a
-  previously passing subtest regressing.
+  previously passing subtest regressing. A fresh run also confirmed that all seven `ellipse-auto-radii.svg` geometry
+  subtests and the high-scale dashed-stroke hit test pass; their stale failure expectations have been removed.
 - DOM event dispatch now skips listeners when either the event target's node document or the listener callback's
   document is no longer fully active. This also follows a node's current document after adoption. Seventeen
   previously failing subtests across the removed-frame, navigated-frame, and adopted-node event tests now pass,
