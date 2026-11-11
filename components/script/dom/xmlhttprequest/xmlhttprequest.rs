@@ -16,7 +16,7 @@ use crossbeam_channel::RecvTimeoutError;
 use data_url::mime::Mime;
 use dom_struct::dom_struct;
 use encoding_rs::{Encoding, UTF_8};
-use headers::{ContentLength, ContentType, HeaderMapExt};
+use headers::{ContentLength, HeaderMapExt};
 use http::Method;
 use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use hyper_serde::Serde;
@@ -801,36 +801,23 @@ impl XMLHttpRequestMethods<crate::DomTypeHolder> for XMLHttpRequest {
                 content_type_set = true;
             }
 
-            if !content_type_set {
-                let content_type = request.headers.typed_get::<ContentType>();
-                if let Some(content_type) = content_type &&
-                    let Some(encoding) = encoding &&
-                    let Ok(mime) = content_type.to_string().parse::<Mime>()
-                {
-                    for param in mime.parameters.iter() {
-                        if param.0 == CHARSET && !param.1.as_str().eq_ignore_ascii_case(encoding) {
-                            let new_params: Vec<_> =
-                                mime.parameters.iter().filter(|p| p.0 != CHARSET).collect();
-
-                            let new_mime = format!(
-                                "{}/{};charset={encoding}{}{}",
-                                mime.type_,
-                                mime.subtype,
-                                if new_params.is_empty() { "" } else { "; " },
-                                new_params
-                                    .iter()
-                                    .map(|param| format!("{}={}", param.0, param.1))
-                                    .collect::<Vec<String>>()
-                                    .join("; ")
-                            );
-
-                            if let Ok(content_type_header) = HeaderValue::from_str(&new_mime) {
-                                request
-                                    .headers
-                                    .insert(header::CONTENT_TYPE, content_type_header);
-                            }
-                        }
-                    }
+            if !content_type_set &&
+                let Some(encoding) = encoding &&
+                let Some(header_value) = request
+                    .headers
+                    .get(header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                // Armature: use the WHATWG MIME type parser and serializer, which keep parameter
+                // order, drop duplicate parameters and quote values where needed.
+                && let Ok(mut mime) = header_value.parse::<Mime>() &&
+                let Some(charset_param) = mime.parameters.iter_mut().find(|p| p.0 == CHARSET) &&
+                !charset_param.1.eq_ignore_ascii_case(encoding)
+            {
+                charset_param.1 = encoding.to_owned();
+                if let Ok(content_type_header) = HeaderValue::from_str(&mime.to_string()) {
+                    request
+                        .headers
+                        .insert(header::CONTENT_TYPE, content_type_header);
                 }
             }
         }
