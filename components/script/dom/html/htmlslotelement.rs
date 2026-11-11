@@ -438,7 +438,13 @@ impl Slottable {
         // Step 5. If shadow’s slot assignment is "manual", then return the slot in shadow’s descendants whose
         // manually assigned nodes contains slottable, if any; otherwise null.
         if shadow_root.SlotAssignment() == SlotAssignmentMode::Manual {
-            return self.assigned_slot();
+            // Armature: use the slot recorded by `assign()`, which may be assigned before the
+            // slottable is a child of the host, and require it to be in this shadow root.
+            return self.manual_slot_assignment().filter(|slot| {
+                slot.upcast::<Node>()
+                    .containing_shadow_root()
+                    .is_some_and(|root| &*root == &*shadow_root.as_rooted())
+            });
         }
 
         // Step 6. Return the first slot in tree order in shadow’s descendants whose

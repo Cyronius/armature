@@ -68,9 +68,7 @@ use crate::dom::bindings::codegen::Bindings::NodeBinding::{
 };
 use crate::dom::bindings::codegen::Bindings::NodeListBinding::NodeListMethods;
 use crate::dom::bindings::codegen::Bindings::ShadowRootBinding::ShadowRoot_Binding::ShadowRootMethods;
-use crate::dom::bindings::codegen::Bindings::ShadowRootBinding::{
-    ShadowRootMode, SlotAssignmentMode,
-};
+use crate::dom::bindings::codegen::Bindings::ShadowRootBinding::ShadowRootMode;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::codegen::UnionTypes::NodeOrString;
 use crate::dom::bindings::conversions::{self, DerivedFrom};
@@ -1594,10 +1592,9 @@ impl Node {
 
         // Step 22. If newParent is a shadow host whose shadow root’s slot assignment is "named" and
         // node is a slottable, then assign a slot for node.
-        if let Some(shadow_root) = new_parent
+        if let Some(_) = new_parent
             .downcast::<Element>()
             .and_then(Element::shadow_root) &&
-            shadow_root.SlotAssignment() == SlotAssignmentMode::Named &&
             (node.is::<Element>() || node.is::<Text>())
         {
             rooted!(&in(cx) let slottable = Slottable(Dom::from_ref(node)));
@@ -2855,8 +2852,7 @@ impl Node {
 
             // Step 7.4 If parent is a shadow host whose shadow root’s slot assignment is "named"
             // and node is a slottable, then assign a slot for node.
-            if let Some(ref shadow_root) = parent_shadow_root &&
-                shadow_root.SlotAssignment() == SlotAssignmentMode::Named &&
+            if let Some(_) = parent_shadow_root &&
                 (kid.is::<Element>() || kid.is::<Text>())
             {
                 rooted!(&in(cx) let slottable = Slottable(Dom::from_ref(kid)));
