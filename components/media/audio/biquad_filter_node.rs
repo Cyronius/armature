@@ -5,6 +5,7 @@
 use std::f64::consts::{PI, SQRT_2};
 
 use malloc_size_of_derive::MallocSizeOf;
+use num_complex::Complex64;
 use smallvec::SmallVec;
 
 use crate::audio_node::{AudioNodeEngine, AudioNodeMessage, AudioNodeType, BlockInfo, ChannelInfo};
@@ -75,7 +76,7 @@ impl BiquadState {
 
 /// <https://webaudio.github.io/web-audio-api/#biquadfilternode>
 #[derive(AudioNodeCommon)]
-pub(crate) struct BiquadFilterNode {
+pub struct BiquadFilterNode {
     channel_info: ChannelInfo,
     filter: FilterType,
     frequency: Param,
@@ -130,6 +131,40 @@ impl BiquadFilterNode {
         };
         ret.update_coefficients(sample_rate);
         ret
+    }
+
+    /// Compute the magnitude and phase response of the filter described by `options` at the given
+    /// frequencies, as `BiquadFilterNode.getFrequencyResponse()` requires.
+    ///
+    /// See <https://webaudio.github.io/web-audio-api/#dom-biquadfilternode-getfrequencyresponse>
+    pub fn get_frequency_response(
+        options: BiquadFilterNodeOptions,
+        sample_rate: f32,
+        frequency_hz: &[f32],
+        mag_response: &mut [f32],
+        phase_response: &mut [f32],
+    ) {
+        debug_assert!(
+            frequency_hz.len() == mag_response.len() && frequency_hz.len() == phase_response.len(),
+            "get_frequency_response params are of different length"
+        );
+        let node = Self::new(options, ChannelInfo::default(), sample_rate);
+        let nyquist = sample_rate / 2.;
+        for (index, &frequency) in frequency_hz.iter().enumerate() {
+            if !(0.0..=nyquist).contains(&frequency) {
+                mag_response[index] = f32::NAN;
+                phase_response[index] = f32::NAN;
+                continue;
+            }
+            let omega = -PI * f64::from(frequency / nyquist);
+            let z1 = Complex64::new(omega.cos(), omega.sin());
+            let z2 = z1 * z1;
+            let numerator = Complex64::new(node.b0, 0.) + z1 * node.b1 + z2 * node.b2;
+            let denominator = Complex64::new(1., 0.) + z1 * node.a1 + z2 * node.a2;
+            let response = numerator / denominator;
+            mag_response[index] = response.norm() as f32;
+            phase_response[index] = response.arg() as f32;
+        }
     }
 
     pub fn update_parameters(&mut self, info: &BlockInfo, tick: Tick) -> bool {
