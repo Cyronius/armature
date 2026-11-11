@@ -7,6 +7,7 @@ use std::cell::Cell;
 use dom_struct::dom_struct;
 use js::context::JSContext;
 use log::warn;
+use script_bindings::cell::DomRefCell;
 use script_bindings::codegen::InheritTypes::{
     AudioNodeTypeId, AudioScheduledSourceNodeTypeId, EventTargetTypeId,
 };
@@ -15,6 +16,7 @@ use servo_media::audio::audio_node::{
     ChannelInterpretation as ServoMediaChannelInterpretation,
 };
 use servo_media::audio::graph::NodeId;
+use servo_media::audio::param::ParamType;
 
 use crate::conversions::Convert;
 use crate::dom::audio::audioparam::AudioParam;
@@ -34,6 +36,23 @@ use crate::dom::eventtarget::EventTarget;
 // The limit protects against large memory allocations.
 pub(crate) const MAX_CHANNEL_COUNT: u32 = 32;
 
+/// What an output of an [`AudioNode`] is connected to.
+#[derive(Clone, Copy, MallocSizeOf, PartialEq)]
+enum ConnectionTarget {
+    /// An input of an `AudioNode`.
+    Input(u32),
+    /// An `AudioParam` of an `AudioNode`.
+    Param(ParamType),
+}
+
+/// A connection made with `AudioNode.connect()`, tracked to validate `disconnect()`.
+#[derive(Clone, Copy, MallocSizeOf)]
+struct Connection {
+    output: u32,
+    destination: NodeId,
+    target: ConnectionTarget,
+}
+
 #[dom_struct]
 pub(crate) struct AudioNode {
     eventtarget: EventTarget,
@@ -45,6 +64,9 @@ pub(crate) struct AudioNode {
     channel_count: Cell<u32>,
     channel_count_mode: Cell<ChannelCountMode>,
     channel_interpretation: Cell<ChannelInterpretation>,
+    /// The connections made from the outputs of this node.
+    #[no_trace]
+    connections: DomRefCell<Vec<Connection>>,
 }
 
 impl AudioNode {
@@ -64,6 +86,7 @@ impl AudioNode {
             channel_count: Cell::new(options.count),
             channel_count_mode: Cell::new(options.mode),
             channel_interpretation: Cell::new(options.interpretation),
+            connections: Default::default(),
         }
     }
 
@@ -114,6 +137,34 @@ impl AudioNode {
     pub(crate) fn node_id(&self) -> Option<NodeId> {
         self.node_id
     }
+
+    fn record_connection(&self, output: u32, destination: NodeId, target: ConnectionTarget) {
+        let mut connections = self.connections.borrow_mut();
+        let already_recorded = connections.iter().any(|connection| {
+            connection.output == output &&
+                connection.destination == destination &&
+                connection.target == target
+        });
+        if !already_recorded {
+            connections.push(Connection {
+                output,
+                destination,
+                target,
+            });
+        }
+    }
+
+    /// Remove the connections matching `matches`, failing with an `InvalidAccessError` if there
+    /// is none, as `AudioNode.disconnect()` requires.
+    fn remove_connections(&self, matches: impl Fn(&Connection) -> bool) -> ErrorResult {
+        let mut connections = self.connections.borrow_mut();
+        let count = connections.len();
+        connections.retain(|connection| !matches(connection));
+        if connections.len() == count {
+            return Err(Error::InvalidAccess(None));
+        }
+        Ok(())
+    }
 }
 
 impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
@@ -146,7 +197,7 @@ impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
             .lock()
             .unwrap()
             .connect_ports(source_id.output(output), dest_id.input(input));
-
+        self.record_connection(output, dest_id, ConnectionTarget::Input(input));
         Ok(DomRoot::from_ref(destination))
     }
 
@@ -177,12 +228,17 @@ impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
                 source_id.output(output),
                 param_node.param(dest.param_type()),
             );
-
+        self.record_connection(
+            output,
+            param_node,
+            ConnectionTarget::Param(dest.param_type()),
+        );
         Ok(())
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect>
     fn Disconnect(&self) -> ErrorResult {
+        self.connections.borrow_mut().clear();
         if let Some(node_id) = self.node_id() {
             self.context
                 .audio_context_impl()
@@ -195,6 +251,12 @@ impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect-output>
     fn Disconnect_(&self, out: u32) -> ErrorResult {
+        if out >= self.number_of_outputs {
+            return Err(Error::IndexSize(None));
+        }
+        self.connections
+            .borrow_mut()
+            .retain(|connection| connection.output != out);
         if let Some(node_id) = self.node_id() {
             self.context
                 .audio_context_impl()
@@ -207,64 +269,101 @@ impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect-destinationnode>
     fn Disconnect__(&self, to: &AudioNode) -> ErrorResult {
-        if let (Some(from_node), Some(to_node)) = (self.node_id(), to.node_id()) {
-            self.context
-                .audio_context_impl()
-                .lock()
-                .unwrap()
-                .disconnect_between(from_node, to_node);
-        }
+        let (Some(from_node), Some(to_node)) = (self.node_id(), to.node_id()) else {
+            return Ok(());
+        };
+        self.remove_connections(|connection| {
+            connection.destination == to_node &&
+                matches!(connection.target, ConnectionTarget::Input(_))
+        })?;
+        self.context
+            .audio_context_impl()
+            .lock()
+            .unwrap()
+            .disconnect_between(from_node, to_node);
         Ok(())
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect-destinationnode-output>
     fn Disconnect___(&self, to: &AudioNode, out: u32) -> ErrorResult {
-        if let (Some(from_node), Some(to_node)) = (self.node_id(), to.node_id()) {
-            self.context
-                .audio_context_impl()
-                .lock()
-                .unwrap()
-                .disconnect_output_between(from_node.output(out), to_node);
+        if out >= self.number_of_outputs {
+            return Err(Error::IndexSize(None));
         }
+        let (Some(from_node), Some(to_node)) = (self.node_id(), to.node_id()) else {
+            return Ok(());
+        };
+        self.remove_connections(|connection| {
+            connection.output == out &&
+                connection.destination == to_node &&
+                matches!(connection.target, ConnectionTarget::Input(_))
+        })?;
+        self.context
+            .audio_context_impl()
+            .lock()
+            .unwrap()
+            .disconnect_output_between(from_node.output(out), to_node);
         Ok(())
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect-destinationnode-output-input>
     fn Disconnect____(&self, to: &AudioNode, out: u32, inp: u32) -> ErrorResult {
-        if let (Some(from_node), Some(to_node)) = (self.node_id(), to.node_id()) {
-            self.context
-                .audio_context_impl()
-                .lock()
-                .unwrap()
-                .disconnect_output_between_to(from_node.output(out), to_node.input(inp));
+        if out >= self.number_of_outputs || inp >= to.number_of_inputs {
+            return Err(Error::IndexSize(None));
         }
+        let (Some(from_node), Some(to_node)) = (self.node_id(), to.node_id()) else {
+            return Ok(());
+        };
+        self.remove_connections(|connection| {
+            connection.output == out &&
+                connection.destination == to_node &&
+                connection.target == ConnectionTarget::Input(inp)
+        })?;
+        self.context
+            .audio_context_impl()
+            .lock()
+            .unwrap()
+            .disconnect_output_between_to(from_node.output(out), to_node.input(inp));
         Ok(())
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect>
     fn Disconnect_____(&self, param: &AudioParam) -> ErrorResult {
-        if let (Some(from_node), Some(param_node)) = (self.node_id(), param.node_id()) {
-            self.context
-                .audio_context_impl()
-                .lock()
-                .unwrap()
-                .disconnect_to(from_node, param_node.param(param.param_type()));
-        }
+        let (Some(from_node), Some(param_node)) = (self.node_id(), param.node_id()) else {
+            return Ok(());
+        };
+        self.remove_connections(|connection| {
+            connection.destination == param_node &&
+                connection.target == ConnectionTarget::Param(param.param_type())
+        })?;
+        self.context
+            .audio_context_impl()
+            .lock()
+            .unwrap()
+            .disconnect_to(from_node, param_node.param(param.param_type()));
         Ok(())
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect>
     fn Disconnect______(&self, param: &AudioParam, out: u32) -> ErrorResult {
-        if let (Some(from_node), Some(param_node)) = (self.node_id(), param.node_id()) {
-            self.context
-                .audio_context_impl()
-                .lock()
-                .unwrap()
-                .disconnect_output_between_to(
-                    from_node.output(out),
-                    param_node.param(param.param_type()),
-                );
+        if out >= self.number_of_outputs {
+            return Err(Error::IndexSize(None));
         }
+        let (Some(from_node), Some(param_node)) = (self.node_id(), param.node_id()) else {
+            return Ok(());
+        };
+        self.remove_connections(|connection| {
+            connection.output == out &&
+                connection.destination == param_node &&
+                connection.target == ConnectionTarget::Param(param.param_type())
+        })?;
+        self.context
+            .audio_context_impl()
+            .lock()
+            .unwrap()
+            .disconnect_output_between_to(
+                from_node.output(out),
+                param_node.param(param.param_type()),
+            );
         Ok(())
     }
 
