@@ -5429,6 +5429,12 @@ impl VirtualMethods for Element {
         }
 
         self.register_current_id_and_name_attribute(cx);
+
+        // Armature: elements with an `autofocus` attribute become autofocus candidates when they
+        // are inserted into a document.
+        if self.has_attribute(&local_name!("autofocus")) && self.upcast::<Node>().is_connected() {
+            self.owner_document().add_autofocus_candidate(self);
+        }
     }
 
     fn unbind_from_tree(&self, cx: &mut JSContext, context: &UnbindContext) {

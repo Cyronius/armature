@@ -1179,6 +1179,9 @@ impl ScriptThread {
             // https://html.spec.whatwg.org/multipage/#flush-autofocus-candidates.
             self.process_pending_input_events(cx, *pipeline_id);
 
+            // > 7. For each doc of docs, flush autofocus candidates for doc.
+            document.flush_autofocus_candidates(cx);
+
             // > 8. For each doc of docs, run the resize steps for doc. [CSSOMVIEW]
             let resized = document.window().run_the_resize_steps(cx);
 

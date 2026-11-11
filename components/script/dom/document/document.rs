@@ -638,6 +638,12 @@ pub(crate) struct Document {
     dirty_canvases: DomRefCell<Vec<Dom<HTMLCanvasElement>>>,
     /// Whether or not animated images need to have their contents updated.
     has_pending_animated_image_update: Cell<bool>,
+
+    /// <https://html.spec.whatwg.org/multipage/#autofocus-candidates>
+    autofocus_candidates: DomRefCell<Vec<Dom<Element>>>,
+
+    /// <https://html.spec.whatwg.org/multipage/#autofocus-processed-flag>
+    autofocus_processed: Cell<bool>,
     /// <https://w3c.github.io/slection-api/#dfn-selection>
     selection: MutNullableDom<Selection>,
     /// A timeline for animations which is used for synchronizing animations.
@@ -4320,6 +4326,8 @@ impl Document {
             media_controls: DomRefCell::new(HashMap::new()),
             dirty_canvases: DomRefCell::new(Default::default()),
             has_pending_animated_image_update: Cell::new(false),
+            autofocus_candidates: Default::default(),
+            autofocus_processed: Cell::new(false),
             selection: MutNullableDom::new(None),
             timeline: Dom::from_ref(timeline),
             animation_manager: AnimationManager::new(),
@@ -5507,6 +5515,94 @@ impl Document {
             .send_pending_events(self.window(), cx);
         self.update_smil_animation_events(cx);
         self.invalidate_continuous_smil_rasters(cx);
+    }
+
+    /// Armature: part of the steps run when an element with the `autofocus` attribute is
+    /// inserted into a document.
+    /// <https://html.spec.whatwg.org/multipage/#the-autofocus-attribute>
+    pub(crate) fn add_autofocus_candidate(&self, element: &Element) {
+        if self.autofocus_processed.get() {
+            return;
+        }
+        self.autofocus_candidates
+            .borrow_mut()
+            .push(Dom::from_ref(element));
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#flush-autofocus-candidates>
+    pub(crate) fn flush_autofocus_candidates(&self, cx: &mut JSContext) {
+        // Step 1. If topDocument's autofocus processed flag is true, then return.
+        // NOTE: This is tracked per document for now.
+        if self.autofocus_processed.get() {
+            self.autofocus_candidates.borrow_mut().clear();
+            return;
+        }
+
+        // Step 2. Let candidates be topDocument's autofocus candidates.
+        // Step 3. If candidates is empty, then return.
+        if self.autofocus_candidates.borrow().is_empty() {
+            return;
+        }
+
+        // Armature: only top-level documents handle autofocus for now, since the checks against
+        // the origin of ancestor documents are not implemented. Documents with the sandboxed
+        // automatic features flag set never autofocus.
+        // Step 4. If topDocument's focused area is not topDocument itself, or topDocument's URL's
+        // fragment is not empty, then: empty candidates and set the flag.
+        let focus_handler = self.focus_handler();
+        let viewport_is_focused = matches!(*focus_handler.focused_area(), FocusableArea::Viewport);
+        if !self.window().is_top_level() ||
+            !viewport_is_focused ||
+            self.url()
+                .fragment()
+                .is_some_and(|fragment| !fragment.is_empty()) ||
+            self.has_active_sandboxing_flag(
+                SandboxingFlagSet::SANDBOXED_AUTOMATIC_FEATURES_BROWSING_CONTEXT_FLAG,
+            )
+        {
+            self.autofocus_candidates.borrow_mut().clear();
+            self.autofocus_processed.set(true);
+            return;
+        }
+
+        // Step 5. While candidates is not empty:
+        loop {
+            let candidate = {
+                let candidates = self.autofocus_candidates.borrow();
+                match candidates.first() {
+                    Some(candidate) => DomRoot::from_ref(&**candidate),
+                    None => return,
+                }
+            };
+
+            // Step 5.2. If element's node document is not fully active, then remove element from
+            // candidates, and continue.
+            // Step 5.4. If element is not connected, then remove it and continue.
+            if &*candidate.owner_document() != self ||
+                !candidate.owner_document().is_fully_active() ||
+                !candidate.upcast::<Node>().is_connected()
+            {
+                self.autofocus_candidates.borrow_mut().remove(0);
+                continue;
+            }
+
+            // Step 5.8. Remove element from candidates.
+            self.autofocus_candidates.borrow_mut().remove(0);
+
+            // Step 5.9. Let inclusiveAncestorDocuments be ... (skipped)
+            // Step 5.10. Let target be element if it is a focusable area, otherwise the result of
+            // getting the focusable area for element.
+            // Step 5.11. If target is not null: set the flag, empty candidates, run the focusing
+            // steps for target.
+            if candidate
+                .upcast::<Node>()
+                .run_the_focusing_steps(cx, None, FocusTrigger::Script)
+            {
+                self.autofocus_processed.set(true);
+                self.autofocus_candidates.borrow_mut().clear();
+                return;
+            }
+        }
     }
 
     pub(crate) fn set_has_pending_animated_image_update(&self) {
