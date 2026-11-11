@@ -301,6 +301,10 @@ impl FileManager {
                     .map_err(|_| BlobURLStoreError::InvalidRange)?;
 
                 let range = range.to_abs_blob_range(buf.size as usize);
+                // A range request starting at or past the end of the blob fails.
+                if is_range_requested && range.start >= buf.size as usize {
+                    return Err(BlobURLStoreError::InvalidRange);
+                }
                 let len = range.len() as u64;
                 let content_range = if is_range_requested {
                     ContentRange::bytes(range.start as u64..range.end as u64, buf.size).ok()
@@ -311,7 +315,11 @@ impl FileManager {
                 set_blob_response_headers(
                     &mut response.headers,
                     len,
-                    buf.type_string.parse().unwrap_or(mime::TEXT_PLAIN),
+                    if buf.type_string.is_empty() {
+                        None
+                    } else {
+                        Some(buf.type_string.parse().unwrap_or(mime::TEXT_PLAIN))
+                    },
                     content_range,
                 );
 
@@ -363,9 +371,11 @@ impl FileManager {
                 set_blob_response_headers(
                     &mut response.headers,
                     metadata.size,
-                    mime_guess::from_path(metadata.path)
-                        .first()
-                        .unwrap_or(mime::TEXT_PLAIN),
+                    Some(
+                        mime_guess::from_path(metadata.path)
+                            .first()
+                            .unwrap_or(mime::TEXT_PLAIN),
+                    ),
                     content_range,
                 );
 
@@ -916,12 +926,15 @@ async fn read_file_in_chunks(
 fn set_blob_response_headers(
     headers: &mut HeaderMap,
     content_length: u64,
-    mime: Mime,
+    mime: Option<Mime>,
     content_range: Option<ContentRange>,
 ) {
     headers.typed_insert(ContentLength(content_length));
     if let Some(content_range) = content_range {
         headers.typed_insert(content_range);
     }
-    headers.typed_insert(ContentType::from(mime));
+    // A blob without a type has no `Content-Type` header.
+    if let Some(mime) = mime {
+        headers.typed_insert(ContentType::from(mime));
+    }
 }

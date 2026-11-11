@@ -16,7 +16,7 @@ use net_traits::{NetworkError, ResourceFetchTiming};
 use tokio::sync::mpsc::unbounded_channel;
 
 use crate::fetch::methods::{Data, DoneChannel, FetchContext};
-use crate::protocols::{ProtocolHandler, partial_content, range_not_satisfiable_error};
+use crate::protocols::{ProtocolHandler, partial_content};
 
 #[derive(Default)]
 pub struct BlobProtocolHander {}
@@ -36,7 +36,18 @@ impl ProtocolHandler for BlobProtocolHander {
             return Box::pin(ready(Response::network_error(NetworkError::InvalidMethod)));
         }
 
-        let range_header = request.headers.typed_get::<Range>();
+        // Armature: parse the `Range` header strictly, as the Fetch standard requires.
+        let range_header = match request.headers.get(http::header::RANGE) {
+            Some(value) => match parse_single_range_header_value(value.as_bytes()) {
+                Some(range) => Some(range),
+                None => {
+                    return Box::pin(ready(Response::network_error(
+                        NetworkError::ResourceLoadError("Invalid range header".into()),
+                    )));
+                },
+            },
+            None => None,
+        };
         let is_range_request = range_header.is_some();
 
         let (file_id, origin) = if let Some(token) = url_and_blob_claim.token() {
@@ -78,8 +89,10 @@ impl ProtocolHandler for BlobProtocolHander {
             let _ = done_sender.send(Data::Done);
             let err = match err {
                 BlobURLStoreError::InvalidRange => {
-                    range_not_satisfiable_error(&mut response);
-                    return Box::pin(ready(response));
+                    // The range cannot be satisfied: Fetch treats this as a network error.
+                    return Box::pin(ready(Response::network_error(
+                        NetworkError::ResourceLoadError("Range not satisfiable".into()),
+                    )));
                 },
                 _ => format!("{:?}", err),
             };
@@ -90,4 +103,63 @@ impl ProtocolHandler for BlobProtocolHander {
 
         Box::pin(ready(response))
     }
+}
+
+/// <https://fetch.spec.whatwg.org/#simple-range-header-value> with `allowWhitespace` set.
+fn parse_single_range_header_value(value: &[u8]) -> Option<Range> {
+    fn skip_ws(data: &[u8], position: &mut usize) {
+        while matches!(data.get(*position), Some(b' ' | b'\t')) {
+            *position += 1;
+        }
+    }
+    fn collect_digits(data: &[u8], position: &mut usize) -> Option<u64> {
+        let start = *position;
+        while data.get(*position).is_some_and(u8::is_ascii_digit) {
+            *position += 1;
+        }
+        if start == *position {
+            return None;
+        }
+        // Overflowing values saturate, which is equivalent for blob sizes.
+        std::str::from_utf8(&data[start..*position])
+            .ok()?
+            .parse::<u64>()
+            .ok()
+            .or(Some(u64::MAX))
+    }
+
+    let data = value;
+    let mut position = 0;
+    if !data.starts_with(b"bytes") {
+        return None;
+    }
+    position += "bytes".len();
+    skip_ws(data, &mut position);
+    if data.get(position) != Some(&b'=') {
+        return None;
+    }
+    position += 1;
+    skip_ws(data, &mut position);
+    let start = collect_digits(data, &mut position);
+    skip_ws(data, &mut position);
+    if data.get(position) != Some(&b'-') {
+        return None;
+    }
+    position += 1;
+    skip_ws(data, &mut position);
+    let end = collect_digits(data, &mut position);
+    if position < data.len() {
+        return None;
+    }
+    let normalized = match (start, end) {
+        (None, None) => return None,
+        (Some(start), Some(end)) if start > end => return None,
+        (Some(start), Some(end)) => format!("bytes={start}-{end}"),
+        (Some(start), None) => format!("bytes={start}-"),
+        (None, Some(end)) => format!("bytes=-{end}"),
+    };
+    let header_value = http::HeaderValue::from_str(&normalized).ok()?;
+    let mut headers = http::HeaderMap::new();
+    headers.insert(http::header::RANGE, header_value);
+    headers.typed_get::<Range>()
 }
