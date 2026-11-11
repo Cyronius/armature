@@ -1239,6 +1239,15 @@ impl XMLHttpRequest {
                 // Part of step 11, send() (processing response end of file)
                 // XXXManishearth handle errors, if any (substep 2)
 
+                // Handle response end-of-body: fire a final progress event. When a
+                // body chunk was received this was already done in the loading state.
+                if !self.sync.get() &&
+                    self.ready_state.get() == XMLHttpRequestState::HeadersReceived
+                {
+                    self.dispatch_response_progress_event(cx, atom!("progress"));
+                    return_if_fetch_was_terminated!();
+                }
+
                 // Subsubsteps 6-8
                 self.send_flag.set(false);
 
@@ -1307,7 +1316,7 @@ impl XMLHttpRequest {
         {
             (0, false)
         } else {
-            (total.unwrap_or(0), total.is_some())
+            (total.unwrap_or(0), total.is_some_and(|total| total != 0))
         };
         let progressevent = ProgressEvent::new(
             cx,
