@@ -103,6 +103,7 @@ impl HTMLSlotElementMethods<crate::DomTypeHolder> for HTMLSlotElement {
 
         // Step 2. Let nodesSet be a new ordered set.
         rooted_vec!(let mut nodes_set);
+        let mut previous_slots: Vec<DomRoot<HTMLSlotElement>> = vec![];
 
         // Step 3. For each node of nodes:
         for element_or_text in nodes.into_iter() {
@@ -114,6 +115,9 @@ impl HTMLSlotElementMethods<crate::DomTypeHolder> for HTMLSlotElement {
             // Step 3.1 If node's manual slot assignment refers to a slot,
             // then remove node from that slot's manually assigned nodes.
             if let Some(slot) = node.manual_slot_assignment() {
+                // Armature: remember the previous slot, as its tree also needs its slottables
+                // reassigned below so that it fires a `slotchange` event.
+                previous_slots.push(slot.clone());
                 let mut manually_assigned_nodes = slot.manually_assigned_nodes.borrow_mut();
                 if let Some(position) = manually_assigned_nodes
                     .iter()
@@ -139,6 +143,20 @@ impl HTMLSlotElementMethods<crate::DomTypeHolder> for HTMLSlotElement {
         self.upcast::<Node>()
             .GetRootNode(&GetRootNodeOptions::empty())
             .assign_slottables_for_a_tree(cx, ForceSlottableNodeReconciliation::Force);
+
+        // Armature: slots in other trees that lost one of the assigned nodes have to update too.
+        let this_root = self
+            .upcast::<Node>()
+            .GetRootNode(&GetRootNodeOptions::empty());
+        for previous_slot in previous_slots {
+            let previous_root = previous_slot
+                .upcast::<Node>()
+                .GetRootNode(&GetRootNodeOptions::empty());
+            if previous_root != this_root {
+                previous_root
+                    .assign_slottables_for_a_tree(cx, ForceSlottableNodeReconciliation::Force);
+            }
+        }
     }
 }
 
