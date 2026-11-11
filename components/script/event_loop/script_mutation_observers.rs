@@ -113,10 +113,15 @@ impl ScriptMutationObservers {
     }
 
     pub(crate) fn take_mutation_observers(&self) -> Vec<DomRoot<MutationObserver>> {
-        self.mutation_observers
+        // Observers are notified in the order they were created.
+        let mut observers: Vec<DomRoot<MutationObserver>> = self
+            .mutation_observers
             .take()
             .iter()
             .map(|mo| mo.as_rooted())
-            .collect()
+            .collect();
+        observers.sort_by_key(|mo| mo.creation_index());
+        observers.dedup_by_key(|mo| mo.creation_index());
+        observers
     }
 }

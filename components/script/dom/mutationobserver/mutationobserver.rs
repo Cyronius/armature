@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use std::cell::LazyCell;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use dom_struct::dom_struct;
 use html5ever::{LocalName, Namespace, ns};
@@ -27,12 +28,16 @@ use crate::dom::node::Node;
 use crate::dom::window::Window;
 use crate::event_loop::script_thread::ScriptThread;
 
+static NEXT_MUTATION_OBSERVER_INDEX: AtomicU64 = AtomicU64::new(0);
+
 #[dom_struct]
 pub(crate) struct MutationObserver {
     reflector_: Reflector,
     callback: TracedCallback<MutationCallback>,
     record_queue: DomRefCell<Vec<Dom<MutationRecord>>>,
     node_list: DomRefCell<Vec<Dom<Node>>>,
+    /// Armature: creation order, used to notify observers in the order they were created.
+    creation_index: u64,
 }
 
 pub(crate) enum Mutation<'a> {
@@ -87,7 +92,12 @@ impl MutationObserver {
             callback: callback.to_traced(),
             record_queue: DomRefCell::new(vec![]),
             node_list: DomRefCell::new(vec![]),
+            creation_index: NEXT_MUTATION_OBSERVER_INDEX.fetch_add(1, Ordering::Relaxed),
         }
+    }
+
+    pub(crate) fn creation_index(&self) -> u64 {
+        self.creation_index
     }
 
     pub(crate) fn record_queue(&self) -> &DomRefCell<Vec<Dom<MutationRecord>>> {
@@ -248,7 +258,6 @@ impl MutationObserverMethods<crate::DomTypeHolder> for MutationObserver {
     ) -> Fallible<DomRoot<MutationObserver>> {
         global.set_exists_mut_observer();
         let observer = MutationObserver::new_with_proto(cx, global, proto, callback);
-        ScriptThread::mutation_observers().add_mutation_observer(&observer);
         Ok(observer)
     }
 
