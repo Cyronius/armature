@@ -97,7 +97,9 @@ impl WaveShaperNodeMethods<crate::DomTypeHolder> for WaveShaperNode {
             .as_ref()
             .map(|curve| curve.iter().map(|value| **value).collect::<Vec<f32>>());
         if curve.as_ref().is_some_and(|curve| curve.len() < 2) {
-            return Err(Error::InvalidState(None));
+            return Err(Error::InvalidState(Some(String::from(
+                "the curve needs at least two values",
+            ))));
         }
 
         let audio_node_init = AudioNodeInit::WaveShaperNode(WaveShaperNodeOptions {
@@ -142,7 +144,9 @@ impl WaveShaperNodeMethods<crate::DomTypeHolder> for WaveShaperNode {
             Some(curve) => {
                 let curve = curve.to_vec().unwrap_or_default();
                 if curve.len() < 2 {
-                    return Err(Error::InvalidState(None));
+                    return Err(Error::InvalidState(Some(String::from(
+                        "the curve needs at least two values",
+                    ))));
                 }
                 Some(curve)
             },
@@ -150,7 +154,9 @@ impl WaveShaperNodeMethods<crate::DomTypeHolder> for WaveShaperNode {
         };
         // The audio engine only accepts a curve if none is set.
         if new_curve.is_some() && self.curve.borrow().is_some() {
-            return Err(Error::InvalidState(None));
+            return Err(Error::InvalidState(Some(String::from(
+                "the curve can only be set once",
+            ))));
         }
         self.node.message(AudioNodeMessage::WaveShaperNode(
             WaveShaperNodeMessage::SetCurve(new_curve.clone()),

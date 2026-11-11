@@ -197,7 +197,9 @@ impl BiquadFilterNodeMethods<crate::DomTypeHolder> for BiquadFilterNode {
     ) -> ErrorResult {
         let len = frequency_hz.len();
         if len != mag_response.len() || len != phase_response.len() {
-            return Err(Error::InvalidAccess(None));
+            return Err(Error::InvalidAccess(Some(String::from(
+                "the arrays must have the same length",
+            ))));
         }
         let frequency_hz_vec = frequency_hz.to_vec().unwrap_or_default();
         let mut mag_response_vec = vec![0.; len];

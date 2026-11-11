@@ -167,7 +167,12 @@ impl OfflineAudioContextMethods<crate::DomTypeHolder> for OfflineAudioContext {
             .iter()
             .any(|(scheduled_frame, _)| *scheduled_frame == frame)
         {
-            promise.reject_error(cx, Error::InvalidState(None));
+            promise.reject_error(
+                cx,
+                Error::InvalidState(Some(String::from(
+                    "a suspend is already scheduled for this frame",
+                ))),
+            );
             return promise;
         }
         self.suspend_promises

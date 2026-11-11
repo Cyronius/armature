@@ -161,7 +161,9 @@ impl AudioNode {
         let count = connections.len();
         connections.retain(|connection| !matches(connection));
         if connections.len() == count {
-            return Err(Error::InvalidAccess(None));
+            return Err(Error::InvalidAccess(Some(String::from(
+                "the connection does not exist",
+            ))));
         }
         Ok(())
     }
@@ -252,7 +254,9 @@ impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect-output>
     fn Disconnect_(&self, out: u32) -> ErrorResult {
         if out >= self.number_of_outputs {
-            return Err(Error::IndexSize(None));
+            return Err(Error::IndexSize(Some(String::from(
+                "output index is out of range",
+            ))));
         }
         self.connections
             .borrow_mut()
@@ -287,7 +291,9 @@ impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect-destinationnode-output>
     fn Disconnect___(&self, to: &AudioNode, out: u32) -> ErrorResult {
         if out >= self.number_of_outputs {
-            return Err(Error::IndexSize(None));
+            return Err(Error::IndexSize(Some(String::from(
+                "output index is out of range",
+            ))));
         }
         let (Some(from_node), Some(to_node)) = (self.node_id(), to.node_id()) else {
             return Ok(());
@@ -308,7 +314,9 @@ impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect-destinationnode-output-input>
     fn Disconnect____(&self, to: &AudioNode, out: u32, inp: u32) -> ErrorResult {
         if out >= self.number_of_outputs || inp >= to.number_of_inputs {
-            return Err(Error::IndexSize(None));
+            return Err(Error::IndexSize(Some(String::from(
+                "output or input index is out of range",
+            ))));
         }
         let (Some(from_node), Some(to_node)) = (self.node_id(), to.node_id()) else {
             return Ok(());
@@ -346,7 +354,9 @@ impl AudioNodeMethods<crate::DomTypeHolder> for AudioNode {
     /// <https://webaudio.github.io/web-audio-api/#dom-audionode-disconnect>
     fn Disconnect______(&self, param: &AudioParam, out: u32) -> ErrorResult {
         if out >= self.number_of_outputs {
-            return Err(Error::IndexSize(None));
+            return Err(Error::IndexSize(Some(String::from(
+                "output index is out of range",
+            ))));
         }
         let (Some(from_node), Some(param_node)) = (self.node_id(), param.node_id()) else {
             return Ok(());

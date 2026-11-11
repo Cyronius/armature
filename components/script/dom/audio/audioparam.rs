@@ -144,7 +144,9 @@ impl AudioParam {
                 }
         });
         if inside_curve {
-            return Err(Error::NotSupported(None));
+            return Err(Error::NotSupported(Some(String::from(
+                "the event falls inside a setValueCurveAtTime curve",
+            ))));
         }
         events.push(AutomationEvent {
             kind,
@@ -165,7 +167,9 @@ impl AudioParam {
             },
         });
         if overlaps {
-            return Err(Error::NotSupported(None));
+            return Err(Error::NotSupported(Some(String::from(
+                "the curve overlaps another automation event",
+            ))));
         }
         events.push(AutomationEvent {
             kind: AutomationEventKind::Curve,
