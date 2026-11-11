@@ -41,7 +41,7 @@ interface BaseAudioContext : EventTarget {
   [Throws] BiquadFilterNode createBiquadFilter();
   [Throws] IIRFilterNode createIIRFilter(sequence<double> feedforward,
                                 sequence<double> feedback);
-  // WaveShaperNode createWaveShaper();
+  [Throws] WaveShaperNode createWaveShaper();
   [Throws] PannerNode createPanner();
   [Throws] StereoPannerNode createStereoPanner();
   [Throws] ConvolverNode createConvolver();

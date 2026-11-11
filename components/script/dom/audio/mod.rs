@@ -32,3 +32,4 @@ pub(crate) mod oscillatornode;
 pub(crate) mod pannernode;
 pub(crate) mod periodicwave;
 pub(crate) mod stereopannernode;
+pub(crate) mod waveshapernode;

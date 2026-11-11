@@ -59,6 +59,7 @@ use crate::dom::audio::oscillatornode::OscillatorNode;
 use crate::dom::audio::pannernode::PannerNode;
 use crate::dom::audio::periodicwave::PeriodicWave;
 use crate::dom::audio::stereopannernode::StereoPannerNode;
+use crate::dom::audio::waveshapernode::WaveShaperNode;
 use crate::dom::bindings::buffer_source::HeapBufferSource;
 use crate::dom::bindings::callback::{ExceptionHandling, RootedCallback, TracedCallback};
 use crate::dom::bindings::codegen::Bindings::AnalyserNodeBinding::AnalyserOptions;
@@ -81,6 +82,9 @@ use crate::dom::bindings::codegen::Bindings::PeriodicWaveBinding::{
     PeriodicWaveConstraints, PeriodicWaveOptions,
 };
 use crate::dom::bindings::codegen::Bindings::StereoPannerNodeBinding::StereoPannerOptions;
+use crate::dom::bindings::codegen::Bindings::WaveShaperNodeBinding::{
+    OverSampleType, WaveShaperNodeMethods, WaveShaperOptions,
+};
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::inheritance::Castable;
@@ -767,6 +771,16 @@ impl BaseAudioContextMethods<crate::DomTypeHolder> for BaseAudioContext {
             feedforward,
         };
         IIRFilterNode::Constructor(cx, self.global().as_window(), None, self, &opts)
+    }
+
+    /// <https://webaudio.github.io/web-audio-api/#dom-baseaudiocontext-createwaveshaper>
+    fn CreateWaveShaper(&self, cx: &mut JSContext) -> Fallible<DomRoot<WaveShaperNode>> {
+        let opts = WaveShaperOptions {
+            parent: AudioNodeOptions::empty(),
+            curve: None,
+            oversample: OverSampleType::None,
+        };
+        WaveShaperNode::Constructor(cx, self.global().as_window(), None, self, &opts)
     }
 }
 
