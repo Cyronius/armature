@@ -33,9 +33,7 @@ pub(crate) fn decode_and_enqueue_a_chunk(
 ) -> Fallible<()> {
     // Step 1. Let bufferSource be the result of converting chunk to an AllowSharedBufferSource.
     let conversion_result =
-        ArrayBufferViewOrArrayBuffer::from_jsval(cx, chunk, ()).map_err(|_| {
-            Error::Type(c"Unable to convert chunk into ArrayBuffer or ArrayBufferView".to_owned())
-        })?;
+        ArrayBufferViewOrArrayBuffer::from_jsval(cx, chunk, ()).map_err(|_| Error::JSFailed)?;
     let buffer_source = conversion_result.get_success_value().ok_or_else(|| {
         Error::Type(c"Unable to convert chunk into ArrayBuffer or ArrayBufferView".to_owned())
     })?;

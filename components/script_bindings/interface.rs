@@ -147,7 +147,10 @@ pub(crate) unsafe fn create_global_object<D: DomTypes>(
 
     let mut options = RealmOptions::default();
     options.creationOptions_.traceGlobal_ = Some(trace);
-    options.creationOptions_.sharedMemoryAndAtomics_ = false;
+    // Armature: enable shared memory and atomics (needed for shared WebAssembly.Memory), but do
+    // not define the global SharedArrayBuffer constructor, which requires cross-origin isolation.
+    options.creationOptions_.sharedMemoryAndAtomics_ = true;
+    options.creationOptions_.defineSharedArrayBufferConstructor_ = false;
     if use_system_compartment {
         options.creationOptions_.compSpec_ = CompartmentSpecifier::NewCompartmentAndZone;
         options.creationOptions_.__bindgen_anon_1.comp_ = std::ptr::null_mut();

@@ -1125,16 +1125,34 @@ def getJSToNativeConversionInfo(type: IDLType, descriptorProvider: DescriptorPro
         else:
             map_call = ""
 
+        # Armature: buffer sources backed by shared memory are only accepted with [AllowShared].
+        # NOTE: [AllowShared] is not supported yet, since the typed array wrappers panic when
+        # accessing shared memory, so shared buffers are rejected there as well.
+        if False:
+            sharedCheck = ""
+        else:
+            sharedCheck = (
+                "if unsafe { crate::buffer_source::is_shared_buffer_source("
+                "${val}.get().to_object()) } {\n"
+                f'    throw_type_error(cx, c"{sourceDescription} must not be backed by shared memory.");\n'
+                f"    {exceptionCode}\n"
+                "}\n"
+            )
+
         templateBody = fill(
             f"""
-            match typedarray::${{ty}}::from($${{val}}.get().to_object()){map_call} {{
-                Ok(val) => val,
-                Err(()) => {{
-                    $*{{failureCode}}
+            {{
+                $*{{sharedCheck}}
+                match typedarray::${{ty}}::from($${{val}}.get().to_object()){map_call} {{
+                    Ok(val) => val,
+                    Err(()) => {{
+                        $*{{failureCode}}
+                    }}
                 }}
             }}
             """,
             ty=typeName,
+            sharedCheck=sharedCheck,
             failureCode=f"{unwrapFailureCode}\n",
         )
 

@@ -4,6 +4,20 @@
 
 #![expect(unsafe_code)]
 
+/// Whether `obj` is a `SharedArrayBuffer`, or a view onto one.
+///
+/// Armature: buffer sources backed by shared memory are rejected unless `[AllowShared]` is set.
+///
+/// # Safety
+/// `obj` must be a valid, non-null JS object.
+pub unsafe fn is_shared_buffer_source(obj: *mut js::jsapi::JSObject) -> bool {
+    unsafe {
+        js::jsapi::IsSharedArrayBufferObject(obj) ||
+            (js::jsapi::JS_IsArrayBufferViewObject(obj) &&
+                js::jsapi::IsArrayBufferViewShared(obj))
+    }
+}
+
 use std::marker::PhantomData;
 use std::ptr;
 
