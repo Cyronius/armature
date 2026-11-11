@@ -7,6 +7,7 @@ use std::sync::mpsc;
 
 use dom_struct::dom_struct;
 use js::context::JSContext;
+use script_bindings::cell::DomRefCell;
 use script_bindings::cformat;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
 use servo_media::audio::audio_node::{AudioNodeMessage, AudioNodeType};
@@ -18,10 +19,31 @@ use crate::dom::audio::baseaudiocontext::BaseAudioContext;
 use crate::dom::bindings::codegen::Bindings::AudioParamBinding::{
     AudioParamMethods, AutomationRate,
 };
+use crate::dom::bindings::codegen::Bindings::BaseAudioContextBinding::BaseAudioContextMethods;
 use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::num::Finite;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::window::Window;
+
+/// The kind of an automation event, tracked to validate new events against `setValueCurveAtTime`.
+#[derive(Clone, Copy, MallocSizeOf, PartialEq)]
+enum AutomationEventKind {
+    /// `setValueAtTime()` and `setTargetAtTime()`.
+    Point,
+    /// `linearRampToValueAtTime()` and `exponentialRampToValueAtTime()`.
+    Ramp,
+    /// `setValueCurveAtTime()`.
+    Curve,
+}
+
+/// An automation event scheduled on an [`AudioParam`].
+#[derive(Clone, Copy, MallocSizeOf)]
+struct AutomationEvent {
+    kind: AutomationEventKind,
+    start: f64,
+    /// The end of a curve; equal to `start` for other events.
+    end: f64,
+}
 
 #[dom_struct]
 pub(crate) struct AudioParam {
@@ -37,6 +59,10 @@ pub(crate) struct AudioParam {
     default_value: f32,
     min_value: f32,
     max_value: f32,
+    /// The scheduled automation events, used to throw `NotSupportedError` for events that
+    /// conflict with a `setValueCurveAtTime()` interval.
+    #[no_trace]
+    events: DomRefCell<Vec<AutomationEvent>>,
 }
 
 impl AudioParam {
@@ -61,6 +87,7 @@ impl AudioParam {
             default_value,
             min_value,
             max_value,
+            events: Default::default(),
         }
     }
 
@@ -106,6 +133,48 @@ impl AudioParam {
         }
     }
 
+    /// Check that an event of `kind` at `time` does not fall inside a value curve, then record it.
+    fn schedule_event(&self, kind: AutomationEventKind, time: f64) -> Fallible<()> {
+        let mut events = self.events.borrow_mut();
+        let inside_curve = events.iter().any(|event| {
+            event.kind == AutomationEventKind::Curve &&
+                match kind {
+                    AutomationEventKind::Ramp => event.start < time && time < event.end,
+                    _ => event.start <= time && time < event.end,
+                }
+        });
+        if inside_curve {
+            return Err(Error::NotSupported(None));
+        }
+        events.push(AutomationEvent {
+            kind,
+            start: time,
+            end: time,
+        });
+        Ok(())
+    }
+
+    /// Check that a value curve over `[start, end)` does not overlap other events, then record it.
+    fn schedule_curve(&self, start: f64, end: f64) -> Fallible<()> {
+        let mut events = self.events.borrow_mut();
+        let overlaps = events.iter().any(|event| match event.kind {
+            AutomationEventKind::Curve => start < event.end && event.start < end,
+            // An event at the start of the curve is fine, since the curve takes over from it.
+            AutomationEventKind::Ramp | AutomationEventKind::Point => {
+                start < event.start && event.start < end
+            },
+        });
+        if overlaps {
+            return Err(Error::NotSupported(None));
+        }
+        events.push(AutomationEvent {
+            kind: AutomationEventKind::Curve,
+            start,
+            end,
+        });
+        Ok(())
+    }
+
     pub(crate) fn context(&self) -> &BaseAudioContext {
         &self.context
     }
@@ -147,21 +216,25 @@ impl AudioParamMethods<crate::DomTypeHolder> for AudioParam {
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audioparam-value>
-    fn Value(&self) -> Finite<f32> {
+    fn GetValue(&self) -> Fallible<Finite<f32>> {
         if self.node.is_none() {
-            return Finite::wrap(self.default_value);
+            return Ok(Finite::wrap(self.default_value));
         }
         let (tx, rx) = mpsc::channel();
         self.message_node(AudioNodeMessage::GetParamValue(self.param, tx));
-        Finite::wrap(rx.recv().unwrap())
+        Ok(Finite::wrap(rx.recv().unwrap()))
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audioparam-value>
-    fn SetValue(&self, value: Finite<f32>) {
+    fn SetValue(&self, value: Finite<f32>) -> Fallible<()> {
+        // Setting the value behaves like `setValueAtTime(value, currentTime)`.
+        let current_time = *self.context.CurrentTime();
+        self.schedule_event(AutomationEventKind::Point, current_time)?;
         self.message_node(AudioNodeMessage::SetParam(
             self.param,
             UserAutomationEvent::SetValue(*value),
         ));
+        Ok(())
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-audioparam-defaultvalue>
@@ -191,6 +264,7 @@ impl AudioParamMethods<crate::DomTypeHolder> for AudioParam {
                 *start_time
             )));
         }
+        self.schedule_event(AutomationEventKind::Point, *start_time)?;
         self.message_node(AudioNodeMessage::SetParam(
             self.param,
             UserAutomationEvent::SetValueAtTime(*value, *start_time),
@@ -210,6 +284,7 @@ impl AudioParamMethods<crate::DomTypeHolder> for AudioParam {
                 *end_time
             )));
         }
+        self.schedule_event(AutomationEventKind::Ramp, *end_time)?;
         self.message_node(AudioNodeMessage::SetParam(
             self.param,
             UserAutomationEvent::RampToValueAtTime(RampKind::Linear, *value, *end_time),
@@ -235,6 +310,7 @@ impl AudioParamMethods<crate::DomTypeHolder> for AudioParam {
                 *value
             )));
         }
+        self.schedule_event(AutomationEventKind::Ramp, *end_time)?;
         self.message_node(AudioNodeMessage::SetParam(
             self.param,
             UserAutomationEvent::RampToValueAtTime(RampKind::Exponential, *value, *end_time),
@@ -261,6 +337,7 @@ impl AudioParamMethods<crate::DomTypeHolder> for AudioParam {
                 *time_constant
             )));
         }
+        self.schedule_event(AutomationEventKind::Point, *start_time)?;
         self.message_node(AudioNodeMessage::SetParam(
             self.param,
             UserAutomationEvent::SetTargetAtTime(*target, *start_time, (*time_constant).into()),
@@ -291,6 +368,7 @@ impl AudioParamMethods<crate::DomTypeHolder> for AudioParam {
                 *end_time
             )));
         }
+        self.schedule_curve(*start_time, *start_time + *end_time)?;
         self.message_node(AudioNodeMessage::SetParam(
             self.param,
             UserAutomationEvent::SetValueCurveAtTime(
@@ -310,6 +388,10 @@ impl AudioParamMethods<crate::DomTypeHolder> for AudioParam {
                 *cancel_time
             )));
         }
+        // Events at or after the cancel time are removed, including curves that span it.
+        self.events
+            .borrow_mut()
+            .retain(|event| event.start < *cancel_time && event.end <= *cancel_time);
         self.message_node(AudioNodeMessage::SetParam(
             self.param,
             UserAutomationEvent::CancelScheduledValues(*cancel_time),
@@ -324,6 +406,14 @@ impl AudioParamMethods<crate::DomTypeHolder> for AudioParam {
                 "cancel time {} should not be negative",
                 *cancel_time
             )));
+        }
+        // Events after the cancel time are removed, and a curve spanning it is cut short.
+        {
+            let mut events = self.events.borrow_mut();
+            events.retain(|event| event.start < *cancel_time);
+            for event in events.iter_mut() {
+                event.end = event.end.min(*cancel_time);
+            }
         }
         self.message_node(AudioNodeMessage::SetParam(
             self.param,

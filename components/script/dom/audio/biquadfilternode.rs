@@ -203,10 +203,10 @@ impl BiquadFilterNodeMethods<crate::DomTypeHolder> for BiquadFilterNode {
         let mut mag_response_vec = vec![0.; len];
         let mut phase_response_vec = vec![0.; len];
         let options = BiquadFilterNodeOptions {
-            gain: *self.gain.Value(),
-            q: *self.q.Value(),
-            frequency: *self.frequency.Value(),
-            detune: *self.detune.Value(),
+            gain: *self.gain.GetValue()?,
+            q: *self.q.GetValue()?,
+            frequency: *self.frequency.GetValue()?,
+            detune: *self.detune.GetValue()?,
             filter: self.filter.get().convert(),
         };
         BiquadFilter::get_frequency_response(
