@@ -1338,7 +1338,13 @@ unsafe extern "C" fn consume_stream(
             );
             return false;
         }
-        unwrapped_source.set_stream_consumer(Some(StreamConsumer(_consumer)));
+        if unwrapped_source.has_fetch_body_stream() {
+            unwrapped_source.set_stream_consumer(Some(StreamConsumer(_consumer)));
+        } else {
+            // Armature: the body does not come from the network, so nothing would ever feed the
+            // consumer. Read the body stream instead.
+            unwrapped_source.feed_stream_consumer_from_body(cx, StreamConsumer(_consumer));
+        }
     } else {
         // Step 3 Upon rejection of source, return with reason.
         throw_dom_exception(

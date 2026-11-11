@@ -62,6 +62,8 @@ pub(crate) struct Response {
     stream_consumer: DomRefCell<Option<StreamConsumer>>,
     /// FIXME: This should be removed.
     redirected: Cell<bool>,
+    /// Armature: whether this response is fed by the network (see `new_fetch_response`).
+    network_backed: Cell<bool>,
 }
 
 impl Response {
@@ -77,6 +79,7 @@ impl Response {
             fetch_body_stream: MutNullableDom::new(body_stream),
             stream_consumer: DomRefCell::new(None),
             redirected: Cell::new(false),
+            network_backed: Cell::new(false),
         }
     }
 
@@ -105,12 +108,14 @@ impl Response {
             UnderlyingSourceType::FetchResponse,
         )
         .expect("Failed to create ReadableStream with external underlying source");
-        reflect_dom_object_with_proto(
+        let response = reflect_dom_object_with_proto(
             cx,
             Box::new(Response::new_inherited(Some(&stream))),
             global,
             None,
-        )
+        );
+        response.network_backed.set(true);
+        response
     }
 
     pub(crate) fn error_stream(&self, cx: &mut js::context::JSContext, error: Error) {
@@ -547,6 +552,45 @@ impl Response {
 
     pub(crate) fn set_stream_consumer(&self, sc: Option<StreamConsumer>) {
         *self.stream_consumer.borrow_mut() = sc;
+    }
+
+    /// Armature: whether the body of this response is being streamed from the network by fetch,
+    /// as opposed to coming from a body source such as bytes handed to the constructor.
+    pub(crate) fn has_fetch_body_stream(&self) -> bool {
+        self.network_backed.get()
+    }
+
+    /// Armature: feed the body of a response that is not streamed from the network (for
+    /// example `new Response(bytes)`) to a WebAssembly stream consumer.
+    pub(crate) fn feed_stream_consumer_from_body(
+        &self,
+        cx: &mut js::context::JSContext,
+        consumer: StreamConsumer,
+    ) {
+        let consumer = std::rc::Rc::new(consumer);
+        let Some(stream) = self.body() else {
+            // A null body is an empty byte sequence.
+            consumer.stream_end();
+            return;
+        };
+        let reader = match stream.acquire_default_reader(cx) {
+            Ok(reader) => reader,
+            Err(_) => {
+                consumer.stream_error(0);
+                return;
+            },
+        };
+        let error_consumer = consumer.clone();
+        reader.read_all_bytes(
+            cx,
+            std::rc::Rc::new(move |_cx, bytes| {
+                consumer.consume_chunk(&bytes);
+                consumer.stream_end();
+            }),
+            std::rc::Rc::new(move |_cx, _error| {
+                error_consumer.stream_error(0);
+            }),
+        );
     }
 
     pub(crate) fn stream_chunk(&self, cx: &mut js::context::JSContext, chunk: Bytes) {
