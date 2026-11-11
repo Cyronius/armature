@@ -33,6 +33,9 @@ use crate::{AudioBackend, AudioStreamReader};
 
 pub type SinkEosCallback = Box<dyn Fn(Box<dyn AsRef<[f32]>>) + Send + Sync + 'static>;
 
+/// Called with the frame at which an offline context suspended rendering.
+pub type OfflineSuspendCallback = Box<dyn Fn(usize) + Send + Sync + 'static>;
+
 #[derive(MallocSizeOf)]
 pub enum AudioRenderThreadMsg {
     CreateNode(AudioNodeInit, Sender<Option<NodeId>>, ChannelInfo),
@@ -54,6 +57,10 @@ pub enum AudioRenderThreadMsg {
     SetSinkEosCallback(#[ignore_malloc_size_of = "Fn"] SinkEosCallback),
 
     SetMute(bool),
+
+    /// Suspend rendering of an offline context once it has rendered up to the given frame.
+    ScheduleOfflineSuspend(usize),
+    SetOfflineSuspendCallback(#[ignore_malloc_size_of = "Fn"] OfflineSuspendCallback),
 }
 
 pub enum Sink {
@@ -141,6 +148,9 @@ pub struct AudioRenderThread {
     pub current_time: f64,
     pub current_frame: Tick,
     pub muted: bool,
+    /// The frames at which an offline context should suspend, in ascending order.
+    pub offline_suspend_frames: std::collections::BTreeSet<usize>,
+    pub offline_suspend_callback: Option<OfflineSuspendCallback>,
 }
 
 impl AudioRenderThread {
@@ -174,6 +184,8 @@ impl AudioRenderThread {
             current_time: 0.,
             current_frame: Tick(0),
             muted: false,
+            offline_suspend_frames: Default::default(),
+            offline_suspend_callback: None,
         })
     }
 
@@ -338,6 +350,12 @@ impl AudioRenderThread {
                 AudioRenderThreadMsg::SetMute(val) => {
                     context.set_mute(val);
                 },
+                AudioRenderThreadMsg::ScheduleOfflineSuspend(frame) => {
+                    context.offline_suspend_frames.insert(frame);
+                },
+                AudioRenderThreadMsg::SetOfflineSuspendCallback(callback) => {
+                    context.offline_suspend_callback = Some(callback);
+                },
             };
 
             break_loop
@@ -365,6 +383,19 @@ impl AudioRenderThread {
 
                 if self.state == ProcessingState::Suspended {
                     // Bail out if we just suspended processing.
+                    continue;
+                }
+
+                // Suspend an offline context when it reaches a scheduled frame.
+                let current_frame = self.current_frame.0 as usize;
+                if let Some(&frame) = self.offline_suspend_frames.first() &&
+                    frame <= current_frame
+                {
+                    self.offline_suspend_frames.pop_first();
+                    self.suspend();
+                    if let Some(callback) = &self.offline_suspend_callback {
+                        callback(frame);
+                    }
                     continue;
                 }
 

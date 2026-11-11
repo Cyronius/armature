@@ -14,7 +14,9 @@ use crate::AudioBackend;
 use crate::audio_node::{AudioNodeInit, AudioNodeMessage, ChannelInfo};
 use crate::decoder::{AudioDecoder, AudioDecoderCallbacks, AudioDecoderOptions};
 use crate::graph::{AudioGraph, InputPort, NodeId, OutputPort, PortId};
-use crate::render_thread::{AudioRenderThread, AudioRenderThreadMsg, SinkEosCallback};
+use crate::render_thread::{
+    AudioRenderThread, AudioRenderThreadMsg, OfflineSuspendCallback, SinkEosCallback,
+};
 use crate::sink::AudioSinkError;
 
 /// Describes the state of the audio context on the control thread.
@@ -313,6 +315,20 @@ impl AudioContext {
         let _ = self
             .sender
             .send(AudioRenderThreadMsg::SetSinkEosCallback(callback));
+    }
+
+    /// Suspend an offline context once it has rendered up to `frame`.
+    pub fn schedule_offline_suspend(&self, frame: usize) {
+        let _ = self
+            .sender
+            .send(AudioRenderThreadMsg::ScheduleOfflineSuspend(frame));
+    }
+
+    /// Set the callback called with the frame at which an offline context suspended.
+    pub fn set_offline_suspend_callback(&self, callback: OfflineSuspendCallback) {
+        let _ = self
+            .sender
+            .send(AudioRenderThreadMsg::SetOfflineSuspendCallback(callback));
     }
 
     fn set_mute(&self, val: bool) {

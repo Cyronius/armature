@@ -19,6 +19,7 @@ use crate::dom::audio::audiobuffer::{AudioBuffer, MAX_SAMPLE_RATE, MIN_SAMPLE_RA
 use crate::dom::audio::audionode::MAX_CHANNEL_COUNT;
 use crate::dom::audio::baseaudiocontext::{BaseAudioContext, BaseAudioContextOptions};
 use crate::dom::audio::offlineaudiocompletionevent::OfflineAudioCompletionEvent;
+use crate::dom::bindings::codegen::Bindings::BaseAudioContextBinding::AudioContextState;
 use crate::dom::bindings::codegen::Bindings::BaseAudioContextBinding::BaseAudioContext_Binding::BaseAudioContextMethods;
 use crate::dom::bindings::codegen::Bindings::OfflineAudioContextBinding::{
     OfflineAudioContextMethods, OfflineAudioContextOptions,
@@ -40,6 +41,9 @@ pub(crate) struct OfflineAudioContext {
     length: u32,
     rendering_started: Cell<bool>,
     pending_rendering_promise: DomRefCell<Option<TracedPromise>>,
+    /// The promises returned by `suspend()`, with the frame at which rendering suspends.
+    suspend_promises: DomRefCell<Vec<(usize, TracedPromise)>>,
+    suspend_callback_registered: Cell<bool>,
 }
 
 impl OfflineAudioContext {
@@ -65,6 +69,8 @@ impl OfflineAudioContext {
             length,
             rendering_started: Cell::new(false),
             pending_rendering_promise: Default::default(),
+            suspend_promises: Default::default(),
+            suspend_callback_registered: Cell::new(false),
         })
     }
 
@@ -132,6 +138,86 @@ impl OfflineAudioContextMethods<crate::DomTypeHolder> for OfflineAudioContext {
     /// <https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-length>
     fn Length(&self) -> u32 {
         self.length
+    }
+
+    /// <https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-suspend>
+    fn Suspend(&self, cx: &mut CurrentRealm, suspend_time: Finite<f64>) -> RootedPromise {
+        let promise = Promise::new_in_realm(cx);
+        let sample_rate = f64::from(*self.context.SampleRate());
+        let suspend_time = *suspend_time;
+
+        // The suspend time must not be in the past or after the end of the rendering.
+        if suspend_time < 0. ||
+            suspend_time < *self.context.CurrentTime() ||
+            suspend_time >= f64::from(self.length) / sample_rate
+        {
+            promise.reject_error(cx, Error::Range(c"suspendTime is out of range".to_owned()));
+            return promise;
+        }
+
+        // Round up to a multiple of the render quantum size.
+        const RENDER_QUANTUM: f64 = 128.;
+        let frame =
+            ((suspend_time * sample_rate / RENDER_QUANTUM).ceil() * RENDER_QUANTUM) as usize;
+
+        // Only one suspend can be scheduled for a given frame.
+        if self
+            .suspend_promises
+            .borrow()
+            .iter()
+            .any(|(scheduled_frame, _)| *scheduled_frame == frame)
+        {
+            promise.reject_error(cx, Error::InvalidState(None));
+            return promise;
+        }
+        self.suspend_promises
+            .borrow_mut()
+            .push((frame, promise.to_traced()));
+
+        if !self.suspend_callback_registered.replace(true) {
+            let this = Mutex::new(Trusted::new(self));
+            let task_source = Mutex::new(
+                self.global()
+                    .task_manager()
+                    .dom_manipulation_task_source()
+                    .to_sendable(),
+            );
+            self.context
+                .audio_context_impl()
+                .lock()
+                .unwrap()
+                .set_offline_suspend_callback(Box::new(move |frame| {
+                    let this = this.lock().unwrap().clone();
+                    task_source
+                        .lock()
+                        .unwrap()
+                        .queue(task!(offline_suspended: move |cx| {
+                            let this = this.root();
+                            this.context.set_state_attribute(AudioContextState::Suspended);
+                            this.global()
+                                .task_manager()
+                                .dom_manipulation_task_source()
+                                .queue_simple_event(this.upcast(), atom!("statechange"));
+                            let promise = {
+                                let mut promises = this.suspend_promises.borrow_mut();
+                                promises
+                                    .iter()
+                                    .position(|(scheduled_frame, _)| *scheduled_frame == frame)
+                                    .map(|index| promises.remove(index).1)
+                            };
+                            if let Some(promise) = promise {
+                                promise.root(cx).resolve_native(cx, &());
+                            }
+                        }));
+                }));
+        }
+        self.context
+            .audio_context_impl()
+            .lock()
+            .unwrap()
+            .schedule_offline_suspend(frame);
+
+        promise
     }
 
     /// <https://webaudio.github.io/web-audio-api/#dom-offlineaudiocontext-startrendering>
@@ -207,6 +293,12 @@ impl OfflineAudioContextMethods<crate::DomTypeHolder> for OfflineAudioContext {
                 }));
             })
             .unwrap();
+
+        self.context.set_state_attribute(AudioContextState::Running);
+        self.global()
+            .task_manager()
+            .dom_manipulation_task_source()
+            .queue_simple_event(self.upcast(), atom!("statechange"));
 
         if self
             .context
