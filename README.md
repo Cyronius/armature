@@ -93,7 +93,7 @@ Notes on the numbers:
   subtests that depend on the machine rather than on Armature's changes.
 - The table predates the SVG hit-testing, path DOM, image sizing, non-scaling stroke, canvas image, focus, conditional
   processing, SMIL, image rendering keywords and filtered child selector invalidation work, as well as the final HTML
-  reflection fixes described below; their gains are not included in these scores.
+  reflection fixes and WebGL canvas texture fixes described below; their gains are not included in these scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
@@ -103,6 +103,10 @@ Notes on the numbers:
 
 ## What has been done
 
+- **WebGL canvas pixels and texture uploads**: WebGL canvas snapshots now put the top row first for `toDataURL`,
+  canvas consumers and texture uploads. `OffscreenCanvas` is accepted as a `TexImageSource`. Seventeen WebGL canvas
+  conformance tests that previously failed or ended in error now complete successfully, including 200 subtests
+  previously expected to fail.
 - **WICG [Observable API](https://wicg.github.io/observable/)**, behind the `dom_observable_enabled` preference
   (off by default; enabled for the tests by `tests/wpt/meta/dom/observable/__dir__.ini`): `Observable`, `Subscriber`,
   `EventTarget.when()`, every operator, and `Observable.from()` for Observables, iterables, async iterables and
