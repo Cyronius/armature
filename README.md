@@ -78,6 +78,9 @@ interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTran
 
 Notes on the numbers:
 
+- A full Armature-only `_webgl` run on 11 November 2026 at `5b9c25bdcbb` scored **82.2%** across 2,939 tests by the
+  same per-test rule (2,415.7 passing-test equivalents). The WebGL row above remains the 7 November upstream
+  comparison; the new run includes the WebGL2 texture and dEQP suites enabled since then.
 - Both builds ran the same tests, including the directories that Armature added to `include.ini` and upstream
   Servo skips (all of `web-animations`, and CSS directories whose properties Armature enables). Tests that set a
   preference only Armature has (Observable, popovers, `ProcessingInstruction` attributes, ARIA reflection) error on
@@ -103,6 +106,10 @@ Notes on the numbers:
 
 ## What has been done
 
+- **WebGL2 texture sources and dEQP coverage**: WebGL2 image and subimage uploads now accept canvas, image, SVG,
+  video and `ImageData` sources in 2D and 3D. Typed-array 3D subimages and pixel unpack buffer 2D subimages are
+  supported. Twelve WebGL2 texture source directories and eight dEQP groups (456 tests) are enabled, bringing the
+  full WebGL conformance score to 82.2%.
 - **WebGL canvas pixels and texture uploads**: WebGL canvas snapshots now put the top row first for `toDataURL`,
   canvas consumers and texture uploads. `OffscreenCanvas` is accepted as a `TexImageSource`. Seventeen WebGL canvas
   conformance tests that previously failed or ended in error now complete successfully, including 200 subtests
@@ -666,6 +673,8 @@ Notes on the numbers:
 
 ## What has not been done
 
+- WebGL2 texture overload coverage remains incomplete (`tex-unpack-params.html` still errors), and 368 dEQP files
+  remain disabled.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
   expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
   contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
