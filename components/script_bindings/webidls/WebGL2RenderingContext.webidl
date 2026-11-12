@@ -319,13 +319,12 @@ interface mixin WebGL2RenderingContextBase
   //[Throws]
   //void texImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
   //                GLsizei depth, GLint border, GLenum format, GLenum type, GLintptr pboOffset);
-  //[Throws]
-  //void texImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
-  //                GLsizei depth, GLint border, GLenum format, GLenum type,
-  //                TexImageSource source); // May throw DOMException
   [Throws]
   undefined texImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
                   GLsizei depth, GLint border, GLenum format, GLenum type, /*[AllowShared]*/ ArrayBufferView? srcData);
+  [Throws]
+  undefined texImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
+                  GLsizei depth, GLint border, GLenum format, GLenum type, TexImageSource source);
   //[Throws]
   //void texImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
   //                GLsizei depth, GLint border, GLenum format, GLenum type, [AllowShared] ArrayBufferView srcData,
@@ -335,10 +334,10 @@ interface mixin WebGL2RenderingContextBase
   //void texSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset,
   //                   GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type,
   //                   GLintptr pboOffset);
-  //[Throws]
-  //void texSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset,
-  //                   GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type,
-  //                   TexImageSource source); // May throw DOMException
+  [Throws]
+  undefined texSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset,
+                     GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type,
+                     TexImageSource source); // May throw DOMException
   //[Throws]
   //void texSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset,
   //                   GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type,
@@ -521,10 +520,10 @@ interface mixin WebGL2RenderingContextOverloads
   //[Throws]
   //void texSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width,
   //                   GLsizei height, GLenum format, GLenum type, GLintptr pboOffset);
-  //[Throws]
-  //void texSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width,
-  //                   GLsizei height, GLenum format, GLenum type,
-  //                   TexImageSource source); // May throw DOMException
+  [Throws]
+  undefined texSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width,
+                     GLsizei height, GLenum format, GLenum type,
+                     TexImageSource source); // May throw DOMException
   //[Throws]
   //void texSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width,
   //                   GLsizei height, GLenum format, GLenum type, /*[AllowShared]*/ ArrayBufferView srcData,

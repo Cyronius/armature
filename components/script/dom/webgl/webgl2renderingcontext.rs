@@ -3311,6 +3311,214 @@ impl WebGL2RenderingContextMethods<crate::DomTypeHolder> for WebGL2RenderingCont
         Ok(())
     }
 
+    /// <https://registry.khronos.org/webgl/specs/latest/2.0/#5.18>
+    #[expect(clippy::too_many_arguments)]
+    fn TexImage3D_(
+        &self,
+        no_gc: &NoGC,
+        target: u32,
+        level: i32,
+        internal_format: i32,
+        width: i32,
+        height: i32,
+        depth: i32,
+        border: i32,
+        format: u32,
+        type_: u32,
+        source: TexImageSource,
+    ) -> Fallible<()> {
+        if self.bound_pixel_unpack_buffer.get().is_some() {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        }
+        let no_array_data: Option<ArrayBufferView> = None;
+        let Ok(TexImage3DValidatorResult {
+            width,
+            height,
+            depth,
+            level,
+            border,
+            texture,
+            target,
+            internal_format,
+            format,
+            data_type,
+        }) = TexImage3DValidator::new(
+            &self.base,
+            target,
+            level,
+            internal_format as u32,
+            width,
+            height,
+            depth,
+            border,
+            format,
+            type_,
+            &no_array_data,
+        )
+        .validate()
+        else {
+            return Ok(());
+        };
+        let Some(pixels) = self.base.get_image_pixels(no_gc, source)? else {
+            return Ok(());
+        };
+        let layout = self.base.texture_unpack_layout();
+        let image_height = if layout.image_height == 0 {
+            height
+        } else {
+            layout.image_height
+        };
+        let Some(skip_rows) = layout
+            .skip_images
+            .checked_mul(image_height)
+            .and_then(|rows| rows.checked_add(layout.skip_rows))
+        else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        let Some(pixels) = pixels.sub_volume(
+            Point2D::new(layout.skip_pixels, skip_rows),
+            Size2D::new(width, height),
+            depth,
+            image_height,
+        ) else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        self.tex_image_3d(
+            &texture,
+            target,
+            data_type,
+            internal_format,
+            format,
+            level,
+            width,
+            height,
+            depth,
+            border,
+            1,
+            pixels,
+        );
+        Ok(())
+    }
+
+    /// <https://registry.khronos.org/webgl/specs/latest/2.0/#5.18>
+    #[expect(clippy::too_many_arguments)]
+    fn TexSubImage3D(
+        &self,
+        no_gc: &NoGC,
+        target: u32,
+        level: i32,
+        xoffset: i32,
+        yoffset: i32,
+        zoffset: i32,
+        width: i32,
+        height: i32,
+        depth: i32,
+        format: u32,
+        type_: u32,
+        source: TexImageSource,
+    ) -> Fallible<()> {
+        if self.bound_pixel_unpack_buffer.get().is_some() {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        }
+        let Some(target) = TexImageTarget::from_gl_constant(target) else {
+            self.base.webgl_error(InvalidEnum);
+            return Ok(());
+        };
+        if target.dimensions() != 3 {
+            self.base.webgl_error(InvalidEnum);
+            return Ok(());
+        }
+        if level < 0 || level as u32 > self.base.limits().max_3d_tex_size.ilog2() ||
+            width < 0 || height < 0 || depth < 0 || xoffset < 0 || yoffset < 0 || zoffset < 0
+        {
+            self.base.webgl_error(InvalidValue);
+            return Ok(());
+        }
+        let Some(texture) = self.base.textures().active_texture_for_image_target(target) else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        let Some(image_info) = texture.image_info_for_target(&target, level as u32) else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        if xoffset.checked_add(width).is_none_or(|end| end as u32 > image_info.width()) ||
+            yoffset.checked_add(height).is_none_or(|end| end as u32 > image_info.height()) ||
+            zoffset.checked_add(depth).is_none_or(|end| end as u32 > image_info.depth())
+        {
+            self.base.webgl_error(InvalidValue);
+            return Ok(());
+        }
+        let Some(format) = TexFormat::from_gl_constant(format) else {
+            self.base.webgl_error(InvalidEnum);
+            return Ok(());
+        };
+        let Some(data_type) = TexDataType::from_webgl_constant(type_, WebGLVersion::WebGL2) else {
+            self.base.webgl_error(InvalidEnum);
+            return Ok(());
+        };
+        if format.required_webgl_version() > WebGLVersion::WebGL2 ||
+            data_type.required_webgl_version() > WebGLVersion::WebGL2
+        {
+            self.base.webgl_error(InvalidEnum);
+            return Ok(());
+        }
+        if format != image_info.internal_format().to_unsized() ||
+            !image_info.internal_format().compatible_data_types().contains(&data_type)
+        {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        }
+        let Some(pixels) = self.base.get_image_pixels(no_gc, source)? else {
+            return Ok(());
+        };
+        let layout = self.base.texture_unpack_layout();
+        let image_height = if layout.image_height == 0 {
+            height as u32
+        } else {
+            layout.image_height
+        };
+        let Some(skip_rows) = layout
+            .skip_images
+            .checked_mul(image_height)
+            .and_then(|rows| rows.checked_add(layout.skip_rows))
+        else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        let Some(pixels) = pixels.sub_volume(
+            Point2D::new(layout.skip_pixels, skip_rows),
+            Size2D::new(width as u32, height as u32),
+            depth as u32,
+            image_height,
+        ) else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        self.base.send_command(WebGLCommand::TexSubImage3D {
+            target: target.as_gl_constant(),
+            level: level as u32,
+            xoffset,
+            yoffset,
+            zoffset,
+            size: pixels.size(),
+            depth: depth as u32,
+            format,
+            data_type,
+            effective_data_type: self.base.extension_manager().effective_type(type_),
+            unpacking_alignment: 1,
+            alpha_treatment: pixels.alpha_treatment(),
+            y_axis_treatment: pixels.y_axis_treatment(),
+            pixel_format: pixels.pixel_format(),
+            data: pixels.into_shared_memory().into(),
+        });
+        Ok(())
+    }
+
     /// <https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8>
     fn TexImage2D(
         &self,
@@ -3676,6 +3884,75 @@ impl WebGL2RenderingContextMethods<crate::DomTypeHolder> for WebGL2RenderingCont
         self.base.TexSubImage2D_(
             no_gc, target, level, xoffset, yoffset, format, data_type, source,
         )
+    }
+
+    /// <https://registry.khronos.org/webgl/specs/latest/2.0/#DOM_UPLOAD_UNPACK_PARAMS>
+    #[expect(clippy::too_many_arguments)]
+    fn TexSubImage2D__(
+        &self,
+        no_gc: &NoGC,
+        target: u32,
+        level: i32,
+        xoffset: i32,
+        yoffset: i32,
+        width: i32,
+        height: i32,
+        format: u32,
+        data_type: u32,
+        source: TexImageSource,
+    ) -> Fallible<()> {
+        if self.bound_pixel_unpack_buffer.get().is_some() {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        }
+        let TexImage2DValidatorResult {
+            texture,
+            target,
+            level,
+            width,
+            height,
+            format,
+            data_type,
+            ..
+        } = match TexImage2DValidator::new(
+            &self.base,
+            target,
+            level,
+            format,
+            width,
+            height,
+            0,
+            format,
+            data_type,
+        )
+        .validate()
+        {
+            Ok(result) => result,
+            Err(_) => return Ok(()),
+        };
+        let Some(pixels) = self.base.get_image_pixels(no_gc, source)? else {
+            return Ok(());
+        };
+        let layout = self.base.texture_unpack_layout();
+        let Some(pixels) = pixels.sub_rect(
+            Point2D::new(layout.skip_pixels, layout.skip_rows),
+            Size2D::new(width, height),
+        ) else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        self.base.tex_sub_image_2d(
+            texture,
+            target,
+            level,
+            xoffset,
+            yoffset,
+            format,
+            data_type,
+            1,
+            pixels,
+        );
+        Ok(())
     }
 
     /// <https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8>

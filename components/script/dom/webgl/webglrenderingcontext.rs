@@ -1009,7 +1009,7 @@ impl WebGLRenderingContext {
                 size.width,
                 size.height,
                 1,
-                format,
+                internal_format,
                 level,
                 Some(data_type)
             )
@@ -1061,7 +1061,7 @@ impl WebGLRenderingContext {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn tex_sub_image_2d(
+    pub(crate) fn tex_sub_image_2d(
         &self,
         texture: DomRoot<WebGLTexture>,
         target: TexImageTarget,
@@ -5517,6 +5517,50 @@ impl TexPixels {
         for row in top..top + size.height as usize {
             let start = (row * image_width + origin.x as usize) * bytes_per_pixel;
             block.extend_from_slice(&self.data[start..start + row_bytes]);
+        }
+        Some(Self {
+            data: GenericSharedMemory::from_vec(block),
+            size,
+            ..self
+        })
+    }
+
+    /// Extracts consecutive image slices from a two-dimensional TexImageSource.
+    /// `image_height` is the row distance between the starts of adjacent slices.
+    pub(crate) fn sub_volume(
+        self,
+        origin: Point2D<u32>,
+        size: Size2D<u32>,
+        depth: u32,
+        image_height: u32,
+    ) -> Option<Self> {
+        if depth == 1 {
+            return self.sub_rect(origin, size);
+        }
+        let image_width = self.size.width as usize;
+        let image_area = image_width.checked_mul(self.size.height as usize)?;
+        let bytes_per_pixel = self.data.len().checked_div(image_area)?;
+        let row_bytes = (size.width as usize).checked_mul(bytes_per_pixel)?;
+        let total_bytes = row_bytes
+            .checked_mul(size.height as usize)?
+            .checked_mul(depth as usize)?;
+        let mut block = Vec::with_capacity(total_bytes);
+        if origin.x.checked_add(size.width)? > self.size.width {
+            return None;
+        }
+        for slice in 0..depth {
+            let slice_y = origin.y.checked_add(slice.checked_mul(image_height)?)?;
+            let top = match self.y_axis_treatment {
+                YAxisTreatment::AsIs => slice_y,
+                YAxisTreatment::Flipped => self.size.height.checked_sub(slice_y.checked_add(size.height)?)?,
+            };
+            if top.checked_add(size.height)? > self.size.height {
+                return None;
+            }
+            for row in top as usize..(top + size.height) as usize {
+                let start = (row * image_width + origin.x as usize) * bytes_per_pixel;
+                block.extend_from_slice(&self.data[start..start + row_bytes]);
+            }
         }
         Some(Self {
             data: GenericSharedMemory::from_vec(block),

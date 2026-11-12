@@ -1691,10 +1691,11 @@ impl WebGLImpl {
                 pixel_format,
                 ref data,
             } => {
-                let pixels = prepare_pixels(
+                let pixels = prepare_3d_pixels(
                     internal_format,
                     data_type,
                     size,
+                    depth,
                     unpacking_alignment,
                     alpha_treatment,
                     y_axis_treatment,
@@ -1820,6 +1821,52 @@ impl WebGLImpl {
                         format.as_gl_constant(),
                         effective_data_type,
                         glow::PixelUnpackData::Slice(Some(&pixels)),
+                    );
+                }
+            },
+            WebGLCommand::TexSubImage3D {
+                target,
+                level,
+                xoffset,
+                yoffset,
+                zoffset,
+                size,
+                depth,
+                format,
+                data_type,
+                effective_data_type,
+                unpacking_alignment,
+                alpha_treatment,
+                y_axis_treatment,
+                pixel_format,
+                ref data,
+            } => {
+                let pixels = prepare_3d_pixels(
+                    format,
+                    data_type,
+                    size,
+                    depth,
+                    unpacking_alignment,
+                    alpha_treatment,
+                    y_axis_treatment,
+                    pixel_format,
+                    Cow::Borrowed(data),
+                );
+
+                unsafe {
+                    gl.pixel_store_i32(gl::UNPACK_ALIGNMENT, unpacking_alignment as i32);
+                    gl.tex_sub_image_3d(
+                        target,
+                        level as i32,
+                        xoffset,
+                        yoffset,
+                        zoffset,
+                        size.width as i32,
+                        size.height as i32,
+                        depth as i32,
+                        format.as_gl_constant(),
+                        effective_data_type,
+                        PixelUnpackData::Slice(Some(&pixels)),
                     );
                 }
             },
@@ -2962,6 +3009,47 @@ fn map_dot_separated<F: Fn(&str, &mut String)>(s: &str, f: F) -> String {
 }
 
 #[expect(clippy::too_many_arguments)]
+fn prepare_3d_pixels(
+    internal_format: TexFormat,
+    data_type: TexDataType,
+    size: Size2D<u32>,
+    depth: u32,
+    unpacking_alignment: u32,
+    alpha_treatment: Option<AlphaTreatment>,
+    y_axis_treatment: YAxisTreatment,
+    pixel_format: Option<PixelFormat>,
+    pixels: Cow<[u8]>,
+) -> Cow<[u8]> {
+    if pixel_format.is_none() || depth <= 1 || size.width == 0 || size.height == 0 {
+        return prepare_pixels(
+            internal_format,
+            data_type,
+            size,
+            unpacking_alignment,
+            alpha_treatment,
+            y_axis_treatment,
+            pixel_format,
+            pixels,
+        );
+    }
+    let source_slice_bytes = size.width as usize * size.height as usize * 4;
+    let mut converted = Vec::new();
+    for slice in pixels.chunks_exact(source_slice_bytes).take(depth as usize) {
+        converted.extend_from_slice(&prepare_pixels(
+            internal_format,
+            data_type,
+            size,
+            unpacking_alignment,
+            alpha_treatment,
+            y_axis_treatment,
+            pixel_format,
+            Cow::Borrowed(slice),
+        ));
+    }
+    Cow::Owned(converted)
+}
+
+#[expect(clippy::too_many_arguments)]
 fn prepare_pixels(
     internal_format: TexFormat,
     data_type: TexDataType,
@@ -3032,6 +3120,129 @@ fn image_to_tex_image_data(
         PixelFormat::BGRA8 => pixels::rgba8_byte_swap_colors_inplace(&mut pixels),
         PixelFormat::RGBA8 => {},
         _ => unimplemented!("unsupported pixel format ({:?})", pixel_format),
+    }
+    let format = format.to_unsized();
+
+    if matches!(
+        data_type,
+        TexDataType::UnsignedInt2101010Rev |
+            TexDataType::UnsignedInt10f11f11fRev |
+            TexDataType::UnsignedInt5999Rev
+    ) {
+        let mut packed = Vec::with_capacity(pixel_count * 4);
+        for rgba in pixels.chunks_exact(4) {
+            let normalized = |index| rgba[index] as f32 / 255.0;
+            let value = match data_type {
+                TexDataType::UnsignedInt2101010Rev => {
+                    let integer = format == TexFormat::RGBAInteger;
+                    let channel = |index, max: u32| {
+                        if integer {
+                            (rgba[index] as u32).min(max)
+                        } else {
+                            (normalized(index) * max as f32).round() as u32
+                        }
+                    };
+                    channel(0, 1023) |
+                        (channel(1, 1023) << 10) |
+                        (channel(2, 1023) << 20) |
+                        (channel(3, 3) << 30)
+                },
+                TexDataType::UnsignedInt10f11f11fRev => {
+                    let channel = |index, shift: u32| {
+                        let bits = f16::from_f32(normalized(index)).to_bits() as u32;
+                        (bits + (1u32 << (shift - 1))) >> shift
+                    };
+                    channel(0, 4) | (channel(1, 4) << 11) | (channel(2, 5) << 22)
+                },
+                TexDataType::UnsignedInt5999Rev => {
+                    let maximum = normalized(0).max(normalized(1)).max(normalized(2));
+                    if maximum == 0.0 {
+                        0
+                    } else {
+                        let exponent = ((maximum.log2().floor() as i32 + 16).clamp(0, 31)) as u32;
+                        let scale = 2.0_f32.powi(exponent as i32 - 24);
+                        let channel = |index| (normalized(index) / scale).round().min(511.0) as u32;
+                        channel(0) |
+                            (channel(1) << 9) |
+                            (channel(2) << 18) |
+                            (exponent << 27)
+                    }
+                },
+                _ => unreachable!(),
+            };
+            packed.write_u32::<NativeEndian>(value).unwrap();
+        }
+        return packed;
+    }
+
+    // WebGL 2 sized color formats use the same channel order as their unsized format.
+    // Source pixels are unsigned normalized RGBA8, including for float uploads.
+    let channels: &[usize] = match format.to_unsized() {
+        TexFormat::Red | TexFormat::RedInteger => &[0],
+        TexFormat::RG | TexFormat::RGInteger => &[0, 1],
+        TexFormat::RGB | TexFormat::RGBInteger => &[0, 1, 2],
+        TexFormat::RGBA | TexFormat::RGBAInteger => &[0, 1, 2, 3],
+        _ => &[],
+    };
+    if !channels.is_empty() {
+        let is_integer = matches!(
+            format.to_unsized(),
+            TexFormat::RedInteger |
+                TexFormat::RGInteger |
+                TexFormat::RGBInteger |
+                TexFormat::RGBAInteger
+        );
+        let mut converted = Vec::with_capacity(
+            pixel_count * channels.len() * data_type.element_size() as usize,
+        );
+        let converted_type = matches!(
+            data_type,
+            TexDataType::UnsignedByte |
+                TexDataType::Byte |
+                TexDataType::UnsignedShort |
+                TexDataType::Short |
+                TexDataType::UnsignedInt |
+                TexDataType::Int |
+                TexDataType::Float |
+                TexDataType::HalfFloat
+        );
+        if converted_type {
+            for rgba in pixels.chunks_exact(4) {
+                for &channel in channels {
+                    let value = rgba[channel];
+                    match data_type {
+                        TexDataType::UnsignedByte => converted.push(value),
+                        TexDataType::Byte => converted.push(if is_integer {
+                            value.min(127)
+                        } else {
+                            ((value as u16 * 127 + 127) / 255) as u8
+                        }),
+                        TexDataType::UnsignedShort => converted
+                            .write_u16::<NativeEndian>(value as u16)
+                            .unwrap(),
+                        TexDataType::Short => converted
+                            .write_i16::<NativeEndian>(value.min(127) as i16)
+                            .unwrap(),
+                        TexDataType::UnsignedInt => converted
+                            .write_u32::<NativeEndian>(value as u32)
+                            .unwrap(),
+                        TexDataType::Int => converted
+                            .write_i32::<NativeEndian>(value as i32)
+                            .unwrap(),
+                        TexDataType::Float => converted
+                            .write_f32::<NativeEndian>(value as f32 / 255.0)
+                            .unwrap(),
+                        TexDataType::HalfFloat => converted
+                            .write_u16::<NativeEndian>(
+                                f16::from_f32(value as f32 / 255.0).to_bits(),
+                            )
+                            .unwrap(),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            return converted;
+        }
     }
 
     match (format, data_type) {
