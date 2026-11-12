@@ -10,17 +10,18 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 ## Conformance
 
-Measured on 7 November 2026 by running the web-platform-tests that Armature runs (the 61,548 tests selected by
-`tests/wpt/include.ini`) with two builds on the same machine: upstream Servo at the commit Armature forked from
+Unless noted below, scores were measured on 7 November 2026 using the 61,548 web-platform-tests selected by
+`tests/wpt/include.ini`. Two builds ran on the same machine: upstream Servo at the commit Armature forked from
 (`90c3f623175`, 30 October 2026) and Armature at `568f69bdeac`. As on [wpt.fyi](https://wpt.fyi/), each test counts
-once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. In
-total Armature passes 63,770 more subtests than upstream Servo (2,088,378 against 2,024,608).
+once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. The
+Total row reports 63,770 more passing subtests than upstream Servo (2,088,378 against 2,024,608) and predates the
+WebGL rerun.
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
 | CSS | 29,164 | 67.0% | 70.5% | +3.4 | +23,261 |
 | HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,030 |
-| WebGL conformance | 2,939 | 40.5% | 40.5% | +0.0 | -118 |
+| WebGL conformance | 2,939 | 40.5% | **82.2%** | +41.7 | — |
 | Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
 | SVG | 1,411 | 24.9% | 46.7% | +21.8 | +3,658 |
 | Encoding | 1,345 | 98.3% | 98.3% | +0.0 | +9 |
@@ -78,9 +79,10 @@ interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTran
 
 Notes on the numbers:
 
-- A full Armature-only `_webgl` run on 11 November 2026 at `5b9c25bdcbb` scored **82.2%** across 2,939 tests by the
-  same per-test rule (2,415.7 passing-test equivalents). The WebGL row above remains the 7 November upstream
-  comparison; the new run includes the WebGL2 texture and dEQP suites enabled since then.
+- The Armature WebGL score comes from a full `_webgl` run on 11 November 2026 at `5b9c25bdcbb`: 2,415.7
+  passing-test equivalents across 2,939 tests. Its upstream score comes from the 7 November run; the two scores
+  were not measured as a pair. The subtest difference was not recalculated. The Total row still excludes the WebGL
+  rerun because a new whole-suite run has not been made.
 - Both builds ran the same tests, including the directories that Armature added to `include.ini` and upstream
   Servo skips (all of `web-animations`, and CSS directories whose properties Armature enables). Tests that set a
   preference only Armature has (Observable, popovers, `ProcessingInstruction` attributes, ARIA reflection) error on
@@ -94,14 +96,14 @@ Notes on the numbers:
   total row was adjusted from those rows rather than from a new full run. The WebSockets and MathML rows are
   unchanged: no work went into them, and a MathML rerun differs from the recorded expectations in about 140
   subtests that depend on the machine rather than on Armature's changes.
-- The table predates the SVG hit-testing, path DOM, image sizing, non-scaling stroke, canvas image, focus, conditional
-  processing, SMIL, image rendering keywords and filtered child selector invalidation work, as well as the final HTML
-  reflection fixes and WebGL canvas texture fixes described below; their gains are not included in these scores.
+- Apart from the updated WebGL row, the table predates the SVG hit-testing, path DOM, image sizing, non-scaling stroke,
+  canvas image, focus, conditional processing, SMIL, image rendering keywords and filtered child selector invalidation
+  work, as well as the final HTML reflection fixes; their gains are not included in those historical scores.
 - Areas that went down: 7 subgrid reftests that passed only because upstream Servo rejects `subgrid` (Armature parses
   it, but layout does not support it), two `skew()` reftests whose edges differ by one colour step since SVG images
   are sized differently, and three `css-viewport` tests that upstream Servo passes only because it ignores `zoom` in
-  both the test and the reference. The other small drops in the table (WebGL, where one test with 122 subtests
-  crashed in this run, Upgrade Insecure Requests, Mixed Content and a few single tests) come from tests that crash,
+  both the test and the reference. The other small drops in the table (Upgrade Insecure Requests, Mixed Content and a
+  few single tests) come from tests that crash,
   time out or fail intermittently when the whole suite runs.
 
 ## What has been done
