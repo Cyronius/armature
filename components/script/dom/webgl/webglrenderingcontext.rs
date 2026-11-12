@@ -884,6 +884,33 @@ impl WebGLRenderingContext {
                     y_axis_treatment,
                 )
             },
+            TexImageSource::OffscreenCanvas(canvas) => {
+                if !canvas.origin_is_clean() {
+                    return Err(Error::Security(None));
+                }
+
+                let Some(snapshot) = canvas.get_image_data() else {
+                    return Ok(None);
+                };
+
+                let snapshot = snapshot.into_shared();
+                let size = snapshot.size().cast();
+                let format = match snapshot.format() {
+                    SnapshotPixelFormat::RGBA => PixelFormat::RGBA8,
+                    SnapshotPixelFormat::BGRA => PixelFormat::BGRA8,
+                };
+
+                let (alpha_treatment, y_axis_treatment) =
+                    self.get_current_unpack_state(snapshot.alpha_mode().alpha());
+
+                TexPixels::new(
+                    snapshot.shared_memory(),
+                    size,
+                    format,
+                    alpha_treatment,
+                    y_axis_treatment,
+                )
+            },
             TexImageSource::HTMLVideoElement(video) => {
                 if !video.origin_is_clean() {
                     return Err(Error::Security(None));
@@ -2200,11 +2227,15 @@ impl CanvasContext for WebGLRenderingContext {
             sender,
         ));
         let (data, alpha_mode) = receiver.recv().unwrap();
+        // ReadPixels returns rows from the bottom, while canvas snapshots are
+        // consumed from the top (including when uploaded as a TexImageSource).
+        let mut data = data.to_vec();
+        pixels::flip_y_rgba8_image_inplace(size, &mut data);
         Some(Snapshot::from_vec(
             size.cast(),
             SnapshotPixelFormat::RGBA,
             alpha_mode,
-            data.to_vec(),
+            data,
         ))
     }
 
