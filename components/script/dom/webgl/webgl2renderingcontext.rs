@@ -4096,6 +4096,143 @@ impl WebGL2RenderingContextMethods<crate::DomTypeHolder> for WebGL2RenderingCont
         Ok(())
     }
 
+    /// <https://registry.khronos.org/webgl/specs/latest/2.0/#5.18>
+    #[expect(clippy::too_many_arguments)]
+    fn TexSubImage2D___(
+        &self,
+        _no_gc: &NoGC,
+        target: u32,
+        level: i32,
+        xoffset: i32,
+        yoffset: i32,
+        width: i32,
+        height: i32,
+        format: u32,
+        type_: u32,
+        pbo_offset: i64,
+    ) -> Fallible<()> {
+        let Some(buffer) = self.bound_pixel_unpack_buffer.get() else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        if self
+            .bound_transform_feedback_buffer
+            .get()
+            .is_some_and(|tf_buffer| buffer == tf_buffer)
+        {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        }
+        if pbo_offset < 0 {
+            self.base.webgl_error(InvalidValue);
+            return Ok(());
+        }
+        let Some(target) = TexImageTarget::from_gl_constant(target) else {
+            self.base.webgl_error(InvalidEnum);
+            return Ok(());
+        };
+        if target.dimensions() != 2 || level < 0 || level as u32 > self.base.limits().max_tex_size.ilog2() {
+            self.base.webgl_error(InvalidValue);
+            return Ok(());
+        }
+        let Some(texture) = self.base.textures().active_texture_for_image_target(target) else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        let Some(info) = texture.image_info_for_target(&target, level as u32) else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        let Ok(TexImage2DValidatorResult {
+            level,
+            width,
+            height,
+            format,
+            data_type,
+            ..
+        }) = TexImage2DValidator::new(
+            &self.base,
+            target.as_gl_constant(),
+            level,
+            info.internal_format().as_gl_constant(),
+            width,
+            height,
+            0,
+            format,
+            type_,
+        )
+        .validate()
+        else {
+            return Ok(());
+        };
+        if xoffset < 0 ||
+            yoffset < 0 ||
+            (xoffset as u32).checked_add(width).is_none_or(|end| end > info.width()) ||
+            (yoffset as u32).checked_add(height).is_none_or(|end| end > info.height())
+        {
+            self.base.webgl_error(InvalidValue);
+            return Ok(());
+        }
+        let (alpha_treatment, y_axis_treatment) =
+            self.base.get_current_unpack_state(Alpha::NotPremultiplied);
+        if alpha_treatment.is_some() || y_axis_treatment == YAxisTreatment::Flipped {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        }
+        let layout = self.base.texture_unpack_layout();
+        let alignment = self.base.texture_unpacking_alignment() as usize;
+        let cpp = bytes_per_pixel(format, data_type) as usize;
+        let required = (|| {
+            let row_pixels = if layout.row_length > 0 {
+                layout.row_length as usize
+            } else {
+                width as usize
+            };
+            if (layout.skip_pixels as usize).checked_add(width as usize)? > row_pixels {
+                return None;
+            }
+            if width == 0 || height == 0 {
+                return Some(0);
+            }
+            let stride = row_pixels
+                .checked_mul(cpp)?
+                .div_ceil(alignment)
+                .checked_mul(alignment)?;
+            (layout.skip_rows as usize)
+                .checked_mul(stride)?
+                .checked_add((layout.skip_pixels as usize).checked_mul(cpp)?)?
+                .checked_add((height as usize - 1).checked_mul(stride)?)?
+                .checked_add((width as usize).checked_mul(cpp)?)
+        })();
+        let Some(required) = required else {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        };
+        let offset = pbo_offset as usize;
+        if offset > u32::MAX as usize ||
+            offset % data_type.element_size() as usize != 0 ||
+            offset.checked_add(required).is_none_or(|end| end > buffer.capacity())
+        {
+            self.base.webgl_error(InvalidOperation);
+            return Ok(());
+        }
+        self.base.send_command(WebGLCommand::TexSubImage2DPBO {
+            target: target.as_gl_constant(),
+            level,
+            xoffset,
+            yoffset,
+            size: Size2D::new(width, height),
+            format,
+            effective_data_type: self.base.extension_manager().effective_type(type_),
+            unpacking_alignment: alignment as u32,
+            row_length: layout.row_length,
+            skip_pixels: layout.skip_pixels,
+            skip_rows: layout.skip_rows,
+            offset: offset as u32,
+        });
+        Ok(())
+    }
+
     /// <https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.8>
     fn TexParameterf(&self, target: u32, name: u32, value: f32) {
         self.base.TexParameterf(target, name, value)

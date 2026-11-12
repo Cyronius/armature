@@ -1824,6 +1824,39 @@ impl WebGLImpl {
                     );
                 }
             },
+            WebGLCommand::TexSubImage2DPBO {
+                target,
+                level,
+                xoffset,
+                yoffset,
+                size,
+                format,
+                effective_data_type,
+                unpacking_alignment,
+                row_length,
+                skip_pixels,
+                skip_rows,
+                offset,
+            } => unsafe {
+                gl.pixel_store_i32(gl::UNPACK_ALIGNMENT, unpacking_alignment as i32);
+                gl.pixel_store_i32(gl::UNPACK_ROW_LENGTH, row_length as i32);
+                gl.pixel_store_i32(gl::UNPACK_SKIP_PIXELS, skip_pixels as i32);
+                gl.pixel_store_i32(gl::UNPACK_SKIP_ROWS, skip_rows as i32);
+                gl.tex_sub_image_2d(
+                    target,
+                    level as i32,
+                    xoffset,
+                    yoffset,
+                    size.width as i32,
+                    size.height as i32,
+                    format.as_gl_constant(),
+                    effective_data_type,
+                    PixelUnpackData::BufferOffset(offset),
+                );
+                gl.pixel_store_i32(gl::UNPACK_ROW_LENGTH, 0);
+                gl.pixel_store_i32(gl::UNPACK_SKIP_PIXELS, 0);
+                gl.pixel_store_i32(gl::UNPACK_SKIP_ROWS, 0);
+            },
             WebGLCommand::TexSubImage3D {
                 target,
                 level,
