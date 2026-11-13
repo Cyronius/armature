@@ -6,8 +6,8 @@ use app_units::Au;
 use atomic_refcell::{AtomicRef, AtomicRefCell};
 use style::logical_geometry::LogicalAxis;
 use style::properties::ComputedValues;
-use style::values::computed::CSSPixelLength;
 use style::values::computed::length_percentage::CalcLengthPercentage;
+use style::values::computed::{CSSPixelLength, GridLanesDirection};
 use style::values::generics::length::LengthPercentageOrNormal;
 use style::values::specified::GenericGridTemplateComponent;
 use style::values::specified::align::AlignFlags;
@@ -42,6 +42,13 @@ const DUMMY_NODE_ID: taffy::NodeId = taffy::NodeId::new(u64::MAX);
 
 fn grid_lanes_use_rows(style: &ComputedValues) -> bool {
     let position = style.get_position();
+    let direction = position.grid_lanes_direction;
+    if direction.contains(GridLanesDirection::ROW) {
+        return true;
+    }
+    if direction.contains(GridLanesDirection::COLUMN) {
+        return false;
+    }
     matches!(
         &position.grid_template_columns,
         GenericGridTemplateComponent::None
@@ -547,6 +554,9 @@ impl TaffyContainer {
             // item in its lane instead of occupying a shared grid row or column.
             if let Some(SpecificLayoutInfo::Grid(info)) = &container_ctx.specific_layout_info {
                 let row_lanes = grid_lanes_use_rows(container_style);
+                let direction = container_style.get_position().grid_lanes_direction;
+                let track_reverse = direction.contains(GridLanesDirection::TRACK_REVERSE);
+                let fill_reverse = direction.contains(GridLanesDirection::FILL_REVERSE);
                 let tracks = if row_lanes {
                     &info.info.rows.positions
                 } else {
@@ -573,6 +583,7 @@ impl TaffyContainer {
                 let mut last_in_lane: Vec<Option<usize>> = vec![None; tracks.len()];
                 let mut single_lane_item = vec![false; self.children.len()];
                 let mut alignment_gaps: Vec<Option<f32>> = vec![None; self.children.len()];
+                let mut placed_items = Vec::new();
                 let mut placement_index = 0;
 
                 for (child_index, child) in self.children.iter().enumerate() {
@@ -615,7 +626,13 @@ impl TaffyContainer {
                                     .iter()
                                     .copied()
                                     .fold(content_start, f32::max);
-                                left_end.total_cmp(&right_end).then(left.cmp(&right))
+                                left_end.total_cmp(&right_end).then_with(|| {
+                                    if track_reverse {
+                                        right.cmp(&left)
+                                    } else {
+                                        left.cmp(&right)
+                                    }
+                                })
                             })
                             .unwrap_or(0)
                     };
@@ -657,6 +674,7 @@ impl TaffyContainer {
                     lane_ends[first_lane..first_lane + span].fill(end);
                     last_in_lane[first_lane..first_lane + span].fill(Some(child_index));
                     single_lane_item[child_index] = span == 1;
+                    placed_items.push(child_index);
                 }
 
                 // For an auto-sized stacking range, the longest lane sets the
@@ -724,6 +742,38 @@ impl TaffyContainer {
                             }
                         },
                         _ => {},
+                    }
+                }
+
+                // Reflect the packed items about the far edge of the stacking axis.
+                // This also swaps the effective start and end margins of each item.
+                if fill_reverse {
+                    let stacking_size = if row_lanes {
+                        content_box_size_override.size.inline.to_f32_px()
+                    } else {
+                        content_box_size_override
+                            .size
+                            .block
+                            .to_definite()
+                            .map(Au::to_f32_px)
+                            .unwrap_or_else(|| {
+                                lane_ends.iter().copied().fold(content_start, f32::max)
+                                    - content_start
+                                    - if placement_index == 0 { 0.0 } else { gap }
+                            })
+                    };
+                    for child_index in placed_items {
+                        let mut child = self.children[child_index].borrow_mut();
+                        let layout = &mut child.taffy_layout;
+                        if row_lanes {
+                            layout.location.x = 2.0 * content_start + stacking_size
+                                - layout.location.x
+                                - layout.size.width;
+                        } else {
+                            layout.location.y = 2.0 * content_start + stacking_size
+                                - layout.location.y
+                                - layout.size.height;
+                        }
                     }
                 }
 
