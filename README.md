@@ -69,6 +69,11 @@ the original 29,199 test IDs, it scored **71.8%** (20,965.5 test-equivalents pas
 rerun), with no tests regressing. The two fixes account for 49 newly passing reftests; two unrelated reftests also
 passed in this run and on a focused repeat, but may vary between runs.
 
+After counter resolution and named counter-style rendering, a four-chunk CSS rerun covered the same 34,847 test
+IDs. On the original 29,199 IDs, it scored **72.3%** (21,107.8 test-equivalents passing, up 142.3 from the preceding
+rerun). Later focused runs verified fixes for style containment and counter-style references across shadow trees;
+those follow-up fixes are not included in the four-chunk score.
+
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
 `css-animations` and `css-transitions` test. These are the CSS modules with the most subtests newly passing:
@@ -215,6 +220,12 @@ Notes on the numbers:
 - **SVG fill-box transform origins**: Inline SVG rasterization resolves percentage `transform-origin` values against
   the source element's fill box when `transform-box: fill-box` is selected. All 46
   `svg-origin-relative-length` reftests and one `transform-box` reftest now pass.
+- **CSS counters and counter styles**: Layout resolves `counter-reset`, `counter-increment`, `counter-set`, implicit
+  `list-item` increments and generated counter content in tree order before parallel box construction. It renders
+  common built-in styles, `symbols()` and basic named `@counter-style` systems, including styles scoped to shadow
+  roots and declarations from `::part` rules. The 866-test counter, list and generated-content rerun gained 195.6
+  passing test-equivalents against the preceding full CSS run; a subsequent focused run fixed its one shadow-scoping
+  regression and all four focused shadow-reference tests pass.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
@@ -715,6 +726,8 @@ Notes on the numbers:
 
 ## What has not been done
 
+- CSS counter support still lacks some predefined and custom numbering systems, counter-style descriptors, and
+  `CSSCounterStyleRule` mutation. Four reversed-list counter scope reftests still fail.
 - WebGL2 texture overload coverage remains incomplete (`tex-unpack-params.html` still errors), and 368 dEQP files
   remain disabled.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
