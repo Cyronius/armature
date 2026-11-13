@@ -64,7 +64,10 @@ test IDs as the 12 November run, it scored **71.6%** (20,914.5 test-equivalents 
 selection includes directories skipped by `include.ini` and is not used for this comparison.
 After the block-flow absolute alignment change, a targeted `css-position` and `css-align` rerun gained two passing
 reftests across 687 common tests (499.122 to 501.122 test-equivalents), with no measured regressions in that set.
-The full CSS score has not been rerun after this change.
+After that change and the SVG `transform-box: fill-box` fix, another CSS rerun selected the same 34,847 tests. On
+the original 29,199 test IDs, it scored **71.8%** (20,965.5 test-equivalents passing, up 51.0 from the preceding
+rerun), with no tests regressing. The two fixes account for 49 newly passing reftests; two unrelated reftests also
+passed in this run and on a focused repeat, but may vary between runs.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -209,6 +212,9 @@ Notes on the numbers:
 - **Absolute positioning in block flow**: The static-position rectangle now spans the parent block's inline size,
   and its child uses `justify-self` and `align-self` when both insets in an axis are `auto`. This makes two
   `css-align/abspos` reftests pass.
+- **SVG fill-box transform origins**: Inline SVG rasterization resolves percentage `transform-origin` values against
+  the source element's fill box when `transform-box: fill-box` is selected. All 46
+  `svg-origin-relative-length` reftests and one `transform-box` reftest now pass.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
