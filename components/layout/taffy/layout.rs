@@ -757,22 +757,22 @@ impl TaffyContainer {
                             .to_definite()
                             .map(Au::to_f32_px)
                             .unwrap_or_else(|| {
-                                lane_ends.iter().copied().fold(content_start, f32::max)
-                                    - content_start
-                                    - if placement_index == 0 { 0.0 } else { gap }
+                                lane_ends.iter().copied().fold(content_start, f32::max) -
+                                    content_start -
+                                    if placement_index == 0 { 0.0 } else { gap }
                             })
                     };
                     for child_index in placed_items {
                         let mut child = self.children[child_index].borrow_mut();
                         let layout = &mut child.taffy_layout;
                         if row_lanes {
-                            layout.location.x = 2.0 * content_start + stacking_size
-                                - layout.location.x
-                                - layout.size.width;
+                            layout.location.x = 2.0 * content_start + stacking_size -
+                                layout.location.x -
+                                layout.size.width;
                         } else {
-                            layout.location.y = 2.0 * content_start + stacking_size
-                                - layout.location.y
-                                - layout.size.height;
+                            layout.location.y = 2.0 * content_start + stacking_size -
+                                layout.location.y -
+                                layout.size.height;
                         }
                     }
                 }
