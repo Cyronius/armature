@@ -200,8 +200,12 @@ comparable CSS score is **76.06%** (22,209.0 of 29,199 test-equivalents); a full
 Grid Lanes now limits automatic placement to the template's lanes, chooses the next lane when heights tie, and
 stretches auto-sized items across their row span. Auto-sized row-lane containers include their lane tracks. The
 1,005-test `grid-lanes` run gained 25.97 passing test-equivalents against the last full CSS run, with 24 tests and 23
-subtests newly passing and no status regressions. These focused gains project a comparable CSS score of **76.15%**
-(22,235.0 of 29,199 test-equivalents); a full CSS rerun is still pending.
+subtests newly passing and no status regressions. A subsequent full `css` run measured **75.73%** (22,121.0 of 29,211
+test-equivalents) for the tests selected by the current `include.ini`, and **68.56%** (23,889.5 of 34,847) across all
+explicit CSS tests. Earlier focused projections counted gains in `css-counter-styles`, which `include.ini` skips.
+Clamping a negative `calc()` weight in additive counter symbols to zero restores the passing
+`css-values/negative-calc-to-non-negative-integer.html` reftest. The 484 counter-style and list tests retain their
+previous results; a full CSS rerun after this final fix is pending.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -363,7 +367,7 @@ Notes on the numbers:
   `list-item` increments and generated counter content in tree order before parallel box construction. It renders
   common built-in styles, `symbols()` and named `@counter-style` systems, including additive systems, named fallbacks,
   marker prefixes and suffixes, negative, range, and pad descriptors, styles scoped to shadow roots, and declarations
-  from `::part` rules. Predefined Greek,
+  from `::part` rules. Negative `calc()` additive weights compute as zero. Predefined Greek,
   kana, CJK, Armenian, Georgian, and Hebrew representations are supported, along with the required limited-range
   Japanese, Korean, and Chinese longhand forms. The 866-test counter, list and generated-content rerun gained 195.6
   passing test-equivalents against the preceding full CSS run; a subsequent focused run fixed its one shadow-scoping
