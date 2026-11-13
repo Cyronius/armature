@@ -107,6 +107,12 @@ Enabling the existing popover API for experimental WPT runs and using the initia
 box's static-position rectangle raised a focused 278-test CSS Position and CSS Containment set from 150.54 to
 158.54 passing test-equivalents. Four of the eight newly passing tests are in the default CSS selection; the four
 content-visibility tests are excluded by `include.ini`. These gains are not yet included in a full CSS rerun.
+A later 1,737-test writing-mode, static-position and grid-alignment run found 34 FAIL-to-PASS and four
+TIMEOUT-to-PASS changes after correcting the bidi order and vertical-rl static position of absolutely positioned
+boxes. All 20 newly passing reftests with stale failure expectations passed on a focused repeat, and their
+expectations were removed. Two tests that passed in the earlier full CSS run failed in this sweep: the orthogonal
+float case fails identically on the unmodified build, while the vertical relative-position case passes on an
+isolated repeat. These focused gains are not yet included in a full CSS rerun.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -251,6 +257,9 @@ Notes on the numbers:
 - **Absolute positioning in block flow**: The static-position rectangle now spans the parent block's inline size,
   and its child uses `justify-self` and `align-self` when both insets in an axis are `auto`. This makes two
   `css-align/abspos` reftests pass.
+- **Vertical absolute positioning**: Out-of-flow placeholders resolve to the paragraph bidi level, and vertical-rl
+  static-position rectangles measure their block offset from the containing block's right edge. The focused
+  writing-mode, static-position and grid-alignment sweep found 38 newly passing tests against the previous CSS run.
 - **Top-layer static position**: Open popovers use the initial containing block as their static-position rectangle.
   Experimental WPT runs enable the existing popover API. Four CSS Position reftests now pass; vertical writing-mode
   variants still expose a separate root-flow placement issue.
