@@ -20,8 +20,11 @@ use smallvec::SmallVec;
 use style::Zero;
 use style::computed_values::font_kerning::T as FontKerning;
 use style::computed_values::font_variant_position::T as FontVariantPosition;
+use style::computed_values::overflow_wrap::T as OverflowWrap;
 use style::computed_values::text_rendering::T as TextRendering;
+use style::computed_values::text_wrap_mode::T as TextWrapMode;
 use style::computed_values::white_space_collapse::T as WhiteSpaceCollapse;
+use style::computed_values::word_break::T as WordBreak;
 use style::font_face::FontLanguageOverride;
 use style::properties::ComputedValues;
 use style::values::computed::{
@@ -198,6 +201,10 @@ pub(crate) struct TextRunSegment {
     #[conditional_malloc_size_of]
     pub runs: Vec<Arc<ShapedTextSlice>>,
 
+    /// Grapheme-aligned slices of the same shaped text for emergency wrapping.
+    #[conditional_malloc_size_of]
+    pub emergency_runs: Vec<Arc<ShapedTextSlice>>,
+
     /// The shaped text that was used to produce this segment. [`Self::runs`] are slices
     /// of this shaped text.
     #[conditional_malloc_size_of]
@@ -215,6 +222,7 @@ impl TextRunSegment {
             byte_range,
             character_range,
             runs: Vec::new(),
+            emergency_runs: Vec::new(),
             break_at_start: false,
             shaped_text: None,
         }
@@ -273,8 +281,26 @@ impl TextRunSegment {
         }
 
         let mut character_range_start = self.character_range.start;
+        let mut emergency_run_index = 0;
+        let allow_emergency_breaks = {
+            let style = text_run.inline_styles().style.borrow();
+            let text_style = style.get_inherited_text();
+            text_style.text_wrap_mode == TextWrapMode::Wrap &&
+                (text_style.overflow_wrap != OverflowWrap::Normal ||
+                    text_style.word_break == WordBreak::BreakWord)
+        };
         for (run_index, run) in self.runs.iter().enumerate() {
             let new_character_range_end = character_range_start + run.character_count();
+
+            let first_emergency_run = emergency_run_index;
+            let mut emergency_character_count = Utf32CodeUnits(0);
+            while emergency_run_index < self.emergency_runs.len() &&
+                emergency_character_count < run.character_count()
+            {
+                emergency_character_count +=
+                    self.emergency_runs[emergency_run_index].character_count();
+                emergency_run_index += 1;
+            }
 
             // Break before each unbreakable run in this TextRun, except the first unless the
             // linebreaker was set to break before the first run.
@@ -283,12 +309,59 @@ impl TextRunSegment {
             }
 
             let run_start = text_run.run_data.character_range_in_ifc_text.start;
-            ifc.push_shaped_text_slice_to_unbreakable_segment(
-                run.clone(),
-                text_run,
-                &self.info,
-                character_range_start - run_start..new_character_range_end - run_start,
-            );
+            let available_inline_size = ifc.containing_block().size.inline;
+            let segment_inline_size = ifc.current_line_segment.inline_size;
+            let emergency_run_count = emergency_run_index - first_emergency_run;
+            let needs_emergency_breaks = allow_emergency_breaks &&
+                run.has_non_hangable_non_removable_content() &&
+                segment_inline_size + run.total_advance() > available_inline_size &&
+                emergency_run_count > 1;
+            let break_before_emergency_run = allow_emergency_breaks &&
+                run.has_non_hangable_non_removable_content() &&
+                ifc.current_line_segment.has_content &&
+                (segment_inline_size >= available_inline_size ||
+                    (emergency_run_count == 1 &&
+                        segment_inline_size + run.total_advance() >
+                            available_inline_size));
+            if break_before_emergency_run {
+                ifc.process_soft_wrap_opportunity();
+                ifc.process_line_break(false, false);
+            }
+            if needs_emergency_breaks {
+                // A normal break before this word takes precedence over an emergency break
+                // inside it. Start a new line if earlier content is already on this one.
+                if ifc.current_line.has_content {
+                    ifc.rewind_trailing_inline_box_starts();
+                    ifc.process_line_break(false, false);
+                }
+
+                let mut emergency_character_start = character_range_start;
+                for (index, emergency_run) in self.emergency_runs
+                    [first_emergency_run..emergency_run_index]
+                    .iter()
+                    .enumerate()
+                {
+                    if index != 0 {
+                        ifc.process_soft_wrap_opportunity();
+                    }
+                    let emergency_character_end =
+                        emergency_character_start + emergency_run.character_count();
+                    ifc.push_shaped_text_slice_to_unbreakable_segment(
+                        emergency_run.clone(),
+                        text_run,
+                        &self.info,
+                        emergency_character_start - run_start..emergency_character_end - run_start,
+                    );
+                    emergency_character_start = emergency_character_end;
+                }
+            } else {
+                ifc.push_shaped_text_slice_to_unbreakable_segment(
+                    run.clone(),
+                    text_run,
+                    &self.info,
+                    character_range_start - run_start..new_character_range_end - run_start,
+                );
+            }
 
             character_range_start = new_character_range_end;
         }
@@ -701,8 +774,20 @@ impl TextRun {
         // character it should also override the LineBreaker's indication to break at the start.
         let have_deferred_soft_wrap_opportunity =
             mem::replace(&mut ifc.have_deferred_soft_wrap_opportunity, false);
+        let have_deferred_emergency_wrap_opportunity =
+            mem::replace(&mut ifc.have_deferred_emergency_wrap_opportunity, false);
+        let allows_emergency_wrap = {
+            let style = self.inline_styles().style.borrow();
+            let text_style = style.get_inherited_text();
+            text_style.text_wrap_mode == TextWrapMode::Wrap &&
+                (text_style.overflow_wrap != OverflowWrap::Normal ||
+                    text_style.word_break == WordBreak::BreakWord)
+        };
         let mut soft_wrap_policy = match have_deferred_soft_wrap_opportunity {
             true => SegmentStartSoftWrapPolicy::Force,
+            false if have_deferred_emergency_wrap_opportunity && !allows_emergency_wrap => {
+                SegmentStartSoftWrapPolicy::Force
+            },
             false => SegmentStartSoftWrapPolicy::FollowLinebreaker,
         };
 
@@ -725,6 +810,12 @@ impl TextRun {
                 },
             }
             soft_wrap_policy = SegmentStartSoftWrapPolicy::FollowLinebreaker;
+        }
+
+        // An emergency break is also allowed immediately after the last grapheme of
+        // this styled text run, including when the following text has a different style.
+        if allows_emergency_wrap {
+            ifc.have_deferred_emergency_wrap_opportunity = true;
         }
     }
 

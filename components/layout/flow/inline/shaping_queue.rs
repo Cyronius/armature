@@ -7,8 +7,10 @@ use std::sync::Arc;
 
 use fonts::{ShapedText, ShapedTextSlice, ShapedTextSlicer, ShapingOptions, TrailingWhiteSpace};
 use icu_properties::props::{EnumeratedProperty, GeneralCategory, LineBreak};
+use icu_segmenter::GraphemeClusterSegmenter;
 use icu_segmenter::options::LineBreakOptions;
 use servo_base::text::{AssumeUnder4GB, Utf8CodeUnits, Utf32CodeUnits};
+use style::computed_values::overflow_wrap::T as OverflowWrap;
 use style::computed_values::text_wrap_mode::T as TextWrapMode;
 use style::computed_values::white_space_collapse::T as WhiteSpaceCollapse;
 use style::computed_values::word_break::T as WordBreak;
@@ -75,12 +77,67 @@ impl ShapingQueueEntry {
 
 struct BatchSlicer<'a> {
     slicer: ShapedTextSlicer,
+    emergency_slicer: Option<ShapedTextSlicer>,
+    shaped_text: Arc<ShapedText>,
     text: &'a str,
     line_breaker: &'a mut LineBreaker,
     character_offset_origin: Utf32CodeUnits,
 }
 
 impl BatchSlicer<'_> {
+    fn slice_shaped_text_at_grapheme_boundaries(
+        &mut self,
+        segment: &ShapingQueueText,
+        parent_style: &ComputedValues,
+    ) -> Vec<Arc<ShapedTextSlice>> {
+        let range = Utf8CodeUnits::to_usize_range(&segment.byte_range);
+        let text = &self.text[range];
+        let mut character_offset = segment.character_range.start - self.character_offset_origin;
+        let text_style = parent_style.get_inherited_text();
+        let emergency_breaks = text_style.text_wrap_mode == TextWrapMode::Wrap &&
+            (text_style.overflow_wrap != OverflowWrap::Normal ||
+                text_style.word_break == WordBreak::BreakWord);
+        let mut slices = Vec::new();
+        let empty_trailing_white_space = TrailingWhiteSpace {
+            hangable: Utf32CodeUnits(0),
+            removable: Utf32CodeUnits(0),
+        };
+
+        if emergency_breaks {
+            let emergency_slicer = self
+                .emergency_slicer
+                .get_or_insert_with(|| ShapedTextSlicer::new(self.shaped_text.clone()));
+            emergency_slicer.slice_until_character_offset(
+                character_offset,
+                empty_trailing_white_space,
+                false,
+            );
+            let mut last_offset = 0;
+            for offset in GraphemeClusterSegmenter::new().segment_str(text).skip(1) {
+                let slice_text = &text[last_offset..offset];
+                character_offset += Utf32CodeUnits::length_of(AssumeUnder4GB, slice_text);
+                let (trailing_white_space, all_white_space) =
+                    trailing_white_space_of(slice_text, parent_style);
+                if let Some(slice) = emergency_slicer.slice_until_character_offset(
+                    character_offset,
+                    trailing_white_space,
+                    all_white_space,
+                ) {
+                    slices.push(slice);
+                }
+                last_offset = offset;
+            }
+        } else if let Some(emergency_slicer) = &mut self.emergency_slicer {
+            character_offset += Utf32CodeUnits::length_of(AssumeUnder4GB, text);
+            emergency_slicer.slice_until_character_offset(
+                character_offset,
+                empty_trailing_white_space,
+                false,
+            );
+        }
+        slices
+    }
+
     fn slice_shaped_text_at_line_break_opportunities(
         &mut self,
         segment: &ShapingQueueText,
@@ -387,6 +444,8 @@ impl<'a> ShapingQueue<'a> {
 
         let mut slicer = BatchSlicer {
             slicer: ShapedTextSlicer::new(shaped_text.clone()),
+            emergency_slicer: None,
+            shaped_text: shaped_text.clone(),
             text: self.text,
             line_breaker: &mut self.line_breaker,
             character_offset_origin: self.character_range.start,
@@ -397,12 +456,14 @@ impl<'a> ShapingQueue<'a> {
             let style = text_run.inline_styles().style.borrow().clone();
             let (runs, break_at_start) =
                 slicer.slice_shaped_text_at_line_break_opportunities(&entry, &style);
+            let emergency_runs = slicer.slice_shaped_text_at_grapheme_boundaries(&entry, &style);
 
             if let TextRunItem::TextSegment(text_segment) =
                 &mut text_run.items[entry.index_in_text_run]
             {
                 text_segment.shaped_text = Some(shaped_text.clone());
                 text_segment.runs = runs;
+                text_segment.emergency_runs = emergency_runs;
                 text_segment.break_at_start = break_at_start;
             }
         }

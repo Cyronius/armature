@@ -105,6 +105,7 @@ use servo_arc::Arc as ServoArc;
 use servo_base::text::{Utf8CodeUnits, Utf32CodeUnits};
 use style::Zero;
 use style::computed_values::line_break::T as LineBreak;
+use style::computed_values::overflow_wrap::T as OverflowWrap;
 use style::computed_values::text_wrap_mode::T as TextWrapMode;
 use style::computed_values::white_space_collapse::T as WhiteSpaceCollapse;
 use style::computed_values::word_break::T as WordBreak;
@@ -1051,6 +1052,10 @@ struct InlineFormattingContextLayout<'layout_data> {
     /// queued after replaced content and they are processed when the next text content
     /// is encountered.
     pub have_deferred_soft_wrap_opportunity: bool,
+
+    /// A break after a run with emergency wrapping is used if the next run does
+    /// not itself offer emergency breaks at the boundary.
+    pub have_deferred_emergency_wrap_opportunity: bool,
 
     /// Whether or not the layout of this InlineFormattingContext depends on the block size
     /// of its container for the purposes of flexbox layout.
@@ -2330,6 +2335,7 @@ impl InlineFormattingContext {
             caret_placeholder: None,
             deferred_br_clear: Clear::None,
             have_deferred_soft_wrap_opportunity: false,
+            have_deferred_emergency_wrap_opportunity: false,
             depends_on_block_constraints: false,
             white_space_collapse: style_text.white_space_collapse,
             text_wrap_mode: style_text.text_wrap_mode,
@@ -3239,6 +3245,16 @@ impl<'layout_data> ContentSizesComputation<'layout_data> {
     ) {
         let style_text = parent_style.get_inherited_text();
         let can_wrap = style_text.text_wrap_mode == TextWrapMode::Wrap;
+        let emergency_breaks_affect_min_content = can_wrap &&
+            (style_text.overflow_wrap == OverflowWrap::Anywhere ||
+                style_text.word_break == WordBreak::BreakWord);
+        let mut emergency_run_index = 0;
+
+        // Emergency opportunities also exist at the boundary between separately
+        // styled text runs, even if each run contains only one grapheme.
+        if emergency_breaks_affect_min_content && self.had_content_yet_for_min_content {
+            self.line_break_opportunity();
+        }
 
         // TODO: This should take account whether or not the first and last character prevent
         // linebreaks after atomics as in layout.
@@ -3262,6 +3278,16 @@ impl<'layout_data> ContentSizesComputation<'layout_data> {
             parent_style.white_space_may_hang_conditionally();
 
         for (run_index, run) in segment.runs.iter().enumerate() {
+            let first_emergency_run = emergency_run_index;
+            let mut emergency_character_count = Utf32CodeUnits(0);
+            while emergency_run_index < segment.emergency_runs.len() &&
+                emergency_character_count < run.character_count()
+            {
+                emergency_character_count +=
+                    segment.emergency_runs[emergency_run_index].character_count();
+                emergency_run_index += 1;
+            }
+
             // Break before each unbreakable run in this TextRun, except the first unless the
             // linebreaker was set to break before the first run.
             if can_wrap && (run_index != 0 || break_at_start) {
@@ -3274,7 +3300,25 @@ impl<'layout_data> ContentSizesComputation<'layout_data> {
             if run.has_non_hangable_non_removable_content() {
                 self.commit_pending_opening_pbm_for_inline_boxes();
                 self.commit_pending_whitespace();
-                self.add_inline_size(advance - removable_advance - hangable_advance);
+                let content_advance = advance - removable_advance - hangable_advance;
+                if emergency_breaks_affect_min_content {
+                    self.current_line.max_content += content_advance;
+                    for (index, emergency_run) in segment.emergency_runs
+                        [first_emergency_run..emergency_run_index]
+                        .iter()
+                        .enumerate()
+                    {
+                        if index != 0 {
+                            self.line_break_opportunity();
+                        }
+                        self.current_line.min_content += emergency_run.total_advance() -
+                            emergency_run.removable_advance() -
+                            emergency_run.hangable_advance();
+                        self.had_content_yet_for_min_content = true;
+                    }
+                } else {
+                    self.add_inline_size(content_advance);
+                }
             }
 
             self.pending_whitespace.min_content += hangable_advance;
