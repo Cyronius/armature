@@ -2429,12 +2429,10 @@ impl InlineFormattingContext {
                     });
                 max_block_size.map(|max_block_size| {
                     layout
-                        .fragments
+                        .line_baselines
                         .iter()
-                        .filter_map(|fragment| match fragment {
-                            Fragment::Positioning(line) if line.is_line_box() => {
-                                Some(line.base.rect())
-                            },
+                        .filter_map(|(index, _)| match &layout.fragments[*index] {
+                            Fragment::Positioning(line) => Some(line.base.rect()),
                             _ => None,
                         })
                         .take_while(|rect| rect.origin.y + rect.size.height <= max_block_size)
@@ -2446,16 +2444,13 @@ impl InlineFormattingContext {
             if let Some(max_lines) = max_lines {
                 let mut line_count = 0;
                 let mut clamp_at = None;
-                for (index, fragment) in layout.fragments.iter().enumerate() {
-                    let Fragment::Positioning(line) = fragment else {
+                for (index, _) in &layout.line_baselines {
+                    let Fragment::Positioning(line) = &layout.fragments[*index] else {
                         continue;
                     };
-                    if !line.is_line_box() {
-                        continue;
-                    }
                     line_count += 1;
                     if line_count == max_lines {
-                        clamp_at = Some((index, line.base.rect()));
+                        clamp_at = Some((*index, line.base.rect()));
                     }
                 }
                 if line_count > max_lines {
@@ -2474,22 +2469,36 @@ impl InlineFormattingContext {
                             .find(|(line_index, _)| *line_index <= index)
                             .map(|(_, baseline)| *baseline);
 
-                        // For a simple text line, append the default block ellipsis
+                        // For a simple text line, append the block ellipsis
                         // to the last text fragment. More complex lines need glyph
                         // removal to make room and are handled separately.
-                        if matches!(line_clamp.block_ellipsis, BlockEllipsis::Ellipsis) {
+                        let ellipsis_text = match &line_clamp.block_ellipsis {
+                            BlockEllipsis::Ellipsis => Some("…"),
+                            BlockEllipsis::String(text) => Some(text.as_ref()),
+                            BlockEllipsis::NoEllipsis => None,
+                        };
+                        if let Some(ellipsis_text) = ellipsis_text.filter(|text| !text.is_empty()) {
                             if let (Some(font), Fragment::Positioning(line)) =
                                 (&self.default_font, &layout.fragments[index])
                             {
                                 let mut children = line.children.clone();
-                                if let Some(Fragment::Text(text)) = children.last() {
+                                if let Some(Fragment::Text(text)) = children
+                                    .iter()
+                                    .rev()
+                                    .find(|child| matches!(child, Fragment::Text(_)))
+                                {
                                     let font_info =
                                         FontAndScriptInfo::simple_for_font(font.clone());
-                                    let shaped =
-                                        font.shape_text("…", &ShapingOptions::from(&font_info));
+                                    let shaped = font.shape_text(
+                                        ellipsis_text,
+                                        &ShapingOptions::from(&font_info),
+                                    );
                                     let ellipsis = ShapedTextSlicer::new(shaped)
                                         .slice_until_character_offset(
-                                            Utf32CodeUnits(1),
+                                            Utf32CodeUnits(
+                                                u32::try_from(ellipsis_text.chars().count())
+                                                    .unwrap_or(u32::MAX),
+                                            ),
                                             TrailingWhiteSpace {
                                                 hangable: Utf32CodeUnits(0),
                                                 removable: Utf32CodeUnits(0),
