@@ -12,6 +12,7 @@ use style::context::SharedStyleContext;
 use style::logical_geometry::LogicalAxis;
 use style::properties::ComputedValues;
 use style::selector_parser::PseudoElement;
+use style::values::specified::box_::DisplayOutside as StyloDisplayOutside;
 
 use crate::context::LayoutContext;
 use crate::dom::{LayoutBox, NodeExt, WeakLayoutBox};
@@ -366,6 +367,68 @@ impl IndependentFormattingContext {
         auto_block_size_stretches_to_containing_block: bool,
         skippable_for_block_percentage_quirk: bool,
     ) -> InlineContentSizesResult {
+        if self.is_block_container() &&
+            self.style().get_box().display.outside() != StyloDisplayOutside::Inline &&
+            self.style().writing_mode.is_vertical() != containing_block.style.writing_mode.is_vertical()
+        {
+            let viewport = layout_context.style_context.stylist.device().au_viewport_size();
+            let fallback_inline_size = if self.style().writing_mode.is_vertical() {
+                viewport.height
+            } else {
+                viewport.width
+            };
+            let parent_containing_block = ContainingBlock {
+                size: ContainingBlockSize {
+                    inline: Au::default(),
+                    block: SizeConstraint::default(),
+                },
+                style: containing_block.style,
+            };
+            return sizing::outer_inline(
+                &self.base,
+                &self.layout_style(),
+                containing_block,
+                auto_minimum,
+                auto_block_size_stretches_to_containing_block,
+                false, /* is_replaced */
+                true,  /* establishes_containing_block */
+                skippable_for_block_percentage_quirk,
+                |padding_border_sums| self.preferred_aspect_ratio(padding_border_sums),
+                |constraint_space| {
+                    // The parent's inline axis is this box's block axis. Measure
+                    // its block content after resolving the orthogonal inline size.
+                    let inline_size = constraint_space
+                        .block_size
+                        .to_definite()
+                        .unwrap_or(fallback_inline_size);
+                    let block_size = self.content_block_size_under_default_constraint(
+                        layout_context,
+                        &mut PositioningContext::default(),
+                        inline_size,
+                        &parent_containing_block,
+                        constraint_space.preferred_aspect_ratio,
+                        &LazySize::intrinsic(),
+                    );
+                    InlineContentSizesResult {
+                        sizes: block_size.into(),
+                        depends_on_block_constraints: true,
+                    }
+                },
+                |preferred_aspect_ratio| {
+                    Some(
+                        self.inline_content_sizes(
+                            layout_context,
+                            &ConstraintSpace {
+                                block_size: SizeConstraint::default(),
+                                style: self.style(),
+                                preferred_aspect_ratio,
+                            },
+                        )
+                        .sizes,
+                    )
+                },
+            );
+        }
         sizing::outer_inline(
             &self.base,
             &self.layout_style(),
