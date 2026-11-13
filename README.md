@@ -157,6 +157,11 @@ Parsing `grid-lanes-direction` and honoring its row, column, track-reverse, and 
 comparable score to **74.93%** (21,877.6 test-equivalents passing, raw), a further gain of 14.2. The 1,005-test
 grid-lanes run gained 19.5 test-equivalents with no regressions in that directory. Seven unrelated full-run losses
 returned to passing status on a focused repeat and were excluded from expectation updates.
+Mapping vertical Grid tracks and item boxes to their physical axes raised the comparable score to **75.20%**
+(21,956.7 test-equivalents passing, raw), a further gain of 79.0. The 2,516-test Grid run gained 74.8
+test-equivalents, with 14 reftests newly passing and one Grid Lanes alignment reftest regressing. That remaining
+case exposes an intrinsic-size gap for vertical Grid Lanes. Other apparent full-run losses returned to their prior
+results on a focused repeat and were excluded from expectation updates.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -351,6 +356,10 @@ Notes on the numbers:
   surrounding grid and display suites had no status changes outside grid lanes. Trailing single-lane items in
   auto-sized column lanes now honor end, center, and stretch alignment. Subgrid, intrinsic auto-repeat, dense
   packing, and other older grid-lanes properties still need work.
+- **Vertical CSS Grid layout**: Grid tracks and item positions follow the container's inline and block axes in
+  vertical writing modes. Item dimensions, margins, padding, borders, and self alignment map back to physical
+  sides. The full CSS run gains 79.0 passing test-equivalents, while one vertical Grid Lanes alignment reftest still
+  needs an intrinsic-size correction.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
