@@ -247,20 +247,46 @@ fn generate_counter_representation_with_depth(
             atom!("telugu") => decimal_digits(value, '\u{C66}'),
             atom!("thai") => decimal_digits(value, '\u{E50}'),
             atom!("tibetan") => decimal_digits(value, '\u{F20}'),
-            atom!("japanese-informal") if value == 0 => "\u{3007}".into(),
-            atom!("korean-hangul-formal") if value == 0 => "\u{C601}".into(),
-            atom!("korean-hanja-informal") |
-            atom!("korean-hanja-formal") |
-            atom!("japanese-formal") |
-            atom!("simp-chinese-informal") |
-            atom!("simp-chinese-formal") |
-            atom!("trad-chinese-informal") |
-            atom!("trad-chinese-formal") |
-            atom!("cjk-ideographic")
-                if value == 0 =>
-            {
-                "\u{96F6}".into()
-            },
+            atom!("japanese-informal") => cjk_additive(
+                value,
+                "一二三四五六七八九",
+                ["千", "百", "十"],
+                "〇",
+                "マイナス",
+                true,
+            ),
+            atom!("japanese-formal") => cjk_additive(
+                value,
+                "壱弐参四伍六七八九",
+                ["阡", "百", "拾"],
+                "零",
+                "マイナス",
+                false,
+            ),
+            atom!("korean-hangul-formal") => cjk_additive(
+                value,
+                "일이삼사오육칠팔구",
+                ["천", "백", "십"],
+                "영",
+                "마이너스 ",
+                false,
+            ),
+            atom!("korean-hanja-informal") => cjk_additive(
+                value,
+                "一二三四五六七八九",
+                ["千", "百", "十"],
+                "零",
+                "마이너스 ",
+                true,
+            ),
+            atom!("korean-hanja-formal") => cjk_additive(
+                value,
+                "壹貳參四五六七八九",
+                ["仟", "百", "拾"],
+                "零",
+                "마이너스 ",
+                false,
+            ),
             atom!("cjk-decimal") if value >= 0 => decimal_symbols(value, "〇一二三四五六七八九"),
             atom!("cjk-earthly-branch") => {
                 fixed_symbols(value, "子丑寅卯辰巳午未申酉戌亥", "〇一二三四五六七八九")
@@ -268,7 +294,31 @@ fn generate_counter_representation_with_depth(
             atom!("cjk-heavenly-stem") => {
                 fixed_symbols(value, "甲乙丙丁戊己庚辛壬癸", "〇一二三四五六七八九")
             },
-            _ => value.to_string(),
+            _ if &*name.0 == "japanese" => cjk_additive(
+                value,
+                "一二三四五六七八九",
+                ["千", "百", "十"],
+                "〇",
+                "マイナス",
+                true,
+            ),
+            _ if &*name.0 == "korean-hangul" => cjk_additive(
+                value,
+                "일이삼사오육칠팔구",
+                ["천", "백", "십"],
+                "영",
+                "마이너스 ",
+                false,
+            ),
+            _ if &*name.0 == "korean-hanja" => cjk_additive(
+                value,
+                "一二三四五六七八九",
+                ["千", "百", "十"],
+                "零",
+                "마이너스 ",
+                true,
+            ),
+            _ => chinese_style(value, &name.0).unwrap_or_else(|| value.to_string()),
         },
         CounterStyle::Symbols { ty, symbols } => match ty {
             SymbolsType::Numeric => positional_symbols(value, &symbols.0, true),
@@ -453,6 +503,94 @@ fn hebrew(value: i32) -> String {
     result
 }
 
+fn cjk_additive(
+    value: i32,
+    digits: &str,
+    units: [&str; 3],
+    zero: &str,
+    negative: &str,
+    omit_one: bool,
+) -> String {
+    if !(-9999..=9999).contains(&value) {
+        return if value >= 0 {
+            decimal_symbols(value, "〇一二三四五六七八九")
+        } else {
+            value.to_string()
+        };
+    }
+    if value == 0 {
+        return zero.to_string();
+    }
+    let magnitude = value.abs();
+    let mut result = if value < 0 {
+        negative.to_string()
+    } else {
+        String::new()
+    };
+    for (place, unit) in [(1000, units[0]), (100, units[1]), (10, units[2]), (1, "")] {
+        let digit = (magnitude / place) % 10;
+        if digit == 0 {
+            continue;
+        }
+        if !omit_one || digit != 1 || place == 1 {
+            result.push(digits.chars().nth(digit as usize - 1).unwrap());
+        }
+        result.push_str(unit);
+    }
+    result
+}
+
+fn chinese_style(value: i32, name: &str) -> Option<String> {
+    let (digits, units, negative, informal) = match name {
+        "simp-chinese" | "simp-chinese-informal" => {
+            ("一二三四五六七八九", ["千", "百", "十"], "负", true)
+        },
+        "simp-chinese-formal" => ("壹贰叁肆伍陆柒捌玖", ["仟", "佰", "拾"], "负", false),
+        "trad-chinese" | "trad-chinese-informal" | "cjk-ideographic" => {
+            ("一二三四五六七八九", ["千", "百", "十"], "負", true)
+        },
+        "trad-chinese-formal" => ("壹貳參肆伍陸柒捌玖", ["仟", "佰", "拾"], "負", false),
+        _ => return None,
+    };
+    if !(-9999..=9999).contains(&value) {
+        return Some(if value >= 0 {
+            decimal_symbols(value, "〇一二三四五六七八九")
+        } else {
+            value.to_string()
+        });
+    }
+    if value == 0 {
+        return Some("零".into());
+    }
+    let magnitude = value.abs();
+    let mut result = if value < 0 {
+        negative.to_string()
+    } else {
+        String::new()
+    };
+    let mut pending_zero = false;
+    let mut seen_digit = false;
+    for (place, unit) in [(1000, units[0]), (100, units[1]), (10, units[2]), (1, "")] {
+        let digit = (magnitude / place) % 10;
+        if digit == 0 {
+            if seen_digit {
+                pending_zero = true;
+            }
+            continue;
+        }
+        if pending_zero {
+            result.push('零');
+            pending_zero = false;
+        }
+        if !informal || !(10..=19).contains(&magnitude) || place != 10 {
+            result.push(digits.chars().nth(digit as usize - 1).unwrap());
+        }
+        result.push_str(unit);
+        seen_digit = true;
+    }
+    Some(result)
+}
+
 fn alphabetic(value: i32, symbols: &str) -> String {
     if value <= 0 {
         return value.to_string();
@@ -563,6 +701,15 @@ pub(crate) fn marker_string(
             atom!("korean-hanja-informal") |
             atom!("korean-hanja-formal") => ", ",
             atom!("ethiopic-numeric") => "/ ",
+            _ if &*name.0 == "japanese" => "\u{3001}",
+            _ if matches!(
+                &*name.0,
+                "simp-chinese" | "simp-chinese-formal" | "trad-chinese" | "trad-chinese-formal"
+            ) =>
+            {
+                "\u{3001}"
+            },
+            _ if matches!(&*name.0, "korean-hangul" | "korean-hanja") => ", ",
             _ => ". ",
         },
         CounterStyle::Symbols { .. } => " ",
