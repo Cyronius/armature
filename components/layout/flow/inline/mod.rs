@@ -89,7 +89,9 @@ use app_units::{Au, MAX_AU};
 use atomic_refcell::AtomicRef;
 use bitflags::bitflags;
 use construct::InlineFormattingContextBuilder;
-use fonts::{FontMetrics, FontRef, ShapedTextSlice};
+use fonts::{
+    FontMetrics, FontRef, ShapedTextSlice, ShapedTextSlicer, ShapingOptions, TrailingWhiteSpace,
+};
 use icu_locale_core::LanguageIdentifier;
 use icu_properties::props::{EnumeratedProperty, LineBreak as ICULineBreak};
 use icu_segmenter::options::{LineBreakOptions, LineBreakStrictness, LineBreakWordOption};
@@ -112,7 +114,7 @@ use style::computed_values::word_break::T as WordBreak;
 use style::context::{QuirksMode, SharedStyleContext};
 use style::properties::ComputedValues;
 use style::values::computed::BaselineShift;
-use style::values::generics::box_::BaselineShiftKeyword;
+use style::values::generics::box_::{BaselineShiftKeyword, BlockEllipsis};
 use style::values::generics::font::LineHeight;
 use style::values::specified::box_::BaselineSource;
 use style::values::specified::text::TextAlignKeyword;
@@ -137,7 +139,10 @@ use crate::flow::{
     skippable_for_block_percentage_quirk,
 };
 use crate::formatting_contexts::{Baselines, IndependentFormattingContext};
-use crate::fragment_tree::{CollapsedMargin, Fragment, FragmentFlags, PositioningFragment};
+use crate::fragment_tree::{
+    BaseFragment, BaseFragmentInfo, CollapsedMargin, Fragment, FragmentFlags, PositioningFragment,
+    TextFragment,
+};
 use crate::geom::{LogicalRect, LogicalSides1D, LogicalVec2, ToLogical};
 use crate::layout_box_base::LayoutBoxBase;
 use crate::positioned::{AbsolutelyPositionedBox, PositioningContext};
@@ -2384,6 +2389,105 @@ impl InlineFormattingContext {
         }
 
         layout.finish_last_line();
+
+        // A line-clamp container suppresses lines after the clamp point and sizes
+        // itself to the remaining content. The IFC handles the common case where
+        // the lines are direct children of the clamped block. Descendant block
+        // lines need to be counted by the block formatting context instead.
+        let line_clamp = &style.get_box().line_clamp;
+        if !style.writing_mode.is_vertical() &&
+            style.writing_mode.is_bidi_ltr() &&
+            !line_clamp.webkit_legacy
+        {
+            if let Some(max_lines) = line_clamp
+                .max_lines
+                .lines_value()
+                .and_then(|lines| usize::try_from(lines.0).ok())
+            {
+                let mut line_count = 0;
+                let mut clamp_at = None;
+                for (index, fragment) in layout.fragments.iter().enumerate() {
+                    let Fragment::Positioning(line) = fragment else {
+                        continue;
+                    };
+                    if !line.is_line_box() {
+                        continue;
+                    }
+                    line_count += 1;
+                    if line_count == max_lines {
+                        clamp_at = Some((index, line.base.rect()));
+                    }
+                }
+                if line_count > max_lines {
+                    if let Some((index, rect)) = clamp_at {
+                        layout.fragments.truncate(index + 1);
+                        layout.placement_state.current_block_direction_position =
+                            rect.origin.y + rect.size.height;
+
+                        // For a simple text line, append the default block ellipsis
+                        // to the last text fragment. More complex lines need glyph
+                        // removal to make room and are handled separately.
+                        if matches!(line_clamp.block_ellipsis, BlockEllipsis::Ellipsis) {
+                            if let (Some(font), Fragment::Positioning(line)) =
+                                (&self.default_font, &layout.fragments[index])
+                            {
+                                let mut children = line.children.clone();
+                                if let Some(Fragment::Text(text)) = children.last() {
+                                    let font_info =
+                                        FontAndScriptInfo::simple_for_font(font.clone());
+                                    let shaped =
+                                        font.shape_text("…", &ShapingOptions::from(&font_info));
+                                    let ellipsis = ShapedTextSlicer::new(shaped)
+                                        .slice_until_character_offset(
+                                            Utf32CodeUnits(1),
+                                            TrailingWhiteSpace {
+                                                hangable: Utf32CodeUnits(0),
+                                                removable: Utf32CodeUnits(0),
+                                            },
+                                            false,
+                                        );
+                                    if let Some(ellipsis) = ellipsis {
+                                        let mut ellipsis_rect = text.base.rect();
+                                        ellipsis_rect.origin.x += ellipsis_rect.size.width;
+                                        ellipsis_rect.size.width = ellipsis.total_advance();
+                                        if ellipsis_rect.origin.x + ellipsis_rect.size.width <=
+                                            rect.size.width
+                                        {
+                                            let end = text.character_range_in_dom_node.end;
+                                            children.push(Fragment::Text(Arc::new(TextFragment {
+                                                base: BaseFragment::new(
+                                                    BaseFragmentInfo::anonymous(),
+                                                    ellipsis_rect,
+                                                ),
+                                                run_data: text.run_data.clone(),
+                                                font_metrics: font.metrics().clone(),
+                                                font_key: font.key(
+                                                    layout_context.painter_id,
+                                                    &layout_context.font_context,
+                                                ),
+                                                glyphs: vec![ellipsis],
+                                                justification_adjustment: Au::zero(),
+                                                character_range_in_dom_node: end..end,
+                                                is_empty_for_text_cursor: false,
+                                            })));
+                                            layout.fragments[index] = Fragment::Positioning(
+                                                PositioningFragment::new_anonymous(
+                                                    style.to_arc(),
+                                                    rect,
+                                                    children,
+                                                    true,
+                                                ),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let (content_block_size, collapsible_margins_in_children, baselines) =
             layout.placement_state.finish();
 
