@@ -1069,6 +1069,17 @@ animation_type = "discrete"
 spec = "https://drafts.csswg.org/css-grid/#propdef-grid-auto-rows"
 affects = "layout"
 
+# Armature (AS-526): Parse the experimental Grid Lanes packing direction in Servo.
+[grid-lanes-direction]
+type = "GridLanesDirection"
+initial = "computed::GridLanesDirection::NORMAL"
+struct = "position"
+engine = "servo"
+servo_pref = "layout.css.display-grid-lanes.enabled"
+animation_type = "discrete"
+spec = "https://drafts.csswg.org/css-grid-3/#propdef-grid-lanes-direction"
+affects = "layout"
+
 [grid-column-end]
 type = "GridLine"
 initial = "Default::default()"

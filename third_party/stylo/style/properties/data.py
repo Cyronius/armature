@@ -675,6 +675,8 @@ class Longhand(Property):
                 "FontVariantLigatures",
                 "FontVariantNumeric",
                 "GridAutoFlow",
+                # Armature (AS-526): The Grid Lanes direction value is copyable.
+                "GridLanesDirection",
                 "ImageDecoding",
                 "ImageRendering",
                 "Inert",

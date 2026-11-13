@@ -1607,6 +1607,72 @@ impl ToCss for GridAutoFlow {
     }
 }
 
+// Armature (AS-526): Represent the legacy Grid Lanes direction and reversal flags.
+/// The direction and order used to place items in grid lanes.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[css(bitflags(
+    mixed = "normal,row,column,fill-reverse,track-reverse",
+    validate_mixed = "Self::validate_and_simplify"
+))]
+#[repr(C)]
+pub struct GridLanesDirection(u8);
+bitflags! {
+    impl GridLanesDirection: u8 {
+        /// Infer the direction from the declared grid tracks.
+        const NORMAL = 1 << 0;
+        /// Use row tracks.
+        const ROW = 1 << 1;
+        /// Use column tracks.
+        const COLUMN = 1 << 2;
+        /// Place items from the end of each lane.
+        const FILL_REVERSE = 1 << 3;
+        /// Prefer lanes in reverse order.
+        const TRACK_REVERSE = 1 << 4;
+    }
+}
+
+impl GridLanesDirection {
+    fn validate_and_simplify(&mut self) -> bool {
+        if self.contains(Self::NORMAL) {
+            return *self == Self::NORMAL;
+        }
+        self.intersects(Self::ROW | Self::COLUMN) &&
+            !self.contains(Self::ROW | Self::COLUMN)
+    }
+}
+
+impl ToCss for GridLanesDirection {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        if self.contains(Self::NORMAL) {
+            return dest.write_str("normal");
+        }
+        dest.write_str(if self.contains(Self::ROW) { "row" } else { "column" })?;
+        if self.contains(Self::FILL_REVERSE) {
+            dest.write_str(" fill-reverse")?;
+        }
+        if self.contains(Self::TRACK_REVERSE) {
+            dest.write_str(" track-reverse")?;
+        }
+        Ok(())
+    }
+}
+
 /// Whether the `balance` value of `flex-wrap` is enabled.
 #[inline]
 fn flex_wrap_balance_enabled() -> bool {

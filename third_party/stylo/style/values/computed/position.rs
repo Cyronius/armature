@@ -22,6 +22,8 @@ use crate::values::generics::position::{
 };
 pub use crate::values::specified::position::{
     AnchorName, BoxSizing, DashedIdentAndOrTryTactic, FlexDirection, FlexWrap, GridAutoFlow,
+    // Armature (AS-526): Expose the Grid Lanes direction to computed styles.
+    GridLanesDirection,
     GridTemplateAreas, ObjectFit, PositionAnchor, PositionArea, PositionAreaAxis,
     PositionAreaKeyword, PositionAreaType, PositionTryFallbacks, PositionTryFallbacksTryTactic,
     PositionTryFallbacksTryTacticKeyword, PositionTryOrder, PositionVisibility, ScopedName,
