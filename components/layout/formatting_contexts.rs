@@ -27,7 +27,7 @@ use crate::sizing::{
     self, ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult, LazySize,
     SizeConstraint,
 };
-use crate::style_ext::{AspectRatio, Display, DisplayInside, LayoutStyle};
+use crate::style_ext::{AspectRatio, ComputedValuesExt, Display, DisplayInside, LayoutStyle};
 use crate::table::Table;
 use crate::taffy::TaffyContainer;
 use crate::{
@@ -438,6 +438,14 @@ impl IndependentFormattingContext {
         )
     }
 
+    #[inline]
+    pub(crate) fn is_flex(&self) -> bool {
+        matches!(
+            &self.contents,
+            IndependentFormattingContextContents::Flex(_)
+        )
+    }
+
     #[servo_tracing::instrument(
         name = "IndependentFormattingContext::layout_without_caching",
         skip_all
@@ -630,8 +638,9 @@ impl IndependentFormattingContext {
             IndependentFormattingContextContents::Replaced(replaced, _) => {
                 replaced.preferred_aspect_ratio(self.style(), padding_border_sums)
             },
-            // TODO: support preferred aspect ratios on non-replaced boxes.
-            _ => None,
+            _ => self
+                .style()
+                .preferred_aspect_ratio(None, padding_border_sums),
         }
     }
 

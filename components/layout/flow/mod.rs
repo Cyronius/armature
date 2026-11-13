@@ -41,7 +41,9 @@ use crate::sizing::{
     self, ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult, LazySize, Size,
     SizeConstraint, Sizes,
 };
-use crate::style_ext::{AspectRatio, ContentBoxSizesAndPBM, LayoutStyle, PaddingBorderMargin};
+use crate::style_ext::{
+    AspectRatio, ComputedValuesExt, ContentBoxSizesAndPBM, LayoutStyle, PaddingBorderMargin,
+};
 use crate::{ConstraintSpace, ContainingBlock, ContainingBlockSize, IndefiniteContainingBlock};
 
 mod construct;
@@ -1118,7 +1120,7 @@ impl IndependentFormattingContext {
             has_inline_parent,
         );
 
-        let lazy_block_size = LazySize::new(
+        let mut lazy_block_size = LazySize::new(
             &block_sizes,
             LogicalAxis::Block,
             automatic_block_size,
@@ -1126,6 +1128,15 @@ impl IndependentFormattingContext {
             block_stretch_size,
             layout_style.is_table(),
         );
+        if block_sizes.preferred.is_initial() &&
+            preferred_aspect_ratio.is_some() &&
+            !self.is_replaced() &&
+            !self
+                .style()
+                .establishes_scroll_container(self.base.base_fragment_info.flags)
+        {
+            lazy_block_size = lazy_block_size.with_content_based_auto_minimum();
+        }
 
         let layout = self.layout(
             layout_context,
@@ -1622,12 +1633,12 @@ fn solve_containing_block_padding_and_border_for_in_flow_box<'a>(
     let pbm_sums = pbm.sums_auto_is_zero(ignore_block_margins_for_stretch);
     let inline_stretch_size = containing_block.inline_stretch_size(pbm_sums.inline);
     let block_stretch_size = containing_block.block_stretch_size(pbm_sums.block);
-    let automatic_block_size = automatic_block_size(layout_context, base);
+    let mut automatic_block_size = automatic_block_size(layout_context, base);
 
-    // TODO: support preferred aspect ratios on boxes that don't establish an independent
-    // formatting context.
-    let preferred_aspect_ratio =
-        context.and_then(|context| context.preferred_aspect_ratio(&pbm.padding_border_sums));
+    let preferred_aspect_ratio = context.map_or_else(
+        || style.preferred_aspect_ratio(None, &pbm.padding_border_sums),
+        |context| context.preferred_aspect_ratio(&pbm.padding_border_sums),
+    );
     let is_table = layout_style.is_table();
 
     // https://drafts.csswg.org/css2/#the-height-property
@@ -1673,6 +1684,26 @@ fn solve_containing_block_padding_and_border_for_in_flow_box<'a>(
         get_inline_content_sizes,
         is_table,
     );
+
+    if content_box_sizes.block.preferred.is_initial() {
+        if let Some(ratio) = preferred_aspect_ratio {
+            automatic_block_size = Size::Numeric(
+                ratio
+                    .compute_dependent_size(LogicalAxis::Block, inline_size)
+                    .max(Au::zero()),
+            );
+            // A flex container needs an indefinite cross size while measuring its
+            // content-based automatic minimum. Otherwise its line size is fixed to
+            // the ratio-transferred size before its items are measured.
+            if !context.is_some_and(IndependentFormattingContext::is_flex) {
+                tentative_block_size = content_box_sizes.block.resolve_extrinsic(
+                    automatic_block_size.clone(),
+                    Au::zero(),
+                    block_stretch_size,
+                );
+            }
+        }
+    }
 
     let containing_block_for_children = ContainingBlock {
         size: ContainingBlockSize {
@@ -2210,7 +2241,7 @@ impl IndependentFormattingContext {
         let inline_stretch_size = containing_block.inline_stretch_size(pbm_sums.inline_sum());
         let block_stretch_size = containing_block.block_stretch_size(pbm_sums.block_sum());
 
-        let automatic_block_size = Size::FitContent;
+        let mut automatic_block_size = Size::FitContent;
         let tentative_block_content_size =
             self.tentative_block_content_size(preferred_aspect_ratio, inline_stretch_size);
         let mut tentative_block_size =
@@ -2236,8 +2267,25 @@ impl IndependentFormattingContext {
         let get_content_size = || {
             let constraint_space =
                 ConstraintSpace::new(tentative_block_size, style, preferred_aspect_ratio);
-            self.inline_content_sizes(layout_context, &constraint_space)
-                .sizes
+            let sizes = self
+                .inline_content_sizes(layout_context, &constraint_space)
+                .sizes;
+            if !self.is_replaced() &&
+                content_box_sizes_and_pbm
+                    .content_box_sizes
+                    .inline
+                    .preferred
+                    .is_initial() &&
+                let (Some(ratio), Some(block_size)) =
+                    (preferred_aspect_ratio, tentative_block_size.to_definite())
+            {
+                let transferred = ratio
+                    .compute_dependent_size(LogicalAxis::Inline, block_size)
+                    .max(Au::zero());
+                transferred.max(sizes.min_content).into()
+            } else {
+                sizes
+            }
         };
 
         let inline_size = content_box_sizes_and_pbm.content_box_sizes.inline.resolve(
@@ -2249,6 +2297,25 @@ impl IndependentFormattingContext {
             is_table,
         );
 
+        if !self.is_replaced() &&
+            content_box_sizes_and_pbm
+                .content_box_sizes
+                .block
+                .preferred
+                .is_initial() &&
+            let Some(ratio) = preferred_aspect_ratio
+        {
+            automatic_block_size = Size::Numeric(
+                ratio
+                    .compute_dependent_size(LogicalAxis::Block, inline_size)
+                    .max(Au::zero()),
+            );
+            tentative_block_size = content_box_sizes_and_pbm
+                .content_box_sizes
+                .block
+                .resolve_extrinsic(automatic_block_size.clone(), Au::zero(), block_stretch_size);
+        }
+
         let containing_block_for_children = ContainingBlock {
             size: ContainingBlockSize {
                 inline: inline_size,
@@ -2259,7 +2326,7 @@ impl IndependentFormattingContext {
 
         // TODO: https://drafts.csswg.org/css-writing-modes/#orthogonal-flows
 
-        let lazy_block_size = LazySize::new(
+        let mut lazy_block_size = LazySize::new(
             &content_box_sizes_and_pbm.content_box_sizes.block,
             LogicalAxis::Block,
             automatic_block_size,
@@ -2267,6 +2334,17 @@ impl IndependentFormattingContext {
             block_stretch_size,
             is_table,
         );
+        if content_box_sizes_and_pbm
+            .content_box_sizes
+            .block
+            .preferred
+            .is_initial() &&
+            preferred_aspect_ratio.is_some() &&
+            !self.is_replaced() &&
+            !style.establishes_scroll_container(self.base.base_fragment_info.flags)
+        {
+            lazy_block_size = lazy_block_size.with_content_based_auto_minimum();
+        }
 
         let IndependentFormattingContextLayoutResult {
             content_inline_size_for_table,

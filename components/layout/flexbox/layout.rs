@@ -2343,16 +2343,19 @@ impl FlexItemBox {
         let flex_base_size_is_definite = Cell::new(true);
         let main_content_sizes = LazyCell::new(|| {
             let flex_item = &self.independent_formatting_context;
+            let transferred_size = *transferred_size_suggestion;
             // > B: If the flex item has ...
             // >   - a preferred aspect ratio,
             // >   - a used flex basis of content, and
             // >   - a definite cross size,
             // > then the flex base size is calculated from its used cross size and the flex item’s aspect ratio.
-            if let Some(transferred_size_suggestion) = *transferred_size_suggestion {
-                return transferred_size_suggestion.into();
+            if let Some(transferred_size) = transferred_size {
+                if flex_item.is_replaced() {
+                    return transferred_size.into();
+                }
+            } else {
+                flex_base_size_is_definite.set(false);
             }
-
-            flex_base_size_is_definite.set(false);
 
             // FIXME: implement cases C, D.
 
@@ -2362,7 +2365,7 @@ impl FlexItemBox {
             // > it has a preferred aspect ratio) and the flex item’s cross size is auto and not definite,
             // > in this calculation use fit-content as the flex item’s cross size. The flex base size is
             // > the item’s resulting main size.
-            if cross_axis_is_item_block_axis {
+            let intrinsic_sizes = if cross_axis_is_item_block_axis {
                 // The main axis is the inline axis, so we can get the content size from the normal
                 // preferred widths calculation.
                 let constraint_space =
@@ -2389,6 +2392,13 @@ impl FlexItemBox {
                     IntrinsicSizingMode::Size,
                 )
                 .into()
+            };
+            if let Some(transferred_size) = transferred_size {
+                // A non-replaced item's flex base can come from its aspect ratio, but its
+                // automatic minimum still uses its content size suggestion.
+                transferred_size.max(intrinsic_sizes.min_content).into()
+            } else {
+                intrinsic_sizes
             }
         });
 

@@ -203,7 +203,22 @@ pub(crate) fn outer_inline(
                 None,
             )
         };
-        get_inline_content_size(&constraint_space)
+        let mut sizes = get_inline_content_size(&constraint_space);
+        if !is_replaced && content_box_sizes.inline.preferred.is_initial() {
+            if let (Some(ratio), Some(block_size)) = (
+                constraint_space.preferred_aspect_ratio,
+                constraint_space.block_size.to_definite(),
+            ) {
+                let transferred = ratio
+                    .compute_dependent_size(LogicalAxis::Inline, block_size)
+                    .max(Au::zero());
+                // The automatic minimum size of a non-replaced box with an aspect ratio
+                // still contains its min-content size.
+                sizes.sizes = transferred.max(sizes.sizes.min_content).into();
+                sizes.depends_on_block_constraints = true;
+            }
+        }
+        sizes
     });
     let resolve_non_initial = |inline_size, stretch_values| {
         Some(match inline_size {
@@ -795,6 +810,7 @@ struct LazySizeData<'a> {
     get_automatic_minimum_size: fn() -> Au,
     stretch_size: Option<Au>,
     is_table: bool,
+    content_based_auto_minimum: bool,
 }
 
 /// Represents a size that can't be fully resolved until the intrinsic size
@@ -823,8 +839,18 @@ impl<'a> LazySize<'a> {
                 get_automatic_minimum_size,
                 stretch_size,
                 is_table,
+                content_based_auto_minimum: false,
             }),
         }
+    }
+
+    /// Preserve the content-based automatic minimum when an automatic size was
+    /// transferred through an aspect ratio.
+    pub(crate) fn with_content_based_auto_minimum(mut self) -> Self {
+        if let Some(data) = self.data.as_mut() {
+            data.content_based_auto_minimum = true;
+        }
+        self
     }
 
     /// Creates a [`LazySize`] that will resolve to the intrinsic size.
@@ -850,12 +876,30 @@ impl<'a> LazySize<'a> {
             let Some(ref data) = self.data else {
                 return get_content_size();
             };
+            let mut get_content_size = Some(get_content_size);
+            let mut intrinsic_size = None;
+            let automatic_size = if data.content_based_auto_minimum {
+                match data.automatic_size {
+                    Size::Numeric(size) => {
+                        let content_size = get_content_size.take().unwrap()();
+                        intrinsic_size = Some(content_size);
+                        Size::Numeric(size.max(content_size))
+                    },
+                    _ => data.automatic_size.clone(),
+                }
+            } else {
+                data.automatic_size.clone()
+            };
             data.sizes.resolve(
                 data.axis,
-                data.automatic_size,
+                automatic_size,
                 data.get_automatic_minimum_size,
                 data.stretch_size,
-                || get_content_size().into(),
+                || {
+                    intrinsic_size
+                        .unwrap_or_else(|| get_content_size.take().unwrap()())
+                        .into()
+                },
                 data.is_table,
             )
         })
