@@ -138,6 +138,10 @@ to **74.75%** (21,827.1 test-equivalents passing, raw), a further gain of 18.7. 
 the shrink-to-fit cases where the earlier sizing path contributed the child's inline size instead of its block size.
 The full-run score includes unrelated intermittent results; expectation updates use only the gains confirmed by a
 focused repeat.
+Resolving `line-clamp: auto` against the used block-size limit raised the comparable score to **74.81%** (21,844.7
+test-equivalents passing, raw), a further gain of 17.6. Fifteen previously failing line-clamp reftests passed in a
+324-test focused run with no regressions. Other full-run changes were intermittent and were not used for expectation
+updates.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -421,7 +425,8 @@ Notes on the numbers:
   lines and appends a default ellipsis when it fits after simple text. Stylo now parses `-webkit-line-clamp` in Servo
   so it participates correctly in the cascade (AS-524). A 934-test CSS Overflow run gains 22.4 passing
   test-equivalents, including 21 reftests. Clamped inline blocks now export the last visible line's baseline, making
-  one more reftest pass in a 324-test `line-clamp` rerun.
+  one more reftest pass in a 324-test `line-clamp` rerun. `line-clamp: auto` now derives the number of visible direct
+  lines from the used block-size limit, passing 15 more reftests in a focused rerun.
 - **CSS container queries**: Stylo parses `@container` rules (AS-525), layout exposes the query container's content-box
   size and repeats style and layout when query results change, and script exposes `CSSContainerRule` with its
   conditions. The 320-test CSS Conditional container-query directory gains 96.35 passing test-equivalents.
@@ -854,8 +859,9 @@ Notes on the numbers:
   misplaced inline box, causing a reproducible reftest failure. Vertical coordinate conversion also remains
   provisional when the containing block's block size is indefinite; several containment and vertical text reftests
   still fail.
-- `line-clamp` still needs ellipsis placement when the last line is full or has nested inline boxes, counting lines
-  inside descendant blocks, vertical and right-to-left text, and the legacy `-webkit-box` display behavior.
+- `line-clamp: auto` now applies block-size limits to direct lines, but `line-clamp` still needs ellipsis placement
+  when the last line is full or has nested inline boxes, counting lines inside descendant blocks, vertical and
+  right-to-left text, and the legacy `-webkit-box` display behavior.
 - Container queries still have failures involving hidden ancestors, unsupported query forms, and other dynamic
   cases. Six previously passing subtests in `query-evaluation.html` and `display-none.html` now fail, and three
   existing timeout cases remain.
