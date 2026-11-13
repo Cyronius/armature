@@ -637,10 +637,13 @@ impl<'dom> BlockContainerBuilder<'dom, '_> {
         // If the original display was inline-level, then we need an inline formatting context
         // in order to compute the static position correctly.
         // If it was block-level, we don't want to break an existing inline formatting context,
-        // so push it there (`LineItemLayout::layout_absolute` can handle this well). But if
-        // there is no inline formatting context, then we can avoid creating one.
+        // so push it there (`LineItemLayout::layout_absolute` can handle this well). A clamped
+        // block also needs an inline formatting context when its first child is out of flow,
+        // so that following inline content can be clamped by that context.
         let needs_inline_builder =
-            info.style.get_box().original_display.outside() == StyloDisplayOutside::Inline;
+            info.style.get_box().original_display.outside() == StyloDisplayOutside::Inline ||
+            (!self.info.style.get_box().line_clamp.is_none() &&
+                self.block_level_boxes.is_empty());
         if needs_inline_builder {
             self.ensure_inline_formatting_context_builder();
         }
