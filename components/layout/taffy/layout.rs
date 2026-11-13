@@ -351,7 +351,12 @@ impl taffy::LayoutGridContainer for TaffyContainerContext<'_> {
         let child = (*self.source_child_nodes[id]).borrow();
         let fragment_flags = child.with_base(|base| base.base_fragment_info.flags);
         let stylo_style = AtomicRef::map(child, |c| &*c.style);
-        TaffyStyloStyle::new(stylo_style, fragment_flags)
+        let direction = if self.style.writing_mode.is_bidi_ltr() {
+            taffy::Direction::Ltr
+        } else {
+            taffy::Direction::Rtl
+        };
+        TaffyStyloStyle::new(stylo_style, fragment_flags).with_grid_container_direction(direction)
     }
 
     fn set_detailed_grid_info(

@@ -21,6 +21,7 @@ use crate::style_ext::ComputedValuesExt;
 pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
     pub style: T,
     pub fragment_flags: FragmentFlags,
+    grid_container_direction: Option<taffy::Direction>,
 }
 
 impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
@@ -28,7 +29,49 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
         Self {
             style,
             fragment_flags,
+            grid_container_direction: None,
         }
+    }
+
+    pub fn with_grid_container_direction(mut self, direction: taffy::Direction) -> Self {
+        self.grid_container_direction = Some(direction);
+        self
+    }
+
+    fn grid_self_alignment(
+        &self,
+        input: stylo::AlignFlags,
+        horizontal: bool,
+    ) -> Option<taffy::AlignSelf> {
+        let mut alignment = convert::self_alignment(input)?;
+        let Some(container_direction) = self.grid_container_direction else {
+            return Some(alignment);
+        };
+
+        let self_start = match alignment.keyword {
+            taffy::AlignItemsKeyword::SelfStart => true,
+            taffy::AlignItemsKeyword::SelfEnd => false,
+            _ => return Some(alignment),
+        };
+        // Taffy resolves self-relative alignment using direction only. Resolve it here so
+        // vertical item writing modes choose the correct physical side as well.
+        let writing_mode = self.style.writing_mode;
+        let item_start_at_end = if horizontal {
+            if writing_mode.is_vertical() {
+                writing_mode.is_vertical_rl()
+            } else {
+                !writing_mode.is_bidi_ltr()
+            }
+        } else {
+            writing_mode.is_vertical() && !writing_mode.is_inline_tb()
+        };
+        let container_start_at_end = horizontal && container_direction == taffy::Direction::Rtl;
+        alignment.keyword = if self_start == (item_start_at_end == container_start_at_end) {
+            taffy::AlignItemsKeyword::Start
+        } else {
+            taffy::AlignItemsKeyword::End
+        };
+        Some(alignment)
     }
 }
 
@@ -440,11 +483,11 @@ impl<T: Deref<Target = ComputedValues>> taffy::GridItemStyle for TaffyStyloStyle
 
     #[inline]
     fn align_self(&self) -> Option<taffy::AlignSelf> {
-        convert::self_alignment(self.style.get_position().align_self.0)
+        self.grid_self_alignment(self.style.get_position().align_self.0, false)
     }
 
     #[inline]
     fn justify_self(&self) -> Option<taffy::AlignSelf> {
-        convert::self_alignment(self.style.get_position().justify_self.0)
+        self.grid_self_alignment(self.style.get_position().justify_self.0, true)
     }
 }
