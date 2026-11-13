@@ -464,8 +464,23 @@ impl<'dom> style::dom::TElement for ServoDangerousStyleElement<'dom> {
         self.element.namespace()
     }
 
-    fn query_container_size(&self, _display: &Display) -> Size2D<Option<app_units::Au>> {
-        todo!();
+    fn query_container_size(&self, display: &Display) -> Size2D<Option<app_units::Au>> {
+        // Size containment has no effect on boxes without a principal box,
+        // table boxes, or non-atomic inline boxes.
+        if display.is_none() ||
+            display.is_contents() ||
+            display.inside() == DisplayInside::Table ||
+            display.outside() == DisplayOutside::InternalTable ||
+            (display.outside() == DisplayOutside::Inline &&
+                display.inside() == DisplayInside::Flow)
+        {
+            return Size2D::new(None, None);
+        }
+        self.as_node()
+            .node
+            .layout_data()
+            .map(|data| data.query_container_size())
+            .unwrap_or_else(|| Size2D::new(None, None))
     }
 
     fn has_selector_flags(&self, flags: ElementSelectorFlags) -> bool {

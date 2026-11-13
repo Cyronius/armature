@@ -90,6 +90,9 @@ use webrender_api::{ExternalScrollId, ImageKey};
 pub trait GenericLayoutDataTrait: Any + MallocSizeOfTrait + Send + Sync + 'static {
     fn as_any(&self) -> &dyn Any;
 
+    /// The content-box size from the most recent layout, for container queries.
+    fn query_container_size(&self) -> euclid::default::Size2D<Option<Au>>;
+
     /// Returns whether `new_range` was successfully set on an existing text run
     fn set_text_run_selection(&self, new_range: Option<RangeAny<Utf32CodeUnits>>) -> bool;
 

@@ -397,6 +397,25 @@ impl GenericLayoutDataTrait for DOMLayoutData {
         self
     }
 
+    fn query_container_size(&self) -> euclid::default::Size2D<Option<app_units::Au>> {
+        self.0
+            .borrow()
+            .with_fragments(|fragments| {
+                fragments.iter().find_map(|fragment| match fragment {
+                    Fragment::Box(box_fragment) => {
+                        let size = box_fragment.content_rect().size;
+                        Some(euclid::default::Size2D::new(
+                            Some(size.width),
+                            Some(size.height),
+                        ))
+                    },
+                    _ => None,
+                })
+            })
+            .flatten()
+            .unwrap_or_else(|| euclid::default::Size2D::new(None, None))
+    }
+
     fn set_text_run_selection(&self, new_range: Option<RangeAny<Utf32CodeUnits>>) -> bool {
         let inner = self.0.borrow();
         // When `::first-letter` is used, one DOM text node can generate multiple text runs

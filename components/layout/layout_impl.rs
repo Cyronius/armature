@@ -1536,21 +1536,79 @@ impl LayoutThread {
 
         insert_accessibility_damage_if_necessary(root_node);
 
-        let box_tree = &*box_tree;
         let viewport_size = self.stylist.device().au_viewport_size();
-        let run_layout = || {
-            box_tree
-                .as_ref()
-                .unwrap()
-                .layout(recalc_style_traversal.context(), viewport_size)
+        let fragment_tree = {
+            let box_tree_for_layout = &*box_tree;
+            let run_layout = || {
+                box_tree_for_layout
+                    .as_ref()
+                    .unwrap()
+                    .layout(recalc_style_traversal.context(), viewport_size)
+            };
+            Rc::new(if let Some(pool) = rayon_pool {
+                pool.install(run_layout)
+            } else {
+                run_layout()
+            })
         };
-        let fragment_tree = Rc::new(if let Some(pool) = rayon_pool {
-            pool.install(run_layout)
-        } else {
-            run_layout()
-        });
 
         *self.fragment_tree.borrow_mut() = Some(fragment_tree);
+
+        // Size queries are matched during style traversal, but the query container's
+        // content-box size is only available after layout. Re-match rules against the
+        // newly laid out sizes and repeat when that changes layout again (for example,
+        // when a query changes the size of a nested query container).
+        if self.stylist.has_container_rules() {
+            for _ in 0..4 {
+                let Some(mut data) = dangerous_root_element.mutate_data() else {
+                    break;
+                };
+                data.hint.insert(RestyleHint::restyle_subtree());
+                drop(data);
+
+                let shared = DomTraversal::<ServoDangerousStyleElement>::shared_context(
+                    &recalc_style_traversal,
+                );
+                let token = RecalcStyle::pre_traverse(dangerous_root_element, shared);
+                if !token.should_traverse() {
+                    break;
+                }
+                let dirty_root =
+                    driver::traverse_dom(&recalc_style_traversal, token, rayon_pool).as_node();
+                let mut query_layout_roots = Vec::new();
+                let damage = compute_damage_and_rebuild_box_tree(
+                    &mut *box_tree,
+                    &layout_context,
+                    dirty_root.layout_node(),
+                    root_node,
+                    LayoutDamage::empty(),
+                    &mut query_layout_roots,
+                );
+                if damage.contains(LayoutDamage::RebuildStackingContextTree) {
+                    self.need_new_stacking_context_tree.set(true);
+                }
+                if damage.contains(LayoutDamage::Repaint) {
+                    self.need_new_display_list.set(true);
+                }
+                if !damage.contains(LayoutDamage::Relayout) {
+                    break;
+                }
+
+                let box_tree_for_layout = &*box_tree;
+                let run_layout = || {
+                    box_tree_for_layout
+                        .as_ref()
+                        .unwrap()
+                        .layout(recalc_style_traversal.context(), viewport_size)
+                };
+                let fragment_tree = Rc::new(if let Some(pool) = rayon_pool {
+                    pool.install(run_layout)
+                } else {
+                    run_layout()
+                });
+                *self.fragment_tree.borrow_mut() = Some(fragment_tree);
+            }
+        }
 
         if self.debug.is_enabled(DiagnosticsLoggingOption::StyleTree) {
             println!(
