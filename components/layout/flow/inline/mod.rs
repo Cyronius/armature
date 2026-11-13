@@ -1016,6 +1016,10 @@ struct InlineFormattingContextLayout<'layout_data> {
     /// are currently laid out at the top-level of each [`InlineFormattingContext`].
     fragments: Vec<Fragment>,
 
+    /// Baselines of non-phantom line boxes, with their indices in `fragments`.
+    /// Line clamping uses this to export the last retained line's baseline.
+    line_baselines: Vec<(usize, Au)>,
+
     /// Information about the line currently being laid out into [`LineItem`]s.
     current_line: LineUnderConstruction,
 
@@ -1423,6 +1427,12 @@ impl InlineFormattingContextLayout<'_> {
                 fragments,
                 true, /* is_line_box */
             )));
+        if !is_phantom_line {
+            self.line_baselines.push((
+                self.fragments.len() - 1,
+                baseline_offset + block_start_position,
+            ));
+        }
     }
 
     fn available_line_space(&self) -> Au {
@@ -2323,6 +2333,7 @@ impl InlineFormattingContext {
             layout_context,
             ifc: self,
             fragments: Vec::new(),
+            line_baselines: Vec::new(),
             current_line: LineUnderConstruction::new(LogicalVec2 {
                 inline: self.inline_start_for_first_line(containing_block.into()),
                 block: Au::zero(),
@@ -2423,6 +2434,12 @@ impl InlineFormattingContext {
                         layout.fragments.truncate(index + 1);
                         layout.placement_state.current_block_direction_position =
                             rect.origin.y + rect.size.height;
+                        layout.placement_state.inflow_baselines.last = layout
+                            .line_baselines
+                            .iter()
+                            .rev()
+                            .find(|(line_index, _)| *line_index <= index)
+                            .map(|(_, baseline)| *baseline);
 
                         // For a simple text line, append the default block ellipsis
                         // to the last text fragment. More complex lines need glyph
