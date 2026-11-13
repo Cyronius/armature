@@ -200,6 +200,10 @@ pub trait LayoutNode<'dom>: Copy + Debug + NodeInfo + Send + Sync {
     /// If this is an image element, returns its URL. If this is not an image element, fails.
     fn image_url(&self) -> Option<ServoUrl>;
 
+    /// Return the resolved resource URL for an `<object>` or `<embed>` element that may
+    /// display an image.
+    fn embedded_image_url(&self) -> Option<ServoUrl>;
+
     /// If this is an image element, returns the time when image request finished loading.
     fn load_time(&self) -> Option<CrossProcessInstant>;
 

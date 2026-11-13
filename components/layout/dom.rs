@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 use layout_api::{
-    GenericLayoutDataTrait, LayoutDataTrait, LayoutElement, LayoutElementType, LayoutNode,
-    LayoutNodeType as ScriptLayoutNodeType, NodeRenderingType, SVGElementData,
+    GenericLayoutDataTrait, LayoutDataTrait, LayoutElement, LayoutNode, NodeRenderingType,
+    SVGElementData,
 };
 use malloc_size_of_derive::MallocSizeOf;
 use net_traits::image_cache::Image;
@@ -19,7 +19,7 @@ use style::context::SharedStyleContext;
 use style::properties::ComputedValues;
 use style::selector_parser::PseudoElement;
 use style::values::specified::box_::DisplayOutside as StyloDisplayOutside;
-use web_atoms::{local_name, ns};
+use web_atoms::local_name;
 
 use crate::cell::{ArcRefCell, WeakRefCell};
 use crate::context::LayoutContext;
@@ -505,7 +505,6 @@ pub(crate) trait NodeExt<'dom> {
     fn as_iframe(&self) -> Option<IFrameInfo>;
     fn as_video(&self) -> Option<(VideoInfo, Option<PhysicalSize<f64>>)>;
     fn as_svg(&self) -> Option<SVGElementData<'dom>>;
-    fn as_typeless_object_with_data_attribute(&self) -> Option<String>;
 
     fn ensure_inner_layout_data(&self) -> AtomicRefMut<'dom, InnerDOMLayoutData>;
     fn inner_layout_data(&self) -> Option<AtomicRef<'dom, InnerDOMLayoutData>>;
@@ -648,27 +647,6 @@ impl<'dom> NodeExt<'dom> for ServoLayoutNode<'dom> {
             }),
             _ => None,
         }
-    }
-
-    fn as_typeless_object_with_data_attribute(&self) -> Option<String> {
-        if self.type_id() !=
-            Some(ScriptLayoutNodeType::Element(
-                LayoutElementType::HTMLObjectElement,
-            ))
-        {
-            return None;
-        }
-
-        // TODO: This is the what the legacy layout system did, but really if Servo
-        // supports any `<object>` that's an image, it should support those with URLs
-        // and `type` attributes with image mime types.
-        let element = self.as_element()?;
-        if element.attribute(&ns!(), &local_name!("type")).is_some() {
-            return None;
-        }
-        element
-            .attribute_as_str(&ns!(), &local_name!("data"))
-            .map(|string| string.to_owned())
     }
 
     fn ensure_inner_layout_data(&self) -> AtomicRefMut<'dom, InnerDOMLayoutData> {

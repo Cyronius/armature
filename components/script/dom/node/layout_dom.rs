@@ -5,6 +5,7 @@
 //! Methods for layout of node
 
 use atomic_refcell::AtomicRef;
+use html5ever::{local_name, ns};
 use layout_api::{
     GenericLayoutData, HTMLCanvasData, HTMLMediaData, LayoutElementType, LayoutNodeType,
     SVGElementData,
@@ -27,8 +28,10 @@ use crate::dom::document::Document;
 use crate::dom::element::Element;
 use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
 use crate::dom::html::htmlcanvaselement::HTMLCanvasElement;
+use crate::dom::html::htmlembedelement::HTMLEmbedElement;
 use crate::dom::html::htmliframeelement::HTMLIFrameElement;
 use crate::dom::html::htmlimageelement::HTMLImageElement;
+use crate::dom::html::htmlobjectelement::HTMLObjectElement;
 use crate::dom::html::htmlslotelement::HTMLSlotElement;
 use crate::dom::html::htmltextareaelement::HTMLTextAreaElement;
 use crate::dom::html::htmlvideoelement::HTMLVideoElement;
@@ -302,6 +305,32 @@ impl<'dom> LayoutDom<'dom, Node> {
         self.downcast::<HTMLImageElement>()
             .expect("not an image!")
             .image_url()
+    }
+
+    pub(crate) fn embedded_image_url(self) -> Option<ServoUrl> {
+        let element = self.downcast::<Element>()?;
+        let source_attribute = if self.is::<HTMLEmbedElement>() {
+            local_name!("src")
+        } else if self.is::<HTMLObjectElement>() {
+            local_name!("data")
+        } else {
+            return None;
+        };
+        if element
+            .get_attr_val_for_layout(&ns!(), &local_name!("type"))
+            .is_some_and(|mime| !mime.trim().to_ascii_lowercase().starts_with("image/"))
+        {
+            return None;
+        }
+        let source = element.get_attr_val_for_layout(&ns!(), &source_attribute)?;
+        if source.is_empty() {
+            return None;
+        }
+        self.owner_doc_for_layout()
+            .unsafe_get()
+            .base_url()
+            .join(source)
+            .ok()
     }
 
     pub(crate) fn image_data(self) -> Option<(Option<Image>, Option<ImageMetadata>)> {

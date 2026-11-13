@@ -182,10 +182,15 @@ pub(crate) enum ReplacedContentKind {
 
 impl ReplacedContents {
     pub fn for_element(node: ServoLayoutNode<'_>, context: &LayoutContext) -> Option<Self> {
-        if let Some(ref data_attribute_string) = node.as_typeless_object_with_data_attribute() &&
-            let Some(url) = try_to_parse_image_data_url(data_attribute_string)
+        if let Some(url) = node.embedded_image_url() &&
+            (url.scheme() != "data" || try_to_parse_image_data_url(url.as_str()).is_some())
         {
-            return Self::from_resolved_image_url(node, context, &ServoArc::new(url), None);
+            let image_url = Url::parse(url.as_str()).expect("resolved embedded image URL");
+            if let Some(image) =
+                Self::from_resolved_image_url(node, context, &ServoArc::new(image_url), None)
+            {
+                return Some(image);
+            }
         }
 
         let (kind, natural_size) = {

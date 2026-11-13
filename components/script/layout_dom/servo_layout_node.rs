@@ -275,6 +275,10 @@ impl<'dom> LayoutNode<'dom> for ServoLayoutNode<'dom> {
         self.node.image_url()
     }
 
+    fn embedded_image_url(&self) -> Option<ServoUrl> {
+        self.node.embedded_image_url()
+    }
+
     fn image_density(&self) -> Option<f64> {
         self.node.image_density()
     }
