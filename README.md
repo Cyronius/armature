@@ -87,6 +87,9 @@ failed again on a focused rerun. The expanded selection also includes the 32 `ma
 An additional focused run of all 934 `css-overflow` tests after direct-line clamping and ellipsis support gained
 22.4 passing test-equivalents, including 21 previously failing `line-clamp` reftests and legacy shorthand parsing
 subtests, with no status regressions. These gains are not yet included in the full CSS score above.
+A later 324-test `line-clamp` rerun gained one more passing reftest after exporting the baseline of the last retained
+line from an inline block. The popover case changed from TIMEOUT to FAIL when experimental WPT runs enabled popovers;
+no previously passing test regressed. This gain is also outside the full CSS score above.
 A focused run of all 320 `css-conditional/container-queries` tests after enabling `@container` rules and post-layout
 query evaluation rose from 111.98 to 208.33 passing test-equivalents, up 96.35. It gained 449 passing subtests and
 lost six, while the same three tests timed out in both runs. These gains are also not yet included in the full CSS
@@ -364,7 +367,8 @@ Notes on the numbers:
 - **Direct-line `line-clamp`**: layout suppresses lines after the requested count, sizes the block to the retained
   lines and appends a default ellipsis when it fits after simple text. Stylo now parses `-webkit-line-clamp` in Servo
   so it participates correctly in the cascade (AS-524). A 934-test CSS Overflow run gains 22.4 passing
-  test-equivalents, including 21 reftests.
+  test-equivalents, including 21 reftests. Clamped inline blocks now export the last visible line's baseline, making
+  one more reftest pass in a 324-test `line-clamp` rerun.
 - **CSS container queries**: Stylo parses `@container` rules (AS-525), layout exposes the query container's content-box
   size and repeats style and layout when query results change, and script exposes `CSSContainerRule` with its
   conditions. The 320-test CSS Conditional container-query directory gains 96.35 passing test-equivalents.
