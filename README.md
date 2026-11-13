@@ -44,9 +44,6 @@ WebGL rerun.
 | Trusted Types | 249 | 86.7% | 89.2% | +2.6 | +85 |
 | Web Animations | 204 | 27.6% | 86.7% | +59.1 | +3,479 |
 
-A CSS-only rerun on 12 November 2026 at `cd542dc6879` selected 29,199 tests and scored **71.3%** (20,829.7
-test-equivalents passing, with eight skipped tests counted as nonpassing). This is one Armature run; the upstream
-comparison above remains the 7 November measurement.
 | Custom Elements | 203 | 76.1% | 79.5% | +3.4 | +156 |
 | Upgrade Insecure Requests | 197 | 73.6% | 73.1% | -0.5 | -6 |
 | DOM Parsing | 94 | 43.5% | 48.8% | +5.2 | +51 |
@@ -56,6 +53,10 @@ comparison above remains the 7 November measurement.
 | Scroll-driven Animations | 17 | 21.6% | 100.0% | +78.4 | +372 |
 | Everything else | 3,604 | 69.5% | 69.6% | +0.1 | +606 |
 | **Total** | **61,548** | **66.5%** | **69.5%** | **+2.9** | **+63,770** |
+
+A CSS-only rerun on 12 November 2026 at `cd542dc6879` selected 29,199 tests and scored **71.3%** (20,829.7
+test-equivalents passing, with eight skipped tests counted as nonpassing). This is one Armature run; the upstream
+comparison above remains the 7 November measurement.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -276,6 +277,9 @@ Notes on the numbers:
 - **SVG video posters**: `<video poster>` keeps an SVG image as a vector until layout knows its `object-fit` size,
   then rasterizes it at that size. All 30 previously failing SVG poster object-fit reftests and two related
   `object-position` reftests now pass, while the focused PNG poster regressions remain passing.
+- **Grid self alignment**: `self-start` and `self-end` align grid items to the physical sides of their own writing
+  mode, including vertical and right-to-left items. The CSS Grid alignment directory gains 1.74 passing
+  test-equivalents across five tests in a 454-test rerun, with no regressions against the earlier CSS-only run.
 - **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
   matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
   subtests newly pass across CSS Transforms and Web Animations.
