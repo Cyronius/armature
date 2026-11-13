@@ -58,8 +58,10 @@ A CSS-only rerun on 12 November 2026 at `cd542dc6879` selected 29,199 tests and 
 test-equivalents passing, with eight skipped tests counted as nonpassing). This is one Armature run; the upstream
 comparison above remains the 7 November measurement.
 
-Later targeted work on non-replaced `aspect-ratio` raised the `css-sizing/aspect-ratio` directory from 150.75 to
-194.375 passing test-equivalents out of 295 tests. The full CSS score has not been remeasured after that change.
+Work on non-replaced `aspect-ratio` raised the `css-sizing/aspect-ratio` directory from 150.75 to 211.594 passing
+test-equivalents out of 295 tests. A CSS rerun on 13 November selected 34,847 tests; restricted to the same 29,199
+test IDs as the 12 November run, it scored **71.6%** (20,914.5 test-equivalents passing, up 84.8). The expanded
+selection includes directories skipped by `include.ini` and is not used for this comparison.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -196,10 +198,11 @@ Notes on the numbers:
   `<ol start reversed>` and `<li value>`). Most of the others are parsed, computed, serialised and animated but not
   laid out. The previously run CSS tests have about 5,300 fewer failing subtests, and newly enabled parsing and
   animation directories add 6,807 passing subtests.
-- **CSS aspect-ratio sizing**: Non-replaced blocks and atomic inline boxes transfer definite width or height through
-  their preferred aspect ratio. The ratio-dependent block size retains its content-based automatic minimum, including
-  for flex containers and items. The targeted `css-sizing/aspect-ratio` run gains 43.625 passing test-equivalents
-  across 295 tests against the 12 November CSS baseline.
+- **CSS aspect-ratio sizing**: Non-replaced blocks, atomic inline boxes, and absolutely positioned boxes transfer
+  definite width or height through their preferred aspect ratio. The ratio-dependent size retains its content-based
+  automatic minimum where applicable, including for flex containers and items. Maximum block sizes also constrain
+  automatic inline sizes through the ratio in absolute positioning. The targeted `css-sizing/aspect-ratio` run gains
+  60.844 passing test-equivalents across 295 tests against the 12 November CSS baseline.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
@@ -723,7 +726,8 @@ Notes on the numbers:
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `subgrid` is parsed but not laid out.
 - The new aspect-ratio sizes expose three existing failures: `flex-wrap: balance` is ignored, and two grid-lanes
-  reftests do not size their tracks correctly. Their WPT expectations now record those failures.
+  reftests do not size their tracks correctly. Two radial-gradient masking reftests also fail after their absolutely
+  positioned aspect-ratio boxes gain height. Their WPT expectations now record those failures.
 - Web Animations: script animations on pseudo-elements beyond `::before` and `::after` are not yet applied; CSS
   functional pseudo-elements such as `::part()` and `::highlight()` are not yet supported; and
   changing `iterationComposite` on a CSS animation does not yet affect its style-generated keyframes.
