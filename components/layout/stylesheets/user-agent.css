@@ -45,7 +45,7 @@ legend, listing, main, p, plaintext, pre, summary, xmp {
 }
 
 blockquote, figure, listing, p, plaintext, pre, xmp {
-  margin-top: 1em; margin-bottom: 1em;
+  margin-block-start: 1em; margin-block-end: 1em;
 }
 
 blockquote, figure { margin-left: 40px; margin-right: 40px; }

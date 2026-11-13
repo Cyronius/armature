@@ -3089,7 +3089,15 @@ impl IndependentFormattingContext {
         let baseline_offset = self
             .pick_baseline(&fragment.baselines(container_writing_mode))
             .map(|baseline| pbm_sums.block_start + baseline)
-            .unwrap_or(size.block);
+            .unwrap_or_else(|| {
+                // Replaced inlines without a content baseline synthesize the
+                // central baseline from the middle of their margin box in vertical text.
+                if self.is_replaced() && container_writing_mode.is_text_vertical() {
+                    size.block.scale_by(0.5)
+                } else {
+                    size.block
+                }
+            });
 
         let (block_sizes, baseline_offset_in_parent) =
             self.get_block_sizes_and_baseline_offset(layout, size.block, baseline_offset);
