@@ -12,6 +12,7 @@ use super::cssconditionrule::CSSConditionRule;
 use super::csslayerblockrule::CSSLayerBlockRule;
 use super::cssrule::CSSRule;
 use super::cssrulelist::{CSSRuleList, RulesSource};
+use super::cssscoperule::CSSScopeRule;
 use super::cssstylerule::CSSStyleRule;
 use super::cssstylesheet::CSSStyleSheet;
 use crate::dom::bindings::codegen::Bindings::CSSGroupingRuleBinding::CSSGroupingRuleMethods;
@@ -44,6 +45,8 @@ impl CSSGroupingRule {
             let rules = if let Some(rule) = self.downcast::<CSSConditionRule>() {
                 rule.clone_rules()
             } else if let Some(rule) = self.downcast::<CSSLayerBlockRule>() {
+                rule.clone_rules()
+            } else if let Some(rule) = self.downcast::<CSSScopeRule>() {
                 rule.clone_rules()
             } else if let Some(rule) = self.downcast::<CSSStyleRule>() {
                 rule.ensure_rules()

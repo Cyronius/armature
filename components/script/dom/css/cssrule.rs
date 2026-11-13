@@ -23,6 +23,7 @@ use super::cssmediarule::CSSMediaRule;
 use super::cssnamespacerule::CSSNamespaceRule;
 use super::cssnesteddeclarations::CSSNestedDeclarations;
 use super::csspropertyrule::CSSPropertyRule;
+use super::cssscoperule::CSSScopeRule;
 use super::cssstylerule::CSSStyleRule;
 use super::cssstylesheet::CSSStyleSheet;
 use super::csssupportsrule::CSSSupportsRule;
@@ -78,6 +79,8 @@ impl CSSRule {
         } else if let Some(rule) = self.downcast::<CSSContainerRule>() {
             rule as &dyn SpecificCSSRule
         } else if let Some(rule) = self.downcast::<CSSLayerBlockRule>() {
+            rule as &dyn SpecificCSSRule
+        } else if let Some(rule) = self.downcast::<CSSScopeRule>() {
             rule as &dyn SpecificCSSRule
         } else if let Some(rule) = self.downcast::<CSSLayerStatementRule>() {
             rule as &dyn SpecificCSSRule
@@ -196,10 +199,16 @@ impl CSSRule {
                 s,
             )),
             StyleCssRule::Margin(_) => unimplemented!(), // TODO
-            StyleCssRule::Scope(_) => unimplemented!(),  // TODO
+            StyleCssRule::Scope(s) => DomRoot::upcast(CSSScopeRule::new(
+                cx,
+                window,
+                parent_rule,
+                parent_stylesheet,
+                s,
+            )),
             StyleCssRule::StartingStyle(_) => unimplemented!(), // TODO
-            StyleCssRule::PositionTry(_) => unimplemented!(), // TODO
-            StyleCssRule::CustomMedia(_) => unimplemented!(), // TODO
+            StyleCssRule::PositionTry(_) => unimplemented!(),   // TODO
+            StyleCssRule::CustomMedia(_) => unimplemented!(),   // TODO
             StyleCssRule::NestedDeclarations(s) => DomRoot::upcast(CSSNestedDeclarations::new(
                 cx,
                 window,
@@ -310,10 +319,14 @@ impl CSSRule {
                 }
             },
             StyleCssRule::Margin(_) => unimplemented!(), // TODO
-            StyleCssRule::Scope(_) => unimplemented!(),  // TODO
+            StyleCssRule::Scope(s) => {
+                if let Some(rule) = self.downcast::<CSSScopeRule>() {
+                    rule.update_rule(s.clone(), guard);
+                }
+            },
             StyleCssRule::StartingStyle(_) => unimplemented!(), // TODO
-            StyleCssRule::PositionTry(_) => unimplemented!(), // TODO
-            StyleCssRule::CustomMedia(_) => unimplemented!(), // TODO
+            StyleCssRule::PositionTry(_) => unimplemented!(),   // TODO
+            StyleCssRule::CustomMedia(_) => unimplemented!(),   // TODO
             StyleCssRule::NestedDeclarations(s) => {
                 if let Some(rule) = self.downcast::<CSSNestedDeclarations>() {
                     rule.update_rule(s.clone(), guard);

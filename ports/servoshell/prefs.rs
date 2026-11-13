@@ -48,6 +48,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "dom_webgpu_enabled",
     "layout_css_accent_color_enabled",
     "layout_css_appearance_enabled",
+    "layout_css_at_scope_enabled",
     "layout_css_backdrop_filter_enabled",
     "layout_css_basic_shape_shape_enabled",
     "layout_css_break_properties_enabled",
@@ -121,7 +122,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "layout_css_zoom_enabled",
     // These Stylo features are not in this list, because layout or the CSSOM does not support
     // them yet and asserts that they are disabled: layout_css_anchor_positioning_enabled,
-    // layout_css_appearance_base_enabled, layout_css_at_scope_enabled,
+    // layout_css_appearance_base_enabled,
     // layout_css_background_clip_border_area_enabled, layout_css_background_clip_text_enabled,
     // layout_css_custom_media_enabled, layout_css_display_grid_lanes_enabled,
     // layout_css_flexbox_balance_enabled, layout_css_font_palette_enabled,
