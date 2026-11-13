@@ -185,6 +185,10 @@ systems and named fallbacks, raised the 259-test `css-counter-styles` run from 9
 test-equivalents. The 225-test `css-lists` run gained another 4.0; neither directory had a status regression.
 Including these 54.0 focused gains, the projected comparable CSS score is **75.77%** (22,125.0 of 29,199
 test-equivalents); these gains have not yet been measured in a full CSS rerun.
+The required limited-range Japanese, Korean, and Chinese longhand counter styles added 48.0 more passing
+test-equivalents in a 484-test `css-counter-styles` and `css-lists` rerun, with no status regressions. The projected
+comparable CSS score is **75.94%** (22,173.0 of 29,199 test-equivalents); these focused gains also await a full CSS
+rerun.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -346,7 +350,8 @@ Notes on the numbers:
   `list-item` increments and generated counter content in tree order before parallel box construction. It renders
   common built-in styles, `symbols()` and named `@counter-style` systems, including additive systems, named fallbacks,
   styles scoped to shadow roots, and declarations from `::part` rules. Predefined Greek, kana, CJK, Armenian,
-  Georgian, and Hebrew representations are supported. The 866-test counter, list and generated-content rerun gained 195.6
+  Georgian, and Hebrew representations are supported, along with the required limited-range Japanese, Korean, and
+  Chinese longhand forms. The 866-test counter, list and generated-content rerun gained 195.6
   passing test-equivalents against the preceding full CSS run; a subsequent focused run fixed its one shadow-scoping
   regression and all four focused shadow-reference tests pass.
 - **Generated quote nesting**: Quote depth now follows generated content through the flattened element tree,
