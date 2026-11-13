@@ -4,6 +4,7 @@
 
 use std::ops::Deref;
 
+use style::logical_geometry::WritingMode;
 use style::properties::ComputedValues;
 use style::values::CustomIdent;
 use style::values::computed::{BorderSideWidth, GridTemplateAreas, LengthPercentage};
@@ -22,6 +23,7 @@ pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
     pub style: T,
     pub fragment_flags: FragmentFlags,
     grid_container_direction: Option<taffy::Direction>,
+    grid_container_writing_mode: Option<WritingMode>,
     grid_lanes_stacking_axis_is_horizontal: Option<bool>,
 }
 
@@ -31,6 +33,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
             style,
             fragment_flags,
             grid_container_direction: None,
+            grid_container_writing_mode: None,
             grid_lanes_stacking_axis_is_horizontal: None,
         }
     }
@@ -38,6 +41,42 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
     pub fn with_grid_container_direction(mut self, direction: taffy::Direction) -> Self {
         self.grid_container_direction = Some(direction);
         self
+    }
+
+    pub fn with_grid_container_writing_mode(mut self, writing_mode: WritingMode) -> Self {
+        self.grid_container_writing_mode = Some(writing_mode);
+        self
+    }
+
+    fn grid_axes_are_vertical(&self) -> bool {
+        // Orthogonal children are measured in their own physical axes by compute_child_layout.
+        self.grid_container_writing_mode
+            .unwrap_or(self.style.writing_mode)
+            .is_vertical()
+            && (self.grid_container_writing_mode.is_none() || self.style.writing_mode.is_vertical())
+    }
+
+    fn rect_in_grid_axes<U: Copy>(&self, rect: taffy::Rect<U>) -> taffy::Rect<U> {
+        let writing_mode = self
+            .grid_container_writing_mode
+            .unwrap_or(self.style.writing_mode);
+        if !self.grid_axes_are_vertical() {
+            return rect;
+        }
+        taffy::Rect {
+            left: rect.top,
+            right: rect.bottom,
+            top: if writing_mode.is_vertical_rl() {
+                rect.right
+            } else {
+                rect.left
+            },
+            bottom: if writing_mode.is_vertical_rl() {
+                rect.left
+            } else {
+                rect.right
+            },
+        }
     }
 
     pub fn with_grid_lanes_stacking_axis(mut self, horizontal: bool) -> Self {
@@ -71,7 +110,19 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
         // Taffy resolves self-relative alignment using direction only. Resolve it here so
         // vertical item writing modes choose the correct physical side as well.
         let writing_mode = self.style.writing_mode;
-        let item_start_at_end = if horizontal {
+        let container_mode = self.grid_container_writing_mode.unwrap_or(writing_mode);
+        let item_start_at_end = if container_mode.is_vertical() {
+            if horizontal {
+                writing_mode.is_vertical() && !writing_mode.is_inline_tb()
+            } else {
+                let item_start_at_right = if writing_mode.is_vertical() {
+                    writing_mode.is_vertical_rl()
+                } else {
+                    !writing_mode.is_bidi_ltr()
+                };
+                item_start_at_right == container_mode.is_vertical_lr()
+            }
+        } else if horizontal {
             if writing_mode.is_vertical() {
                 writing_mode.is_vertical_rl()
             } else {
@@ -126,9 +177,17 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
     #[inline]
     fn overflow(&self) -> taffy::Point<taffy::Overflow> {
         let box_styles = self.style.get_box();
-        taffy::Point {
+        let overflow = taffy::Point {
             x: convert::overflow(box_styles.overflow_x),
             y: convert::overflow(box_styles.overflow_y),
+        };
+        if self.grid_axes_are_vertical() {
+            taffy::Point {
+                x: overflow.y,
+                y: overflow.x,
+            }
+        } else {
+            overflow
         }
     }
 
@@ -156,38 +215,62 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
     #[inline]
     fn inset(&self) -> taffy::Rect<taffy::LengthPercentageAuto> {
         let position_styles = self.style.get_position();
-        taffy::Rect {
+        self.rect_in_grid_axes(taffy::Rect {
             left: convert::inset(&position_styles.left),
             right: convert::inset(&position_styles.right),
             top: convert::inset(&position_styles.top),
             bottom: convert::inset(&position_styles.bottom),
-        }
+        })
     }
 
     #[inline]
     fn size(&self) -> taffy::Size<taffy::Dimension> {
         let position_styles = self.style.get_position();
-        taffy::Size {
+        let size = taffy::Size {
             width: convert::dimension(&position_styles.width),
             height: convert::dimension(&position_styles.height),
+        };
+        if self.grid_axes_are_vertical() {
+            taffy::Size {
+                width: size.height,
+                height: size.width,
+            }
+        } else {
+            size
         }
     }
 
     #[inline]
     fn min_size(&self) -> taffy::Size<taffy::LengthPercentageAuto> {
         let position_styles = self.style.get_position();
-        taffy::Size {
+        let size = taffy::Size {
             width: convert::min_size(&position_styles.min_width),
             height: convert::min_size(&position_styles.min_height),
+        };
+        if self.grid_axes_are_vertical() {
+            taffy::Size {
+                width: size.height,
+                height: size.width,
+            }
+        } else {
+            size
         }
     }
 
     #[inline]
     fn max_size(&self) -> taffy::Size<taffy::LengthPercentageAuto> {
         let position_styles = self.style.get_position();
-        taffy::Size {
+        let size = taffy::Size {
             width: convert::max_size(&position_styles.max_width),
             height: convert::max_size(&position_styles.max_height),
+        };
+        if self.grid_axes_are_vertical() {
+            taffy::Size {
+                width: size.height,
+                height: size.width,
+            }
+        } else {
+            size
         }
     }
 
@@ -199,23 +282,23 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
     #[inline]
     fn margin(&self) -> taffy::Rect<taffy::LengthPercentageAuto> {
         let margin_styles = self.style.get_margin();
-        taffy::Rect {
+        self.rect_in_grid_axes(taffy::Rect {
             left: convert::margin(&margin_styles.margin_left),
             right: convert::margin(&margin_styles.margin_right),
             top: convert::margin(&margin_styles.margin_top),
             bottom: convert::margin(&margin_styles.margin_bottom),
-        }
+        })
     }
 
     #[inline]
     fn padding(&self) -> taffy::Rect<taffy::LengthPercentage> {
         let padding_styles = self.style.get_padding();
-        taffy::Rect {
+        self.rect_in_grid_axes(taffy::Rect {
             left: convert::length_percentage(&padding_styles.padding_left.0),
             right: convert::length_percentage(&padding_styles.padding_right.0),
             top: convert::length_percentage(&padding_styles.padding_top.0),
             bottom: convert::length_percentage(&padding_styles.padding_bottom.0),
-        }
+        })
     }
 
     #[inline]
@@ -228,12 +311,12 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
                 width.0.to_f32_px()
             })
         };
-        taffy::Rect {
+        self.rect_in_grid_axes(taffy::Rect {
             left: resolve(&border.border_left_width, border.border_left_style),
             right: resolve(&border.border_right_width, border.border_right_style),
             top: resolve(&border.border_top_width, border.border_top_style),
             bottom: resolve(&border.border_bottom_width, border.border_bottom_style),
-        }
+        })
     }
 }
 

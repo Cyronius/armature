@@ -377,7 +377,8 @@ impl taffy::LayoutGridContainer for TaffyContainerContext<'_> {
             taffy::Direction::Rtl
         };
         let mut style = TaffyStyloStyle::new(stylo_style, fragment_flags)
-            .with_grid_container_direction(direction);
+            .with_grid_container_direction(direction)
+            .with_grid_container_writing_mode(self.style.writing_mode);
         if self.style.get_display().inside() == DisplayInside::GridLanes {
             style = style.with_grid_lanes_stacking_axis(grid_lanes_use_rows(self.style));
         }
@@ -502,7 +503,12 @@ impl TaffyContainer {
         let container_style = &content_box_size_override.style;
         let align_items = container_style.get_align_items();
         let justify_items = container_style.get_justify_items();
-        let pbm = self.layout_style().padding_border_margin(containing_block);
+        let pbm = self
+            .layout_style()
+            .padding_border_margin_with_writing_mode_and_containing_block_inline_size(
+                container_style.writing_mode,
+                containing_block.size.inline,
+            );
 
         let known_dimensions = taffy::Size {
             width: Some(
@@ -785,7 +791,7 @@ impl TaffyContainer {
             }
         }
 
-        let writing_mode = containing_block.style.writing_mode;
+        let writing_mode = container_style.writing_mode;
         let physical_padding = pbm.padding.to_physical(writing_mode);
         let physical_border = pbm.border.to_physical(writing_mode);
         let content_box_offset = PhysicalVec::new(
@@ -802,8 +808,28 @@ impl TaffyContainer {
             .map(|child| (**child).borrow_mut())
             .enumerate()
             .map(|(child_id, mut child)| {
-                fn rect_to_physical_sides<T>(rect: taffy::Rect<T>) -> PhysicalSides<T> {
-                    PhysicalSides::new(rect.top, rect.right, rect.bottom, rect.left)
+                fn rect_to_physical_sides<T: Copy>(
+                    rect: taffy::Rect<T>,
+                    writing_mode: style::logical_geometry::WritingMode,
+                ) -> PhysicalSides<T> {
+                    if writing_mode.is_vertical() {
+                        PhysicalSides::new(
+                            rect.left,
+                            if writing_mode.is_vertical_rl() {
+                                rect.top
+                            } else {
+                                rect.bottom
+                            },
+                            rect.right,
+                            if writing_mode.is_vertical_rl() {
+                                rect.bottom
+                            } else {
+                                rect.top
+                            },
+                        )
+                    } else {
+                        PhysicalSides::new(rect.top, rect.right, rect.bottom, rect.left)
+                    }
                 }
 
                 fn size_and_pos_to_logical_rect<T: Default>(
@@ -817,21 +843,34 @@ impl TaffyContainer {
                 }
 
                 let layout = &child.taffy_layout;
+                let child_sides_mode =
+                    if writing_mode.is_vertical() && !child.style.writing_mode.is_vertical() {
+                        style::logical_geometry::WritingMode::horizontal_tb()
+                    } else {
+                        writing_mode
+                    };
 
-                let padding = rect_to_physical_sides(layout.padding.map(Au::from_f32_px));
-                let border = rect_to_physical_sides(layout.border.map(Au::from_f32_px));
-                let margin = rect_to_physical_sides(layout.margin.map(Au::from_f32_px));
+                let padding =
+                    rect_to_physical_sides(layout.padding.map(Au::from_f32_px), child_sides_mode);
+                let border =
+                    rect_to_physical_sides(layout.border.map(Au::from_f32_px), child_sides_mode);
+                let margin =
+                    rect_to_physical_sides(layout.margin.map(Au::from_f32_px), child_sides_mode);
 
                 // Compute content box size and position.
                 //
                 // For the x/y position we have to correct for the difference between the
                 // content box and the border box for both the parent and the child.
-                let content_size = size_and_pos_to_logical_rect(
+                let logical_content_rect = size_and_pos_to_logical_rect(
                     taffy::Point {
+                        // Taffy's x origin stays at the physical left or top in RTL.
                         x: Au::from_f32_px(
                             layout.location.x + layout.padding.left + layout.border.left,
-                        ) - pbm.padding.inline_start -
-                            pbm.border.inline_start,
+                        ) - if !writing_mode.is_bidi_ltr() {
+                            pbm.padding.inline_end + pbm.border.inline_end
+                        } else {
+                            pbm.padding.inline_start + pbm.border.inline_start
+                        },
                         y: Au::from_f32_px(
                             layout.location.y + layout.padding.top + layout.border.top,
                         ) - pbm.padding.block_start -
@@ -851,6 +890,39 @@ impl TaffyContainer {
                     }
                     .map(Au::from_f32_px),
                 );
+                let content_size = if container_style.writing_mode.is_vertical() {
+                    let block_size = content_box_size_override
+                        .size
+                        .block
+                        .to_definite()
+                        .unwrap_or_else(|| {
+                            Au::from_f32_px(output.size.height) - pbm.padding_border_sums.block
+                        });
+                    let block_start = logical_content_rect.origin.y;
+                    let orthogonal_child = !child.style.writing_mode.is_vertical();
+                    let block_extent = if orthogonal_child {
+                        logical_content_rect.size.width
+                    } else {
+                        logical_content_rect.size.height
+                    };
+                    PhysicalRect::new(
+                        PhysicalPoint::new(
+                            if container_style.writing_mode.is_vertical_rl() {
+                                block_size - block_start - block_extent
+                            } else {
+                                block_start
+                            },
+                            logical_content_rect.origin.x,
+                        ),
+                        if orthogonal_child {
+                            logical_content_rect.size
+                        } else {
+                            PhysicalSize::new(block_extent, logical_content_rect.size.width)
+                        },
+                    )
+                } else {
+                    logical_content_rect
+                };
 
                 let child_specific_layout_info: Option<SpecificLayoutInfo> =
                     std::mem::take(&mut container_ctx.child_specific_layout_infos[child_id]);
