@@ -370,6 +370,28 @@ impl FlexContainerConfig {
 }
 
 impl FlexContext<'_> {
+    /// Available cross-axis space for an item when `flex-line-count` reserves
+    /// multiple lines. Percentages still resolve against the full container.
+    fn item_cross_stretch_size(&self, item_pbm: Au) -> Option<Au> {
+        let line_count = self.containing_block.style.get_position().flex_line_count;
+        if self.config.container_is_single_line ||
+            !self.config.flex_wrap.contains(FlexWrap::BALANCE) ||
+            line_count <= 1
+        {
+            return None;
+        }
+        let cross_size = self.container_inner_size_constraint.cross.to_definite()?;
+        let cross_gap = match self.config.flex_axis {
+            FlexAxis::Row => self.containing_block.style.get_row_gap(),
+            FlexAxis::Column => self.containing_block.style.get_column_gap(),
+        };
+        let cross_gap = match cross_gap {
+            LengthPercentageOrNormal::LengthPercentage(value) => value.to_used_value(cross_size),
+            LengthPercentageOrNormal::Normal => Au::zero(),
+        };
+        Some(((cross_size - cross_gap * (line_count - 1)) / line_count - item_pbm).max(Au::zero()))
+    }
+
     #[inline]
     fn sides_to_flow_relative<T>(&self, x: FlexRelativeSides<T>) -> LogicalSides<T> {
         self.config.sides_to_flow_relative(x)
@@ -459,6 +481,7 @@ impl FlexContainer {
         );
         let mut sizes = ContentSizes::zero();
         let mut depends_on_block_constraints = false;
+        let mut balanced_cross_sizes = Vec::new();
         for kid in self.children.iter() {
             let kid = &*kid.borrow();
             match kid {
@@ -475,10 +498,32 @@ impl FlexContainer {
                         false, /* skippable_for_block_percentage_quirk */
                     );
                     sizes.max_assign(result.sizes);
+                    if self.config.flex_wrap.contains(FlexWrap::BALANCE) {
+                        balanced_cross_sizes.push(result.sizes.max_content);
+                    }
                     depends_on_block_constraints |= result.depends_on_block_constraints;
                 },
                 FlexLevelBox::OutOfFlowAbsolutelyPositionedBox(_) => {},
             }
+        }
+        if !balanced_cross_sizes.is_empty() {
+            // Each balanced line contributes its widest item to the intrinsic
+            // cross size. The largest contributions bound the sum when the
+            // stacking order is not yet known during intrinsic sizing.
+            balanced_cross_sizes.sort_unstable_by(|left, right| right.cmp(left));
+            let line_count = (self.style.get_position().flex_line_count as usize)
+                .min(balanced_cross_sizes.len());
+            let cross_gap = match self.style.get_column_gap() {
+                LengthPercentageOrNormal::LengthPercentage(value) => {
+                    value.to_used_value(Au::zero())
+                },
+                LengthPercentageOrNormal::Normal => Au::zero(),
+            };
+            sizes.max_content = balanced_cross_sizes[..line_count]
+                .iter()
+                .copied()
+                .sum::<Au>() +
+                cross_gap * (line_count as i32 - 1);
         }
         InlineContentSizesResult {
             sizes,
@@ -572,6 +617,7 @@ impl FlexContainer {
             Au::zero()
         };
         let mut container_depends_on_block_constraints = false;
+        let mut balanced_item_sizes = Vec::new();
 
         for FlexItemBoxInlineContentSizesInfo {
             outer_flex_base_size,
@@ -588,11 +634,15 @@ impl FlexContainer {
             // > floored by the min main size.
             // > 5. The flex container’s max-content size is the largest sum (among all the lines) of the
             // > afore-calculated sizes of all items within a single line.
-            container_max_content_size += (*outer_flex_base_size +
+            let max_content_contribution = (*outer_flex_base_size +
                 Au::from_f32_px(
                     max_flex_factors.flex_grow_or_shrink_factor * chosen_max_flex_fraction,
                 ))
             .clamp_between_extremums(*outer_min_main_size, *outer_max_main_size);
+            container_max_content_size += max_content_contribution;
+            if self.config.flex_wrap.contains(FlexWrap::BALANCE) {
+                balanced_item_sizes.push(max_content_contribution.0.max(0) as i64);
+            }
 
             // > The min-content main size of a single-line flex container is calculated
             // > identically to the max-content main size, except that the flex items’
@@ -616,6 +666,13 @@ impl FlexContainer {
             }
 
             container_depends_on_block_constraints |= depends_on_block_constraints;
+        }
+
+        if self.config.flex_wrap.contains(FlexWrap::BALANCE) && !balanced_item_sizes.is_empty() {
+            let line_count =
+                (self.style.get_position().flex_line_count as usize).min(balanced_item_sizes.len());
+            container_max_content_size =
+                minimum_balanced_main_size(&balanced_item_sizes, line_count, main_gap);
         }
 
         InlineContentSizesResult {
@@ -1057,6 +1114,41 @@ impl FlexContainer {
             });
         }
     }
+}
+
+/// Find the smallest main size that fits the items on at most `line_count`
+/// contiguous lines. A line can always be split to reach the exact count.
+fn minimum_balanced_main_size(item_sizes: &[i64], line_count: usize, gap: Au) -> Au {
+    let gap = gap.0 as i64;
+    let mut lower = *item_sizes.iter().max().unwrap();
+    let mut upper = item_sizes.iter().sum::<i64>() + gap * (item_sizes.len() as i64 - 1);
+    while lower < upper {
+        let candidate = lower + (upper - lower) / 2;
+        let mut lines = 1;
+        let mut line_size = 0;
+        let mut items_on_line = 0;
+        for &item_size in item_sizes {
+            let next_size = if items_on_line == 0 {
+                item_size
+            } else {
+                line_size + gap + item_size
+            };
+            if next_size > candidate {
+                lines += 1;
+                line_size = item_size;
+                items_on_line = 1;
+            } else {
+                line_size = next_size;
+                items_on_line += 1;
+            }
+        }
+        if lines <= line_count {
+            upper = candidate;
+        } else {
+            lower = candidate + 1;
+        }
+    }
+    Au::new(lower.min(i32::MAX as i64) as i32)
 }
 
 /// Align all flex lines per `align-content` according to
@@ -1953,8 +2045,11 @@ impl FlexItem<'_> {
                 None => {
                     let inline_stretch_size =
                         containing_block.inline_stretch_size(self.pbm_auto_is_zero.main);
-                    let block_stretch_size =
-                        containing_block.block_stretch_size(self.pbm_auto_is_zero.cross);
+                    let block_stretch_size = flex_context
+                        .item_cross_stretch_size(self.pbm_auto_is_zero.cross)
+                        .or_else(|| {
+                            containing_block.block_stretch_size(self.pbm_auto_is_zero.cross)
+                        });
                     let tentative_block_content_size = independent_formatting_context
                         .tentative_block_content_size(
                             self.preferred_aspect_ratio,
@@ -1981,8 +2076,9 @@ impl FlexItem<'_> {
             (used_main_size, cross_size)
         } else {
             let cross_size = used_cross_size_override.unwrap_or_else(|| {
-                let stretch_size =
-                    containing_block.inline_stretch_size(self.pbm_auto_is_zero.cross);
+                let stretch_size = flex_context
+                    .item_cross_stretch_size(self.pbm_auto_is_zero.cross)
+                    .or_else(|| containing_block.inline_stretch_size(self.pbm_auto_is_zero.cross));
                 self.content_cross_sizes.resolve(
                     LogicalAxis::Inline,
                     Size::FitContent,
@@ -2029,7 +2125,9 @@ impl FlexItem<'_> {
         } else if let Some(cross_size) = used_cross_size_override {
             cross_size.into()
         } else {
-            let stretch_size = containing_block.block_stretch_size(self.pbm_auto_is_zero.cross);
+            let stretch_size = flex_context
+                .item_cross_stretch_size(self.pbm_auto_is_zero.cross)
+                .or_else(|| containing_block.block_stretch_size(self.pbm_auto_is_zero.cross));
             LazySize::new(
                 &self.content_cross_sizes,
                 LogicalAxis::Block,
@@ -2855,8 +2953,12 @@ impl FlexItemBox {
             // container's writing mode.
             let inline_size = {
                 let stretch_size = flex_context
-                    .containing_block
-                    .inline_stretch_size(pbm_auto_is_zero.cross);
+                    .item_cross_stretch_size(pbm_auto_is_zero.cross)
+                    .or_else(|| {
+                        flex_context
+                            .containing_block
+                            .inline_stretch_size(pbm_auto_is_zero.cross)
+                    });
                 let get_content_size = || {
                     self.inline_content_sizes(
                         flex_context,
