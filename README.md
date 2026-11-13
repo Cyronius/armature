@@ -100,6 +100,10 @@ test-equivalents on the same test IDs as the expanded CSS baseline. The 12 direc
 with every subtest passing. The property directory remains excluded by `include.ini`; the 12 direct suites are now
 included. These focused gains are not yet included in a full CSS rerun. Five property files still error while
 constructing unsupported `<position>` values; many other property subtests need `computedStyleMap()`.
+Enabling the existing popover API for experimental WPT runs and using the initial containing block as a top-layer
+box's static-position rectangle raised a focused 278-test CSS Position and CSS Containment set from 150.54 to
+158.54 passing test-equivalents. Four of the eight newly passing tests are in the default CSS selection; the four
+content-visibility tests are excluded by `include.ini`. These gains are not yet included in a full CSS rerun.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -244,6 +248,9 @@ Notes on the numbers:
 - **Absolute positioning in block flow**: The static-position rectangle now spans the parent block's inline size,
   and its child uses `justify-self` and `align-self` when both insets in an axis are `auto`. This makes two
   `css-align/abspos` reftests pass.
+- **Top-layer static position**: Open popovers use the initial containing block as their static-position rectangle.
+  Experimental WPT runs enable the existing popover API. Four CSS Position reftests now pass; vertical writing-mode
+  variants still expose a separate root-flow placement issue.
 - **SVG fill-box transform origins**: Inline SVG rasterization resolves percentage `transform-origin` values against
   the source element's fill box when `transform-box: fill-box` is selected. All 46
   `svg-origin-relative-length` reftests and one `transform-box` reftest now pass.
