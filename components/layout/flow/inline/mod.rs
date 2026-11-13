@@ -147,7 +147,7 @@ use crate::geom::{LogicalRect, LogicalSides1D, LogicalVec2, ToLogical};
 use crate::layout_box_base::LayoutBoxBase;
 use crate::positioned::{AbsolutelyPositionedBox, PositioningContext};
 use crate::sizing::{ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult};
-use crate::style_ext::{ComputedValuesExt, PaddingBorderMargin};
+use crate::style_ext::{ComputedValuesExt, LayoutStyle, PaddingBorderMargin};
 use crate::{ConstraintSpace, ContainingBlock, IndefiniteContainingBlock, SharedStyle};
 
 // From gfxFontConstants.h in Firefox.
@@ -2410,11 +2410,40 @@ impl InlineFormattingContext {
             style.writing_mode.is_bidi_ltr() &&
             !line_clamp.webkit_legacy
         {
-            if let Some(max_lines) = line_clamp
+            let specified_max_lines = line_clamp
                 .max_lines
                 .lines_value()
-                .and_then(|lines| usize::try_from(lines.0).ok())
-            {
+                .and_then(|lines| usize::try_from(lines.0).ok());
+            let max_lines = if line_clamp.max_lines.is_auto() {
+                let block_sizes = LayoutStyle::Default(style)
+                    .content_box_sizes_and_padding_border_margin(&containing_block.into())
+                    .content_box_sizes
+                    .block;
+                let max_block_size = block_sizes
+                    .preferred
+                    .to_numeric()
+                    .or_else(|| block_sizes.max.to_numeric())
+                    .map(|size| {
+                        size.min(block_sizes.max.to_numeric().unwrap_or(size))
+                            .max(block_sizes.min.to_numeric().unwrap_or_default())
+                    });
+                max_block_size.map(|max_block_size| {
+                    layout
+                        .fragments
+                        .iter()
+                        .filter_map(|fragment| match fragment {
+                            Fragment::Positioning(line) if line.is_line_box() => {
+                                Some(line.base.rect())
+                            },
+                            _ => None,
+                        })
+                        .take_while(|rect| rect.origin.y + rect.size.height <= max_block_size)
+                        .count()
+                })
+            } else {
+                specified_max_lines
+            };
+            if let Some(max_lines) = max_lines {
                 let mut line_count = 0;
                 let mut clamp_at = None;
                 for (index, fragment) in layout.fragments.iter().enumerate() {
@@ -2430,7 +2459,11 @@ impl InlineFormattingContext {
                     }
                 }
                 if line_count > max_lines {
-                    if let Some((index, rect)) = clamp_at {
+                    if max_lines == 0 {
+                        layout.fragments.clear();
+                        layout.placement_state.current_block_direction_position = Au::zero();
+                        layout.placement_state.inflow_baselines = Baselines::default();
+                    } else if let Some((index, rect)) = clamp_at {
                         layout.fragments.truncate(index + 1);
                         layout.placement_state.current_block_direction_position =
                             rect.origin.y + rect.size.height;
