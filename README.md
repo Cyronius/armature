@@ -189,6 +189,11 @@ The required limited-range Japanese, Korean, and Chinese longhand counter styles
 test-equivalents in a 484-test `css-counter-styles` and `css-lists` rerun, with no status regressions. The projected
 comparable CSS score is **75.94%** (22,173.0 of 29,199 test-equivalents); these focused gains also await a full CSS
 rerun.
+Applying custom `@counter-style` marker prefixes and suffixes raised the 484-test `css-counter-styles` and `css-lists`
+run by another 16.0 passing test-equivalents with no status regressions. A focused 382-test CSS2 Lists and Generated
+Content run after the counter-style changes gained 9.0 more test-equivalents against the last full CSS run, also with
+no regressions. These disjoint gains project a comparable CSS score of **76.02%** (22,198.0 of 29,199
+test-equivalents); a full CSS rerun has not yet measured them.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -349,9 +354,9 @@ Notes on the numbers:
 - **CSS counters and counter styles**: Layout resolves `counter-reset`, `counter-increment`, `counter-set`, implicit
   `list-item` increments and generated counter content in tree order before parallel box construction. It renders
   common built-in styles, `symbols()` and named `@counter-style` systems, including additive systems, named fallbacks,
-  styles scoped to shadow roots, and declarations from `::part` rules. Predefined Greek, kana, CJK, Armenian,
-  Georgian, and Hebrew representations are supported, along with the required limited-range Japanese, Korean, and
-  Chinese longhand forms. The 866-test counter, list and generated-content rerun gained 195.6
+  marker prefixes and suffixes, styles scoped to shadow roots, and declarations from `::part` rules. Predefined Greek,
+  kana, CJK, Armenian, Georgian, and Hebrew representations are supported, along with the required limited-range
+  Japanese, Korean, and Chinese longhand forms. The 866-test counter, list and generated-content rerun gained 195.6
   passing test-equivalents against the preceding full CSS run; a subsequent focused run fixed its one shadow-scoping
   regression and all four focused shadow-reference tests pass.
 - **Generated quote nesting**: Quote depth now follows generated content through the flattened element tree,
