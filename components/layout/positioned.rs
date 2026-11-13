@@ -631,27 +631,28 @@ impl IndependentFormattingContext {
 
         // The block size can depend on layout results, so we only solve it tentatively,
         // we may have to resolve it properly later on.
-        let block_automatic_size = block_axis_solver.automatic_size();
+        let mut block_automatic_size = block_axis_solver.automatic_size();
         let block_stretch_size = Some(block_axis_solver.stretch_size());
         let inline_stretch_size = Some(inline_axis_solver.stretch_size());
         let tentative_block_content_size =
             self.tentative_block_content_size(preferred_aspect_ratio, inline_stretch_size);
-        let tentative_block_size = if let Some(block_content_size) = tentative_block_content_size {
-            SizeConstraint::Definite(block_axis_solver.computed_sizes.resolve(
-                LogicalAxis::Block,
-                block_automatic_size,
-                Au::zero,
-                block_stretch_size,
-                || block_content_size,
-                is_table,
-            ))
-        } else {
-            block_axis_solver.computed_sizes.resolve_extrinsic(
-                block_automatic_size,
-                Au::zero(),
-                block_stretch_size,
-            )
-        };
+        let mut tentative_block_size =
+            if let Some(block_content_size) = tentative_block_content_size {
+                SizeConstraint::Definite(block_axis_solver.computed_sizes.resolve(
+                    LogicalAxis::Block,
+                    block_automatic_size,
+                    Au::zero,
+                    block_stretch_size,
+                    || block_content_size,
+                    is_table,
+                ))
+            } else {
+                block_axis_solver.computed_sizes.resolve_extrinsic(
+                    block_automatic_size,
+                    Au::zero(),
+                    block_stretch_size,
+                )
+            };
 
         // The inline axis can be fully resolved, computing intrinsic sizes using the
         // extrinsic block size.
@@ -661,14 +662,66 @@ impl IndependentFormattingContext {
             self.inline_content_sizes(layout_context, &constraint_space)
                 .sizes
         };
-        let inline_size = inline_axis_solver.computed_sizes.resolve(
+        let mut inline_automatic_size = inline_axis_solver.automatic_size();
+        if !self.is_replaced() &&
+            inline_axis_solver.computed_sizes.preferred.is_initial() &&
+            !block_axis_solver.computed_sizes.preferred.is_initial() &&
+            let (Some(ratio), Some(block_size)) =
+                (preferred_aspect_ratio, tentative_block_size.to_definite())
+        {
+            let mut transferred_size = ratio
+                .compute_dependent_size(LogicalAxis::Inline, block_size)
+                .max(Au::zero());
+            if inline_axis_solver.computed_sizes.min.is_initial() &&
+                !style.establishes_scroll_container(self.base.base_fragment_info.flags)
+            {
+                transferred_size = transferred_size.max(get_inline_content_size().min_content);
+            }
+            inline_automatic_size = Size::Numeric(transferred_size);
+        }
+        let mut inline_size = inline_axis_solver.computed_sizes.resolve(
             LogicalAxis::Inline,
-            inline_axis_solver.automatic_size(),
+            inline_automatic_size,
             Au::zero,
             inline_stretch_size,
             get_inline_content_size,
             is_table,
         );
+
+        // A maximum block size can constrain an automatic inline size through the
+        // preferred aspect ratio, even when the automatic inline size stretches.
+        if !self.is_replaced() &&
+            inline_axis_solver.computed_sizes.preferred.is_initial() &&
+            block_axis_solver.computed_sizes.preferred.is_initial() &&
+            let Some(ratio) = preferred_aspect_ratio &&
+            let (_, _, Some(max_block_size)) = block_axis_solver
+                .computed_sizes
+                .resolve_each_extrinsic(block_automatic_size, Au::zero(), block_stretch_size)
+        {
+            inline_size = inline_size.min(
+                ratio
+                    .compute_dependent_size(LogicalAxis::Inline, max_block_size)
+                    .max(Au::zero()),
+            );
+        }
+
+        if !self.is_replaced() &&
+            block_axis_solver.computed_sizes.preferred.is_initial() &&
+            let Some(ratio) = preferred_aspect_ratio
+        {
+            block_automatic_size = Size::Numeric(
+                ratio
+                    .compute_dependent_size(LogicalAxis::Block, inline_size)
+                    .max(Au::zero()),
+            );
+            if !self.is_flex() {
+                tentative_block_size = block_axis_solver.computed_sizes.resolve_extrinsic(
+                    block_automatic_size,
+                    Au::zero(),
+                    block_stretch_size,
+                );
+            }
+        }
 
         let containing_block_for_children = ContainingBlock {
             size: ContainingBlockSize {
@@ -680,7 +733,7 @@ impl IndependentFormattingContext {
         // TODO: https://drafts.csswg.org/css-writing-modes/#orthogonal-flows
 
         let mut positioning_context = PositioningContext::default();
-        let lazy_block_size = LazySize::new(
+        let mut lazy_block_size = LazySize::new(
             &block_axis_solver.computed_sizes,
             LogicalAxis::Block,
             block_automatic_size,
@@ -688,6 +741,14 @@ impl IndependentFormattingContext {
             block_stretch_size,
             is_table,
         );
+        if block_axis_solver.computed_sizes.preferred.is_initial() &&
+            block_axis_solver.computed_sizes.min.is_initial() &&
+            preferred_aspect_ratio.is_some() &&
+            !self.is_replaced() &&
+            !style.establishes_scroll_container(self.base.base_fragment_info.flags)
+        {
+            lazy_block_size = lazy_block_size.with_content_based_auto_minimum();
+        }
 
         let containing_block = &containing_block.into();
         let (layout, is_cached) = self.layout_and_is_cached(
