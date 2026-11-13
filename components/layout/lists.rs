@@ -4,7 +4,7 @@
 
 use layout_api::LayoutNode;
 use script::layout_dom::ServoLayoutNode;
-use style::counter_style::{CounterStyle, Symbol, SymbolsType, System};
+use style::counter_style::{AdditiveTuple, CounterStyle, Symbol, SymbolsType, System};
 use style::properties::LonghandId;
 use style::properties::longhands::list_style_type::computed_value::T as ListStyleType;
 use style::stylesheets::Origin;
@@ -137,6 +137,13 @@ fn generate_counter_representation_with_depth(
                     depth + 1,
                 );
             }
+            if let System::Additive = rule.resolved_system() {
+                if let Some(tuples) = &rule.descriptors().additive_symbols {
+                    if let Some(representation) = additive_symbols(value, &tuples.0) {
+                        return representation;
+                    }
+                }
+            }
             if let Some(symbols) = &rule.descriptors().symbols {
                 let symbols = &symbols.0;
                 let representation = match rule.resolved_system() {
@@ -169,6 +176,17 @@ fn generate_counter_representation_with_depth(
                     return representation;
                 }
             }
+            if let Some(fallback) = &rule.descriptors().fallback {
+                return generate_counter_representation_with_depth(
+                    context,
+                    node,
+                    property,
+                    &CounterStyle::Name(fallback.0.clone()),
+                    value,
+                    depth + 1,
+                );
+            }
+            return value.to_string();
         }
     }
     match counter_style {
@@ -189,8 +207,29 @@ fn generate_counter_representation_with_depth(
             atom!("upper-alpha") | atom!("upper-latin") => {
                 alphabetic(value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
             },
+            atom!("lower-greek") => alphabetic(value, "αβγδεζηθικλμνξοπρστυφχψω"),
+            atom!("hiragana") => alphabetic(
+                value,
+                "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわゐゑをん",
+            ),
+            atom!("hiragana-iroha") => alphabetic(
+                value,
+                "いろはにほへとちりぬるをわかよたれそつねならむうゐのおくやまけふこえてあさきゆめみしゑひもせす",
+            ),
+            atom!("katakana") => alphabetic(
+                value,
+                "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヰヱヲン",
+            ),
+            atom!("katakana-iroha") => alphabetic(
+                value,
+                "イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセス",
+            ),
             atom!("lower-roman") => roman(value, false),
             atom!("upper-roman") => roman(value, true),
+            atom!("armenian") | atom!("upper-armenian") => armenian(value, false),
+            atom!("lower-armenian") => armenian(value, true),
+            atom!("georgian") => georgian(value),
+            atom!("hebrew") => hebrew(value),
             atom!("arabic-indic") => decimal_digits(value, '\u{660}'),
             atom!("bengali") => decimal_digits(value, '\u{9E6}'),
             atom!("cambodian") | atom!("khmer") => decimal_digits(value, '\u{17E0}'),
@@ -208,14 +247,7 @@ fn generate_counter_representation_with_depth(
             atom!("telugu") => decimal_digits(value, '\u{C66}'),
             atom!("thai") => decimal_digits(value, '\u{E50}'),
             atom!("tibetan") => decimal_digits(value, '\u{F20}'),
-            atom!("cjk-decimal") |
-            atom!("cjk-earthly-branch") |
-            atom!("cjk-heavenly-stem") |
-            atom!("japanese-informal")
-                if value == 0 =>
-            {
-                "\u{3007}".into()
-            },
+            atom!("japanese-informal") if value == 0 => "\u{3007}".into(),
             atom!("korean-hangul-formal") if value == 0 => "\u{C601}".into(),
             atom!("korean-hanja-informal") |
             atom!("korean-hanja-formal") |
@@ -228,6 +260,13 @@ fn generate_counter_representation_with_depth(
                 if value == 0 =>
             {
                 "\u{96F6}".into()
+            },
+            atom!("cjk-decimal") if value >= 0 => decimal_symbols(value, "〇一二三四五六七八九"),
+            atom!("cjk-earthly-branch") => {
+                fixed_symbols(value, "子丑寅卯辰巳午未申酉戌亥", "〇一二三四五六七八九")
+            },
+            atom!("cjk-heavenly-stem") => {
+                fixed_symbols(value, "甲乙丙丁戊己庚辛壬癸", "〇一二三四五六七八九")
             },
             _ => value.to_string(),
         },
@@ -261,6 +300,157 @@ fn decimal_digits(value: i32, zero: char) -> String {
                 .unwrap_or(ch)
         })
         .collect()
+}
+
+fn decimal_symbols(value: i32, symbols: &str) -> String {
+    let symbols: Vec<_> = symbols.chars().collect();
+    value
+        .to_string()
+        .chars()
+        .map(|ch| {
+            ch.to_digit(10)
+                .map(|digit| symbols[digit as usize])
+                .unwrap_or(ch)
+        })
+        .collect()
+}
+
+fn fixed_symbols(value: i32, symbols: &str, fallback_digits: &str) -> String {
+    if value < 0 {
+        return value.to_string();
+    }
+    if value > 0 {
+        if let Some(symbol) = symbols.chars().nth(value as usize - 1) {
+            return symbol.to_string();
+        }
+    }
+    decimal_symbols(value, fallback_digits)
+}
+
+fn additive_symbols(value: i32, tuples: &[AdditiveTuple]) -> Option<String> {
+    let mut remaining = i64::from(value).abs();
+    if remaining == 0 {
+        return tuples
+            .iter()
+            .find(|tuple| tuple.weight.resolve() == Some(0))
+            .map(|tuple| symbol_to_string(&tuple.symbol).to_string());
+    }
+
+    let mut result = String::new();
+    for tuple in tuples {
+        let Some(weight) = tuple.weight.resolve().filter(|weight| *weight > 0) else {
+            continue;
+        };
+        let repetitions = remaining / i64::from(weight);
+        if repetitions == 0 {
+            continue;
+        }
+        let symbol = symbol_to_string(&tuple.symbol);
+        if result.chars().count() as i64 + repetitions * symbol.chars().count() as i64 > 60 {
+            return None;
+        }
+        for _ in 0..repetitions {
+            result.push_str(symbol);
+        }
+        remaining -= repetitions * i64::from(weight);
+        if remaining == 0 {
+            return Some(if value < 0 {
+                format!("-{result}")
+            } else {
+                result
+            });
+        }
+    }
+    None
+}
+
+fn armenian(value: i32, lowercase: bool) -> String {
+    if !(1..=9999).contains(&value) {
+        return value.to_string();
+    }
+    let mut result = String::new();
+    for (place, first_symbol) in [(1000, 0x54c), (100, 0x543), (10, 0x53a), (1, 0x531)] {
+        let digit = (value / place) % 10;
+        if digit != 0 {
+            let offset = if lowercase { 0x30 } else { 0 };
+            result.push(char::from_u32(first_symbol + digit as u32 - 1 + offset).unwrap());
+        }
+    }
+    result
+}
+
+fn georgian(value: i32) -> String {
+    if !(1..=19999).contains(&value) {
+        return value.to_string();
+    }
+    let mut result = String::new();
+    if value >= 10000 {
+        result.push('ჵ');
+    }
+    for (place, symbols) in [
+        (1000, "ჩცძწჭხჴჯჰ"),
+        (100, "რსტჳფქღყშ"),
+        (10, "იკლმნჲოპჟ"),
+        (1, "აბგდევზჱთ"),
+    ] {
+        let digit = (value / place) % 10;
+        if digit != 0 {
+            result.push(symbols.chars().nth(digit as usize - 1).unwrap());
+        }
+    }
+    result
+}
+
+fn hebrew(value: i32) -> String {
+    if !(1..=10999).contains(&value) {
+        return value.to_string();
+    }
+    let mut result = String::new();
+    let thousands = value / 1000;
+    if thousands > 0 {
+        result.push(char::from_u32(0x5d0 + thousands as u32 - 1).unwrap());
+        result.push('׳');
+    }
+    let mut remaining = value % 1000;
+    for (weight, symbol) in [
+        (400, "ת"),
+        (300, "ש"),
+        (200, "ר"),
+        (100, "ק"),
+        (90, "צ"),
+        (80, "פ"),
+        (70, "ע"),
+        (60, "ס"),
+        (50, "נ"),
+        (40, "מ"),
+        (30, "ל"),
+        (20, "כ"),
+        (19, "יט"),
+        (18, "יח"),
+        (17, "יז"),
+        (16, "טז"),
+        (15, "טו"),
+        (10, "י"),
+        (9, "ט"),
+        (8, "ח"),
+        (7, "ז"),
+        (6, "ו"),
+        (5, "ה"),
+        (4, "ד"),
+        (3, "ג"),
+        (2, "ב"),
+        (1, "א"),
+    ] {
+        let repetitions = remaining / weight;
+        for _ in 0..repetitions {
+            result.push_str(symbol);
+        }
+        remaining -= repetitions * weight;
+        if remaining == 0 {
+            break;
+        }
+    }
+    result
 }
 
 fn alphabetic(value: i32, symbols: &str) -> String {
