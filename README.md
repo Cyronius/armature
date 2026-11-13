@@ -75,6 +75,9 @@ rerun). Later focused runs verified fixes for style containment and counter-styl
 those follow-up fixes are not included in the four-chunk score.
 Resolving quote depth in tree order subsequently made 43 more reftests pass in the focused `CSS2/generated-content` and
 `css-content` runs; that gain is also not included in the four-chunk score.
+Emergency wrapping at grapheme boundaries subsequently made 54 more test IDs pass across the 2,394-test `css-text`
+and `CSS2/text` rerun, with no regressions against the original CSS baseline. That gain is also not included in the
+four-chunk score.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -232,6 +235,10 @@ Notes on the numbers:
   including `no-open-quote` and `no-close-quote`. Style-contained subtrees keep their quote changes inside the
   subtree. The focused `CSS2/generated-content` and `css-content` runs gain 43 passing reftests, and all nine focused
   quote-containment cases pass.
+- **Emergency text wrapping**: `overflow-wrap: anywhere`, `overflow-wrap: break-word`, and `word-break: break-word`
+  can break overflowing text at grapheme boundaries while retaining the original shaping and normal break priorities.
+  `anywhere` and `word-break: break-word` also contribute those opportunities to min-content sizing. The 2,394-test
+  `css-text` and `CSS2/text` rerun gains 54 passing test IDs against the original CSS baseline without regressions.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
