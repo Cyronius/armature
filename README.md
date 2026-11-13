@@ -84,6 +84,9 @@ Thirty-three previously failing `css-writing-modes` reftests passed. Twelve prev
 timed out in the full run passed on an isolated rerun; substituting only those verified results gives **72.80%**
 (21,257.9 test-equivalents, up 44.3). Four `css-inline` baseline variants and one vertical relative-position reftest
 failed again on a focused rerun. The expanded selection also includes the 32 `margin-trim` gains noted above.
+An additional focused run of all 324 `css-overflow/line-clamp` tests after direct-line clamping and ellipsis support
+made 21 previously failing tests pass with no status regressions. These gains are not yet included in the full CSS
+score above.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -338,6 +341,9 @@ Notes on the numbers:
 - **Grid self alignment**: `self-start` and `self-end` align grid items to the physical sides of their own writing
   mode, including vertical and right-to-left items. The CSS Grid alignment directory gains 1.74 passing
   test-equivalents across five tests in a 454-test rerun, with no regressions against the earlier CSS-only run.
+- **Direct-line `line-clamp`**: layout suppresses lines after the requested count, sizes the block to the retained
+  lines and appends a default ellipsis when it fits after simple text. Stylo now parses `-webkit-line-clamp` in Servo
+  so it participates correctly in the cascade (AS-524). A 324-test focused run gains 21 passing reftests.
 - **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
   matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
   subtests newly pass across CSS Transforms and Web Animations.
@@ -758,6 +764,8 @@ Notes on the numbers:
 - Vertical in-flow and orthogonal box placement remain incomplete. In
   `css-writing-modes/relpos-inline-overflowing-block-vrl.html`, the corrected absolute box now exposes the existing
   misplaced inline box, causing a reproducible reftest failure.
+- `line-clamp` still needs ellipsis placement when the last line is full or has nested inline boxes, counting lines
+  inside descendant blocks, vertical and right-to-left text, and the legacy `-webkit-box` display behavior.
 - WebGL2 texture overload coverage remains incomplete (`tex-unpack-params.html` still errors), and 368 dEQP files
   remain disabled.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
