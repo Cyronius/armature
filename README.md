@@ -62,6 +62,9 @@ Work on non-replaced `aspect-ratio` raised the `css-sizing/aspect-ratio` directo
 test-equivalents out of 295 tests. A CSS rerun on 13 November selected 34,847 tests; restricted to the same 29,199
 test IDs as the 12 November run, it scored **71.6%** (20,914.5 test-equivalents passing, up 84.8). The expanded
 selection includes directories skipped by `include.ini` and is not used for this comparison.
+After the block-flow absolute alignment change, a targeted `css-position` and `css-align` rerun gained two passing
+reftests across 687 common tests (499.122 to 501.122 test-equivalents), with no measured regressions in that set.
+The full CSS score has not been rerun after this change.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -203,6 +206,9 @@ Notes on the numbers:
   automatic minimum where applicable, including for flex containers and items. Maximum block sizes also constrain
   automatic inline sizes through the ratio in absolute positioning. The targeted `css-sizing/aspect-ratio` run gains
   60.844 passing test-equivalents across 295 tests against the 12 November CSS baseline.
+- **Absolute positioning in block flow**: The static-position rectangle now spans the parent block's inline size,
+  and its child uses `justify-self` and `align-self` when both insets in an axis are `auto`. This makes two
+  `css-align/abspos` reftests pass.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
