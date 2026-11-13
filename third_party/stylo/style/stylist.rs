@@ -887,6 +887,17 @@ impl Stylist {
         self.cascade_data.iter_origins()
     }
 
+    /// Armature (AS-525): Tell Servo when container rules need a style pass after layout.
+    #[cfg(feature = "servo")]
+    pub fn has_container_rules(&self) -> bool {
+        self.iter_origins()
+            .any(|(data, _)| data.container_conditions.len() > 1) ||
+            self.author_data_cache
+                .entries
+                .values()
+                .any(|data| data.container_conditions.len() > 1)
+    }
+
     /// Does what the name says, to prevent author_data_cache to grow without
     /// bound.
     pub fn remove_unique_author_data_cache_entries(&mut self) {

@@ -459,3 +459,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: `-webkit-line-clamp` must participate in the cascade with `line-clamp`, including when
   the legacy display prerequisites are absent. Enable the existing shorthand parser for Servo.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-525: Parse container rules in Servo
+- Files: `style/stylesheets/rule_parser.rs`, `style/stylist.rs`
+- Why: Servo's container query layout support requires `@container` rules to enter the cascade.
+  Enable the existing Stylo parser for Servo and let Servo detect when a post-layout style pass
+  is needed.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
