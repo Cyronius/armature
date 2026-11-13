@@ -1107,6 +1107,21 @@ impl IndependentFormattingContext {
         ignore_block_margins_for_stretch: LogicalSides1D<bool>,
         has_inline_parent: bool,
     ) -> BoxFragment {
+        if self.style().writing_mode.is_vertical() != containing_block.style.writing_mode.is_vertical() &&
+            !self.is_replaced() &&
+            !self.is_table() &&
+            // Row flex intrinsic sizing cannot yet answer this orthogonal-axis query.
+            !self.is_flex() &&
+            sequential_layout_state.is_none()
+        {
+            return self.layout_in_flow_block_level_orthogonal(
+                layout_context,
+                positioning_context,
+                containing_block,
+                ignore_block_margins_for_stretch,
+                has_inline_parent,
+            );
+        }
         if let Some(sequential_layout_state) = sequential_layout_state {
             return self.layout_in_flow_block_level_sequentially(
                 layout_context,
@@ -1215,6 +1230,128 @@ impl IndependentFormattingContext {
         )
         .with_baselines(layout.baselines)
         .with_block_level_layout_info(block_margins_collapsed_with_children, None)
+    }
+
+    /// Size an orthogonal flow in its own writing mode, then position it in its parent's mode.
+    fn layout_in_flow_block_level_orthogonal(
+        &self,
+        layout_context: &LayoutContext,
+        positioning_context: &mut PositioningContext,
+        containing_block: &ContainingBlock,
+        ignore_block_margins_for_stretch: LogicalSides1D<bool>,
+        has_inline_parent: bool,
+    ) -> BoxFragment {
+        let style = self.style();
+        let layout_style = self.layout_style();
+        let ContentBoxSizesAndPBM {
+            content_box_sizes,
+            pbm,
+            depends_on_block_constraints,
+            ..
+        } = layout_style.content_box_sizes_and_padding_border_margin(&containing_block.into());
+        let pbm_sums = pbm.sums_auto_is_zero(ignore_block_margins_for_stretch);
+        let child_block_stretch = containing_block.inline_stretch_size(pbm_sums.inline);
+        let child_block_sizes = &content_box_sizes.inline;
+        let automatic_child_block_size = automatic_block_size(layout_context, &self.base);
+        let tentative_child_block_size = child_block_sizes.resolve_extrinsic(
+            automatic_child_block_size.clone(),
+            Au::zero(),
+            child_block_stretch,
+        );
+        let preferred_aspect_ratio = self.preferred_aspect_ratio(&pbm.padding_border_sums);
+
+        // The parent's block axis is the child's inline axis. When it is indefinite,
+        // the initial containing block supplies the available inline size.
+        let viewport = layout_context.style_context.stylist.device().au_viewport_size();
+        let fallback_inline_size = if style.writing_mode.is_vertical() {
+            viewport.height
+        } else {
+            viewport.width
+        };
+        let child_inline_stretch = containing_block
+            .block_stretch_size(pbm_sums.block)
+            .unwrap_or(fallback_inline_size);
+        let child_inline_size = content_box_sizes.block.resolve(
+            LogicalAxis::Inline,
+            Size::FitContent,
+            Au::zero,
+            Some(child_inline_stretch),
+            || {
+                self.inline_content_sizes(
+                    layout_context,
+                    &ConstraintSpace::new(
+                        tentative_child_block_size,
+                        style,
+                        preferred_aspect_ratio,
+                    ),
+                )
+                .sizes
+            },
+            false,
+        );
+        let containing_block_for_children = ContainingBlock {
+            size: ContainingBlockSize {
+                inline: child_inline_size,
+                block: tentative_child_block_size,
+            },
+            style,
+        };
+        let lazy_child_block_size = LazySize::new(
+            child_block_sizes,
+            LogicalAxis::Block,
+            automatic_child_block_size,
+            Au::zero,
+            child_block_stretch,
+            false,
+        );
+        let layout = self.layout(
+            layout_context,
+            positioning_context,
+            &containing_block_for_children,
+            containing_block,
+            preferred_aspect_ratio,
+            &lazy_child_block_size,
+        );
+        let child_block_size = lazy_child_block_size.resolve(|| layout.content_block_size);
+        let ResolvedMargins {
+            margin,
+            effective_margin_inline_start,
+        } = solve_margins(
+            containing_block,
+            &pbm,
+            child_block_size,
+            resolve_justify_self(style, containing_block.style, has_inline_parent),
+        );
+        let content_rect = LogicalRect {
+            start_corner: LogicalVec2 {
+                block: pbm.padding.block_start + pbm.border.block_start,
+                inline: pbm.padding.inline_start +
+                    pbm.border.inline_start +
+                    effective_margin_inline_start,
+            },
+            size: LogicalVec2 {
+                block: child_inline_size,
+                inline: child_block_size,
+            },
+        };
+        let mut base_fragment_info = self.base.base_fragment_info;
+        if depends_on_block_constraints || layout.depends_on_block_constraints {
+            base_fragment_info.flags.insert(
+                FragmentFlags::SIZE_DEPENDS_ON_BLOCK_CONSTRAINTS_AND_CAN_BE_CHILD_OF_FLEX_ITEM,
+            );
+        }
+        BoxFragment::new(
+            base_fragment_info,
+            style.clone(),
+            layout.fragments,
+            content_rect.as_physical(Some(containing_block)),
+            pbm.padding.to_physical(containing_block.style.writing_mode),
+            pbm.border.to_physical(containing_block.style.writing_mode),
+            margin.to_physical(containing_block.style.writing_mode),
+            layout.specific_layout_info,
+        )
+        .with_baselines(layout.baselines)
+        .with_block_level_layout_info(CollapsedBlockMargins::from_margin(&margin), None)
     }
 
     /// Lay out a normal in flow non-replaced block that establishes an independent

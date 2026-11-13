@@ -97,6 +97,7 @@ impl BlockLevelCreator {
         display_inside: DisplayInside,
         contents: Contents,
         propagated_data: PropagatedBoxTreeData,
+        orthogonal_to_parent: bool,
     ) -> Self {
         match contents {
             Contents::NonReplaced(contents) => match display_inside {
@@ -105,7 +106,7 @@ impl BlockLevelCreator {
                     // and whether it's a body or root propagating its `overflow` to the viewport. We have
                     // already checked that the former is not the case.
                     // TODO(#39932): empty flags are wrong when propagating `overflow` to the viewport.
-                    if !info.style.establishes_block_formatting_context(
+                    if !orthogonal_to_parent && !info.style.establishes_block_formatting_context(
                         FragmentFlags::empty()
                     ) =>
                 {
@@ -602,6 +603,7 @@ impl<'dom> BlockContainerBuilder<'dom, '_> {
             display_inside,
             contents,
             propagated_data,
+            info.style.writing_mode.is_vertical() != self.info.style.writing_mode.is_vertical(),
         );
         let job = BlockLevelJob {
             info: info.clone(),

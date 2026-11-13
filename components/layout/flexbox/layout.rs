@@ -416,11 +416,29 @@ impl ComputeInlineContentSizes for FlexContainer {
     ) -> InlineContentSizesResult {
         match self.config.flex_axis {
             FlexAxis::Row => {
-                self.main_content_sizes(layout_context, &constraint_space.into(), || {
-                    unreachable!(
-                        "Unexpected FlexContext query during row flex intrinsic size calculation."
-                    )
-                })
+                // An orthogonal flex item can need a block-size layout while its
+                // parent's intrinsic inline size is being calculated. Supply a
+                // containing block for that layout instead of assuming this query
+                // only visits items whose main axis is their inline axis.
+                let containing_block = ContainingBlock {
+                    size: ContainingBlockSize {
+                        inline: Au::zero(),
+                        block: constraint_space.block_size,
+                    },
+                    style: constraint_space.style,
+                };
+                let flex_context = FlexContext {
+                    config: self.config.clone(),
+                    layout_context,
+                    containing_block: &containing_block,
+                    container_inner_size_constraint: self.config.flex_axis.vec2_to_flex_relative(
+                        LogicalVec2 {
+                            inline: SizeConstraint::default(),
+                            block: constraint_space.block_size,
+                        },
+                    ),
+                };
+                self.main_content_sizes(layout_context, &constraint_space.into(), || &flex_context)
             },
             FlexAxis::Column => self.cross_content_sizes(layout_context, &constraint_space.into()),
         }

@@ -932,6 +932,7 @@ impl<'dom> NodeExt<'dom> for ServoLayoutNode<'dom> {
                                 display_inside,
                                 contents(),
                                 independent_formatting_context.propagated_data,
+                                false, /* Rebuild orthogonal roots with their parent context. */
                             ),
                             BlockLevelCreator::Independent { .. }
                         ) {
