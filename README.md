@@ -162,6 +162,11 @@ Mapping vertical Grid tracks and item boxes to their physical axes raised the co
 test-equivalents, with 14 reftests newly passing and one Grid Lanes alignment reftest regressing. That remaining
 case exposes an intrinsic-size gap for vertical Grid Lanes. Other apparent full-run losses returned to their prior
 results on a focused repeat and were excluded from expectation updates.
+Using logical block margins in the user-agent stylesheet and synthesizing a central baseline for replaced inline
+boxes in vertical text raised the comparable score to **75.42%** (22,020.7 test-equivalents passing, raw), a further
+gain of 64.0. The 1,247-test writing-modes run gained 65.0, with 67 reftests newly passing and two text-combine
+reftests regressing. Unrelated apparent full-run losses returned to their prior results on a focused repeat and were
+excluded from expectation updates.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -360,6 +365,9 @@ Notes on the numbers:
   vertical writing modes. Item dimensions, margins, padding, borders, and self alignment map back to physical
   sides. The full CSS run gains 79.0 passing test-equivalents, while one vertical Grid Lanes alignment reftest still
   needs an intrinsic-size correction.
+- **Vertical inline baselines and default block margins**: replaced inline boxes without a content baseline use
+  the center of their margin box in vertical text. Default paragraph and similar block margins follow the block
+  axis. The focused writing-modes run gains 67 passing reftests, primarily vertical-lr absolute-position cases.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
@@ -888,7 +896,8 @@ Notes on the numbers:
   `css-writing-modes/relpos-inline-overflowing-block-vrl.html`, the corrected absolute box now exposes the existing
   misplaced inline box, causing a reproducible reftest failure. Vertical coordinate conversion also remains
   provisional when the containing block's block size is indefinite; several containment and vertical text reftests
-  still fail.
+  still fail. Two text-combine reftests regress with the logical default block margins; vertical-rl block placement
+  still needs a coordinated fix for fragment positions and the root box offset.
 - `line-clamp: auto` now applies block-size limits to direct lines, but `line-clamp` still needs ellipsis placement
   when the last line has nested inline boxes, floats, or emergency wrap opportunities, counting lines inside
   descendant blocks, vertical and right-to-left text, and the legacy `-webkit-box` display behavior.
