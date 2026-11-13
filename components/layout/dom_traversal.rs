@@ -15,13 +15,11 @@ use style::dom::NodeInfo;
 use style::properties::ComputedValues;
 use style::selector_parser::PseudoElement;
 use style::values::generics::counters::{Content, ContentItem};
-use style::values::specified::Quotes;
 
 use crate::context::LayoutContext;
 use crate::dom::{BoxSlot, LayoutBox, NodeExt};
 use crate::flow::inline::SharedInlineStyles;
 use crate::lists::generate_counter_representation;
-use crate::quotes::quotes_for_lang;
 use crate::replaced::ReplacedContents;
 use crate::style_ext::{Display, DisplayGeneratingBox, DisplayInside, DisplayOutside};
 
@@ -331,17 +329,6 @@ impl NonReplacedContents {
     }
 }
 
-fn get_quote_from_pair<I, S>(item: &ContentItem<I>, opening: &S, closing: &S) -> String
-where
-    S: ToString + ?Sized,
-{
-    match item {
-        ContentItem::OpenQuote => opening.to_string(),
-        ContentItem::CloseQuote => closing.to_string(),
-        _ => unreachable!("Got an unexpected ContentItem type when processing quotes."),
-    }
-}
-
 /// <https://www.w3.org/TR/CSS2/generate.html#propdef-content>
 pub(crate) fn generate_pseudo_element_content(
     pseudo_element_info: &NodeAndStyleInfo,
@@ -354,75 +341,49 @@ pub(crate) fn generate_pseudo_element_content(
         .cloned()
         .unwrap_or_default();
     match &pseudo_element_info.style.get_counters().content {
-        Content::Items(items) => {
-            items
-                .items
-                .iter()
-                .filter_map(|item| {
-                    match item {
-                        ContentItem::String(s) => {
-                            Some(PseudoElementContentItem::Text(s.to_string()))
-                        },
-                        ContentItem::Image(image) => {
-                            ReplacedContents::from_image(pseudo_element_info.node, context, image)
-                                .map(PseudoElementContentItem::Replaced)
-                        },
-                        ContentItem::OpenQuote | ContentItem::CloseQuote => {
-                            // TODO(xiaochengh): calculate quote depth
-                            let maybe_quote = match &pseudo_element_info.style.get_list().quotes {
-                                Quotes::QuoteList(quote_list) => {
-                                    quote_list.0.first().map(|quote_pair| {
-                                        get_quote_from_pair(
-                                            item,
-                                            &*quote_pair.opening,
-                                            &*quote_pair.closing,
-                                        )
-                                    })
-                                },
-                                Quotes::Auto => {
-                                    let lang = &pseudo_element_info.style.get_font()._x_lang;
-                                    let quotes = quotes_for_lang(lang.0.as_ref(), 0);
-                                    Some(get_quote_from_pair(
-                                        item,
-                                        &quotes.opening,
-                                        &quotes.closing,
-                                    ))
-                                },
-                            };
-                            maybe_quote.map(PseudoElementContentItem::Text)
-                        },
-                        ContentItem::Counter(name, style) => Some(PseudoElementContentItem::Text(
-                            generate_counter_representation(
-                                context,
-                                pseudo_element_info.node,
-                                style::properties::LonghandId::Content,
-                                style,
-                                counter_snapshot.value(&name.0),
-                            ),
-                        )),
-                        ContentItem::Counters(name, separator, style) => {
-                            Some(PseudoElementContentItem::Text(
-                                counter_snapshot
-                                    .values(&name.0)
-                                    .into_iter()
-                                    .map(|value| {
-                                        generate_counter_representation(
-                                            context,
-                                            pseudo_element_info.node,
-                                            style::properties::LonghandId::Content,
-                                            style,
-                                            value,
-                                        )
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join(separator),
-                            ))
-                        },
-                        ContentItem::NoOpenQuote | ContentItem::NoCloseQuote => None,
-                    }
-                })
-                .collect()
-        },
+        Content::Items(items) => items
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| match item {
+                ContentItem::String(s) => Some(PseudoElementContentItem::Text(s.to_string())),
+                ContentItem::Image(image) => {
+                    ReplacedContents::from_image(pseudo_element_info.node, context, image)
+                        .map(PseudoElementContentItem::Replaced)
+                },
+                ContentItem::OpenQuote | ContentItem::CloseQuote => counter_snapshot
+                    .quote_text(index)
+                    .map(|text| PseudoElementContentItem::Text(text.into())),
+                ContentItem::Counter(name, style) => Some(PseudoElementContentItem::Text(
+                    generate_counter_representation(
+                        context,
+                        pseudo_element_info.node,
+                        style::properties::LonghandId::Content,
+                        style,
+                        counter_snapshot.value(&name.0),
+                    ),
+                )),
+                ContentItem::Counters(name, separator, style) => {
+                    Some(PseudoElementContentItem::Text(
+                        counter_snapshot
+                            .values(&name.0)
+                            .into_iter()
+                            .map(|value| {
+                                generate_counter_representation(
+                                    context,
+                                    pseudo_element_info.node,
+                                    style::properties::LonghandId::Content,
+                                    style,
+                                    value,
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join(separator),
+                    ))
+                },
+                ContentItem::NoOpenQuote | ContentItem::NoCloseQuote => None,
+            })
+            .collect(),
         Content::Normal | Content::None => unreachable!(),
     }
 }

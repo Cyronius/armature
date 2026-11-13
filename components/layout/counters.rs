@@ -13,19 +13,24 @@ use style::properties::longhands::contain::computed_value::T as Contain;
 use style::selector_parser::PseudoElement;
 use style::values::computed::ContentItem;
 use style::values::generics::counters::Content;
+use style::values::specified::Quotes;
 use stylo_atoms::Atom;
 
 use crate::context::LayoutContext;
+use crate::quotes::quotes_for_lang;
 use crate::style_ext::Display;
 
 type CounterKey = (OpaqueNode, PseudoElementChain);
 
 #[derive(Clone, Default)]
-pub(crate) struct CounterSnapshot(Vec<(Atom, i32)>);
+pub(crate) struct CounterSnapshot {
+    counters: Vec<(Atom, i32)>,
+    quote_text: Vec<Option<String>>,
+}
 
 impl CounterSnapshot {
     pub(crate) fn value(&self, name: &Atom) -> i32 {
-        self.0
+        self.counters
             .iter()
             .rev()
             .find(|(counter_name, _)| counter_name == name)
@@ -34,11 +39,15 @@ impl CounterSnapshot {
 
     pub(crate) fn values(&self, name: &Atom) -> Vec<i32> {
         let values: Vec<_> = self
-            .0
+            .counters
             .iter()
             .filter_map(|(counter_name, value)| (counter_name == name).then_some(*value))
             .collect();
         if values.is_empty() { vec![0] } else { values }
+    }
+
+    pub(crate) fn quote_text(&self, index: usize) -> Option<&str> {
+        self.quote_text.get(index).and_then(|text| text.as_deref())
     }
 }
 
@@ -62,6 +71,7 @@ struct CounterInstance {
 struct CounterBuilder {
     instances: Vec<CounterInstance>,
     snapshots: CounterSnapshots,
+    quote_depth: usize,
 }
 
 impl CounterBuilder {
@@ -102,19 +112,69 @@ impl CounterBuilder {
         index
     }
 
-    fn record(&mut self, node: ServoLayoutNode<'_>, scope: &[usize]) {
+    fn record(
+        &mut self,
+        node: ServoLayoutNode<'_>,
+        scope: &[usize],
+        quote_text: Vec<Option<String>>,
+    ) {
         self.snapshots.0.insert(
             (node.opaque(), node.pseudo_element_chain()),
-            CounterSnapshot(
-                scope
+            CounterSnapshot {
+                counters: scope
                     .iter()
                     .map(|&index| {
                         let instance = &self.instances[index];
                         (instance.name.clone(), instance.value)
                     })
                     .collect(),
-            ),
+                quote_text,
+            },
         );
+    }
+
+    fn quote_text(
+        &mut self,
+        item: &ContentItem,
+        style: &style::properties::ComputedValues,
+    ) -> Option<String> {
+        // https://drafts.csswg.org/css-content-3/#quotes
+        let depth = match item {
+            ContentItem::OpenQuote | ContentItem::NoOpenQuote => {
+                let depth = self.quote_depth;
+                self.quote_depth = self.quote_depth.saturating_add(1);
+                depth
+            },
+            ContentItem::CloseQuote | ContentItem::NoCloseQuote => {
+                if self.quote_depth == 0 {
+                    return Some(String::new());
+                }
+                self.quote_depth -= 1;
+                self.quote_depth
+            },
+            _ => return None,
+        };
+        if matches!(item, ContentItem::NoOpenQuote | ContentItem::NoCloseQuote) {
+            return None;
+        }
+        match &style.get_list().quotes {
+            Quotes::QuoteList(list) => list.0.get(depth).or_else(|| list.0.last()).map(|pair| {
+                if matches!(item, ContentItem::OpenQuote) {
+                    pair.opening.to_string()
+                } else {
+                    pair.closing.to_string()
+                }
+            }),
+            Quotes::Auto => {
+                let lang = &style.get_font()._x_lang;
+                let pair = quotes_for_lang(lang.0.as_ref(), depth);
+                Some(if matches!(item, ContentItem::OpenQuote) {
+                    pair.opening.to_string()
+                } else {
+                    pair.closing.to_string()
+                })
+            },
+        }
     }
 
     fn initial_reversed_value(
@@ -240,7 +300,8 @@ impl CounterBuilder {
             self.instances[index].value = pair.value;
         }
 
-        if let Content::Items(items) = &counters.content {
+        let quote_text = if let Content::Items(items) = &counters.content {
+            let mut quote_text = Vec::with_capacity(items.items.len());
             for item in &items.items {
                 match item {
                     ContentItem::Counter(name, _) | ContentItem::Counters(name, _, _) => {
@@ -248,9 +309,13 @@ impl CounterBuilder {
                     },
                     _ => {},
                 }
+                quote_text.push(self.quote_text(item, &style));
             }
-        }
-        self.record(node, scope);
+            quote_text
+        } else {
+            Vec::new()
+        };
+        self.record(node, scope, quote_text);
     }
 
     fn process_pseudo(
@@ -283,6 +348,7 @@ impl CounterBuilder {
         if matches!(Display::from(style.get_box().display), Display::None) {
             return scope;
         }
+        let inherited_quote_depth = self.quote_depth;
         self.apply_properties(node, &mut scope, depth, context);
 
         // Style containment makes the element a counter-scope boundary. Counters
@@ -338,6 +404,9 @@ impl CounterBuilder {
             depth + 1,
             context,
         );
+        if style.get_box().contain.contains(Contain::STYLE) {
+            self.quote_depth = inherited_quote_depth;
+        }
         if matches!(Display::from(style.get_box().display), Display::Contents) &&
             !style.get_box().contain.contains(Contain::STYLE)
         {
