@@ -43,6 +43,10 @@ WebGL rerun.
 | Streams | 317 | 91.6% | 94.1% | +2.4 | +320 |
 | Trusted Types | 249 | 86.7% | 89.2% | +2.6 | +85 |
 | Web Animations | 204 | 27.6% | 86.7% | +59.1 | +3,479 |
+
+A CSS-only rerun on 12 November 2026 at `cd542dc6879` selected 29,199 tests and scored **71.3%** (20,829.7
+test-equivalents passing, with eight skipped tests counted as nonpassing). This is one Armature run; the upstream
+comparison above remains the 7 November measurement.
 | Custom Elements | 203 | 76.1% | 79.5% | +3.4 | +156 |
 | Upgrade Insecure Requests | 197 | 73.6% | 73.1% | -0.5 | -6 |
 | DOM Parsing | 94 | 43.5% | 48.8% | +5.2 | +51 |
