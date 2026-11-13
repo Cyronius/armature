@@ -95,6 +95,11 @@ A focused CSS Cascade rerun after enabling `@scope` rose from 114.02 to 135.99 p
 157 tests, up 21.97. Eight related tests in CSS Nesting, CSSOM, Selectors and CSS Mixins rose from 5.25 to 5.93,
 up another 0.68. Across both sets, 206 subtests newly passed and three previously passing subtests failed. These
 gains are not yet included in the full CSS score above.
+CSS Typed OM transform values made the 244 explicitly selected style property tests rise from 0 to 164.07 passing
+test-equivalents on the same test IDs as the expanded CSS baseline. The 12 direct transform suites rose from 0 to 12,
+with every subtest passing. The property directory remains excluded by `include.ini`; the 12 direct suites are now
+included. These focused gains are not yet included in a full CSS rerun. Five property files still error while
+constructing unsupported `<position>` values; many other property subtests need `computedStyleMap()`.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -517,6 +522,9 @@ Notes on the numbers:
   subtests pass, including 10 previous failures. All 675 subtests across the numeric-objects directory's 35 window,
   worker and service worker variants pass. Directory WPT metadata enables service workers for these tests, and the
   numeric-objects directory is included in the default WPT selection.
+  `CSSTransformValue` and its eight transform component classes now expose constructors, mutable values, CSS
+  serialization and matrix conversion. All subtests across 12 direct WPT suites pass, including 2D matrix flattening.
+  The common Typed OM property test data now loads; 239 of 244 property files reach their assertions.
   SVG anchors now navigate on click, including `xlink:href`, dynamic `target` changes, and links rendered through
   `<use>`. Their `rel` and referrer policy attributes affect navigation. Seventeen more subtests pass across four
   scripted linking files; the full 25-file scripted linking directory matches expectations.
