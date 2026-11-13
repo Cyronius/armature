@@ -502,16 +502,7 @@ impl HoistedAbsolutelyPositionedBox {
                 .static_position_rect()
                 .translate(-containing_block_origin);
             static_position_rect.size = static_position_rect.size.max(PhysicalSize::zero());
-            let mut static_position_rect =
-                static_position_rect.to_logical(&(&containing_block).into());
-            if containing_block_style.writing_mode.is_vertical_rl() {
-                // The block-start edge of a vertical-rl containing block is its
-                // physical right edge. Convert the physical static-position rect
-                // to a distance from that edge before solving auto insets.
-                static_position_rect.start_corner.block = containing_block.size.block -
-                    static_position_rect.start_corner.block -
-                    static_position_rect.size.block;
-            }
+            let static_position_rect = static_position_rect.to_logical(&(&containing_block).into());
             static_position_rect
         };
 
@@ -823,7 +814,7 @@ impl IndependentFormattingContext {
             original_parent_writing_mode,
             containing_block_writing_mode,
         );
-        let mut content_rect = LogicalRect {
+        let content_rect = LogicalRect {
             start_corner: LogicalVec2 {
                 inline: inline_origin + margin.inline_start + pb.inline_start,
                 block: block_origin + margin.block_start + pb.block_start,
@@ -831,11 +822,6 @@ impl IndependentFormattingContext {
             size: content_size,
         }
         .as_physical(Some(containing_block));
-        // In vertical-rl, the block-start edge is the physical right edge. The generic
-        // rectangle conversion does not account for this when positioning an absolute box.
-        if containing_block_writing_mode.is_vertical_rl() {
-            content_rect.origin.x = cbbs - content_rect.origin.x - content_rect.size.width;
-        }
         let content_rect = content_rect.translate(containing_block_origin);
 
         if is_cached &&

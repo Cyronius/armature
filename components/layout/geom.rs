@@ -254,10 +254,19 @@ impl<T: Copy + Neg<Output = T>> LogicalVec2<T> {
             } else {
                 PhysicalVec::new(-self.inline, self.block)
             }
-        } else if mode.is_inline_tb() {
-            PhysicalVec::new(self.block, self.inline)
         } else {
-            PhysicalVec::new(-self.block, self.inline)
+            PhysicalVec::new(
+                if mode.is_vertical_lr() {
+                    self.block
+                } else {
+                    -self.block
+                },
+                if mode.is_inline_tb() {
+                    self.inline
+                } else {
+                    -self.inline
+                },
+            )
         }
     }
 }
@@ -559,10 +568,23 @@ impl LogicalRect<Au> {
             containing_block.style.writing_mode
         });
         let (x, y, width, height) = if mode.is_vertical() {
-            // TODO: Bottom-to-top writing modes are not supported.
             (
-                self.start_corner.block,
-                self.start_corner.inline,
+                match containing_block {
+                    Some(containing_block) if mode.is_vertical_rl() => containing_block
+                        .size
+                        .block
+                        .to_definite()
+                        .map_or(self.start_corner.block, |block_size| {
+                            block_size - self.max_block_position()
+                        }),
+                    _ => self.start_corner.block,
+                },
+                match containing_block {
+                    Some(containing_block) if !mode.is_inline_tb() => {
+                        containing_block.size.inline - self.max_inline_position()
+                    },
+                    _ => self.start_corner.inline,
+                },
                 self.size.block,
                 self.size.inline,
             )
@@ -640,11 +662,22 @@ pub(crate) trait ToLogicalWithContainingBlock<LogicalType> {
 impl ToLogicalWithContainingBlock<LogicalVec2<Au>> for PhysicalPoint<Au> {
     fn to_logical(&self, containing_block: &ContainingBlock) -> LogicalVec2<Au> {
         let writing_mode = containing_block.style.writing_mode;
-        // TODO: Bottom-to-top and right-to-left vertical writing modes are not supported yet.
         if writing_mode.is_vertical() {
             LogicalVec2 {
-                inline: self.y,
-                block: self.x,
+                inline: if writing_mode.is_inline_tb() {
+                    self.y
+                } else {
+                    containing_block.size.inline - self.y
+                },
+                block: if writing_mode.is_vertical_lr() {
+                    self.x
+                } else {
+                    containing_block
+                        .size
+                        .block
+                        .to_definite()
+                        .map_or(self.x, |block_size| block_size - self.x)
+                },
             }
         } else {
             LogicalVec2 {
@@ -668,11 +701,24 @@ impl ToLogicalWithContainingBlock<LogicalRect<Au>> for PhysicalRect<Au> {
 
         let writing_mode = containing_block.style.writing_mode;
         if writing_mode.is_vertical() {
-            // TODO: Bottom-to-top and right-to-left vertical writing modes are not supported yet.
             inline = self.size.height;
             block = self.size.width;
-            block_start = self.origin.x;
-            inline_start = self.origin.y;
+            block_start = if writing_mode.is_vertical_lr() {
+                self.origin.x
+            } else {
+                containing_block
+                    .size
+                    .block
+                    .to_definite()
+                    .map_or(self.origin.x, |block_size| {
+                        block_size - self.origin.x - block
+                    })
+            };
+            inline_start = if writing_mode.is_inline_tb() {
+                self.origin.y
+            } else {
+                containing_block.size.inline - self.origin.y - inline
+            };
         } else {
             inline = self.size.width;
             block = self.size.height;
