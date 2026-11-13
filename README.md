@@ -119,6 +119,11 @@ this sweep passed on an isolated repeat. Five other apparent passing-to-failing 
 orthogonal float case and four vertical baseline cases also fail identically with the pre-patch layout build. The
 expanded selection is not used for the comparable score; the new sweep includes the default-selected tests from the
 focused batches above.
+A full CSS sweep after enabling grid lanes again selected 34,847 tests. Restricted to the original 29,199 IDs, it
+scored **74.12%** (21,642.2 test-equivalents passing, raw), up 223.7 from the preceding full run. Grid-lanes tests
+account for 222.8 of that gain. Nine tests outside the grid-lanes directory had different top-level statuses, with
+almost no net weighted change. A focused repeat confirmed two new failures and one new pass in grid-lanes gap
+decorations; the other status changes did not reveal a new stable failure.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -292,6 +297,12 @@ Notes on the numbers:
   mode and the initial containing block's writing mode. Containment and `display: none` prevent body propagation.
   Vertical-rl absolute boxes now resolve physical horizontal insets from the right block-start edge. A 3,003-test
   focused run gained 34 passing reftests against the preceding full CSS run, with one reproducible regression.
+- **CSS grid lanes**: Experimental WPT runs enable `display: grid-lanes`. Layout uses grid track sizing in the lane
+  axis, then places each in-flow item after the previous item in its shortest eligible lane. Both row and column
+  lanes, gaps, spans, explicit lane placement, and natural item sizing in the stacking axis work. The 1,005-test
+  grid-lanes suite rose from 133.93 to 356.69 passing test-equivalents against the preceding full CSS run; the
+  surrounding grid and display suites had no status changes outside grid lanes. Subgrid, intrinsic auto-repeat,
+  dense packing, and older grid-lanes properties still need work.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
@@ -839,12 +850,11 @@ Notes on the numbers:
   Servo has no cross-origin isolation, so shared memory is off in every global.
 - Fetch priority hints are reflected in the DOM but do not yet affect network request scheduling.
 - Not enabled from Stylo: anchor positioning, `@starting-style`, `@page` margin rules, custom media,
-  `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
+  `background-clip: text`/`border-area`, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `subgrid` is parsed but not laid out.
-- The new aspect-ratio sizes expose three existing failures: `flex-wrap: balance` is ignored, and two grid-lanes
-  reftests do not size their tracks correctly. Two radial-gradient masking reftests also fail after their absolutely
-  positioned aspect-ratio boxes gain height. Their WPT expectations now record those failures.
+- `flex-wrap: balance` is ignored. Two radial-gradient masking reftests also fail after their absolutely positioned
+  aspect-ratio boxes gain height. Their WPT expectations record those failures.
 - Web Animations: script animations on pseudo-elements beyond `::before` and `::after` are not yet applied; CSS
   functional pseudo-elements such as `::part()` and `::highlight()` are not yet supported; and
   changing `iterationComposite` on a CSS animation does not yet affect its style-generated keyframes.
