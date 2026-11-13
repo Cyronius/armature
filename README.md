@@ -133,6 +133,11 @@ test-equivalents passing, raw), a gain of 94.6. The largest gain was 84.8 in `cs
 reftests changing from failure to pass. A focused repeat confirmed the new shrink-to-fit, border, padding, resize,
 grid, and text failures. The final full sweep also had intermittent crashes in unrelated modules; crash results
 were excluded from expectation updates.
+Resolving an orthogonal flow block's intrinsic contribution on the parent's inline axis raised the comparable score
+to **74.75%** (21,827.1 test-equivalents passing, raw), a further gain of 18.7. Writing modes gained 16.5, including
+the shrink-to-fit cases where the earlier sizing path contributed the child's inline size instead of its block size.
+The full-run score includes unrelated intermittent results; expectation updates use only the gains confirmed by a
+focused repeat.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -315,6 +320,10 @@ Notes on the numbers:
   parent's mode. A focused writing-mode run gained 99 passing reftests, and the comparable full CSS run gained 94.6
   passing test-equivalents after regressions. Row flex intrinsic sizing now supplies a containing block when an
   orthogonal child needs a block-size layout.
+- **Orthogonal intrinsic contributions**: when a flow block crosses its parent's axes, its intrinsic width comes
+  from its block content size after resolving its orthogonal inline size. Twelve shrink-to-fit subtests, nested
+  orthogonal flows, and dynamic percentage padding now pass; the comparable full run gains 16.5 passing
+  test-equivalents in writing modes.
 - **CSS grid lanes**: Experimental WPT runs enable `display: grid-lanes`. Layout uses grid track sizing in the lane
   axis, then places each in-flow item after the previous item in its shortest eligible lane. Both row and column
   lanes, gaps, spans, explicit lane placement, and natural item sizing in the stacking axis work. The 1,005-test
@@ -839,9 +848,8 @@ Notes on the numbers:
   `CSSCounterStyleRule` mutation. Four reversed-list counter scope reftests still fail.
 - `margin-trim` still needs flex and grid item trimming and some block fragmentation cases; its WPT directory remains
   excluded from the default CSS run.
-- Vertical in-flow and orthogonal box placement remain incomplete. Orthogonal children still contribute the wrong
-  intrinsic width to some shrink-to-fit parents, and border, padding, dynamic resize, and grid percentage sizing
-  cases regress with the new sizing path. In
+- Vertical in-flow and orthogonal box placement remain incomplete. Some nested shrink-to-fit cases, border, padding,
+  dynamic resize, and grid percentage sizing still fail with the new sizing path. In
   `css-writing-modes/relpos-inline-overflowing-block-vrl.html`, the corrected absolute box now exposes the existing
   misplaced inline box, causing a reproducible reftest failure. Vertical coordinate conversion also remains
   provisional when the containing block's block size is indefinite; several containment and vertical text reftests
