@@ -453,3 +453,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   descriptors are available to the stylist and counter renderer, and expose effective rules from
   shadow-root cascade data for tree-scoped references.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-524: Parse legacy line clamp shorthand in Servo
+- Files: `style/properties/shorthands.toml`
+- Why: `-webkit-line-clamp` must participate in the cascade with `line-clamp`, including when
+  the legacy display prerequisites are absent. Enable the existing shorthand parser for Servo.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
