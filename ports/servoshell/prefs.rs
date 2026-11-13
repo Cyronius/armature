@@ -41,6 +41,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "dom_notification_enabled",
     "dom_offscreen_canvas_enabled",
     "dom_permissions_enabled",
+    "dom_popover_enabled",
     "dom_sanitizer_enabled",
     "dom_storage_manager_api_enabled",
     "dom_web_animations_enabled",

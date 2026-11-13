@@ -15,6 +15,7 @@ use style::Zero;
 use style::computed_values::position::T as Position;
 use style::logical_geometry::{LogicalAxis, PhysicalSide, WritingMode};
 use style::properties::ComputedValues;
+use style::values::computed::TopLayer;
 use style::values::specified::align::AlignFlags;
 
 use crate::cell::{ArcRefCell, RefOrAtomicRef};
@@ -482,7 +483,21 @@ impl HoistedAbsolutelyPositionedBox {
         // absolute. For grid containers, we resolve the node's grid area. For all other
         // containers, the containing block is just the padding box.
         let containing_block_origin = containing_block_rect.origin.to_vector();
-        let fully_adjusted_static_position_rect = {
+        let fully_adjusted_static_position_rect = if matches!(
+            *independent_formatting_context
+                .style()
+                .get_box()
+                .get__servo_top_layer(),
+            TopLayer::Auto
+        ) {
+            // A top-layer box uses the initial containing block as its static-position
+            // rectangle, regardless of its position in the document tree.
+            // <https://drafts.csswg.org/css-position-4/#top-layer>
+            LogicalRect {
+                start_corner: LogicalVec2::zero(),
+                size: containing_block.size,
+            }
+        } else {
             let mut static_position_rect = self
                 .static_position_rect()
                 .translate(-containing_block_origin);
