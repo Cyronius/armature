@@ -262,6 +262,7 @@ pub struct HTMLMediaData {
     pub current_frame: Option<MediaFrame>,
     pub metadata: Option<MediaMetadata>,
     pub poster_or_src_url: Option<ServoUrl>,
+    pub poster_vector_image: Option<net_traits::image_cache::VectorImage>,
 }
 
 #[derive(Debug)]

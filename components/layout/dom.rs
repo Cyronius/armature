@@ -503,7 +503,7 @@ pub(crate) trait NodeExt<'dom> {
     fn as_image(&self) -> Option<(ImageInfo, NaturalSizes)>;
     fn as_canvas(&self) -> Option<(CanvasInfo, PhysicalSize<f64>)>;
     fn as_iframe(&self) -> Option<IFrameInfo>;
-    fn as_video(&self) -> Option<(VideoInfo, Option<PhysicalSize<f64>>)>;
+    fn as_video(&self) -> Option<(VideoInfo, NaturalSizes)>;
     fn as_svg(&self) -> Option<SVGElementData<'dom>>;
 
     fn ensure_inner_layout_data(&self) -> AtomicRefMut<'dom, InnerDOMLayoutData>;
@@ -613,18 +613,30 @@ impl<'dom> NodeExt<'dom> for ServoLayoutNode<'dom> {
         self.svg_data()
     }
 
-    fn as_video(&self) -> Option<(VideoInfo, Option<PhysicalSize<f64>>)> {
+    fn as_video(&self) -> Option<(VideoInfo, NaturalSizes)> {
         let data = self.media_data()?;
-        let natural_size = if let Some(frame) = data.current_frame {
-            Some(PhysicalSize::new(frame.width.into(), frame.height.into()))
+        let natural_size = if let Some(vector_image) = data.poster_vector_image.as_ref() {
+            NaturalSizes::from_vector_image(vector_image, 1.)
+        } else if let Some(frame) = data.current_frame {
+            NaturalSizes::from_natural_size_in_dots(PhysicalSize::new(
+                frame.width.into(),
+                frame.height.into(),
+            ))
         } else {
             data.metadata
-                .map(|meta| PhysicalSize::new(meta.width.into(), meta.height.into()))
+                .map(|meta| {
+                    NaturalSizes::from_natural_size_in_dots(PhysicalSize::new(
+                        meta.width.into(),
+                        meta.height.into(),
+                    ))
+                })
+                .unwrap_or_else(NaturalSizes::empty)
         };
         Some((
             VideoInfo {
                 image_key: data.current_frame.map(|frame| frame.image_key),
                 poster_or_src_url: data.poster_or_src_url,
+                poster_vector_image: data.poster_vector_image,
             },
             natural_size,
         ))

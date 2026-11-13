@@ -18,7 +18,7 @@ use net_traits::blob_url_store::UrlWithBlobClaim;
 use net_traits::fetch::fetch_controller::FetchController;
 use net_traits::image_cache::{
     ImageCache, ImageCacheResult, ImageLoadListener, ImageOrMetadataAvailable, ImageResponse,
-    PendingImageId,
+    PendingImageId, VectorImage,
 };
 use net_traits::request::{CredentialsMode, Destination, RequestBuilder, RequestId};
 use net_traits::{
@@ -63,6 +63,9 @@ pub(crate) struct HTMLVideoElement {
     /// <https://html.spec.whatwg.org/multipage/#dom-video-poster>
     #[no_trace]
     poster_url: AtomicRefCell<Option<UrlWithBlobClaim>>,
+    /// SVG poster data is rasterized by layout at the displayed size.
+    #[no_trace]
+    poster_vector_image: AtomicRefCell<Option<VectorImage>>,
     /// Incremented whenever tasks associated with this element are cancelled.
     generation_id: Cell<u32>,
     /// Load event blocker. Will block the load event while the poster frame
@@ -88,6 +91,7 @@ impl HTMLVideoElement {
             video_width: Cell::new(None),
             video_height: Cell::new(None),
             poster_url: Default::default(),
+            poster_vector_image: Default::default(),
             generation_id: Cell::new(0),
             load_blocker: Default::default(),
             last_frame: Default::default(),
@@ -230,6 +234,7 @@ impl HTMLVideoElement {
         *self.poster_url.safe_borrow_mut(cx.no_gc()) = None;
         let Some(url) = poster_attribute.filter(|poster_attribute| !poster_attribute.is_empty())
         else {
+            *self.poster_vector_image.safe_borrow_mut(cx.no_gc()) = None;
             self.htmlmediaelement.set_poster_frame(cx.no_gc(), None);
             return;
         };
@@ -244,6 +249,7 @@ impl HTMLVideoElement {
             .encoding_parse_a_url(url)
             .map(|url| ensure_blob_referenced_by_url_is_kept_alive(&global, url))
         else {
+            *self.poster_vector_image.safe_borrow_mut(cx.no_gc()) = None;
             self.htmlmediaelement.set_poster_frame(cx.no_gc(), None);
             return;
         };
@@ -352,17 +358,18 @@ impl HTMLVideoElement {
         match response {
             ImageResponse::Loaded(image, url) => {
                 debug!("Loaded poster image for video element: {:?}", url);
-                match image.as_raster_image() {
-                    Some(image) => self
-                        .htmlmediaelement
-                        .set_poster_frame(cx.no_gc(), Some(image)),
-                    None => warn!("Vector images are not yet supported in video poster"),
-                }
+                *self.poster_vector_image.safe_borrow_mut(cx.no_gc()) = match &image {
+                    net_traits::image_cache::Image::Vector(image) => Some(image.clone()),
+                    net_traits::image_cache::Image::Raster(..) => None,
+                };
+                self.htmlmediaelement
+                    .set_poster_frame(cx.no_gc(), image.as_raster_image());
                 LoadBlocker::terminate(cx, &self.load_blocker);
             },
             ImageResponse::MetadataLoaded(..) => {},
             // The image cache may have loaded a placeholder for an invalid poster url
             ImageResponse::FailedToLoadOrDecode => {
+                *self.poster_vector_image.safe_borrow_mut(cx.no_gc()) = None;
                 self.htmlmediaelement.set_poster_frame(cx.no_gc(), None);
                 // A failed load should unblock the document load.
                 LoadBlocker::terminate(cx, &self.load_blocker);
@@ -631,6 +638,11 @@ impl LayoutDom<'_, HTMLVideoElement> {
                 video.poster_url.borrow().clone().map(|url| url.url())
             } else {
                 video.htmlmediaelement.current_src_url()
+            },
+            poster_vector_image: if video.htmlmediaelement.show_poster() || current_frame.is_none() {
+                video.poster_vector_image.borrow().clone()
+            } else {
+                None
             },
         }
     }

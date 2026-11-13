@@ -165,6 +165,7 @@ pub(crate) struct ImageInfo {
 pub(crate) struct VideoInfo {
     pub image_key: Option<ImageKey>,
     pub poster_or_src_url: Option<ServoUrl>,
+    pub poster_vector_image: Option<VectorImage>,
 }
 
 #[derive(Debug, MallocSizeOf)]
@@ -209,12 +210,8 @@ impl ReplacedContents {
                     ReplacedContentKind::IFrame(iframe_info),
                     NaturalSizes::empty(),
                 )
-            } else if let Some((video_info, natural_size_in_dots)) = node.as_video() {
-                (
-                    ReplacedContentKind::Video(video_info),
-                    natural_size_in_dots
-                        .map_or_else(NaturalSizes::empty, NaturalSizes::from_natural_size_in_dots),
-                )
+            } else if let Some((video_info, natural_size)) = node.as_video() {
+                (ReplacedContentKind::Video(video_info), natural_size)
             } else if let Some(svg_data) = node.as_svg() {
                 Self::svg_kind_size(svg_data, context, node)
             } else if node
@@ -610,12 +607,24 @@ impl ReplacedContents {
                 .into_iter()
                 .collect(),
             ReplacedContentKind::Video(video_info) => {
+                let image_key = video_info.poster_vector_image.as_ref().and_then(|image| {
+                    let scale = layout_context.style_context.device_pixel_ratio();
+                    let size = Size2D::new(
+                        object_fit_size.width.scale_by(scale.0).to_px(),
+                        object_fit_size.height.scale_by(scale.0).to_px(),
+                    );
+                    layout_context.image_resolver.image_key_from_cached_image(
+                        &Image::Vector(image.clone()),
+                        size,
+                        self.base_fragment_info.tag.map(|tag| tag.node),
+                    )
+                });
                 vec![Fragment::Image(Arc::new(ImageFragment {
                     base,
                     style: style.clone().into(),
                     selected_style: self.selected_style.clone(),
                     clip,
-                    image_key: video_info.image_key,
+                    image_key: image_key.or(video_info.image_key),
                     showing_broken_image_icon: false,
                     url: video_info.poster_or_src_url.clone(),
                     load_time: None,
