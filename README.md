@@ -101,18 +101,24 @@ gains are not yet included in the full CSS score above.
 CSS Typed OM transform values made the 244 explicitly selected style property tests rise from 0 to 164.07 passing
 test-equivalents on the same test IDs as the expanded CSS baseline. The 12 direct transform suites rose from 0 to 12,
 with every subtest passing. The property directory remains excluded by `include.ini`; the 12 direct suites are now
-included. These focused gains are not yet included in a full CSS rerun. Five property files still error while
+included. These focused gains are outside the full CSS score above. Five property files still error while
 constructing unsupported `<position>` values; many other property subtests need `computedStyleMap()`.
 Enabling the existing popover API for experimental WPT runs and using the initial containing block as a top-layer
 box's static-position rectangle raised a focused 278-test CSS Position and CSS Containment set from 150.54 to
 158.54 passing test-equivalents. Four of the eight newly passing tests are in the default CSS selection; the four
-content-visibility tests are excluded by `include.ini`. These gains are not yet included in a full CSS rerun.
+content-visibility tests are excluded by `include.ini`. These gains are outside the full CSS score above.
 A later 1,737-test writing-mode, static-position and grid-alignment run found 34 FAIL-to-PASS and four
 TIMEOUT-to-PASS changes after correcting the bidi order and vertical-rl static position of absolutely positioned
 boxes. All 20 newly passing reftests with stale failure expectations passed on a focused repeat, and their
 expectations were removed. Two tests that passed in the earlier full CSS run failed in this sweep: the orthogonal
 float case fails identically on the unmodified build, while the vertical relative-position case passes on an
-isolated repeat. These focused gains are not yet included in a full CSS rerun.
+isolated repeat. These focused gains are outside the full CSS score above.
+A full CSS sweep later on 13 November selected 34,847 tests. Restricted to the original 29,199 IDs, it scored
+**73.35%** (21,418.5 test-equivalents passing, raw). Three tests that passed in the preceding full run and failed in
+this sweep passed on an isolated repeat. Five other apparent passing-to-failing cases failed again on repeat; the
+orthogonal float case and four vertical baseline cases also fail identically with the pre-patch layout build. The
+expanded selection is not used for the comparable score; the new sweep includes the default-selected tests from the
+focused batches above.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
