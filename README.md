@@ -268,7 +268,10 @@ Notes on the numbers:
   interpolation and composition tests still match their expectations.
 - **Images in embedded elements**: `<embed src>` and `<object data>` resolve image URLs and use the image cache's
   natural dimensions for `object-fit` and `object-position`. In the 85-file CSS Images reftest run, 81 tests newly
-  pass; four tentative `contain-intrinsic-size` cases still fail.
+  pass; eight related `object-position` reftests also pass. Four tentative `contain-intrinsic-size` cases still fail.
+- **SVG video posters**: `<video poster>` keeps an SVG image as a vector until layout knows its `object-fit` size,
+  then rasterizes it at that size. All 30 previously failing SVG poster object-fit reftests and two related
+  `object-position` reftests now pass, while the focused PNG poster regressions remain passing.
 - **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
   matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
   subtests newly pass across CSS Transforms and Web Animations.
