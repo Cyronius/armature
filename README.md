@@ -180,6 +180,11 @@ the space available on each line when measuring their content. The 1,419-test `c
 test-equivalents against the last full CSS run, including 35 newly passing reftests, with no status regressions.
 Together with the preceding line-clamp gain, the projected comparable CSS score is **75.59%** (22,071.0 of 29,199
 test-equivalents); these focused gains have not yet been measured in a full CSS rerun.
+Implementing predefined Greek, kana, CJK, Armenian, Georgian, and Hebrew counter styles, plus custom additive
+systems and named fallbacks, raised the 259-test `css-counter-styles` run from 98.59 to 148.59 passing
+test-equivalents. The 225-test `css-lists` run gained another 4.0; neither directory had a status regression.
+Including these 54.0 focused gains, the projected comparable CSS score is **75.77%** (22,125.0 of 29,199
+test-equivalents); these gains have not yet been measured in a full CSS rerun.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -339,8 +344,9 @@ Notes on the numbers:
   `svg-origin-relative-length` reftests and one `transform-box` reftest now pass.
 - **CSS counters and counter styles**: Layout resolves `counter-reset`, `counter-increment`, `counter-set`, implicit
   `list-item` increments and generated counter content in tree order before parallel box construction. It renders
-  common built-in styles, `symbols()` and basic named `@counter-style` systems, including styles scoped to shadow
-  roots and declarations from `::part` rules. The 866-test counter, list and generated-content rerun gained 195.6
+  common built-in styles, `symbols()` and named `@counter-style` systems, including additive systems, named fallbacks,
+  styles scoped to shadow roots, and declarations from `::part` rules. Predefined Greek, kana, CJK, Armenian,
+  Georgian, and Hebrew representations are supported. The 866-test counter, list and generated-content rerun gained 195.6
   passing test-equivalents against the preceding full CSS run; a subsequent focused run fixed its one shadow-scoping
   regression and all four focused shadow-reference tests pass.
 - **Generated quote nesting**: Quote depth now follows generated content through the flattened element tree,
