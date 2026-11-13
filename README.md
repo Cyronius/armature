@@ -71,13 +71,11 @@ passed in this run and on a focused repeat, but may vary between runs.
 
 After counter resolution and named counter-style rendering, a four-chunk CSS rerun covered the same 34,847 test
 IDs. On the original 29,199 IDs, it scored **72.3%** (21,107.8 test-equivalents passing, up 142.3 from the preceding
-rerun). Later focused runs verified fixes for style containment and counter-style references across shadow trees;
-those follow-up fixes are not included in the four-chunk score.
-Resolving quote depth in tree order subsequently made 43 more reftests pass in the focused `CSS2/generated-content` and
-`css-content` runs; that gain is also not included in the four-chunk score.
-Emergency wrapping at grapheme boundaries subsequently made 54 more test IDs pass across the 2,394-test `css-text`
-and `CSS2/text` rerun, with no regressions against the original CSS baseline. That gain is also not included in the
-four-chunk score.
+rerun). A later four-chunk CSS rerun, after the shadow-tree counter fixes, quote-depth resolution, and emergency
+wrapping at grapheme boundaries, covered the same 34,847 test IDs. On the original 29,199 IDs, it scored **72.7%**
+(21,213.5 test-equivalents passing, up 105.7). Across the expanded selection, 113 previously failing reftests passed;
+the largest groups were `css-text` (54), `css-content` (28), and `CSS2` (17). Three previously passing reftests failed in
+the full run but all passed on a focused rerun; their full-run failures appear intermittent.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
