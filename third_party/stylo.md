@@ -438,3 +438,11 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   requires the first two and requires accepting the deprecated SVG keywords. This fixes parsing,
   computed style and inheritance tests in CSS Images and SVG painting.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-522: Preserve large animation weights in color mixing
+- Files: `style/color/mix.rs`, `style/values/animated/color.rs`
+- Why: Converting extrapolated animation weights to single precision can round opposite large
+  weights to a zero sum. Retain double precision through alpha and color interpolation, and mix
+  absolute animated colors before constructing f32 color-mix percentages, so filter drop shadows
+  extrapolate and clamp correctly at large animation progress.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

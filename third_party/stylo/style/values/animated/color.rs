@@ -26,8 +26,9 @@ impl Animate for AbsoluteColor {
         Ok(mix::mix_many(
             ColorInterpolationMethod::best_interpolation_between(self, other),
             [
-                mix::ColorMixItem::new(*self, left_weight as f32),
-                mix::ColorMixItem::new(*other, right_weight as f32),
+                // Armature (AS-522): Keep animation weights precise through color mixing.
+                mix::ColorMixItem::new(*self, left_weight),
+                mix::ColorMixItem::new(*other, right_weight),
             ],
             ColorMixFlags::empty(),
         ))
@@ -67,6 +68,19 @@ impl Animate for Color {
     #[inline]
     fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
         let (left_weight, right_weight) = procedure.weights();
+
+        // Armature (AS-522): Mix absolute colors before f32 percentages lose the
+        // one-unit difference between opposite large extrapolation weights.
+        if let (Some(left), Some(right)) = (self.as_absolute(), other.as_absolute()) {
+            return Ok(Self::Absolute(crate::color::mix::mix_many(
+                ColorInterpolationMethod::srgb(),
+                [
+                    crate::color::mix::ColorMixItem::new(*left, left_weight),
+                    crate::color::mix::ColorMixItem::new(*right, right_weight),
+                ],
+                ColorMixFlags::empty(),
+            )));
+        }
 
         Ok(Self::from_color_mix(ColorMix {
             interpolation: ColorInterpolationMethod::srgb(),
