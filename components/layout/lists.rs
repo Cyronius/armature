@@ -568,9 +568,10 @@ fn fixed_symbols(value: i32, symbols: &str, fallback_digits: &str) -> String {
 fn additive_symbols(value: i32, tuples: &[AdditiveTuple]) -> Option<String> {
     let mut remaining = i64::from(value).abs();
     if remaining == 0 {
+        // A negative calc() weight for a non-negative integer computes to zero.
         return tuples
             .iter()
-            .find(|tuple| tuple.weight.resolve() == Some(0))
+            .find(|tuple| tuple.weight.resolve().is_some_and(|weight| weight <= 0))
             .map(|tuple| symbol_to_string(&tuple.symbol).to_string());
     }
 
