@@ -149,6 +149,10 @@ Making room for a block ellipsis at direct-text soft wrap points and trimming tr
 comparable score to **74.86%** (21,859.7 test-equivalents passing, raw), a further gain of 6.1. Six line-clamp
 reftests passed in both the focused and full runs. Two other full-run regressions passed on a focused repeat and were
 excluded from expectation updates.
+Aligning trailing items in auto-sized column grid lanes raised the comparable score to **74.88%** (21,863.5
+test-equivalents passing, raw), a further gain of 3.8. Four grid-lanes reftests passed in the 1,005-test focused run
+and the full CSS run, with no grid-lanes status regressions. Unrelated full-run status changes were excluded from
+expectation updates; the filter-effects regression passed on a focused repeat.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -339,8 +343,9 @@ Notes on the numbers:
   axis, then places each in-flow item after the previous item in its shortest eligible lane. Both row and column
   lanes, gaps, spans, explicit lane placement, and natural item sizing in the stacking axis work. The 1,005-test
   grid-lanes suite rose from 133.93 to 356.69 passing test-equivalents against the preceding full CSS run; the
-  surrounding grid and display suites had no status changes outside grid lanes. Subgrid, intrinsic auto-repeat,
-  dense packing, and older grid-lanes properties still need work.
+  surrounding grid and display suites had no status changes outside grid lanes. Trailing single-lane items in
+  auto-sized column lanes now honor end, center, and stretch alignment. Subgrid, intrinsic auto-repeat, dense
+  packing, and older grid-lanes properties still need work.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
