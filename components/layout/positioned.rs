@@ -798,15 +798,20 @@ impl IndependentFormattingContext {
             original_parent_writing_mode,
             containing_block_writing_mode,
         );
-        let content_rect = LogicalRect {
+        let mut content_rect = LogicalRect {
             start_corner: LogicalVec2 {
                 inline: inline_origin + margin.inline_start + pb.inline_start,
                 block: block_origin + margin.block_start + pb.block_start,
             },
             size: content_size,
         }
-        .as_physical(Some(containing_block))
-        .translate(containing_block_origin);
+        .as_physical(Some(containing_block));
+        // In vertical-rl, the block-start edge is the physical right edge. The generic
+        // rectangle conversion does not account for this when positioning an absolute box.
+        if containing_block_writing_mode.is_vertical_rl() {
+            content_rect.origin.x = cbbs - content_rect.origin.x - content_rect.size.width;
+        }
+        let content_rect = content_rect.translate(containing_block_origin);
 
         if is_cached &&
             let Some(old_fragment) = self.base.fragments().first() &&

@@ -70,16 +70,25 @@ impl BoxTree {
         root_element: ServoLayoutNode<'_>,
     ) -> WritingMode {
         let root_style = root_element.style(&context.style_context);
+        if root_style.get_box().get_display().is_none() {
+            return root_style.writing_mode;
+        }
         if root_style.get_box().contain.is_empty() {
             let body = root_element.flat_tree_children().find(|child| {
                 child
                     .as_element()
                     .is_some_and(|element| element.is_body_element_of_html_element_root())
             });
-            if let Some(body) = body {
-                let body_style = body.style(&context.style_context);
-                if !body_style.get_box().get_display().is_none() {
-                    return body_style.writing_mode;
+            if let Some(body) = body.and_then(|node| node.as_element()) {
+                // A body inside a display:none root can exist in the flat tree without
+                // having been styled. Only styled elements can propagate a used value.
+                if body.style_data().is_some() {
+                    let body_style = body.style(&context.style_context);
+                    if !body_style.get_box().get_display().is_none() &&
+                        body_style.get_box().contain.is_empty()
+                    {
+                        return body_style.writing_mode;
+                    }
                 }
             }
         }
