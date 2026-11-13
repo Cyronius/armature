@@ -570,9 +570,12 @@ impl TaffyContainer {
                     (pbm.padding.block_start + pbm.border.block_start).to_f32_px()
                 };
                 let mut lane_ends = vec![content_start; tracks.len()];
+                let mut last_in_lane: Vec<Option<usize>> = vec![None; tracks.len()];
+                let mut single_lane_item = vec![false; self.children.len()];
+                let mut alignment_gaps: Vec<Option<f32>> = vec![None; self.children.len()];
                 let mut placement_index = 0;
 
-                for child in &self.children {
+                for (child_index, child) in self.children.iter().enumerate() {
                     let mut child = child.borrow_mut();
                     if !matches!(&child.taffy_level_box, TaffyItemBoxInner::InFlowBox(_)) {
                         continue;
@@ -623,6 +626,23 @@ impl TaffyContainer {
                         .iter()
                         .copied()
                         .fold(content_start, f32::max);
+                    // A spanning item closes the preceding packing range in each
+                    // lane. Its preceding single-lane items may align in the space
+                    // between their outer edge and the spanning item's start.
+                    if span > 1 {
+                        for lane in first_lane..first_lane + span {
+                            if let Some(previous) =
+                                last_in_lane[lane].filter(|&index| single_lane_item[index])
+                            {
+                                let free_space = stacking_start - lane_ends[lane];
+                                if free_space > 0.0 {
+                                    alignment_gaps[previous] = Some(
+                                        alignment_gaps[previous].unwrap_or(0.0).max(free_space),
+                                    );
+                                }
+                            }
+                        }
+                    }
                     let original_track = &tracks[usize::from(start_line - 1)];
                     let layout = &mut child.taffy_layout;
                     let end = if row_lanes {
@@ -635,6 +655,76 @@ impl TaffyContainer {
                         layout.location.y + layout.size.height + layout.margin.bottom + gap
                     };
                     lane_ends[first_lane..first_lane + span].fill(end);
+                    last_in_lane[first_lane..first_lane + span].fill(Some(child_index));
+                    single_lane_item[child_index] = span == 1;
+                }
+
+                // For an auto-sized stacking range, the longest lane sets the
+                // end edge against which trailing items can align.
+                if !row_lanes && content_box_size_override.size.block.to_definite().is_none() {
+                    let longest_lane = lane_ends.iter().copied().fold(content_start, f32::max);
+                    for (lane, previous) in last_in_lane.into_iter().enumerate() {
+                        if let Some(previous) = previous.filter(|&index| single_lane_item[index]) {
+                            let free_space = longest_lane - lane_ends[lane];
+                            if free_space > 0.0 {
+                                alignment_gaps[previous] =
+                                    Some(alignment_gaps[previous].unwrap_or(0.0).max(free_space));
+                            }
+                        }
+                    }
+                }
+                for (child_index, free_space) in alignment_gaps.into_iter().enumerate() {
+                    let Some(free_space) = free_space else {
+                        continue;
+                    };
+                    let mut child = self.children[child_index].borrow_mut();
+                    let position = child.style.get_position();
+                    let alignment = if row_lanes {
+                        position.justify_self.0
+                    } else {
+                        position.align_self.0
+                    };
+                    let alignment = if alignment.value() == AlignFlags::AUTO {
+                        if row_lanes {
+                            justify_items.computed.0.0
+                        } else {
+                            align_items.0
+                        }
+                    } else {
+                        alignment
+                    };
+                    let auto_stacking_size = if row_lanes {
+                        matches!(position.width, style::values::computed::Size::Auto)
+                    } else {
+                        matches!(position.height, style::values::computed::Size::Auto)
+                    };
+                    let layout = &mut child.taffy_layout;
+                    match alignment.value() {
+                        AlignFlags::END | AlignFlags::SELF_END => {
+                            if row_lanes {
+                                layout.location.x += free_space;
+                            } else {
+                                layout.location.y += free_space;
+                            }
+                        },
+                        AlignFlags::CENTER => {
+                            if row_lanes {
+                                layout.location.x += free_space / 2.0;
+                            } else {
+                                layout.location.y += free_space / 2.0;
+                            }
+                        },
+                        AlignFlags::STRETCH => {
+                            if auto_stacking_size {
+                                if row_lanes {
+                                    layout.size.width += free_space;
+                                } else {
+                                    layout.size.height += free_space;
+                                }
+                            }
+                        },
+                        _ => {},
+                    }
                 }
 
                 if !row_lanes && content_box_size_override.size.block.to_definite().is_none() {
