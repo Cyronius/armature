@@ -124,6 +124,10 @@ scored **74.12%** (21,642.2 test-equivalents passing, raw), up 223.7 from the pr
 account for 222.8 of that gain. Nine tests outside the grid-lanes directory had different top-level statuses, with
 almost no net weighted change. A focused repeat confirmed two new failures and one new pass in grid-lanes gap
 decorations; the other status changes did not reveal a new stable failure.
+After correcting vertical logical-to-physical geometry, the same 34,847-test CSS selection scored **74.36%** on the
+original 29,199 IDs (21,713.8 test-equivalents passing, raw), a gain of 71.6 over the grid-lanes run. The largest
+weighted gain was 65.7 in `css-writing-modes`; `css-align` gained 13.0, while several vertical text and containment
+cases regressed. Focused reruns confirmed the changed results used for expectation updates.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -297,6 +301,10 @@ Notes on the numbers:
   mode and the initial containing block's writing mode. Containment and `display: none` prevent body propagation.
   Vertical-rl absolute boxes now resolve physical horizontal insets from the right block-start edge. A 3,003-test
   focused run gained 34 passing reftests against the preceding full CSS run, with one reproducible regression.
+- **Vertical logical geometry**: layout converts right-to-left block and bottom-to-top inline coordinates using their
+  physical start edges, including inverse point and rectangle conversions and signed vectors. This replaces special
+  handling in absolute positioning and gains 71.6 passing test-equivalents in the comparable CSS run, chiefly in
+  vertical writing modes and alignment.
 - **CSS grid lanes**: Experimental WPT runs enable `display: grid-lanes`. Layout uses grid track sizing in the lane
   axis, then places each in-flow item after the previous item in its shortest eligible lane. Both row and column
   lanes, gaps, spans, explicit lane placement, and natural item sizing in the stacking axis work. The 1,005-test
@@ -823,7 +831,9 @@ Notes on the numbers:
   excluded from the default CSS run.
 - Vertical in-flow and orthogonal box placement remain incomplete. In
   `css-writing-modes/relpos-inline-overflowing-block-vrl.html`, the corrected absolute box now exposes the existing
-  misplaced inline box, causing a reproducible reftest failure.
+  misplaced inline box, causing a reproducible reftest failure. Vertical coordinate conversion also remains
+  provisional when the containing block's block size is indefinite; several containment and vertical text reftests
+  still fail.
 - `line-clamp` still needs ellipsis placement when the last line is full or has nested inline boxes, counting lines
   inside descendant blocks, vertical and right-to-left text, and the legacy `-webkit-box` display behavior.
 - Container queries still have failures involving hidden ancestors, unsupported query forms, and other dynamic
