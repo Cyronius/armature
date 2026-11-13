@@ -19,6 +19,7 @@ use style::logical_geometry::LogicalAxis;
 use style::properties::ComputedValues;
 use style::servo::selector_parser::PseudoElement;
 use style::values::specified::align::AlignFlags;
+use style::values::specified::box_::MarginTrim;
 use style::values::specified::{Display, TextAlignKeyword};
 
 use crate::cell::ArcRefCell;
@@ -779,6 +780,14 @@ impl BlockContainer {
         collected_margin: &mut CollapsedMargin,
         containing_block_for_children: &ContainingBlock,
     ) -> bool {
+        if containing_block_for_children
+            .style
+            .get_margin()
+            .margin_trim
+            .contains(MarginTrim::BLOCK_START)
+        {
+            return false;
+        }
         match self {
             BlockContainer::BlockLevelBoxes(boxes) => boxes.iter().all(|block_level_box| {
                 block_level_box
@@ -1987,6 +1996,9 @@ fn solve_inline_margins_avoiding_floats(
 /// In parallel mode, this placement is done after all child blocks are laid out. In
 /// sequential mode, this is done right after each block is laid out.
 struct PlacementState<'container> {
+    /// Whether a block-level child's start margin still adjoins the container's start edge.
+    can_trim_block_start: bool,
+    margin_trim: MarginTrim,
     next_in_flow_margin_collapses_with_parent_start_margin: bool,
     last_in_flow_margin_collapses_with_parent_end_margin: bool,
     start_margin: CollapsedMargin,
@@ -2014,6 +2026,8 @@ impl<'container> PlacementState<'container> {
         let is_inline_block_context =
             containing_block.style.get_box().get_display() == &Display::InlineBlock;
         PlacementState {
+            can_trim_block_start: true,
+            margin_trim: containing_block.style.get_margin().margin_trim,
             next_in_flow_margin_collapses_with_parent_start_margin:
                 collapsible_with_parent_start_margin.0,
             last_in_flow_margin_collapses_with_parent_end_margin: true,
@@ -2103,11 +2117,20 @@ impl<'container> PlacementState<'container> {
 
                 let BlockLevelLayoutInfo {
                     clearance,
-                    block_margins_collapsed_with_children: fragment_block_margins,
+                    block_margins_collapsed_with_children: mut fragment_block_margins,
                 } = *fragment
                     .block_level_layout_info
                     .clone()
                     .expect("A block-level fragment should have a BlockLevelLayoutInfo.");
+                if self.can_trim_block_start && self.margin_trim.contains(MarginTrim::BLOCK_START) {
+                    fragment_block_margins.start = CollapsedMargin::zero();
+                    if fragment_block_margins.collapsed_through {
+                        fragment_block_margins.end = CollapsedMargin::zero();
+                    }
+                }
+                if !fragment_block_margins.collapsed_through {
+                    self.can_trim_block_start = false;
+                }
                 let mut fragment_block_size = fragment
                     .border_rect()
                     .size
@@ -2203,6 +2226,9 @@ impl<'container> PlacementState<'container> {
     }
 
     fn finish(mut self) -> (Au, CollapsedBlockMargins, Baselines) {
+        if self.margin_trim.contains(MarginTrim::BLOCK_END) {
+            self.current_margin = CollapsedMargin::zero();
+        }
         if !self.last_in_flow_margin_collapses_with_parent_end_margin {
             self.current_block_direction_position += self.current_margin.solve();
             self.current_margin = CollapsedMargin::zero();

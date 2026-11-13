@@ -1281,6 +1281,7 @@ impl InlineFormattingContextLayout<'_> {
         // > rendering purpose.
         let is_phantom_line = self.current_line.is_phantom();
         if !is_phantom_line {
+            self.placement_state.can_trim_block_start = false;
             self.current_line.start_position.block += self.placement_state.current_margin.solve();
             self.placement_state.current_margin = CollapsedMargin::zero();
         }
