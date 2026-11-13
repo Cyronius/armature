@@ -76,6 +76,8 @@ wrapping at grapheme boundaries, covered the same 34,847 test IDs. On the origin
 (21,213.5 test-equivalents passing, up 105.7). Across the expanded selection, 113 previously failing reftests passed;
 the largest groups were `css-text` (54), `css-content` (28), and `CSS2` (17). Three previously passing reftests failed in
 the full run but all passed on a focused rerun; their full-run failures appear intermittent.
+A subsequent block-container `margin-trim` change made 32 of 106 focused `css-box/margin-trim` tests newly pass, with no
+status regressions. That directory is excluded by `include.ini`, so these gains are outside the 29,199-test score.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -237,6 +239,8 @@ Notes on the numbers:
   can break overflowing text at grapheme boundaries while retaining the original shaping and normal break priorities.
   `anywhere` and `word-break: break-word` also contribute those opportunities to min-content sizing. The 2,394-test
   `css-text` and `CSS2/text` rerun gains 54 passing test IDs against the original CSS baseline without regressions.
+- **Block-container margin trimming**: `margin-trim: block-start`, `block-end`, and `block` discard adjacent child
+  margins, including margins collapsed through empty blocks. The focused 106-test directory gains 32 passing reftests.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
@@ -739,6 +743,8 @@ Notes on the numbers:
 
 - CSS counter support still lacks some predefined and custom numbering systems, counter-style descriptors, and
   `CSSCounterStyleRule` mutation. Four reversed-list counter scope reftests still fail.
+- `margin-trim` still needs flex and grid item trimming and some block fragmentation cases; its WPT directory remains
+  excluded from the default CSS run.
 - WebGL2 texture overload coverage remains incomplete (`tex-unpack-params.html` still errors), and 368 dEQP files
   remain disabled.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
