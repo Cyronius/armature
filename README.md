@@ -84,9 +84,9 @@ Thirty-three previously failing `css-writing-modes` reftests passed. Twelve prev
 timed out in the full run passed on an isolated rerun; substituting only those verified results gives **72.80%**
 (21,257.9 test-equivalents, up 44.3). Four `css-inline` baseline variants and one vertical relative-position reftest
 failed again on a focused rerun. The expanded selection also includes the 32 `margin-trim` gains noted above.
-An additional focused run of all 324 `css-overflow/line-clamp` tests after direct-line clamping and ellipsis support
-made 21 previously failing tests pass with no status regressions. These gains are not yet included in the full CSS
-score above.
+An additional focused run of all 934 `css-overflow` tests after direct-line clamping and ellipsis support gained
+22.4 passing test-equivalents, including 21 previously failing `line-clamp` reftests and legacy shorthand parsing
+subtests, with no status regressions. These gains are not yet included in the full CSS score above.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -343,7 +343,8 @@ Notes on the numbers:
   test-equivalents across five tests in a 454-test rerun, with no regressions against the earlier CSS-only run.
 - **Direct-line `line-clamp`**: layout suppresses lines after the requested count, sizes the block to the retained
   lines and appends a default ellipsis when it fits after simple text. Stylo now parses `-webkit-line-clamp` in Servo
-  so it participates correctly in the cascade (AS-524). A 324-test focused run gains 21 passing reftests.
+  so it participates correctly in the cascade (AS-524). A 934-test CSS Overflow run gains 22.4 passing
+  test-equivalents, including 21 reftests.
 - **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
   matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
   subtests newly pass across CSS Transforms and Web Animations.
