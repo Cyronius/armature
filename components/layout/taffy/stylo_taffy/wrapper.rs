@@ -22,6 +22,7 @@ pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
     pub style: T,
     pub fragment_flags: FragmentFlags,
     grid_container_direction: Option<taffy::Direction>,
+    grid_lanes_stacking_axis_is_horizontal: Option<bool>,
 }
 
 impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
@@ -30,6 +31,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
             style,
             fragment_flags,
             grid_container_direction: None,
+            grid_lanes_stacking_axis_is_horizontal: None,
         }
     }
 
@@ -38,11 +40,24 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
         self
     }
 
+    pub fn with_grid_lanes_stacking_axis(mut self, horizontal: bool) -> Self {
+        self.grid_lanes_stacking_axis_is_horizontal = Some(horizontal);
+        self
+    }
+
     fn grid_self_alignment(
         &self,
         input: stylo::AlignFlags,
         horizontal: bool,
     ) -> Option<taffy::AlignSelf> {
+        if self.grid_lanes_stacking_axis_is_horizontal == Some(horizontal)
+            && matches!(
+                input.value(),
+                stylo::AlignFlags::AUTO | stylo::AlignFlags::NORMAL
+            )
+        {
+            return Some(taffy::AlignSelf::START);
+        }
         let mut alignment = convert::self_alignment(input)?;
         let Some(container_direction) = self.grid_container_direction else {
             return Some(alignment);

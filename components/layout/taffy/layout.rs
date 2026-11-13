@@ -8,6 +8,8 @@ use style::logical_geometry::LogicalAxis;
 use style::properties::ComputedValues;
 use style::values::computed::CSSPixelLength;
 use style::values::computed::length_percentage::CalcLengthPercentage;
+use style::values::generics::length::LengthPercentageOrNormal;
+use style::values::specified::GenericGridTemplateComponent;
 use style::values::specified::align::AlignFlags;
 use style::values::specified::box_::DisplayInside;
 use style::{Atom, Zero};
@@ -37,6 +39,17 @@ use crate::style_ext::{Clamp, ContentBoxSizesAndPBM, LayoutStyle};
 use crate::{ConstraintSpace, ContainingBlock, ContainingBlockSize, IndefiniteContainingBlock};
 
 const DUMMY_NODE_ID: taffy::NodeId = taffy::NodeId::new(u64::MAX);
+
+fn grid_lanes_use_rows(style: &ComputedValues) -> bool {
+    let position = style.get_position();
+    matches!(
+        &position.grid_template_columns,
+        GenericGridTemplateComponent::None
+    ) && !matches!(
+        &position.grid_template_rows,
+        GenericGridTemplateComponent::None
+    )
+}
 
 fn resolve_content_size(constraint: AvailableSpace, content_sizes: ContentSizes) -> f32 {
     match constraint {
@@ -356,7 +369,12 @@ impl taffy::LayoutGridContainer for TaffyContainerContext<'_> {
         } else {
             taffy::Direction::Rtl
         };
-        TaffyStyloStyle::new(stylo_style, fragment_flags).with_grid_container_direction(direction)
+        let mut style = TaffyStyloStyle::new(stylo_style, fragment_flags)
+            .with_grid_container_direction(direction);
+        if self.style.get_display().inside() == DisplayInside::GridLanes {
+            style = style.with_grid_lanes_stacking_axis(grid_lanes_use_rows(self.style));
+        }
+        style
     }
 
     fn set_detailed_grid_info(
@@ -418,7 +436,7 @@ impl ComputeInlineContentSizes for TaffyContainer {
         };
 
         let (max_content_output, min_content_output) = match style.get_display().inside() {
-            DisplayInside::Grid => {
+            DisplayInside::Grid | DisplayInside::GridLanes => {
                 let max_content_output = taffy::compute_grid_layout(
                     &mut grid_context,
                     DUMMY_NODE_ID,
@@ -515,12 +533,117 @@ impl TaffyContainer {
             },
         };
 
-        let output = match container_ctx.style.get_display().inside() {
-            DisplayInside::Grid => {
+        let grid_lanes = container_ctx.style.get_display().inside() == DisplayInside::GridLanes;
+        let mut output = match container_ctx.style.get_display().inside() {
+            DisplayInside::Grid | DisplayInside::GridLanes => {
                 taffy::compute_grid_layout(&mut container_ctx, DUMMY_NODE_ID, layout_input)
             },
             _ => panic!("Servo is only configured to use Taffy for CSS Grid layout"),
         };
+
+        if grid_lanes {
+            // Grid lanes use the grid algorithm to size tracks and items in the
+            // grid axis. In the stacking axis, each item follows the previous
+            // item in its lane instead of occupying a shared grid row or column.
+            if let Some(SpecificLayoutInfo::Grid(info)) = &container_ctx.specific_layout_info {
+                let row_lanes = grid_lanes_use_rows(container_style);
+                let tracks = if row_lanes {
+                    &info.info.rows.positions
+                } else {
+                    &info.info.columns.positions
+                };
+                let placements = &info.info.items;
+                let stacking_gap = if row_lanes {
+                    container_style.get_column_gap()
+                } else {
+                    container_style.get_row_gap()
+                };
+                let gap = match stacking_gap {
+                    LengthPercentageOrNormal::LengthPercentage(value) => value
+                        .to_used_value(content_box_size_override.size.inline)
+                        .to_f32_px(),
+                    LengthPercentageOrNormal::Normal => 0.0,
+                };
+                let content_start = if row_lanes {
+                    (pbm.padding.inline_start + pbm.border.inline_start).to_f32_px()
+                } else {
+                    (pbm.padding.block_start + pbm.border.block_start).to_f32_px()
+                };
+                let mut lane_ends = vec![content_start; tracks.len()];
+                let mut placement_index = 0;
+
+                for child in &self.children {
+                    let mut child = child.borrow_mut();
+                    if !matches!(&child.taffy_level_box, TaffyItemBoxInner::InFlowBox(_)) {
+                        continue;
+                    }
+                    let Some(placement) = placements.get(placement_index) else {
+                        break;
+                    };
+                    placement_index += 1;
+                    let (start_line, end_line) = if row_lanes {
+                        (placement.row_start, placement.row_end)
+                    } else {
+                        (placement.column_start, placement.column_end)
+                    };
+                    let span = usize::from(end_line - start_line);
+                    if span == 0 || span > tracks.len() {
+                        continue;
+                    }
+
+                    let position = child.style.get_position();
+                    let (grid_start, grid_end) = if row_lanes {
+                        (&position.grid_row_start, &position.grid_row_end)
+                    } else {
+                        (&position.grid_column_start, &position.grid_column_end)
+                    };
+                    let explicit = (!grid_start.is_auto() && !grid_start.is_span)
+                        || (!grid_end.is_auto() && !grid_end.is_span);
+                    let first_lane = if explicit {
+                        usize::from(start_line - 1)
+                    } else {
+                        (0..=tracks.len() - span)
+                            .min_by(|&left, &right| {
+                                let left_end = lane_ends[left..left + span]
+                                    .iter()
+                                    .copied()
+                                    .fold(content_start, f32::max);
+                                let right_end = lane_ends[right..right + span]
+                                    .iter()
+                                    .copied()
+                                    .fold(content_start, f32::max);
+                                left_end.total_cmp(&right_end).then(left.cmp(&right))
+                            })
+                            .unwrap_or(0)
+                    };
+                    if first_lane + span > tracks.len() {
+                        continue;
+                    }
+                    let stacking_start = lane_ends[first_lane..first_lane + span]
+                        .iter()
+                        .copied()
+                        .fold(content_start, f32::max);
+                    let original_track = &tracks[usize::from(start_line - 1)];
+                    let layout = &mut child.taffy_layout;
+                    let end = if row_lanes {
+                        layout.location.y += tracks[first_lane].start - original_track.start;
+                        layout.location.x = stacking_start + layout.margin.left;
+                        layout.location.x + layout.size.width + layout.margin.right + gap
+                    } else {
+                        layout.location.x += tracks[first_lane].start - original_track.start;
+                        layout.location.y = stacking_start + layout.margin.top;
+                        layout.location.y + layout.size.height + layout.margin.bottom + gap
+                    };
+                    lane_ends[first_lane..first_lane + span].fill(end);
+                }
+
+                if !row_lanes && content_box_size_override.size.block.to_definite().is_none() {
+                    let end = lane_ends.into_iter().fold(content_start, f32::max);
+                    output.size.height = end - (if placement_index == 0 { 0.0 } else { gap })
+                        + (pbm.padding.block_end + pbm.border.block_end).to_f32_px();
+                }
+            }
+        }
 
         let writing_mode = containing_block.style.writing_mode;
         let physical_padding = pbm.padding.to_physical(writing_mode);

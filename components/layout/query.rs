@@ -461,7 +461,7 @@ pub fn process_resolved_style_request(
         let specific_layout_info = fragment
             .retrieve_box_fragment()
             .and_then(|box_fragment| box_fragment.specific_layout_info().as_deref().cloned());
-        if display.inside() == DisplayInside::Grid &&
+        if matches!(display.inside(), DisplayInside::Grid | DisplayInside::GridLanes) &&
             let Some(SpecificLayoutInfo::Grid(info)) = specific_layout_info &&
             let Some(value) = resolve_grid_template(&info, style, longhand_id)
         {

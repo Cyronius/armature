@@ -63,6 +63,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "layout_css_counters_enabled",
     "layout_css_cross_fade_enabled",
     "layout_css_display_animations_enabled",
+    "layout_css_display_grid_lanes_enabled",
     "layout_css_dominant_baseline_enabled",
     "layout_css_ellipse_corners_enabled",
     "layout_css_field_sizing_enabled",

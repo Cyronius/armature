@@ -217,7 +217,7 @@ impl IndependentFormattingContext {
                     is_list_item,
                 ))
             },
-            DisplayInside::Grid => {
+            DisplayInside::Grid | DisplayInside::GridLanes => {
                 IndependentFormattingContextContents::Grid(TaffyContainer::construct(
                     context,
                     node_and_style_info,
