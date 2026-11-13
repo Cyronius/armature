@@ -38,6 +38,9 @@ pub(crate) struct LayoutContext<'a> {
     /// Bits shared by the layout and style system.
     pub style_context: SharedStyleContext<'a>,
 
+    /// Counter values in document order, computed after styling and before box construction.
+    pub counter_snapshots: Mutex<crate::counters::CounterSnapshots>,
+
     /// A FontContext to be used during layout.
     pub font_context: Arc<FontContext>,
 

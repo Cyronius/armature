@@ -347,6 +347,12 @@ pub(crate) fn generate_pseudo_element_content(
     pseudo_element_info: &NodeAndStyleInfo,
     context: &LayoutContext,
 ) -> Vec<PseudoElementContentItem> {
+    let counter_snapshot = context
+        .counter_snapshots
+        .lock()
+        .get(pseudo_element_info.node)
+        .cloned()
+        .unwrap_or_default();
     match &pseudo_element_info.style.get_counters().content {
         Content::Items(items) => {
             items
@@ -385,10 +391,31 @@ pub(crate) fn generate_pseudo_element_content(
                             };
                             maybe_quote.map(PseudoElementContentItem::Text)
                         },
-                        ContentItem::Counter(_, style) | ContentItem::Counters(_, _, style) => {
-                            // TODO: Add support for counters, this assumes a value of 0.
+                        ContentItem::Counter(name, style) => Some(PseudoElementContentItem::Text(
+                            generate_counter_representation(
+                                context,
+                                pseudo_element_info.node,
+                                style::properties::LonghandId::Content,
+                                style,
+                                counter_snapshot.value(&name.0),
+                            ),
+                        )),
+                        ContentItem::Counters(name, separator, style) => {
                             Some(PseudoElementContentItem::Text(
-                                generate_counter_representation(style).to_string(),
+                                counter_snapshot
+                                    .values(&name.0)
+                                    .into_iter()
+                                    .map(|value| {
+                                        generate_counter_representation(
+                                            context,
+                                            pseudo_element_info.node,
+                                            style::properties::LonghandId::Content,
+                                            style,
+                                            value,
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(separator),
                             ))
                         },
                         ContentItem::NoOpenQuote | ContentItem::NoCloseQuote => None,

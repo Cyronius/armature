@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use style::counter_style::{CounterStyle, Symbol, SymbolsType};
+use layout_api::LayoutNode;
+use script::layout_dom::ServoLayoutNode;
+use style::counter_style::{CounterStyle, Symbol, SymbolsType, System};
+use style::properties::LonghandId;
 use style::properties::longhands::list_style_type::computed_value::T as ListStyleType;
+use style::stylesheets::Origin;
 use style::values::computed::Image;
 use style::values::generics::counters::Content;
 use stylo_atoms::atom;
@@ -48,8 +52,18 @@ pub(crate) fn make_marker<'dom>(
         Content::Items(_) => generate_pseudo_element_content(&marker_info, context),
         Content::None => return None,
         Content::Normal => marker_image().or_else(|| {
+            let counter_value = context
+                .counter_snapshots
+                .lock()
+                .get(info.node)
+                .map_or(0, |snapshot| {
+                    snapshot.value(&stylo_atoms::Atom::from("list-item"))
+                });
             Some(vec![PseudoElementContentItem::Text(marker_string(
+                context,
+                info.node,
                 &list_style.list_style_type,
+                counter_value,
             )?)])
         })?,
     };
@@ -65,41 +79,144 @@ fn symbol_to_string(symbol: &Symbol) -> &str {
 }
 
 /// <https://drafts.csswg.org/css-counter-styles-3/#generate-a-counter>
-pub(crate) fn generate_counter_representation(counter_style: &CounterStyle) -> &str {
-    // TODO: Most counter styles produce different results depending on the counter value.
-    // Since we don't support counter properties yet, assume a value of 0 for now.
+pub(crate) fn generate_counter_representation(
+    context: &LayoutContext,
+    node: ServoLayoutNode<'_>,
+    property: LonghandId,
+    counter_style: &CounterStyle,
+    value: i32,
+) -> String {
+    generate_counter_representation_with_depth(context, node, property, counter_style, value, 0)
+}
+
+fn generate_counter_representation_with_depth(
+    context: &LayoutContext,
+    node: ServoLayoutNode<'_>,
+    property: LonghandId,
+    counter_style: &CounterStyle,
+    value: i32,
+    depth: usize,
+) -> String {
+    if depth > 8 {
+        return value.to_string();
+    }
+    if let CounterStyle::Name(name) = counter_style {
+        let shadow_rule = node
+            .as_element()
+            .and_then(|element| {
+                (!element.property_is_from_outer_tree(&context.style_context, property))
+                    .then(|| element.containing_shadow_style_data())
+                    .flatten()
+            })
+            .and_then(|data| data.counter_style_rule(&name.0).cloned());
+        let rule_and_origin = shadow_rule.map(|rule| (rule, Origin::Author)).or_else(|| {
+            context
+                .style_context
+                .stylist
+                .iter_extra_data_origins_rev()
+                .find_map(|(extra, origin)| {
+                    extra
+                        .counter_styles
+                        .get(&name.0)
+                        .map(|rule| (rule.clone(), origin))
+                })
+        });
+        if let Some((rule, origin)) = rule_and_origin {
+            let guard = match origin {
+                Origin::UserAgent | Origin::User => context.style_context.guards.ua_or_user,
+                Origin::Author => context.style_context.guards.author,
+            };
+            let rule = rule.read_with(guard);
+            if let System::Extends(base) = rule.resolved_system() {
+                return generate_counter_representation_with_depth(
+                    context,
+                    node,
+                    property,
+                    &CounterStyle::Name(base.clone()),
+                    value,
+                    depth + 1,
+                );
+            }
+            if let Some(symbols) = &rule.descriptors().symbols {
+                let symbols = &symbols.0;
+                let representation = match rule.resolved_system() {
+                    System::Numeric => Some(positional_symbols(value, symbols, true)),
+                    System::Alphabetic => Some(positional_symbols(value, symbols, false)),
+                    System::Cyclic => {
+                        let index =
+                            (i64::from(value) - 1).rem_euclid(symbols.len() as i64) as usize;
+                        Some(symbol_to_string(&symbols[index]).to_string())
+                    },
+                    System::Symbolic if value > 0 => {
+                        let index = (value as usize - 1) % symbols.len();
+                        Some(
+                            symbol_to_string(&symbols[index])
+                                .repeat((value as usize - 1) / symbols.len() + 1),
+                        )
+                    },
+                    System::Fixed { first_symbol_value } => {
+                        let first = first_symbol_value
+                            .as_ref()
+                            .and_then(|n| n.resolve())
+                            .unwrap_or(1);
+                        let index = i64::from(value) - i64::from(first);
+                        (index >= 0 && (index as usize) < symbols.len())
+                            .then(|| symbol_to_string(&symbols[index as usize]).to_string())
+                    },
+                    System::Symbolic | System::Additive | System::Extends(_) => None,
+                };
+                if let Some(representation) = representation {
+                    return representation;
+                }
+            }
+        }
+    }
     match counter_style {
-        CounterStyle::None | CounterStyle::String(_) => unreachable!("Invalid counter style"),
+        CounterStyle::None => String::new(),
+        CounterStyle::String(string) => string.to_string(),
         CounterStyle::Name(name) => match name.0 {
-            atom!("disc") => "\u{2022}",            /* "•" */
-            atom!("circle") => "\u{25E6}",          /* "◦" */
-            atom!("square") => "\u{25AA}",          /* "▪" */
-            atom!("disclosure-open") => "\u{25BE}", /* "▾" */
+            atom!("disc") => "\u{2022}".into(),
+            atom!("circle") => "\u{25E6}".into(),
+            atom!("square") => "\u{25AA}".into(),
+            atom!("disclosure-open") => "\u{25BE}".into(),
             // TODO: Use U+25C2 "◂" depending on the direction.
-            atom!("disclosure-closed") => "\u{25B8}", /* "▸" */
-            atom!("decimal-leading-zero") => "00",
-            atom!("arabic-indic") => "\u{660}", /* "٠" */
-            atom!("bengali") => "\u{9E6}",      /* "০" */
-            atom!("cambodian") | atom!("khmer") => "\u{17E0}", /* "០" */
-            atom!("devanagari") => "\u{966}",   /* "०" */
-            atom!("gujarati") => "\u{AE6}",     /* "૦" */
-            atom!("gurmukhi") => "\u{A66}",     /* "੦" */
-            atom!("kannada") => "\u{CE6}",      /* "೦" */
-            atom!("lao") => "\u{ED0}",          /* "໐" */
-            atom!("malayalam") => "\u{D66}",    /* "൦" */
-            atom!("mongolian") => "\u{1810}",   /* "᠐" */
-            atom!("myanmar") => "\u{1040}",     /* "၀" */
-            atom!("oriya") => "\u{B66}",        /* "୦" */
-            atom!("persian") => "\u{6F0}",      /* "۰" */
-            atom!("tamil") => "\u{BE6}",        /* "௦" */
-            atom!("telugu") => "\u{C66}",       /* "౦" */
-            atom!("thai") => "\u{E50}",         /* "๐" */
-            atom!("tibetan") => "\u{F20}",      /* "༠" */
+            atom!("disclosure-closed") => "\u{25B8}".into(),
+            atom!("decimal-leading-zero") if (0..10).contains(&value) => format!("0{value}"),
+            atom!("decimal-leading-zero") if (-9..0).contains(&value) => format!("-0{}", -value),
+            atom!("lower-alpha") | atom!("lower-latin") => {
+                alphabetic(value, "abcdefghijklmnopqrstuvwxyz")
+            },
+            atom!("upper-alpha") | atom!("upper-latin") => {
+                alphabetic(value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            },
+            atom!("lower-roman") => roman(value, false),
+            atom!("upper-roman") => roman(value, true),
+            atom!("arabic-indic") => decimal_digits(value, '\u{660}'),
+            atom!("bengali") => decimal_digits(value, '\u{9E6}'),
+            atom!("cambodian") | atom!("khmer") => decimal_digits(value, '\u{17E0}'),
+            atom!("devanagari") => decimal_digits(value, '\u{966}'),
+            atom!("gujarati") => decimal_digits(value, '\u{AE6}'),
+            atom!("gurmukhi") => decimal_digits(value, '\u{A66}'),
+            atom!("kannada") => decimal_digits(value, '\u{CE6}'),
+            atom!("lao") => decimal_digits(value, '\u{ED0}'),
+            atom!("malayalam") => decimal_digits(value, '\u{D66}'),
+            atom!("mongolian") => decimal_digits(value, '\u{1810}'),
+            atom!("myanmar") => decimal_digits(value, '\u{1040}'),
+            atom!("oriya") => decimal_digits(value, '\u{B66}'),
+            atom!("persian") => decimal_digits(value, '\u{6F0}'),
+            atom!("tamil") => decimal_digits(value, '\u{BE6}'),
+            atom!("telugu") => decimal_digits(value, '\u{C66}'),
+            atom!("thai") => decimal_digits(value, '\u{E50}'),
+            atom!("tibetan") => decimal_digits(value, '\u{F20}'),
             atom!("cjk-decimal") |
             atom!("cjk-earthly-branch") |
             atom!("cjk-heavenly-stem") |
-            atom!("japanese-informal") => "\u{3007}", /* "〇" */
-            atom!("korean-hangul-formal") => "\u{C601}", /* "영" */
+            atom!("japanese-informal")
+                if value == 0 =>
+            {
+                "\u{3007}".into()
+            },
+            atom!("korean-hangul-formal") if value == 0 => "\u{C601}".into(),
             atom!("korean-hanja-informal") |
             atom!("korean-hanja-formal") |
             atom!("japanese-formal") |
@@ -107,29 +224,128 @@ pub(crate) fn generate_counter_representation(counter_style: &CounterStyle) -> &
             atom!("simp-chinese-formal") |
             atom!("trad-chinese-informal") |
             atom!("trad-chinese-formal") |
-            atom!("cjk-ideographic") => "\u{96F6}", /* "零" */
-            // Fall back to decimal.
-            _ => "0",
+            atom!("cjk-ideographic")
+                if value == 0 =>
+            {
+                "\u{96F6}".into()
+            },
+            _ => value.to_string(),
         },
         CounterStyle::Symbols { ty, symbols } => match ty {
-            // For numeric, use the first symbol, which represents the value 0.
-            SymbolsType::Numeric => {
-                symbol_to_string(symbols.0.first().expect("symbols() should have symbols"))
-            },
-            // For cyclic, the first symbol represents the value 1. However, it loops back,
-            // so the last symbol represents the value 0.
+            SymbolsType::Numeric => positional_symbols(value, &symbols.0, true),
+            SymbolsType::Alphabetic => positional_symbols(value, &symbols.0, false),
             SymbolsType::Cyclic => {
-                symbol_to_string(symbols.0.last().expect("symbols() should have symbols"))
+                let index = (i64::from(value) - 1).rem_euclid(symbols.0.len() as i64) as usize;
+                symbol_to_string(&symbols.0[index]).to_string()
             },
-            // For the others, the first symbol represents the value 1, and 0 is out of range.
-            // Therefore, fall back to `decimal`.
-            SymbolsType::Alphabetic | SymbolsType::Symbolic | SymbolsType::Fixed => "0",
+            SymbolsType::Symbolic if value > 0 => {
+                let index = (value as usize - 1) % symbols.0.len();
+                symbol_to_string(&symbols.0[index])
+                    .repeat((value as usize - 1) / symbols.0.len() + 1)
+            },
+            SymbolsType::Fixed if value > 0 && (value as usize) <= symbols.0.len() => {
+                symbol_to_string(&symbols.0[value as usize - 1]).to_string()
+            },
+            SymbolsType::Symbolic | SymbolsType::Fixed => value.to_string(),
         },
     }
 }
 
+fn decimal_digits(value: i32, zero: char) -> String {
+    value
+        .to_string()
+        .chars()
+        .map(|ch| {
+            ch.to_digit(10)
+                .and_then(|digit| char::from_u32(zero as u32 + digit))
+                .unwrap_or(ch)
+        })
+        .collect()
+}
+
+fn alphabetic(value: i32, symbols: &str) -> String {
+    if value <= 0 {
+        return value.to_string();
+    }
+    let symbols: Vec<char> = symbols.chars().collect();
+    let mut value = value as usize;
+    let mut result = Vec::new();
+    while value > 0 {
+        value -= 1;
+        result.push(symbols[value % symbols.len()]);
+        value /= symbols.len();
+    }
+    result.into_iter().rev().collect()
+}
+
+fn roman(value: i32, uppercase: bool) -> String {
+    if !(1..=3999).contains(&value) {
+        return value.to_string();
+    }
+    let mut value = value;
+    let mut result = String::new();
+    for (number, symbol) in [
+        (1000, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    ] {
+        while value >= number {
+            result.push_str(symbol);
+            value -= number;
+        }
+    }
+    if uppercase {
+        result
+    } else {
+        result.to_ascii_lowercase()
+    }
+}
+
+fn positional_symbols(value: i32, symbols: &[Symbol], zero_based: bool) -> String {
+    if symbols.is_empty() || (!zero_based && value <= 0) {
+        return value.to_string();
+    }
+    let mut number = i64::from(value).unsigned_abs();
+    let base = symbols.len() as u64;
+    let mut parts = Vec::new();
+    loop {
+        if !zero_based {
+            number -= 1;
+        }
+        parts.push(symbol_to_string(&symbols[(number % base) as usize]));
+        number /= base;
+        if number == 0 {
+            break;
+        }
+    }
+    let mut result = if value < 0 {
+        String::from("-")
+    } else {
+        String::new()
+    };
+    for part in parts.into_iter().rev() {
+        result.push_str(part);
+    }
+    result
+}
+
 /// <https://drafts.csswg.org/css-lists/#marker-string>
-pub(crate) fn marker_string(list_style_type: &ListStyleType) -> Option<String> {
+pub(crate) fn marker_string(
+    context: &LayoutContext,
+    node: ServoLayoutNode<'_>,
+    list_style_type: &ListStyleType,
+    value: i32,
+) -> Option<String> {
     let suffix = match &list_style_type.0 {
         CounterStyle::None => return None,
         CounterStyle::String(string) => return Some(string.to_string()),
@@ -163,7 +379,13 @@ pub(crate) fn marker_string(list_style_type: &ListStyleType) -> Option<String> {
     };
     Some(format!(
         "{}{}",
-        generate_counter_representation(&list_style_type.0),
+        generate_counter_representation(
+            context,
+            node,
+            LonghandId::ListStyleType,
+            &list_style_type.0,
+            value,
+        ),
         suffix
     ))
 }

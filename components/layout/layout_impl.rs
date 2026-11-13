@@ -1398,6 +1398,7 @@ impl LayoutThread {
                 },
             ),
             font_context: self.font_context.clone(),
+            counter_snapshots: Mutex::default(),
             iframe_sizes: Mutex::default(),
             allow_parallel_layout: rayon_pool.is_some(),
             image_resolver: image_resolver.clone(),
@@ -1441,6 +1442,8 @@ impl LayoutThread {
         }
 
         let root_node = root_element.as_node();
+        *layout_context.counter_snapshots.lock() =
+            crate::counters::build_counter_snapshots(root_node, &layout_context);
         let damage_from_environment = if device_has_changed {
             LayoutDamage::Relayout
         } else {

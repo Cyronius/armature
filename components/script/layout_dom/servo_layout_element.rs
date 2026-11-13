@@ -16,9 +16,10 @@ use servo_arc::Arc;
 use style::attr::AttrValue;
 use style::context::SharedStyleContext;
 use style::data::{ElementDataMut, ElementDataRef};
-use style::properties::ComputedValues;
+use style::properties::{ComputedValues, LonghandId, PropertyDeclarationId};
+use style::rule_tree::ShadowCascadeOrder;
 use style::selector_parser::{PseudoElement, PseudoElementCascadeType};
-use style::stylist::RuleInclusion;
+use style::stylist::{CascadeData, RuleInclusion};
 
 use crate::dom::bindings::root::LayoutDom;
 use crate::dom::element::Element;
@@ -51,6 +52,50 @@ unsafe impl Send for ServoLayoutElement<'_> {}
 unsafe impl Sync for ServoLayoutElement<'_> {}
 
 impl<'dom> ServoLayoutElement<'dom> {
+    /// Style rules from the shadow root containing this element, if any.
+    pub fn containing_shadow_style_data(&self) -> Option<&'dom CascadeData> {
+        self.element
+            .upcast::<Node>()
+            .containing_shadow_root_for_layout()
+            .map(|shadow| shadow.get_style_data_for_layout())
+    }
+
+    /// Whether the declaration for an inherited property came from outside this shadow tree.
+    pub fn property_is_from_outer_tree(
+        &self,
+        context: &SharedStyleContext,
+        property: LonghandId,
+    ) -> bool {
+        let mut current = Some(*self);
+        while let Some(element) = current {
+            let style = element.style(context);
+            for rule in style.rules().self_and_ancestors() {
+                let Some(source) = rule.style_source() else {
+                    continue;
+                };
+                let level = rule.cascade_level();
+                if source
+                    .read(level.guard(&context.guards))
+                    .declaration_importance_iter()
+                    .any(|(declaration, importance)| {
+                        importance == level.importance() &&
+                            declaration.id() == PropertyDeclarationId::Longhand(property)
+                    })
+                {
+                    return level.shadow_order() > ShadowCascadeOrder::for_same_tree() ||
+                        element.containing_shadow_style_data().is_none();
+                }
+            }
+            current = unsafe {
+                element
+                    .as_node()
+                    .dangerous_flat_tree_parent_considering_pseudos()
+            }
+            .and_then(|parent| parent.as_element());
+        }
+        false
+    }
+
     pub(super) fn is_html_element(&self) -> bool {
         self.element.is_html_element()
     }

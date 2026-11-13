@@ -31,6 +31,11 @@ partial interface CSSRule {
     const unsigned short SUPPORTS_RULE = 12;
 };
 
+// https://drafts.csswg.org/css-counter-styles-3/#the-csscounterstylerule-interface
+partial interface CSSRule {
+    const unsigned short COUNTER_STYLE_RULE = 11;
+};
+
 // https://drafts.csswg.org/css-fonts/#om-fontfeaturevalues
 partial interface CSSRule {
     const unsigned short FONT_FEATURE_VALUES_RULE = 14;

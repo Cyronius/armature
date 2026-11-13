@@ -10,6 +10,7 @@ use script_bindings::reflector::Reflector;
 use style::shared_lock::{SharedRwLock, SharedRwLockReadGuard};
 use style::stylesheets::{CssRule as StyleCssRule, CssRuleType};
 
+use super::csscounterstylerule::CSSCounterStyleRule;
 use super::cssfontfacerule::CSSFontFaceRule;
 use super::cssfontfeaturevaluesrule::CSSFontFeatureValuesRule;
 use super::cssimportrule::CSSImportRule;
@@ -83,6 +84,8 @@ impl CSSRule {
             rule as &dyn SpecificCSSRule
         } else if let Some(rule) = self.downcast::<CSSFontFeatureValuesRule>() {
             rule as &dyn SpecificCSSRule
+        } else if let Some(rule) = self.downcast::<CSSCounterStyleRule>() {
+            rule as &dyn SpecificCSSRule
         } else {
             unreachable!()
         }
@@ -123,7 +126,13 @@ impl CSSRule {
             StyleCssRule::FontFeatureValues(rule) => DomRoot::upcast(
                 CSSFontFeatureValuesRule::new(cx, window, parent_rule, parent_stylesheet, rule),
             ),
-            StyleCssRule::CounterStyle(_) => unimplemented!(),
+            StyleCssRule::CounterStyle(s) => DomRoot::upcast(CSSCounterStyleRule::new(
+                cx,
+                window,
+                parent_rule,
+                parent_stylesheet,
+                s,
+            )),
             StyleCssRule::Keyframes(s) => DomRoot::upcast(CSSKeyframesRule::new(
                 cx,
                 window,
@@ -243,7 +252,11 @@ impl CSSRule {
                 }
             },
             StyleCssRule::FontFeatureValues(_) => unimplemented!(),
-            StyleCssRule::CounterStyle(_) => unimplemented!(),
+            StyleCssRule::CounterStyle(s) => {
+                if let Some(rule) = self.downcast::<CSSCounterStyleRule>() {
+                    rule.update_rule(s.clone());
+                }
+            },
             StyleCssRule::Keyframes(s) => {
                 if let Some(rule) = self.downcast::<CSSKeyframesRule>() {
                     rule.update_rule(s.clone(), guard);
