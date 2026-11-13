@@ -1,0 +1,14 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+// https://drafts.css-houdini.org/css-typed-om-1/#transformvalue-objects
+dictionary CSSMatrixComponentOptions {
+  boolean is2D;
+};
+
+[Exposed=Window]
+interface CSSMatrixComponent : CSSTransformComponent {
+  [Throws] constructor(DOMMatrixReadOnly matrix, optional CSSMatrixComponentOptions options = {});
+  attribute DOMMatrix matrix;
+};

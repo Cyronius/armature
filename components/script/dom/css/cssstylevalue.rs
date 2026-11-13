@@ -20,6 +20,7 @@ use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::css::css::CSS;
 use crate::dom::css::csskeywordvalue::CSSKeywordValue;
 use crate::dom::css::cssmathvalue::CSSMathValue;
+use crate::dom::css::csstransformvalue::CSSTransformValue;
 use crate::dom::css::cssunitvalue::CSSUnitValue;
 use crate::dom::css::cssunparsedvalue::CSSUnparsedValue;
 use crate::dom::css::stylepropertymapreadonly::StylePropertyMapReadOnly;
@@ -198,6 +199,9 @@ impl CSSStyleValueMethods<crate::DomTypeHolder> for CSSStyleValue {
         }
         if let Some(unparsed) = self.downcast::<CSSUnparsedValue>() {
             return DOMString::from(unparsed.serialize(&mut HashSet::new()));
+        }
+        if let Some(transform) = self.downcast::<CSSTransformValue>() {
+            return DOMString::from(transform.serialize());
         }
         let value = self.value();
         if self.is::<CSSKeywordValue>() {
