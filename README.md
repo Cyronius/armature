@@ -174,11 +174,12 @@ changes in unrelated tests; only the four repeatable line-clamp passes are attri
 When `line-clamp` specifies both a line count and `auto`, layout now uses the earlier of the line-count and block-size
 limits. The 324-test `line-clamp` rerun gained one passing reftest (`line-clamp-041.html`) with no regressions. This
 focused gain has not been included in a full CSS rerun.
-Experimental `flex-wrap: balance` now distributes items across lines by minimizing squared unused space, with
-`flex-line-count` setting a minimum. The 1,419-test `css-flexbox` run gained 32.0 passing test-equivalents against the
-last full CSS run, including 26 newly passing reftests, with no status regressions. Together with the preceding
-line-clamp gain, the projected comparable CSS score is **75.56%** (22,062.0 of 29,199 test-equivalents); these focused
-gains have not yet been measured in a full CSS rerun.
+Experimental `flex-wrap: balance` distributes items across lines by minimizing squared unused space, with
+`flex-line-count` setting a minimum. Intrinsic main and cross sizes account for balanced lines, and flex items use
+the space available on each line when measuring their content. The 1,419-test `css-flexbox` run gained 41.0 passing
+test-equivalents against the last full CSS run, including 35 newly passing reftests, with no status regressions.
+Together with the preceding line-clamp gain, the projected comparable CSS score is **75.59%** (22,071.0 of 29,199
+test-equivalents); these focused gains have not yet been measured in a full CSS rerun.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -316,8 +317,9 @@ Notes on the numbers:
   laid out. The previously run CSS tests have about 5,300 fewer failing subtests, and newly enabled parsing and
   animation directories add 6,807 passing subtests.
 - **Balanced flex lines**: Experimental `flex-wrap: balance` minimizes squared unused main-axis space while preserving
-  the normal wrapped line count or the `flex-line-count` minimum. The focused `css-flexbox` run gains 32.0 passing
-  test-equivalents, with 26 new reftest passes and no status regressions.
+  the normal wrapped line count or the `flex-line-count` minimum. Intrinsic sizing accounts for balanced lines and
+  flex items measure against the cross-axis space available to each line. The focused `css-flexbox` run gains 41.0
+  passing test-equivalents, with 35 new reftest passes and no status regressions.
 - **CSS aspect-ratio sizing**: Non-replaced blocks, atomic inline boxes, and absolutely positioned boxes transfer
   definite width or height through their preferred aspect ratio. The ratio-dependent size retains its content-based
   automatic minimum where applicable, including for flex containers and items. Maximum block sizes also constrain
@@ -947,9 +949,8 @@ Notes on the numbers:
   `background-clip: text`/`border-area`, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `subgrid` is parsed but not laid out.
-- Balanced flexboxes still miss some intrinsic sizing and cross-axis available-size cases. Two radial-gradient
-  masking reftests also fail after their absolutely positioned aspect-ratio boxes gain height. Their WPT expectations
-  record those failures.
+- One `-webkit-box` balance reftest still fails. Two radial-gradient masking reftests also fail after their
+  absolutely positioned aspect-ratio boxes gain height. Their WPT expectations record those failures.
 - Web Animations: script animations on pseudo-elements beyond `::before` and `::after` are not yet applied; CSS
   functional pseudo-elements such as `::part()` and `::highlight()` are not yet supported; and
   changing `iterationComposite` on a CSS animation does not yet affect its style-generated keyframes.
