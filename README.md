@@ -142,6 +142,9 @@ Resolving `line-clamp: auto` against the used block-size limit raised the compar
 test-equivalents passing, raw), a further gain of 17.6. Fifteen previously failing line-clamp reftests passed in a
 324-test focused run with no regressions. Other full-run changes were intermittent and were not used for expectation
 updates.
+Counting only non-phantom lines and rendering custom block ellipsis strings raised the comparable score to
+**74.84%** (21,853.6 test-equivalents passing, raw), a further gain of 8.9. Nine line-clamp reftests passed in the
+focused and full runs without a focused regression; the small changes elsewhere in the full run were intermittent.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -426,7 +429,9 @@ Notes on the numbers:
   so it participates correctly in the cascade (AS-524). A 934-test CSS Overflow run gains 22.4 passing
   test-equivalents, including 21 reftests. Clamped inline blocks now export the last visible line's baseline, making
   one more reftest pass in a 324-test `line-clamp` rerun. `line-clamp: auto` now derives the number of visible direct
-  lines from the used block-size limit, passing 15 more reftests in a focused rerun.
+  lines from the used block-size limit, passing 15 more reftests in a focused rerun. Clamp counting now ignores phantom
+  lines, and direct text lines can show custom block ellipsis strings or an ellipsis after a line break. Nine more
+  reftests pass in the next focused rerun.
 - **CSS container queries**: Stylo parses `@container` rules (AS-525), layout exposes the query container's content-box
   size and repeats style and layout when query results change, and script exposes `CSSContainerRule` with its
   conditions. The 320-test CSS Conditional container-query directory gains 96.35 passing test-equivalents.
