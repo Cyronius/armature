@@ -194,6 +194,9 @@ run by another 16.0 passing test-equivalents with no status regressions. A focus
 Content run after the counter-style changes gained 9.0 more test-equivalents against the last full CSS run, also with
 no regressions. These disjoint gains project a comparable CSS score of **76.02%** (22,198.0 of 29,199
 test-equivalents); a full CSS rerun has not yet measured them.
+Custom `@counter-style` negative, range, and pad descriptors, including overrides on `extends` styles, raised the
+same 484-test counter-style and list run by 11.0 more test-equivalents with no status regressions. The projected
+comparable CSS score is **76.06%** (22,209.0 of 29,199 test-equivalents); a full CSS rerun is still pending.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -354,7 +357,8 @@ Notes on the numbers:
 - **CSS counters and counter styles**: Layout resolves `counter-reset`, `counter-increment`, `counter-set`, implicit
   `list-item` increments and generated counter content in tree order before parallel box construction. It renders
   common built-in styles, `symbols()` and named `@counter-style` systems, including additive systems, named fallbacks,
-  marker prefixes and suffixes, styles scoped to shadow roots, and declarations from `::part` rules. Predefined Greek,
+  marker prefixes and suffixes, negative, range, and pad descriptors, styles scoped to shadow roots, and declarations
+  from `::part` rules. Predefined Greek,
   kana, CJK, Armenian, Georgian, and Hebrew representations are supported, along with the required limited-range
   Japanese, Korean, and Chinese longhand forms. The 866-test counter, list and generated-content rerun gained 195.6
   passing test-equivalents against the preceding full CSS run; a subsequent focused run fixed its one shadow-scoping
