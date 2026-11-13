@@ -197,6 +197,11 @@ test-equivalents); a full CSS rerun has not yet measured them.
 Custom `@counter-style` negative, range, and pad descriptors, including overrides on `extends` styles, raised the
 same 484-test counter-style and list run by 11.0 more test-equivalents with no status regressions. The projected
 comparable CSS score is **76.06%** (22,209.0 of 29,199 test-equivalents); a full CSS rerun is still pending.
+Grid Lanes now limits automatic placement to the template's lanes, chooses the next lane when heights tie, and
+stretches auto-sized items across their row span. Auto-sized row-lane containers include their lane tracks. The
+1,005-test `grid-lanes` run gained 25.97 passing test-equivalents against the last full CSS run, with 24 tests and 23
+subtests newly passing and no status regressions. These focused gains project a comparable CSS score of **76.15%**
+(22,235.0 of 29,199 test-equivalents); a full CSS rerun is still pending.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -396,8 +401,9 @@ Notes on the numbers:
   select the lane axis, reverse track preference, and reverse fill. The 1,005-test
   grid-lanes suite rose from 133.93 to 380.17 passing test-equivalents across these changes; the
   surrounding grid and display suites had no status changes outside grid lanes. Trailing single-lane items in
-  auto-sized column lanes now honor end, center, and stretch alignment. Subgrid, intrinsic auto-repeat, dense
-  packing, and other older grid-lanes properties still need work.
+  auto-sized column lanes now honor end, center, and stretch alignment. The latest focused run reached 412.54
+  passing test-equivalents. Subgrid, intrinsic auto-repeat, dense packing, and other older grid-lanes properties
+  still need work.
 - **Vertical CSS Grid layout**: Grid tracks and item positions follow the container's inline and block axes in
   vertical writing modes. Item dimensions, margins, padding, borders, and self alignment map back to physical
   sides. The full CSS run gains 79.0 passing test-equivalents, while one vertical Grid Lanes alignment reftest still
