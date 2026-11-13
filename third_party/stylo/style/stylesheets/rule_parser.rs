@@ -279,7 +279,8 @@ impl AtRuleType {
             "font-face" => Self::FontFace,
             "font-feature-values" => Self::FontFeatureValues,
             "font-palette-values" if crate::pref!("layout.css.font-palette.enabled", gecko = true) => Self::FontPaletteValues,
-            "counter-style" if cfg!(feature = "gecko") => Self::CounterStyle,
+            // Armature (AS-523): Parse @counter-style rules for Servo counter rendering.
+            "counter-style" if cfg!(any(feature = "gecko", feature = "servo")) => Self::CounterStyle,
             "media" => Self::Media,
             "custom-media" if crate::pref!("layout.css.custom-media.enabled") => Self::CustomMedia,
             "container" if cfg!(feature = "gecko") => Self::Container,

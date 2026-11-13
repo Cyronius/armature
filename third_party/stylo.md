@@ -446,3 +446,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   absolute animated colors before constructing f32 color-mix percentages, so filter drop shadows
   extrapolate and clamp correctly at large animation progress.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-523: Parse counter style rules in Servo
+- Files: `style/stylesheets/rule_parser.rs`, `style/stylist.rs`
+- Why: Servo layout now renders named counter styles. Parse `@counter-style` rules so their
+  descriptors are available to the stylist and counter renderer, and expose effective rules from
+  shadow-root cascade data for tree-scoped references.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

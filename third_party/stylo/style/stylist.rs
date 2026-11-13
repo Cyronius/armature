@@ -3397,6 +3397,12 @@ pub fn replace_parent_selector_with_implicit_scope(
 }
 
 impl CascadeData {
+    // Armature (AS-523): Let Servo resolve shadow-tree counter styles before document rules.
+    /// Return the effective counter-style rule with the given name.
+    pub fn counter_style_rule(&self, name: &Atom) -> Option<&Arc<Locked<CounterStyleRule>>> {
+        self.extra_data.counter_styles.get(name)
+    }
+
     /// Creates an empty `CascadeData`.
     pub fn new() -> Self {
         Self {
