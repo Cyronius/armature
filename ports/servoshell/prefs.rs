@@ -67,6 +67,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "layout_css_dominant_baseline_enabled",
     "layout_css_ellipse_corners_enabled",
     "layout_css_field_sizing_enabled",
+    "layout_css_flexbox_balance_enabled",
     "layout_css_first_line_enabled",
     "layout_css_font_size_adjust_enabled",
     "layout_css_font_synthesis_enabled",
@@ -127,7 +128,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     // layout_css_appearance_base_enabled,
     // layout_css_background_clip_border_area_enabled, layout_css_background_clip_text_enabled,
     // layout_css_custom_media_enabled, layout_css_display_grid_lanes_enabled,
-    // layout_css_flexbox_balance_enabled, layout_css_font_palette_enabled,
+    // layout_css_font_palette_enabled,
     // layout_css_font_variant_caps_all_values_enabled, layout_css_margin_rules_enabled,
     // layout_css_random_enabled, layout_css_starting_style_at_rules_enabled and
     // layout_css_tree_counting_functions_enabled.

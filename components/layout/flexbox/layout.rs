@@ -1165,6 +1165,7 @@ fn do_initial_flex_line_layout<'items>(
         return vec![construct_line(items)];
     }
 
+    let balancing = flex_context.config.flex_wrap.contains(FlexWrap::BALANCE);
     let mut lines = Vec::new();
     let mut line_items = Vec::new();
     let mut line_size_so_far = Au::zero();
@@ -1172,6 +1173,11 @@ fn do_initial_flex_line_layout<'items>(
     for item_box in flex_item_boxes {
         let item = FlexItem::new(flex_context, item_box);
         let item_size = item.hypothetical_main_size + item.pbm_auto_is_zero.main;
+        let item_size = if balancing {
+            item_size.max(Au::zero())
+        } else {
+            item_size
+        };
 
         // Compute the size the line would be if we added this item.
         let mut line_size_would_be = line_size_so_far + item_size;
@@ -1193,6 +1199,20 @@ fn do_initial_flex_line_layout<'items>(
     // We didn't reach the end of the last line, so add all remaining items there.
     lines.push(line_items);
 
+    if balancing {
+        let minimum_line_count = flex_context
+            .containing_block
+            .style
+            .get_position()
+            .flex_line_count as usize;
+        let line_count = lines
+            .len()
+            .max(minimum_line_count)
+            .min(flex_item_boxes.len());
+        let items = lines.into_iter().flatten().collect();
+        lines = balance_flex_items(items, line_count, container_main_size, main_gap);
+    }
+
     let job_sizes = lines
         .iter()
         .map(|line| line.iter().map(FlexItem::subtree_size).sum());
@@ -1204,6 +1224,116 @@ fn do_initial_flex_line_layout<'items>(
     } else {
         lines.into_iter().map(construct_line).collect()
     }
+}
+
+/// Divide flex items into the requested number of lines, minimizing the sum of
+/// squared unused main-axis space. Equal-cost partitions put more items on
+/// earlier lines. <https://drafts.csswg.org/css-flexbox-2/#algo-balance>
+fn balance_flex_items<'items>(
+    items: Vec<FlexItem<'items>>,
+    line_count: usize,
+    container_main_size: Au,
+    main_gap: Au,
+) -> Vec<Vec<FlexItem<'items>>> {
+    let item_count = items.len();
+    if item_count == 0 {
+        return vec![items];
+    }
+
+    // Keep the dynamic programming table bounded for unusually large flexboxes.
+    // The greedy partition already obeys the wrapping size constraint.
+    if item_count > 256 {
+        let mut lines = vec![Vec::new()];
+        let mut line_size = 0i64;
+        for item in items {
+            let item_size = (item.hypothetical_main_size + item.pbm_auto_is_zero.main)
+                .0
+                .max(0) as i64;
+            let next_size = line_size +
+                item_size +
+                if lines.last().unwrap().is_empty() {
+                    0
+                } else {
+                    main_gap.0 as i64
+                };
+            if next_size > container_main_size.0 as i64 && !lines.last().unwrap().is_empty() {
+                lines.push(Vec::new());
+                line_size = item_size;
+            } else {
+                line_size = next_size;
+            }
+            lines.last_mut().unwrap().push(item);
+        }
+        return lines;
+    }
+
+    let sizes: Vec<i64> = items
+        .iter()
+        .map(|item| {
+            (item.hypothetical_main_size + item.pbm_auto_is_zero.main)
+                .0
+                .max(0) as i64
+        })
+        .collect();
+    let container_size = container_main_size.0 as i64;
+    let gap = main_gap.0 as i64;
+    // best[lines][start] stores the minimum error and end of the first line.
+    let mut best = vec![vec![None::<(i128, usize)>; item_count + 1]; line_count + 1];
+    best[0][item_count] = Some((0, item_count));
+    for lines_remaining in 1..=line_count {
+        for start in (0..=item_count - lines_remaining).rev() {
+            let mut line_size = 0i64;
+            for end in start + 1..=item_count - lines_remaining + 1 {
+                line_size += sizes[end - 1];
+                if end > start + 1 {
+                    line_size += gap;
+                }
+                if line_size > container_size && end > start + 1 {
+                    break;
+                }
+                // A zero-sized item goes on the preceding line when it fits there.
+                if end < item_count && sizes[end] == 0 && line_size + gap <= container_size {
+                    continue;
+                }
+                let Some((rest_error, _)) = best[lines_remaining - 1][end] else {
+                    continue;
+                };
+                let error = (container_size - line_size) as i128;
+                let total_error = error * error + rest_error;
+                let current = &mut best[lines_remaining][start];
+                if current.is_none_or(|(old_error, old_end)| {
+                    total_error < old_error || (total_error == old_error && end > old_end)
+                }) {
+                    *current = Some((total_error, end));
+                }
+            }
+        }
+    }
+
+    let mut boundaries = Vec::with_capacity(line_count);
+    let mut start = 0;
+    for remaining in (1..=line_count).rev() {
+        let Some((_, end)) = best[remaining][start] else {
+            // A forced minimum line count can conflict with the zero-size tie rule.
+            // Give each remaining line at least one item in that case.
+            let end = item_count - remaining + 1;
+            boundaries.push(end);
+            start = end;
+            continue;
+        };
+        boundaries.push(end);
+        start = end;
+    }
+    let mut items = items.into_iter();
+    let mut previous_end = 0;
+    boundaries
+        .into_iter()
+        .map(|end| {
+            let line = items.by_ref().take(end - previous_end).collect();
+            previous_end = end;
+            line
+        })
+        .collect()
 }
 
 /// The result of splitting the flex items into lines using their intrinsic sizes and doing an
@@ -2113,12 +2243,7 @@ impl FlexItem<'_> {
             //  and the cross-end direction is the opposite direction of cross-start.
             //  When flex-wrap is wrap-reverse,
             //  the cross-start and cross-end directions are swapped.”
-            let flex_wrap = flex_context.containing_block.style.get_position().flex_wrap;
-            let flex_wrap_reverse = match flex_wrap {
-                FlexWrap::NOWRAP | FlexWrap::WRAP => false,
-                FlexWrap::WRAP_REVERSE => true,
-                _ => unreachable!("FlexWrap::BALANCE should be disabled"),
-            };
+            let flex_wrap_reverse = flex_context.config.flex_wrap_is_reversed;
             // “if the block-start or inline-start margin (whichever is in the cross axis) is auto,
             //  set it to zero. Set the opposite margin so that the outer cross size of the item
             //  equals the cross size of its flex line.”
