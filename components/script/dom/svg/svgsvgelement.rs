@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use std::cell::Cell;
+use std::str::FromStr;
 
+use app_units::Au;
 use atomic_refcell::AtomicRefCell;
 use base64::Engine as _;
 use cssparser::Parser;
@@ -19,6 +21,7 @@ use style::attr::AttrValue;
 use style::parser::ParserContext;
 use style::properties::{PropertyDeclarationId, PropertyId};
 use style::stylesheets::Origin;
+use style::values::computed::TransformBox;
 use style::values::computed::svg::SVGPaintKind;
 use style::values::specified::LengthPercentage;
 use style_traits::{ParsingMode, ToCss};
@@ -362,6 +365,31 @@ impl SVGSVGElement {
                     style.push_str(property);
                     style.push(':');
                     style.push_str(&value);
+                }
+                // The SVG rasterizer resolves `transform-origin` percentages against the
+                // viewport even when CSS selects the shape's fill box. Resolve that box
+                // here, in the source document's style and geometry, before serializing.
+                if computed_style.get_box().transform_box == TransformBox::FillBox &&
+                    source
+                        .svg_attribute(&local_name!("transform-origin"))
+                        .is_none_or(|value| svgtypes::TransformOrigin::from_str(&value).is_ok()) &&
+                    let Some(bbox) = svggeometry::bounding_box(cx, &source)
+                {
+                    let origin = &computed_style.get_box().transform_origin;
+                    let x = bbox.x0 +
+                        origin
+                            .horizontal
+                            .to_used_value(Au::from_f64_px(bbox.width()))
+                            .to_f64_px();
+                    let y = bbox.y0 +
+                        origin
+                            .vertical
+                            .to_used_value(Au::from_f64_px(bbox.height()))
+                            .to_f64_px();
+                    if !style.trim().is_empty() && !style.trim_end().ends_with(';') {
+                        style.push(';');
+                    }
+                    style.push_str(&format!("transform-origin:{x}px {y}px"));
                 }
             }
             let mut serialized_properties = Vec::new();
