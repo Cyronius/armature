@@ -363,7 +363,16 @@ impl LineItemLayout<'_, '_> {
                     LineItem::InlineStartBoxPaddingBorderMargin(_) => last_level,
                     LineItem::InlineEndBoxPaddingBorderMargin(_) => last_level,
                     LineItem::Atomic(_, atomic) => atomic.bidi_level,
-                    LineItem::AbsolutelyPositioned(..) => last_level,
+                    // An out-of-flow placeholder is a neutral object in the bidi
+                    // paragraph. At the end of an LTR run in an RTL paragraph it
+                    // resolves to the paragraph level, not the preceding run's level.
+                    LineItem::AbsolutelyPositioned(..) => {
+                        if self.containing_block().style.writing_mode.is_bidi_ltr() {
+                            Level::ltr()
+                        } else {
+                            Level::rtl()
+                        }
+                    },
                     LineItem::Float(..) => {
                         // At this point the float is already positioned, so it doesn't really matter what
                         // position it's fragment has in the order of line items.

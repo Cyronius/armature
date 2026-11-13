@@ -502,7 +502,17 @@ impl HoistedAbsolutelyPositionedBox {
                 .static_position_rect()
                 .translate(-containing_block_origin);
             static_position_rect.size = static_position_rect.size.max(PhysicalSize::zero());
-            static_position_rect.to_logical(&(&containing_block).into())
+            let mut static_position_rect =
+                static_position_rect.to_logical(&(&containing_block).into());
+            if containing_block_style.writing_mode.is_vertical_rl() {
+                // The block-start edge of a vertical-rl containing block is its
+                // physical right edge. Convert the physical static-position rect
+                // to a distance from that edge before solving auto insets.
+                static_position_rect.start_corner.block = containing_block.size.block -
+                    static_position_rect.start_corner.block -
+                    static_position_rect.size.block;
+            }
+            static_position_rect
         };
 
         let (box_fragment, mut positioning_context) = independent_formatting_context
