@@ -153,6 +153,10 @@ Aligning trailing items in auto-sized column grid lanes raised the comparable sc
 test-equivalents passing, raw), a further gain of 3.8. Four grid-lanes reftests passed in the 1,005-test focused run
 and the full CSS run, with no grid-lanes status regressions. Unrelated full-run status changes were excluded from
 expectation updates; the filter-effects regression passed on a focused repeat.
+Parsing `grid-lanes-direction` and honoring its row, column, track-reverse, and fill-reverse values raised the
+comparable score to **74.93%** (21,877.6 test-equivalents passing, raw), a further gain of 14.2. The 1,005-test
+grid-lanes run gained 19.5 test-equivalents with no regressions in that directory. Seven unrelated full-run losses
+returned to passing status on a focused repeat and were excluded from expectation updates.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -341,11 +345,12 @@ Notes on the numbers:
   test-equivalents in writing modes.
 - **CSS grid lanes**: Experimental WPT runs enable `display: grid-lanes`. Layout uses grid track sizing in the lane
   axis, then places each in-flow item after the previous item in its shortest eligible lane. Both row and column
-  lanes, gaps, spans, explicit lane placement, and natural item sizing in the stacking axis work. The 1,005-test
-  grid-lanes suite rose from 133.93 to 356.69 passing test-equivalents against the preceding full CSS run; the
+  lanes, gaps, spans, explicit lane placement, and natural item sizing in the stacking axis work. Direction values
+  select the lane axis, reverse track preference, and reverse fill. The 1,005-test
+  grid-lanes suite rose from 133.93 to 380.17 passing test-equivalents across these changes; the
   surrounding grid and display suites had no status changes outside grid lanes. Trailing single-lane items in
   auto-sized column lanes now honor end, center, and stretch alignment. Subgrid, intrinsic auto-repeat, dense
-  packing, and older grid-lanes properties still need work.
+  packing, and other older grid-lanes properties still need work.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
