@@ -78,6 +78,12 @@ the largest groups were `css-text` (54), `css-content` (28), and `CSS2` (17). Th
 the full run but all passed on a focused rerun; their full-run failures appear intermittent.
 A subsequent block-container `margin-trim` change made 32 of 106 focused `css-box/margin-trim` tests newly pass, with no
 status regressions. That directory is excluded by `include.ini`, so these gains are outside the 29,199-test score.
+After principal writing-mode propagation and vertical absolute-position fixes, a four-chunk CSS rerun again covered
+34,847 IDs. On the original 29,199 IDs, its raw score was **72.76%** (21,245.9 test-equivalents passing, up 32.3).
+Thirty-three previously failing `css-writing-modes` reftests passed. Twelve previously passing tests that crashed or
+timed out in the full run passed on an isolated rerun; substituting only those verified results gives **72.80%**
+(21,257.9 test-equivalents, up 44.3). Four `css-inline` baseline variants and one vertical relative-position reftest
+failed again on a focused rerun. The expanded selection also includes the 32 `margin-trim` gains noted above.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -241,6 +247,10 @@ Notes on the numbers:
   `css-text` and `CSS2/text` rerun gains 54 passing test IDs against the original CSS baseline without regressions.
 - **Block-container margin trimming**: `margin-trim: block-start`, `block-end`, and `block` discard adjacent child
   margins, including margins collapsed through empty blocks. The focused 106-test directory gains 32 passing reftests.
+- **Principal writing mode and vertical absolute positioning**: an eligible HTML body supplies the root's used writing
+  mode and the initial containing block's writing mode. Containment and `display: none` prevent body propagation.
+  Vertical-rl absolute boxes now resolve physical horizontal insets from the right block-start edge. A 3,003-test
+  focused run gained 34 passing reftests against the preceding full CSS run, with one reproducible regression.
 - **SVG documents and SVG scripts**: navigating to an `image/svg+xml` resource creates an SVG document (it used to
   be shown as an image inside an HTML page, with no DOM or scripts), and SVG `<script>` elements run, sharing the HTML
   script processing model (`SVGScriptElement`, `document.currentScript`). Of the 256 testharness tests written as
@@ -745,6 +755,9 @@ Notes on the numbers:
   `CSSCounterStyleRule` mutation. Four reversed-list counter scope reftests still fail.
 - `margin-trim` still needs flex and grid item trimming and some block fragmentation cases; its WPT directory remains
   excluded from the default CSS run.
+- Vertical in-flow and orthogonal box placement remain incomplete. In
+  `css-writing-modes/relpos-inline-overflowing-block-vrl.html`, the corrected absolute box now exposes the existing
+  misplaced inline box, causing a reproducible reftest failure.
 - WebGL2 texture overload coverage remains incomplete (`tex-unpack-params.html` still errors), and 368 dEQP files
   remain disabled.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
