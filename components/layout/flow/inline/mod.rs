@@ -2469,9 +2469,11 @@ impl InlineFormattingContext {
                             .find(|(line_index, _)| *line_index <= index)
                             .map(|(_, baseline)| *baseline);
 
-                        // For a simple text line, append the block ellipsis
-                        // to the last text fragment. More complex lines need glyph
-                        // removal to make room and are handled separately.
+                        // Place the block ellipsis after the last direct text
+                        // fragment that leaves room for it. Text fragments usually
+                        // end at soft wrap opportunities, so earlier fragments can
+                        // be kept when the last word must be elided. Emergency
+                        // breaks from overflow-wrap need separate handling.
                         let ellipsis_text = match &line_clamp.block_ellipsis {
                             BlockEllipsis::Ellipsis => Some("…"),
                             BlockEllipsis::String(text) => Some(text.as_ref()),
@@ -2487,6 +2489,7 @@ impl InlineFormattingContext {
                                     .rev()
                                     .find(|child| matches!(child, Fragment::Text(_)))
                                 {
+                                    let text = text.clone();
                                     let font_info =
                                         FontAndScriptInfo::simple_for_font(font.clone());
                                     let shaped = font.shape_text(
@@ -2509,9 +2512,82 @@ impl InlineFormattingContext {
                                         let mut ellipsis_rect = text.base.rect();
                                         ellipsis_rect.origin.x += ellipsis_rect.size.width;
                                         ellipsis_rect.size.width = ellipsis.total_advance();
+                                        let simple_text_line = children
+                                            .iter()
+                                            .all(|child| matches!(child, Fragment::Text(_)));
+                                        if simple_text_line {
+                                            ellipsis_rect.origin.x -= text
+                                                .glyphs
+                                                .last()
+                                                .map_or(Au::zero(), |slice| {
+                                                    slice.removable_advance()
+                                                });
+                                            if style_text.text_wrap_mode == TextWrapMode::Nowrap &&
+                                                ellipsis_rect.origin.x + ellipsis_rect.size.width >
+                                                    rect.size.width
+                                            {
+                                                children.clear();
+                                                ellipsis_rect.origin.x = Au::zero();
+                                            } else {
+                                                while !children.is_empty() &&
+                                                    ellipsis_rect.origin.x + ellipsis_rect.size.width >
+                                                        rect.size.width
+                                                {
+                                                    children.pop();
+                                                    ellipsis_rect.origin.x = match children.last() {
+                                                        Some(Fragment::Text(previous)) => {
+                                                            let previous_rect = previous.base.rect();
+                                                            previous_rect.origin.x +
+                                                                previous_rect.size.width -
+                                                                previous.glyphs.last().map_or(
+                                                                    Au::zero(),
+                                                                    |slice| slice.removable_advance(),
+                                                                )
+                                                        },
+                                                        _ => Au::zero(),
+                                                    };
+                                                }
+                                            }
+                                        }
                                         if ellipsis_rect.origin.x + ellipsis_rect.size.width <=
                                             rect.size.width
                                         {
+                                            if simple_text_line &&
+                                                let Some(Fragment::Text(last)) = children.last_mut() &&
+                                                let Some(last_slice) = last.glyphs.last() &&
+                                                !last_slice.all_removable() &&
+                                                !last_slice.removable_advance().is_zero()
+                                            {
+                                                let mut glyphs = last.glyphs.clone();
+                                                let trimmed = last_slice.without_removable_white_space();
+                                                let removed = last_slice.character_count() -
+                                                    trimmed.character_count();
+                                                *glyphs.last_mut().unwrap() = trimmed;
+                                                let mut last_rect = last.base.rect();
+                                                last_rect.size.width -= last_slice.removable_advance();
+                                                *children.last_mut().unwrap() = Fragment::Text(
+                                                    Arc::new(TextFragment {
+                                                        base: BaseFragment::new(
+                                                            BaseFragmentInfo {
+                                                                tag: last.base.tag,
+                                                                flags: last.base.flags,
+                                                            },
+                                                            last_rect,
+                                                        ),
+                                                        run_data: last.run_data.clone(),
+                                                        font_metrics: last.font_metrics.clone(),
+                                                        font_key: last.font_key,
+                                                        glyphs,
+                                                        justification_adjustment:
+                                                            last.justification_adjustment,
+                                                        character_range_in_dom_node:
+                                                            last.character_range_in_dom_node.start..
+                                                                last.character_range_in_dom_node.end - removed,
+                                                        is_empty_for_text_cursor:
+                                                            last.is_empty_for_text_cursor,
+                                                    }),
+                                                );
+                                            }
                                             let end = text.character_range_in_dom_node.end;
                                             children.push(Fragment::Text(Arc::new(TextFragment {
                                                 base: BaseFragment::new(
