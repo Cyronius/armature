@@ -2414,7 +2414,7 @@ impl InlineFormattingContext {
                 .max_lines
                 .lines_value()
                 .and_then(|lines| usize::try_from(lines.0).ok());
-            let max_lines = if line_clamp.max_lines.is_auto() {
+            let block_size_max_lines = if !line_clamp.max_lines.kw.is_none() {
                 let block_sizes = LayoutStyle::Default(style)
                     .content_box_sizes_and_padding_border_margin(&containing_block.into())
                     .content_box_sizes
@@ -2439,7 +2439,12 @@ impl InlineFormattingContext {
                         .count()
                 })
             } else {
-                specified_max_lines
+                None
+            };
+            let max_lines = match (specified_max_lines, block_size_max_lines) {
+                (Some(specified), Some(from_block_size)) => Some(specified.min(from_block_size)),
+                (Some(specified), None) => Some(specified),
+                (None, from_block_size) => from_block_size,
             };
             if let Some(max_lines) = max_lines {
                 let mut line_count = 0;
