@@ -674,7 +674,7 @@ pub(crate) fn marker_string(
     list_style_type: &ListStyleType,
     value: i32,
 ) -> Option<String> {
-    let suffix = match &list_style_type.0 {
+    let mut suffix = match &list_style_type.0 {
         CounterStyle::None => return None,
         CounterStyle::String(string) => return Some(string.to_string()),
         CounterStyle::Name(name) => match name.0 {
@@ -713,9 +713,49 @@ pub(crate) fn marker_string(
             _ => ". ",
         },
         CounterStyle::Symbols { .. } => " ",
-    };
+    }
+    .to_string();
+    let mut prefix = String::new();
+    if let CounterStyle::Name(name) = &list_style_type.0 {
+        let shadow_rule = node
+            .as_element()
+            .and_then(|element| {
+                (!element
+                    .property_is_from_outer_tree(&context.style_context, LonghandId::ListStyleType))
+                .then(|| element.containing_shadow_style_data())
+                .flatten()
+            })
+            .and_then(|data| data.counter_style_rule(&name.0).cloned());
+        let rule_and_origin = shadow_rule.map(|rule| (rule, Origin::Author)).or_else(|| {
+            context
+                .style_context
+                .stylist
+                .iter_extra_data_origins_rev()
+                .find_map(|(extra, origin)| {
+                    extra
+                        .counter_styles
+                        .get(&name.0)
+                        .map(|rule| (rule.clone(), origin))
+                })
+        });
+        if let Some((rule, origin)) = rule_and_origin {
+            let guard = match origin {
+                Origin::UserAgent | Origin::User => context.style_context.guards.ua_or_user,
+                Origin::Author => context.style_context.guards.author,
+            };
+            let rule = rule.read_with(guard);
+            if let Some(symbol) = &rule.descriptors().prefix {
+                prefix = symbol_to_string(symbol).to_string();
+            }
+            suffix = rule.descriptors().suffix.as_ref().map_or_else(
+                || ". ".to_string(),
+                |symbol| symbol_to_string(symbol).to_string(),
+            );
+        }
+    }
     Some(format!(
-        "{}{}",
+        "{}{}{}",
+        prefix,
         generate_counter_representation(
             context,
             node,
