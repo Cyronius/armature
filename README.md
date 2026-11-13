@@ -91,6 +91,10 @@ A focused run of all 320 `css-conditional/container-queries` tests after enablin
 query evaluation rose from 111.98 to 208.33 passing test-equivalents, up 96.35. It gained 449 passing subtests and
 lost six, while the same three tests timed out in both runs. These gains are also not yet included in the full CSS
 score above.
+A focused CSS Cascade rerun after enabling `@scope` rose from 114.02 to 135.99 passing test-equivalents across
+157 tests, up 21.97. Eight related tests in CSS Nesting, CSSOM, Selectors and CSS Mixins rose from 5.25 to 5.93,
+up another 0.68. Across both sets, 206 subtests newly passed and three previously passing subtests failed. These
+gains are not yet included in the full CSS score above.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -352,6 +356,9 @@ Notes on the numbers:
 - **CSS container queries**: Stylo parses `@container` rules (AS-525), layout exposes the query container's content-box
   size and repeats style and layout when query results change, and script exposes `CSSContainerRule` with its
   conditions. The 320-test CSS Conditional container-query directory gains 96.35 passing test-equivalents.
+- **Scoped CSS rules**: `@scope` is enabled in the WPT experimental mode, and `CSSScopeRule` exposes the parsed
+  `start`, `end` and nested rules. All 43 `at-scope-parsing.html` subtests and all 13 `scope-cssom.html` subtests pass;
+  the 45 direct scope tests in CSS Cascade gain 21.44 passing test-equivalents.
 - **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
   matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
   subtests newly pass across CSS Transforms and Web Animations.
@@ -777,6 +784,8 @@ Notes on the numbers:
 - Container queries still have failures involving hidden ancestors, unsupported query forms, and other dynamic
   cases. Six previously passing subtests in `query-evaluation.html` and `display-none.html` now fail, and three
   existing timeout cases remain.
+- Implicit `@scope` roots are not passed from stylesheet owners to layout. Scopes without a prelude can therefore
+  match outside the intended root or fail to style that root; three previously passing subtests now fail.
 - WebGL2 texture overload coverage remains incomplete (`tex-unpack-params.html` still errors), and 368 dEQP files
   remain disabled.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
@@ -795,7 +804,7 @@ Notes on the numbers:
 - `TextEncoder.encodeInto()` and `TextDecoder` streaming into a `SharedArrayBuffer` (about 210 subtests) fail because
   Servo has no cross-origin isolation, so shared memory is off in every global.
 - Fetch priority hints are reflected in the DOM but do not yet affect network request scheduling.
-- Not enabled from Stylo: anchor positioning, `@scope`, `@starting-style`, `@page` margin rules, custom media,
+- Not enabled from Stylo: anchor positioning, `@starting-style`, `@page` margin rules, custom media,
   `background-clip: text`/`border-area`, grid lanes, `random()`, tree-counting functions and a few more, because
   Servo's layout or CSSOM would panic on them; `size`, `page-orientation` and `page`, which need `@page` support.
   `resize` has no resize handles, and `subgrid` is parsed but not laid out.
