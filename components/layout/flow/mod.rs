@@ -1013,6 +1013,24 @@ impl BlockLevelBox {
                     .into(),
             ),
             BlockLevelBox::OutOfFlowAbsolutelyPositionedBox(box_) => {
+                let alignment = {
+                    let box_ = box_.borrow();
+                    let style = box_.context.style();
+                    LogicalVec2 {
+                        inline: match style.get_justify_self().0 {
+                            AlignFlags::AUTO => {
+                                containing_block.style.get_justify_items().computed.0.0
+                            },
+                            alignment => alignment,
+                        },
+                        // `align-items` does not apply to a block container, so `auto`
+                        // resolves to the normal block-flow alignment here.
+                        block: match style.get_align_self().0 {
+                            AlignFlags::AUTO => AlignFlags::NORMAL,
+                            alignment => alignment,
+                        },
+                    }
+                };
                 // The static position of zero here is incorrect, however we do not know
                 // the correct positioning until later, in place_block_level_fragment, and
                 // this value will be adjusted there.
@@ -1022,10 +1040,7 @@ impl BlockLevelBox {
                     // until later, in PlacementState::place_fragment, and this value will be
                     // adjusted there
                     PhysicalRect::zero(),
-                    LogicalVec2 {
-                        inline: AlignFlags::START,
-                        block: AlignFlags::START,
-                    },
+                    alignment,
                     containing_block.style.writing_mode,
                 );
                 let hoisted_fragment = hoisted_box.fragment.clone();
@@ -2155,15 +2170,18 @@ impl<'container> PlacementState<'container> {
                 }
             },
             Fragment::AbsoluteOrFixedPositionedPlaceholder(fragment) => {
-                // The alignment of absolutes in block flow layout is always "start", so the size of
-                // the static position rectangle does not matter.
+                // In block flow the static-position rectangle spans the containing block's
+                // inline size, but has zero thickness in the block axis.
                 fragment.borrow_mut().original_static_position_rect = LogicalRect {
                     start_corner: LogicalVec2 {
                         block: (self.current_margin.solve() +
                             self.current_block_direction_position),
                         inline: Au::zero(),
                     },
-                    size: LogicalVec2::zero(),
+                    size: LogicalVec2 {
+                        inline: self.containing_block.size.inline,
+                        block: Au::zero(),
+                    },
                 }
                 .as_physical(Some(self.containing_block));
             },
