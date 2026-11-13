@@ -262,6 +262,10 @@ Notes on the numbers:
   composition, then the final CSS and SVG opacity values are clamped to `[0, 1]` (AS-518, AS-519). All 10 previously
   failing subtests in the two focused Web Animations clamping tests pass, and the SVG `stop-opacity` and
   `stroke-opacity` accumulation cases still clamp.
+- **Precise animated color extrapolation**: color mixing retains double-precision weights for absolute colors
+  (AS-522), so large extrapolation progress no longer loses the difference between opposite weights. All four
+  previously failing `filter-interpolation-002.html` drop-shadow subtests now pass; the focused CSS color animation
+  interpolation and composition tests still match their expectations.
 - **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
   matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
   subtests newly pass across CSS Transforms and Web Animations.
