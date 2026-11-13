@@ -87,6 +87,10 @@ failed again on a focused rerun. The expanded selection also includes the 32 `ma
 An additional focused run of all 934 `css-overflow` tests after direct-line clamping and ellipsis support gained
 22.4 passing test-equivalents, including 21 previously failing `line-clamp` reftests and legacy shorthand parsing
 subtests, with no status regressions. These gains are not yet included in the full CSS score above.
+A focused run of all 320 `css-conditional/container-queries` tests after enabling `@container` rules and post-layout
+query evaluation rose from 111.98 to 208.33 passing test-equivalents, up 96.35. It gained 449 passing subtests and
+lost six, while the same three tests timed out in both runs. These gains are also not yet included in the full CSS
+score above.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -345,6 +349,9 @@ Notes on the numbers:
   lines and appends a default ellipsis when it fits after simple text. Stylo now parses `-webkit-line-clamp` in Servo
   so it participates correctly in the cascade (AS-524). A 934-test CSS Overflow run gains 22.4 passing
   test-equivalents, including 21 reftests.
+- **CSS container queries**: Stylo parses `@container` rules (AS-525), layout exposes the query container's content-box
+  size and repeats style and layout when query results change, and script exposes `CSSContainerRule` with its
+  conditions. The 320-test CSS Conditional container-query directory gains 96.35 passing test-equivalents.
 - **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
   matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
   subtests newly pass across CSS Transforms and Web Animations.
@@ -767,6 +774,9 @@ Notes on the numbers:
   misplaced inline box, causing a reproducible reftest failure.
 - `line-clamp` still needs ellipsis placement when the last line is full or has nested inline boxes, counting lines
   inside descendant blocks, vertical and right-to-left text, and the legacy `-webkit-box` display behavior.
+- Container queries still have failures involving hidden ancestors, unsupported query forms, and other dynamic
+  cases. Six previously passing subtests in `query-evaluation.html` and `display-none.html` now fail, and three
+  existing timeout cases remain.
 - WebGL2 texture overload coverage remains incomplete (`tex-unpack-params.html` still errors), and 368 dEQP files
   remain disabled.
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
