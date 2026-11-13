@@ -6,8 +6,9 @@ use app_units::Au;
 use atomic_refcell::{AtomicRef, AtomicRefCell};
 use style::logical_geometry::LogicalAxis;
 use style::properties::ComputedValues;
-use style::values::computed::length_percentage::CalcLengthPercentage;
+use style::values::computed::length_percentage::{CalcLengthPercentage, LengthPercentage};
 use style::values::computed::{CSSPixelLength, GridLanesDirection};
+use style::values::generics::grid::{TrackBreadth, TrackListValue, TrackSize};
 use style::values::generics::length::LengthPercentageOrNormal;
 use style::values::specified::GenericGridTemplateComponent;
 use style::values::specified::align::AlignFlags;
@@ -56,6 +57,18 @@ fn grid_lanes_use_rows(style: &ComputedValues) -> bool {
         &position.grid_template_rows,
         GenericGridTemplateComponent::None
     )
+}
+
+fn grid_track_size_has_percentage(size: &TrackSize<LengthPercentage>) -> bool {
+    let breadth_has_percentage = |breadth: &TrackBreadth<LengthPercentage>| matches!(breadth, TrackBreadth::Breadth(value) if value.has_percentage());
+    match size {
+        TrackSize::Breadth(breadth) | TrackSize::FitContent(breadth) => {
+            breadth_has_percentage(breadth)
+        },
+        TrackSize::Minmax(minimum, maximum) => {
+            breadth_has_percentage(minimum) || breadth_has_percentage(maximum)
+        },
+    }
 }
 
 fn resolve_content_size(constraint: AvailableSpace, content_sizes: ContentSizes) -> f32 {
@@ -563,12 +576,103 @@ impl TaffyContainer {
                 let direction = container_style.get_position().grid_lanes_direction;
                 let track_reverse = direction.contains(GridLanesDirection::TRACK_REVERSE);
                 let fill_reverse = direction.contains(GridLanesDirection::FILL_REVERSE);
-                let tracks = if row_lanes {
-                    &info.info.rows.positions
+                let track_info = if row_lanes {
+                    &info.info.rows
                 } else {
-                    &info.info.columns.positions
+                    &info.info.columns
                 };
+                let grid_axis_template = if row_lanes {
+                    &container_style.get_position().grid_template_rows
+                } else {
+                    &container_style.get_position().grid_template_columns
+                };
+                let subgrid =
+                    matches!(grid_axis_template, GenericGridTemplateComponent::Subgrid(_));
+                let (auto_repeat, repeated_tracks, percentage_tracks) =
+                    if let GenericGridTemplateComponent::TrackList(track_list) = grid_axis_template
+                    {
+                        let repeated_tracks = track_list
+                            .values
+                            .iter()
+                            .any(|value| matches!(value, TrackListValue::TrackRepeat(_)));
+                        let percentage_tracks = track_list.values.iter().any(|value| match value {
+                            TrackListValue::TrackSize(size) => grid_track_size_has_percentage(size),
+                            TrackListValue::TrackRepeat(repeat) => repeat
+                                .track_sizes
+                                .iter()
+                                .any(grid_track_size_has_percentage),
+                        });
+                        (
+                            track_list.has_auto_repeat(),
+                            repeated_tracks,
+                            percentage_tracks,
+                        )
+                    } else {
+                        (false, false, false)
+                    };
                 let placements = &info.info.items;
+                let has_subgrid_item = self.children.iter().any(|child| {
+                    let child = child.borrow();
+                    let position = child.style.get_position();
+                    matches!(
+                        if row_lanes {
+                            &position.grid_template_rows
+                        } else {
+                            &position.grid_template_columns
+                        },
+                        GenericGridTemplateComponent::Subgrid(_)
+                    )
+                });
+                let definite_rows = row_lanes
+                    && !matches!(
+                        container_style.get_position().height,
+                        style::values::computed::Size::Auto
+                    );
+                let preserve_legacy_placement = subgrid
+                    || auto_repeat
+                    || has_subgrid_item
+                    || (definite_rows && repeated_tracks);
+                // Taffy's two-dimensional auto-placement creates a new implicit
+                // track for items that grid lanes should pack into existing lanes.
+                // Keep only tracks needed by the template, definite placements,
+                // and the widest auto-placed item.
+                let mut lane_count = (usize::from(track_info.negative_implicit_tracks)
+                    + usize::from(track_info.explicit_tracks))
+                .max(1);
+                let mut placement_index = 0;
+                for child in &self.children {
+                    let child = child.borrow();
+                    if !matches!(&child.taffy_level_box, TaffyItemBoxInner::InFlowBox(_)) {
+                        continue;
+                    }
+                    let Some(placement) = placements.get(placement_index) else {
+                        break;
+                    };
+                    placement_index += 1;
+                    let (start_line, end_line) = if row_lanes {
+                        (placement.row_start, placement.row_end)
+                    } else {
+                        (placement.column_start, placement.column_end)
+                    };
+                    let position = child.style.get_position();
+                    let (grid_start, grid_end) = if row_lanes {
+                        (&position.grid_row_start, &position.grid_row_end)
+                    } else {
+                        (&position.grid_column_start, &position.grid_column_end)
+                    };
+                    let explicit = (!grid_start.is_auto() && !grid_start.is_span)
+                        || (!grid_end.is_auto() && !grid_end.is_span);
+                    if explicit {
+                        lane_count = lane_count.max(usize::from(end_line - 1));
+                    } else {
+                        lane_count = lane_count.max(usize::from(end_line - start_line));
+                    }
+                }
+                let tracks = if preserve_legacy_placement {
+                    &track_info.positions[..]
+                } else {
+                    &track_info.positions[..lane_count.min(track_info.positions.len())]
+                };
                 let stacking_gap = if row_lanes {
                     container_style.get_column_gap()
                 } else {
@@ -591,6 +695,9 @@ impl TaffyContainer {
                 let mut alignment_gaps: Vec<Option<f32>> = vec![None; self.children.len()];
                 let mut placed_items = Vec::new();
                 let mut placement_index = 0;
+                // Among equally short lanes, continue at the next lane in the
+                // placement direction before wrapping around.
+                let mut placement_cursor = if track_reverse { tracks.len() } else { 0 };
 
                 for (child_index, child) in self.children.iter().enumerate() {
                     let mut child = child.borrow_mut();
@@ -634,9 +741,21 @@ impl TaffyContainer {
                                     .fold(content_start, f32::max);
                                 left_end.total_cmp(&right_end).then_with(|| {
                                     if track_reverse {
-                                        right.cmp(&left)
+                                        if preserve_legacy_placement {
+                                            right.cmp(&left)
+                                        } else {
+                                            (right + span <= placement_cursor)
+                                                .cmp(&(left + span <= placement_cursor))
+                                                .then_with(|| right.cmp(&left))
+                                        }
                                     } else {
-                                        left.cmp(&right)
+                                        if preserve_legacy_placement {
+                                            left.cmp(&right)
+                                        } else {
+                                            (left < placement_cursor)
+                                                .cmp(&(right < placement_cursor))
+                                                .then_with(|| left.cmp(&right))
+                                        }
                                     }
                                 })
                             })
@@ -644,6 +763,13 @@ impl TaffyContainer {
                     };
                     if first_lane + span > tracks.len() {
                         continue;
+                    }
+                    if !explicit {
+                        placement_cursor = if track_reverse {
+                            first_lane
+                        } else {
+                            first_lane + span
+                        };
                     }
                     let stacking_start = lane_ends[first_lane..first_lane + span]
                         .iter()
@@ -666,8 +792,37 @@ impl TaffyContainer {
                             }
                         }
                     }
-                    let original_track = &tracks[usize::from(start_line - 1)];
+                    let original_track = &track_info.positions[usize::from(start_line - 1)];
+                    let grid_axis_alignment = position.align_self.0;
+                    let grid_axis_alignment = if grid_axis_alignment.value() == AlignFlags::AUTO {
+                        align_items.0
+                    } else {
+                        grid_axis_alignment
+                    };
+                    let stretch = matches!(
+                        grid_axis_alignment.value(),
+                        AlignFlags::AUTO | AlignFlags::NORMAL | AlignFlags::STRETCH
+                    );
+                    let auto_grid_size =
+                        matches!(position.height, style::values::computed::Size::Auto);
+                    let grid_span_size =
+                        tracks[first_lane + span - 1].end - tracks[first_lane].start;
+                    let child_is_subgrid = matches!(
+                        &position.grid_template_rows,
+                        GenericGridTemplateComponent::Subgrid(_)
+                    );
                     let layout = &mut child.taffy_layout;
+                    if row_lanes
+                        && stretch
+                        && auto_grid_size
+                        && !preserve_legacy_placement
+                        && !child_is_subgrid
+                    {
+                        layout.size.height = layout
+                            .size
+                            .height
+                            .max(grid_span_size - layout.margin.top - layout.margin.bottom);
+                    }
                     let end = if row_lanes {
                         layout.location.y += tracks[first_lane].start - original_track.start;
                         layout.location.x = stacking_start + layout.margin.left;
@@ -786,6 +941,13 @@ impl TaffyContainer {
                 if !row_lanes && content_box_size_override.size.block.to_definite().is_none() {
                     let end = lane_ends.into_iter().fold(content_start, f32::max);
                     output.size.height = end - (if placement_index == 0 { 0.0 } else { gap })
+                        + (pbm.padding.block_end + pbm.border.block_end).to_f32_px();
+                } else if row_lanes
+                    && !preserve_legacy_placement
+                    && !percentage_tracks
+                    && content_box_size_override.size.block.to_definite().is_none()
+                {
+                    output.size.height = tracks.last().map_or(content_start, |track| track.end)
                         + (pbm.padding.block_end + pbm.border.block_end).to_f32_px();
                 }
             }
