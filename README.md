@@ -171,6 +171,9 @@ Keeping a leading out-of-flow block in a clamped block's direct inline formattin
 fixed-position reftests pass in the 324-test `line-clamp` run, with no regressions there. The next full CSS run
 measured **75.44%** (22,029.0 test-equivalents passing, raw). Its 8.3 increase includes 4.3 test-equivalents of
 changes in unrelated tests; only the four repeatable line-clamp passes are attributed to this change.
+When `line-clamp` specifies both a line count and `auto`, layout now uses the earlier of the line-count and block-size
+limits. The 324-test `line-clamp` rerun gained one passing reftest (`line-clamp-041.html`) with no regressions. This
+focused gain has not been included in a full CSS rerun.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -470,7 +473,8 @@ Notes on the numbers:
   trim removable whitespace before inserting the ellipsis. When wrapping is disabled, the ellipsis can replace the
   entire line. Six more reftests pass in the next focused rerun. A leading out-of-flow block stays in the direct
   inline formatting context, so four more abspos and fixed-position reftests pass without changing the other
-  320 line-clamp results.
+  320 line-clamp results. A numbered clamp with `auto` also stops at the block-size limit when that comes first,
+  passing one more reftest in a 324-test focused rerun.
 - **CSS container queries**: Stylo parses `@container` rules (AS-525), layout exposes the query container's content-box
   size and repeats style and layout when query results change, and script exposes `CSSContainerRule` with its
   conditions. The 320-test CSS Conditional container-query directory gains 96.35 passing test-equivalents.
