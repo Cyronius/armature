@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+use icu_segmenter::GraphemeClusterSegmenter;
 use layout_api::LayoutNode;
 use script::layout_dom::ServoLayoutNode;
-use style::counter_style::{AdditiveTuple, CounterStyle, Symbol, SymbolsType, System};
+use style::counter_style::{
+    AdditiveTuple, CounterBound, CounterRanges, CounterStyle, Symbol, SymbolsType, System,
+};
 use style::properties::LonghandId;
 use style::properties::longhands::list_style_type::computed_value::T as ListStyleType;
 use style::stylesheets::Origin;
@@ -78,6 +81,80 @@ fn symbol_to_string(symbol: &Symbol) -> &str {
     }
 }
 
+fn counter_range_contains(ranges: &CounterRanges, value: i32) -> bool {
+    ranges.0.iter().any(|range| {
+        let lower = match &range.start {
+            CounterBound::Integer(bound) => bound.resolve().is_some_and(|bound| value >= bound),
+            CounterBound::Infinite => true,
+        };
+        let upper = match &range.end {
+            CounterBound::Integer(bound) => bound.resolve().is_some_and(|bound| value <= bound),
+            CounterBound::Infinite => true,
+        };
+        lower && upper
+    })
+}
+
+fn grapheme_count(value: &str) -> usize {
+    GraphemeClusterSegmenter::new()
+        .segment_str(value)
+        .count()
+        .saturating_sub(1)
+}
+
+fn extended_algorithm_style(
+    context: &LayoutContext,
+    node: ServoLayoutNode<'_>,
+    property: LonghandId,
+    counter_style: &CounterStyle,
+    depth: usize,
+) -> CounterStyle {
+    if depth > 8 {
+        return CounterStyle::decimal();
+    }
+    let CounterStyle::Name(name) = counter_style else {
+        return counter_style.clone();
+    };
+    let shadow_rule = node
+        .as_element()
+        .and_then(|element| {
+            (!element.property_is_from_outer_tree(&context.style_context, property))
+                .then(|| element.containing_shadow_style_data())
+                .flatten()
+        })
+        .and_then(|data| data.counter_style_rule(&name.0).cloned());
+    let rule_and_origin = shadow_rule.map(|rule| (rule, Origin::Author)).or_else(|| {
+        context
+            .style_context
+            .stylist
+            .iter_extra_data_origins_rev()
+            .find_map(|(extra, origin)| {
+                extra
+                    .counter_styles
+                    .get(&name.0)
+                    .map(|rule| (rule.clone(), origin))
+            })
+    });
+    let Some((rule, origin)) = rule_and_origin else {
+        return counter_style.clone();
+    };
+    let guard = match origin {
+        Origin::UserAgent | Origin::User => context.style_context.guards.ua_or_user,
+        Origin::Author => context.style_context.guards.author,
+    };
+    let rule = rule.read_with(guard);
+    if let System::Extends(base) = rule.resolved_system() {
+        return extended_algorithm_style(
+            context,
+            node,
+            property,
+            &CounterStyle::Name(base.clone()),
+            depth + 1,
+        );
+    }
+    counter_style.clone()
+}
+
 /// <https://drafts.csswg.org/css-counter-styles-3/#generate-a-counter>
 pub(crate) fn generate_counter_representation(
     context: &LayoutContext,
@@ -127,66 +204,177 @@ fn generate_counter_representation_with_depth(
                 Origin::Author => context.style_context.guards.author,
             };
             let rule = rule.read_with(guard);
-            if let System::Extends(base) = rule.resolved_system() {
-                return generate_counter_representation_with_depth(
-                    context,
-                    node,
-                    property,
-                    &CounterStyle::Name(base.clone()),
-                    value,
-                    depth + 1,
-                );
-            }
-            if let System::Additive = rule.resolved_system() {
-                if let Some(tuples) = &rule.descriptors().additive_symbols {
-                    if let Some(representation) = additive_symbols(value, &tuples.0) {
-                        return representation;
-                    }
-                }
-            }
-            if let Some(symbols) = &rule.descriptors().symbols {
-                let symbols = &symbols.0;
-                let representation = match rule.resolved_system() {
-                    System::Numeric => Some(positional_symbols(value, symbols, true)),
-                    System::Alphabetic => Some(positional_symbols(value, symbols, false)),
-                    System::Cyclic => {
-                        let index =
-                            (i64::from(value) - 1).rem_euclid(symbols.len() as i64) as usize;
-                        Some(symbol_to_string(&symbols[index]).to_string())
-                    },
-                    System::Symbolic if value > 0 => {
-                        let index = (value as usize - 1) % symbols.len();
-                        Some(
-                            symbol_to_string(&symbols[index])
-                                .repeat((value as usize - 1) / symbols.len() + 1),
+            let descriptors = rule.descriptors();
+            let system = rule.resolved_system();
+            let in_range = descriptors
+                .range
+                .as_ref()
+                .is_none_or(|ranges| ranges.0.is_empty() || counter_range_contains(ranges, value));
+            let in_automatic_range = match system {
+                System::Alphabetic | System::Symbolic => value > 0,
+                System::Additive => value >= 0,
+                _ => true,
+            };
+            if !in_range
+                || (descriptors.range.as_ref().is_none_or(|r| r.0.is_empty())
+                    && !in_automatic_range)
+            {
+                return descriptors.fallback.as_ref().map_or_else(
+                    || value.to_string(),
+                    |fallback| {
+                        generate_counter_representation_with_depth(
+                            context,
+                            node,
+                            property,
+                            &CounterStyle::Name(fallback.0.clone()),
+                            value,
+                            depth + 1,
                         )
                     },
-                    System::Fixed { first_symbol_value } => {
-                        let first = first_symbol_value
-                            .as_ref()
-                            .and_then(|n| n.resolve())
-                            .unwrap_or(1);
-                        let index = i64::from(value) - i64::from(first);
-                        (index >= 0 && (index as usize) < symbols.len())
-                            .then(|| symbol_to_string(&symbols[index as usize]).to_string())
-                    },
-                    System::Symbolic | System::Additive | System::Extends(_) => None,
-                };
-                if let Some(representation) = representation {
-                    return representation;
-                }
-            }
-            if let Some(fallback) = &rule.descriptors().fallback {
-                return generate_counter_representation_with_depth(
-                    context,
-                    node,
-                    property,
-                    &CounterStyle::Name(fallback.0.clone()),
-                    value,
-                    depth + 1,
                 );
             }
-            return value.to_string();
+
+            let uses_negative = !matches!(system, System::Cyclic | System::Fixed { .. });
+            let absolute_value = if value < 0 && uses_negative {
+                value.checked_abs().unwrap_or(value)
+            } else {
+                value
+            };
+            let (representation, add_default_negative) = match system {
+                System::Extends(base) => {
+                    let base_style = CounterStyle::Name(base.clone());
+                    let algorithm_style =
+                        extended_algorithm_style(context, node, property, &base_style, depth + 1);
+                    let has_override = descriptors.negative.is_some()
+                        || descriptors.pad.is_some()
+                        || descriptors
+                            .range
+                            .as_ref()
+                            .is_some_and(|ranges| !ranges.0.is_empty());
+                    let representation = match &algorithm_style {
+                        CounterStyle::Name(name)
+                            if has_override && name.0 == atom!("upper-roman") =>
+                        {
+                            (absolute_value > 0).then(|| roman_unbounded(absolute_value, true))
+                        },
+                        CounterStyle::Name(name)
+                            if has_override && name.0 == atom!("lower-roman") =>
+                        {
+                            (absolute_value > 0).then(|| roman_unbounded(absolute_value, false))
+                        },
+                        _ => Some(generate_counter_representation_with_depth(
+                            context,
+                            node,
+                            property,
+                            &base_style,
+                            if descriptors.negative.is_some() || descriptors.pad.is_some() {
+                                absolute_value
+                            } else {
+                                value
+                            },
+                            depth + 1,
+                        )),
+                    };
+                    let add_default_negative = matches!(&algorithm_style,
+                        CounterStyle::Name(name) if has_override &&
+                            matches!(name.0, atom!("upper-roman") | atom!("lower-roman")))
+                        || descriptors.pad.is_some();
+                    (representation, add_default_negative)
+                },
+                System::Additive => (
+                    descriptors
+                        .additive_symbols
+                        .as_ref()
+                        .and_then(|tuples| additive_symbols(absolute_value, &tuples.0)),
+                    true,
+                ),
+                _ => (
+                    descriptors.symbols.as_ref().and_then(|symbols| {
+                        let symbols = &symbols.0;
+                        match system {
+                            System::Numeric => {
+                                Some(positional_symbols(absolute_value, symbols, true))
+                            },
+                            System::Alphabetic => {
+                                Some(positional_symbols(absolute_value, symbols, false))
+                            },
+                            System::Cyclic => {
+                                let index = (i64::from(value) - 1).rem_euclid(symbols.len() as i64)
+                                    as usize;
+                                Some(symbol_to_string(&symbols[index]).to_string())
+                            },
+                            System::Symbolic if absolute_value > 0 => {
+                                let index = (absolute_value as usize - 1) % symbols.len();
+                                Some(
+                                    symbol_to_string(&symbols[index])
+                                        .repeat((absolute_value as usize - 1) / symbols.len() + 1),
+                                )
+                            },
+                            System::Fixed { first_symbol_value } => {
+                                let first = first_symbol_value
+                                    .as_ref()
+                                    .and_then(|n| n.resolve())
+                                    .unwrap_or(1);
+                                let index = i64::from(value) - i64::from(first);
+                                (index >= 0 && (index as usize) < symbols.len())
+                                    .then(|| symbol_to_string(&symbols[index as usize]).to_string())
+                            },
+                            System::Symbolic | System::Additive | System::Extends(_) => None,
+                        }
+                    }),
+                    true,
+                ),
+            };
+            if let Some(mut representation) = representation {
+                if let Some(pad) = &descriptors.pad {
+                    let width = pad.0.resolve().unwrap_or(0).max(0) as usize;
+                    let negative_width = if value < 0 && uses_negative {
+                        descriptors.negative.as_ref().map_or(1, |negative| {
+                            grapheme_count(symbol_to_string(&negative.0))
+                                + negative
+                                    .1
+                                    .as_ref()
+                                    .map_or(0, |end| grapheme_count(symbol_to_string(end)))
+                        })
+                    } else {
+                        0
+                    };
+                    let padding =
+                        width.saturating_sub(grapheme_count(&representation) + negative_width);
+                    representation = format!(
+                        "{}{}",
+                        symbol_to_string(&pad.1).repeat(padding.min(10000)),
+                        representation
+                    );
+                }
+                if value < 0 && uses_negative {
+                    if let Some(negative) = &descriptors.negative {
+                        return format!(
+                            "{}{}{}",
+                            symbol_to_string(&negative.0),
+                            representation,
+                            negative.1.as_ref().map_or("", symbol_to_string),
+                        );
+                    }
+                    if add_default_negative {
+                        return format!("-{representation}");
+                    }
+                }
+                return representation;
+            }
+            return descriptors.fallback.as_ref().map_or_else(
+                || value.to_string(),
+                |fallback| {
+                    generate_counter_representation_with_depth(
+                        context,
+                        node,
+                        property,
+                        &CounterStyle::Name(fallback.0.clone()),
+                        value,
+                        depth + 1,
+                    )
+                },
+            );
         }
     }
     match counter_style {
@@ -610,6 +798,10 @@ fn roman(value: i32, uppercase: bool) -> String {
     if !(1..=3999).contains(&value) {
         return value.to_string();
     }
+    roman_unbounded(value, uppercase)
+}
+
+fn roman_unbounded(value: i32, uppercase: bool) -> String {
     let mut value = value;
     let mut result = String::new();
     for (number, symbol) in [
