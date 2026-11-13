@@ -266,6 +266,9 @@ Notes on the numbers:
   (AS-522), so large extrapolation progress no longer loses the difference between opposite weights. All four
   previously failing `filter-interpolation-002.html` drop-shadow subtests now pass; the focused CSS color animation
   interpolation and composition tests still match their expectations.
+- **Images in embedded elements**: `<embed src>` and `<object data>` resolve image URLs and use the image cache's
+  natural dimensions for `object-fit` and `object-position`. In the 85-file CSS Images reftest run, 81 tests newly
+  pass; four tentative `contain-intrinsic-size` cases still fail.
 - **Resolved transform serialization**: `getComputedStyle()` chooses `matrix()` or `matrix3d()` from the resulting
   matrix, including for the legacy `-webkit-transform` alias. In the focused seven-file WPT run, 15 transform-related
   subtests newly pass across CSS Transforms and Web Animations.
