@@ -10,18 +10,20 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 ## Conformance
 
-Unless noted below, scores were measured on 7 November 2026 using the 61,548 web-platform-tests selected by
-`tests/wpt/include.ini`. Two builds ran on the same machine: upstream Servo at the commit Armature forked from
+**Latest Armature CSS score: 75.73%** (22,121.0 of 29,211 test-equivalents), measured on 13 November 2026 using the
+current `tests/wpt/include.ini` selection.
+
+The comparison table below was measured on 7 November 2026 using the 61,548 web-platform-tests selected then. Two
+builds ran on the same machine: upstream Servo at the commit Armature forked from
 (`90c3f623175`, 30 October 2026) and Armature at `568f69bdeac`. As on [wpt.fyi](https://wpt.fyi/), each test counts
 once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. The
 Total row reports 63,770 more passing subtests than upstream Servo (2,088,378 against 2,024,608) and predates the
-WebGL rerun. The CSS row uses the full run from 13 November 2026 and the current `include.ini` selection. Upstream
-Servo has not been rerun on those 29,211 tests, so its comparison columns are blank. The Total row retains the
-original 7 November CSS result of 70.5% on 29,164 tests.
+WebGL rerun. The table's CSS row records the original fork-point comparison; the latest CSS score above is an
+Armature-only measurement on the current test selection.
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| CSS | 29,211 | — | **75.73%** | — | — |
+| CSS | 29,164 | 67.0% | 70.5% | +3.4 | +23,261 |
 | HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,030 |
 | WebGL conformance | 2,939 | 40.5% | **82.2%** | +41.7 | — |
 | Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
