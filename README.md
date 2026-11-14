@@ -15,11 +15,12 @@ Two builds ran on the same machine: upstream Servo at the commit Armature forked
 (`90c3f623175`, 30 October 2026) and Armature at `568f69bdeac`. As on [wpt.fyi](https://wpt.fyi/), each test counts
 once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. The
 Total row reports 63,770 more passing subtests than upstream Servo (2,088,378 against 2,024,608) and predates the
-WebGL rerun. The CSS row records Armature's 13 November 2026 result on the current test selection.
+WebGL rerun. The CSS row records Armature's 13 November 2026 result on the current test selection; its upstream and
+subtest figures are carried forward until the next full-suite rerun.
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| CSS | 29,211 | — | **75.73%** | — | — |
+| CSS | 29,211 | 67.0% | **75.73%** | +8.7 | +23,261 |
 | HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,030 |
 | WebGL conformance | 2,939 | 40.5% | **82.2%** | +41.7 | — |
 | Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
