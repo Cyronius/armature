@@ -504,3 +504,12 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: `text-align: justify-all` justifies every line of a block, including the last. Accept it as a
   `text-align` keyword so that layout can justify the last line too.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-531: Support display: -webkit-box in Servo
+- Files: `style/properties/longhands.toml`, `style/style_adjuster.rs`, `style/values/specified/box.rs`
+- Why: `display: -webkit-box` and `-webkit-inline-box` are legacy flex containers, and with a
+  vertical `-webkit-box-orient` and `-webkit-line-clamp` they compute to `flow-root` and
+  `inline-block` line-clamp containers. Parse them in Servo, treat them as item containers, enable
+  `-moz-box-orient` (aliased as `-webkit-box-orient`) in the box struct, and run the line-clamp
+  adjustment for Servo.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

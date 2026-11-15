@@ -4530,8 +4530,8 @@ type = "BoxDirection"
 initial = "computed::BoxDirection::Normal"
 
 [-moz-box-orient]
-struct = "xul"
-engine = "gecko"
+# Armature (AS-531): Enabled in Servo, in the box struct, for -webkit-box.
+struct = "box"
 spec = "Nonstandard (https://developer.mozilla.org/en-US/docs/Web/CSS/box-orient)"
 animation_type = "discrete"
 affects = "layout"
