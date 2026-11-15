@@ -110,6 +110,8 @@ pub use self::motion::{OffsetPath, OffsetPosition, OffsetRotate};
 pub use self::outline::OutlineStyle;
 pub use self::page::{PageName, PageOrientation, PageSize, PageSizeOrientation, PaperSize};
 pub use self::param::LinkParameters;
+// Armature (AS-528): Export the flow tolerance value.
+pub use self::position::FlowTolerance;
 pub use self::percentage::{NonNegativePercentage, Percentage};
 pub use self::position::{
     AnchorFunction, AnchorName, AspectRatio, BoxSizing, DashedIdentAndOrTryTactic, FlexDirection,

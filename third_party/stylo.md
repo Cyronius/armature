@@ -484,3 +484,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   value lists with `repeat()`, and the `row-rule-*`, `rule-*`, rule break, visibility, inset and overlap
   properties and their shorthands enter computed styles, behind the columns preference.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-528: Parse Grid Lanes flow tolerance in Servo
+- Files: `style/properties/longhands.toml`, `style/values/computed/mod.rs`, `style/values/computed/position.rs`,
+  `style/values/generics/position.rs`, `style/values/specified/mod.rs`, `style/values/specified/position.rs`
+- Why: Grid Lanes placement treats running positions within the `flow-tolerance` of the earliest one
+  as equal. The property must enter computed styles so layout can use it.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

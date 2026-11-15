@@ -1249,6 +1249,18 @@ animation_type = "discrete"
 spec = "https://drafts.csswg.org/css-grid/#propdef-grid-auto-rows"
 affects = "layout"
 
+# Armature (AS-528): Parse the Grid Lanes placement tolerance in Servo.
+[flow-tolerance]
+type = "FlowTolerance"
+initial = "computed::FlowTolerance::Normal"
+initial_specified_value = "specified::FlowTolerance::Normal"
+struct = "position"
+engine = "servo"
+servo_pref = "layout.css.display-grid-lanes.enabled"
+animation_type = "discrete"
+spec = "https://drafts.csswg.org/css-grid-3/#item-tolerance"
+affects = "layout"
+
 # Armature (AS-526): Parse the experimental Grid Lanes packing direction in Servo.
 [grid-lanes-direction]
 type = "GridLanesDirection"

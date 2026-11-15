@@ -667,3 +667,31 @@ impl<P> GenericAnchorSide<P> {
         }
     }
 }
+
+/// Armature (AS-528): A generic value for the `flow-tolerance` property.
+///
+/// https://drafts.csswg.org/css-grid-3/#item-tolerance
+#[derive(
+    Clone,
+    Debug,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToAnimatedValue,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(C, u8)]
+#[typed(todo_derive_fields)]
+pub enum GenericFlowTolerance<LengthPercentage> {
+    /// `normal`, which is 1em.
+    Normal,
+    /// A non-negative length or percentage.
+    LengthPercentage(LengthPercentage),
+    /// `infinite`
+    Infinite,
+}

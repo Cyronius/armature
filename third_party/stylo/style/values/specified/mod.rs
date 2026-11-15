@@ -109,6 +109,8 @@ pub use self::position::{
     PositionTryFallbacks, PositionTryOrder, PositionVisibility, ScopedName, ZIndex,
 };
 pub use self::random::{RandomCacheKey, RandomUaIdent};
+// Armature (AS-528): Export the flow tolerance value.
+pub use self::position::FlowTolerance;
 pub use self::ratio::Ratio;
 pub use self::rect::NonNegativeLengthOrNumberRect;
 pub use self::resolution::{NoCalcResolution, Resolution};

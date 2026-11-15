@@ -2261,3 +2261,7 @@ pub enum ObjectFit {
     None,
     ScaleDown,
 }
+
+/// Armature (AS-528): A specified value for the `flow-tolerance` property.
+pub type FlowTolerance =
+    crate::values::generics::position::GenericFlowTolerance<crate::values::specified::NonNegativeLengthPercentage>;

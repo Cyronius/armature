@@ -273,3 +273,7 @@ pub type ZIndex = GenericZIndex<Integer>;
 
 /// A computed value for the `aspect-ratio` property.
 pub type AspectRatio = GenericAspectRatio<NonNegativeNumber>;
+
+/// Armature (AS-528): A computed value for the `flow-tolerance` property.
+pub type FlowTolerance =
+    crate::values::generics::position::GenericFlowTolerance<crate::values::computed::NonNegativeLengthPercentage>;
