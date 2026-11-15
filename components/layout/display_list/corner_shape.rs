@@ -473,6 +473,48 @@ impl CornerShapedBox {
     }
 }
 
+impl CornerShapedBox {
+    /// Rasterize the box inset by `insets` (negative values outset it) as a WebRender
+    /// mask image, returning its pixels, size and origin relative to the border box.
+    pub(crate) fn rasterize_mask(
+        &self,
+        insets: Insets,
+        scale: f32,
+    ) -> Option<(Vec<u8>, (u32, u32), (f64, f64))> {
+        let origin = (insets.left.min(0.) - 1., insets.top.min(0.) - 1.);
+        let width = self.width - insets.left.min(0.) - insets.right.min(0.) + 2.;
+        let height = self.height - insets.top.min(0.) - insets.bottom.min(0.) + 2.;
+        let scale = scale as f64;
+        let size = ((width * scale).ceil() as u32, (height * scale).ceil() as u32);
+        if size.0 == 0 || size.1 == 0 || size.0 > 8192 || size.1 > 8192 {
+            return None;
+        }
+        let scaled = CornerShapedBox {
+            width: self.width * scale,
+            height: self.height * scale,
+            radii: self.radii.map(|r| [r[0] * scale, r[1] * scale]),
+            shapes: self.shapes,
+        };
+        let mask = scaled.contour_mask(
+            Insets {
+                left: insets.left * scale,
+                top: insets.top * scale,
+                right: insets.right * scale,
+                bottom: insets.bottom * scale,
+            },
+            (0., 0.),
+            (origin.0 * scale, origin.1 * scale),
+            size,
+        )?;
+        let pixels = mask
+            .data()
+            .iter()
+            .flat_map(|alpha| [*alpha; 4])
+            .collect();
+        Some((pixels, size, origin))
+    }
+}
+
 /// A box shadow without blur.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Shadow {

@@ -405,6 +405,24 @@ impl DisplayListBuilder<'_> {
                     LayoutRect::from_origin_and_size(clip.rect.min, LayoutSize::zero()),
                 ),
             }
+        } else if let Some(clip::MaskClip::CornerShape {
+            shape,
+            insets,
+            origin,
+        }) = clip.mask.as_deref()
+        {
+            match self.corner_shape_mask(shape, *insets, *origin) {
+                Some((image, rect)) => self.wr().define_clip_image_mask(
+                    spatial_id,
+                    wr::ImageMask { image, rect },
+                    &[],
+                    wr::FillRule::Nonzero,
+                ),
+                None => self.wr().define_clip_rect(
+                    spatial_id,
+                    LayoutRect::from_origin_and_size(clip.rect.min, LayoutSize::zero()),
+                ),
+            }
         } else if let Some(clip::MaskClip::Image(mask)) = clip.mask.as_deref() {
             match self.mask_image_clip(mask) {
                 Ok(Some((image, rect))) => self.wr().define_clip_image_mask(
@@ -453,6 +471,31 @@ impl DisplayListBuilder<'_> {
     /// Add a new clip to the WebRender display list being built. This only happens during
     /// WebRender display list building and these clips should be added after all clips
     /// from the `StackingContextTree` have already been processed.
+    /// Rasterize a box with shaped corners into a WebRender mask image.
+    fn corner_shape_mask(
+        &mut self,
+        shape: &corner_shape::CornerShapedBox,
+        insets: corner_shape::Insets,
+        origin: LayoutPoint,
+    ) -> Option<(wr::ImageKey, LayoutRect)> {
+        use std::hash::{Hash, Hasher};
+        let scale = self.device_pixel_ratio.get();
+        let (pixels, size, offset) = shape.rasterize_mask(insets, scale)?;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        size.hash(&mut hasher);
+        pixels.hash(&mut hasher);
+        let key = self.image_resolver.image_cache.generated_image_key(
+            hasher.finish(),
+            DeviceIntSize::new(size.0 as i32, size.1 as i32),
+            pixels,
+        )?;
+        let rect = LayoutRect::from_origin_and_size(
+            LayoutPoint::new(origin.x + offset.0 as f32, origin.y + offset.1 as f32),
+            LayoutSize::new(size.0 as f32 / scale, size.1 as f32 / scale),
+        );
+        Some((key, rect))
+    }
+
     /// Rasterize a polygon into a WebRender mask image covering its bounds.
     fn polygon_mask(
         &mut self,

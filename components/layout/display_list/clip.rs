@@ -59,6 +59,16 @@ pub(crate) struct Clip {
 pub(crate) enum MaskClip {
     /// The `mask-image` of an element.
     Image(MaskImageClip),
+    /// A box with shaped corners, inset by the given amounts, for a `clip-path`
+    /// geometry box.
+    CornerShape {
+        #[ignore_malloc_size_of = "plain data"]
+        shape: super::corner_shape::CornerShapedBox,
+        #[ignore_malloc_size_of = "plain data"]
+        insets: super::corner_shape::Insets,
+        #[ignore_malloc_size_of = "euclid"]
+        origin: LayoutPoint,
+    },
     /// A `clip-path: polygon()`, with its points in layout space.
     Polygon {
         #[ignore_malloc_size_of = "euclid"]
@@ -119,6 +129,51 @@ impl StackingContextTreeClipStore {
         box_fragment: &BoxFragmentWithStyle<'_>,
         containing_block_origin: PhysicalPoint<Au>,
     ) -> Option<ClipId> {
+        if let ClipPath::Box(geometry_box) = clip_path {
+            let fragment_builder =
+                BuilderForBoxFragment::new(box_fragment, containing_block_origin);
+            let shape = corner_shaped_box(&fragment_builder)?;
+            let fragment = &box_fragment.box_fragment;
+            let px = |au: Au| au.to_f64_px();
+            let border = fragment.border;
+            let padding = fragment.padding;
+            let margin = fragment.margin;
+            let insets = match geometry_box {
+                ShapeGeometryBox::ShapeBox(ShapeBox::MarginBox) => super::corner_shape::Insets {
+                    left: -px(margin.left),
+                    top: -px(margin.top),
+                    right: -px(margin.right),
+                    bottom: -px(margin.bottom),
+                },
+                ShapeGeometryBox::ShapeBox(ShapeBox::PaddingBox) => super::corner_shape::Insets {
+                    left: px(border.left),
+                    top: px(border.top),
+                    right: px(border.right),
+                    bottom: px(border.bottom),
+                },
+                ShapeGeometryBox::ShapeBox(ShapeBox::ContentBox) => super::corner_shape::Insets {
+                    left: px(border.left + padding.left),
+                    top: px(border.top + padding.top),
+                    right: px(border.right + padding.right),
+                    bottom: px(border.bottom + padding.bottom),
+                },
+                _ => super::corner_shape::Insets::uniform(0.),
+            };
+            let id = ClipId(self.0.len());
+            self.0.push(Clip {
+                id,
+                radii: BorderRadius::zero(),
+                rect: fragment_builder.border_rect,
+                parent_scroll_node_id,
+                parent_clip_id,
+                mask: Some(Box::new(MaskClip::CornerShape {
+                    shape,
+                    insets,
+                    origin: fragment_builder.border_rect.min,
+                })),
+            });
+            return Some(id);
+        }
         let ClipPath::Shape(shape, geometry_box) = clip_path else {
             return None;
         };
@@ -210,6 +265,10 @@ impl StackingContextTreeClipStore {
             _ => return None,
         };
         let fragment_builder = BuilderForBoxFragment::new(box_fragment, containing_block_origin);
+        if matches!(clip_path, ClipPath::Box(_)) && corner_shaped_box(&fragment_builder).is_some() {
+            // Clipped through a mask in `add_for_clip_path_mask` instead.
+            return None;
+        }
         let layout_rect = match geometry_box {
             ShapeBox::BorderBox => fragment_builder.border_rect,
             ShapeBox::ContentBox => *fragment_builder.content_rect(),
@@ -437,4 +496,36 @@ fn compute_shape_radius_for_ellipse(
         },
     };
     LayoutSize::new(radius_x, radius_y)
+}
+
+/// The shape of a box whose corners have non-round `corner-shape` values.
+pub(super) fn corner_shaped_box(
+    fragment_builder: &BuilderForBoxFragment,
+) -> Option<super::corner_shape::CornerShapedBox> {
+    let style = fragment_builder.fragment.style();
+    let border = style.get_border();
+    let shapes = [
+        border.corner_top_left_shape.k as f64,
+        border.corner_top_right_shape.k as f64,
+        border.corner_bottom_right_shape.k as f64,
+        border.corner_bottom_left_shape.k as f64,
+    ];
+    let radius = fragment_builder.border_radius();
+    let radii = [
+        radius.top_left,
+        radius.top_right,
+        radius.bottom_right,
+        radius.bottom_left,
+    ]
+    .map(|size| [size.width as f64, size.height as f64]);
+    let shaped = shapes
+        .iter()
+        .zip(&radii)
+        .any(|(shape, radius)| (*shape - 1.).abs() > 1e-4 && radius[0] > 0. && radius[1] > 0.);
+    shaped.then(|| super::corner_shape::CornerShapedBox {
+        width: fragment_builder.border_rect.width() as f64,
+        height: fragment_builder.border_rect.height() as f64,
+        radii,
+        shapes,
+    })
 }
