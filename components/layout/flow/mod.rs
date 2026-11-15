@@ -1848,17 +1848,39 @@ fn solve_containing_block_padding_and_border_for_in_flow_box<'a>(
 
     // https://drafts.csswg.org/css2/#the-width-property
     // https://drafts.csswg.org/css2/visudet.html#min-max-widths
-    let get_inline_content_sizes = || {
-        get_inline_content_sizes(&ConstraintSpace::new(
-            tentative_block_size,
-            style,
-            preferred_aspect_ratio,
-        ))
+    let mut get_inline_content_sizes = Some(get_inline_content_sizes);
+    let inline_content_sizes = std::cell::OnceCell::new();
+    let mut get_inline_content_sizes = || {
+        *inline_content_sizes.get_or_init(|| {
+            (get_inline_content_sizes.take().expect("only called once"))(&ConstraintSpace::new(
+                tentative_block_size,
+                style,
+                preferred_aspect_ratio,
+            ))
+        })
     };
     let justify_self = resolve_justify_self(style, containing_block.style, has_inline_parent);
+
+    // <https://drafts.csswg.org/css-sizing-4/#aspect-ratio-size-transfers>
+    // With a preferred aspect ratio, an automatic inline size is transferred from a
+    // definite preferred block size. An automatic minimum size keeps it at least as large
+    // as the min-content size.
+    let automatic_inline_size = match (preferred_aspect_ratio, tentative_block_size) {
+        (Some(ratio), SizeConstraint::Definite(block_size))
+            if !content_box_sizes.block.preferred.is_initial() &&
+                content_box_sizes.inline.preferred.is_initial() =>
+        {
+            let mut transferred = ratio.compute_dependent_size(LogicalAxis::Inline, block_size);
+            if content_box_sizes.inline.min.is_initial() {
+                transferred = transferred.max(get_inline_content_sizes().min_content);
+            }
+            Size::Numeric(transferred.max(Au::zero()))
+        },
+        _ => automatic_inline_size(justify_self, context),
+    };
     let inline_size = content_box_sizes.inline.resolve(
         LogicalAxis::Inline,
-        automatic_inline_size(justify_self, context),
+        automatic_inline_size,
         Au::zero,
         inline_stretch_size,
         get_inline_content_sizes,
