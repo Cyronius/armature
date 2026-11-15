@@ -192,11 +192,17 @@ impl TaffyItemBox {
 #[derive(Clone, Debug, MallocSizeOf)]
 pub(crate) struct SpecificTaffyGridInfo {
     pub info: taffy::DetailedGridInfo<Atom>,
+    /// For each child of a grid lanes container, how far its alignment area extends
+    /// before and after its margin box in the stacking axis.
+    pub stacking_alignment_space: Vec<(f32, f32)>,
 }
 
 impl SpecificTaffyGridInfo {
     fn from_detailed_grid_layout(grid_info: taffy::DetailedGridInfo<Atom>) -> Self {
-        Self { info: grid_info }
+        Self {
+            info: grid_info,
+            stacking_alignment_space: Vec::new(),
+        }
     }
 
     /// Resolve the grid area of an absolutely positioned grid item, returning a rectangle

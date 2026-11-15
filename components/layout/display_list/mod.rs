@@ -2206,7 +2206,12 @@ impl<'a> BuilderForBoxFragment<'a> {
         let style = self.fragment.style();
         let info = &grid_info.info;
         if style.get_display().inside() == style::values::specified::box_::DisplayInside::GridLanes {
-            self.build_grid_lanes_gap_decorations(builder, state, info);
+            self.build_grid_lanes_gap_decorations(
+                builder,
+                state,
+                info,
+                &grid_info.stacking_alignment_space,
+            );
             return;
         }
         if style.get_display().inside() != style::values::specified::box_::DisplayInside::Grid {
@@ -2280,6 +2285,7 @@ impl<'a> BuilderForBoxFragment<'a> {
         builder: &mut DisplayListBuilder,
         state: &TraversalState,
         info: &taffy::DetailedGridInfo<style::Atom>,
+        stacking_alignment_space: &[(f32, f32)],
     ) {
         let style = self.fragment.style();
         let tracks_are_rows = crate::taffy::grid_lanes_use_rows(style);
@@ -2309,19 +2315,25 @@ impl<'a> BuilderForBoxFragment<'a> {
         // Item margin boxes, in the container's border box space.
         let content_offset = self.fragment.content_rect().origin.to_vector() -
             self.fragment.border_rect().origin.to_vector();
+        // Gaps are decorated at the edges of the items' alignment areas.
         let items = self
             .fragment
             .children
             .iter()
-            .filter_map(|child| match child {
+            .enumerate()
+            .filter_map(|(index, child)| match child {
                 Fragment::Box(box_fragment) => {
                     let rect = box_fragment.margin_rect().translate(content_offset);
                     let (x0, x1) = (rect.min_x().to_f32_px(), rect.max_x().to_f32_px());
                     let (y0, y1) = (rect.min_y().to_f32_px(), rect.max_y().to_f32_px());
+                    let (before, after) = stacking_alignment_space
+                        .get(index)
+                        .copied()
+                        .unwrap_or_default();
                     Some(if tracks_are_rows {
-                        (y0, y1, x0, x1)
+                        (y0, y1, x0 - before, x1 + after)
                     } else {
-                        (x0, x1, y0, y1)
+                        (x0, x1, y0 - before, y1 + after)
                     })
                 },
                 _ => None,

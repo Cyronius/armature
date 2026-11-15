@@ -568,6 +568,7 @@ impl TaffyContainer {
             _ => panic!("Servo is only configured to use Taffy for CSS Grid layout"),
         };
 
+        let mut stacking_alignment_space = Vec::new();
         if grid_lanes {
             // Grid lanes use the grid algorithm to size tracks and items in the
             // grid axis. In the stacking axis, each item follows the previous
@@ -706,6 +707,7 @@ impl TaffyContainer {
                 let mut item_lanes = vec![(0, 0); self.children.len()];
                 let mut alignment_gaps: Vec<Option<f32>> = vec![None; self.children.len()];
                 let mut placed_items = Vec::new();
+                stacking_alignment_space = vec![(0.0, 0.0); self.children.len()];
                 let mut placement_index = 0;
                 // Among equally short lanes, continue at the next lane in the
                 // placement direction before wrapping around.
@@ -879,10 +881,25 @@ impl TaffyContainer {
                     placed_items.push(child_index);
                 }
 
-                // For an auto-sized stacking range, the longest lane sets the
-                // end edge against which trailing items can align.
-                if !row_lanes && content_box_size_override.size.block.to_definite().is_none() {
-                    let longest_lane = lane_ends.iter().copied().fold(content_start, f32::max);
+                // Trailing items align against the end edge of the stacking axis: the
+                // content box end for a definite size, and otherwise the end of the
+                // longest lane.
+                let definite_stacking_size = if row_lanes {
+                    Some(content_box_size_override.size.inline.to_f32_px())
+                } else {
+                    content_box_size_override
+                        .size
+                        .block
+                        .to_definite()
+                        .map(Au::to_f32_px)
+                };
+                if (!row_lanes || !preserve_legacy_placement) &&
+                    (definite_stacking_size.is_none() || !preserve_legacy_placement)
+                {
+                    let longest_lane = match definite_stacking_size {
+                        Some(size) => content_start + size + gap,
+                        None => lane_ends.iter().copied().fold(content_start, f32::max),
+                    };
                     for (lane, previous) in last_in_lane.iter().copied().enumerate() {
                         let is_last_in_its_lanes = |index: usize| {
                             let (first, count) = item_lanes[index];
@@ -927,13 +944,27 @@ impl TaffyContainer {
                         matches!(position.height, style::values::computed::Size::Auto)
                     };
                     let layout = &mut child.taffy_layout;
-                    match alignment.value() {
+                    // Items are aligned before a `fill-reverse` stacking axis is
+                    // reflected, which swaps its physical start and end.
+                    // `flow-start` and `flow-end` follow the stacking direction instead.
+                    let alignment = match alignment.value() {
+                        AlignFlags::START | AlignFlags::SELF_START if fill_reverse => {
+                            AlignFlags::END
+                        },
+                        AlignFlags::END | AlignFlags::SELF_END if fill_reverse => {
+                            AlignFlags::START
+                        },
+                        AlignFlags::FLOW_END | AlignFlags::FLEX_END => AlignFlags::END,
+                        value => value,
+                    };
+                    match alignment {
                         AlignFlags::END | AlignFlags::SELF_END => {
                             if row_lanes {
                                 layout.location.x += free_space;
                             } else {
                                 layout.location.y += free_space;
                             }
+                            stacking_alignment_space[child_index] = (free_space, 0.0);
                         },
                         AlignFlags::CENTER => {
                             if row_lanes {
@@ -941,6 +972,13 @@ impl TaffyContainer {
                             } else {
                                 layout.location.y += free_space / 2.0;
                             }
+                            stacking_alignment_space[child_index] =
+                                (free_space / 2.0, free_space / 2.0);
+                        },
+                        AlignFlags::START | AlignFlags::SELF_START | AlignFlags::FLOW_START |
+                        AlignFlags::FLEX_START | AlignFlags::BASELINE |
+                        AlignFlags::LAST_BASELINE => {
+                            stacking_alignment_space[child_index] = (0.0, free_space);
                         },
                         AlignFlags::STRETCH => {
                             if auto_stacking_size {
@@ -973,6 +1011,8 @@ impl TaffyContainer {
                             })
                     };
                     for child_index in placed_items {
+                        let (before, after) = stacking_alignment_space[child_index];
+                        stacking_alignment_space[child_index] = (after, before);
                         let mut child = self.children[child_index].borrow_mut();
                         let layout = &mut child.taffy_layout;
                         if row_lanes {
@@ -1273,6 +1313,10 @@ impl TaffyContainer {
             })
             .collect();
         debug_assert!(out_of_flow_candidates.next().is_none());
+
+        if let Some(SpecificLayoutInfo::Grid(info)) = &mut container_ctx.specific_layout_info {
+            info.stacking_alignment_space = stacking_alignment_space;
+        }
 
         IndependentFormattingContextLayoutResult {
             fragments,
