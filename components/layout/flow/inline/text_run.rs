@@ -289,8 +289,20 @@ impl TextRunSegment {
                 (text_style.overflow_wrap != OverflowWrap::Normal ||
                     text_style.word_break == WordBreak::BreakWord)
         };
+        // Which characters of this segment are soft hyphens, to mark lines that break after one.
+        let soft_hyphen_ends: Vec<bool> = text_run
+            .run_data
+            .text_content
+            .get()
+            .and_then(|text| text.get(self.byte_range.start.0 as usize..self.byte_range.end.0 as usize))
+            .map(|text| text.chars().map(|character| character == '\u{AD}').collect())
+            .unwrap_or_default();
         for (run_index, run) in self.runs.iter().enumerate() {
             let new_character_range_end = character_range_start + run.character_count();
+            let run_ends_with_soft_hyphen = (new_character_range_end.0 as usize)
+                .checked_sub(self.character_range.start.0 as usize + 1)
+                .and_then(|index| soft_hyphen_ends.get(index).cloned())
+                .unwrap_or(false);
 
             let first_emergency_run = emergency_run_index;
             let mut emergency_character_count = Utf32CodeUnits(0);
@@ -362,6 +374,7 @@ impl TextRunSegment {
                     character_range_start - run_start..new_character_range_end - run_start,
                 );
             }
+            ifc.current_line_segment.ends_with_soft_hyphen = run_ends_with_soft_hyphen;
 
             character_range_start = new_character_range_end;
         }

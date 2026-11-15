@@ -496,6 +496,10 @@ struct LineUnderConstruction {
 
     /// The inline size of any trailing removable white space in this line.
     trailing_removable_white_space: Au,
+
+    /// Whether the content committed to this line ends with a soft hyphen, so that a
+    /// line break after it shows a hyphen.
+    ends_with_soft_hyphen: bool,
 }
 
 impl LineUnderConstruction {
@@ -513,6 +517,7 @@ impl LineUnderConstruction {
             cloneable_inline_box_pbm_size: Default::default(),
             trailing_hangable_white_space: Au::zero(),
             trailing_removable_white_space: Au::zero(),
+            ends_with_soft_hyphen: false,
         }
     }
 
@@ -833,6 +838,9 @@ struct UnbreakableSegmentUnderConstruction {
 
     /// The inline size of any trailing removable white space in this segment.
     trailing_removable_white_space: Au,
+
+    /// Whether this segment ends with a soft hyphen.
+    ends_with_soft_hyphen: bool,
 }
 
 impl UnbreakableSegmentUnderConstruction {
@@ -849,6 +857,7 @@ impl UnbreakableSegmentUnderConstruction {
             trailing_hangable_white_space: Au::zero(),
             trailing_removable_white_space: Au::zero(),
             incorporates_trailing_white_space: false,
+            ends_with_soft_hyphen: false,
         }
     }
 
@@ -861,6 +870,7 @@ impl UnbreakableSegmentUnderConstruction {
         self.trailing_hangable_white_space = Au::zero();
         self.trailing_removable_white_space = Au::zero();
         self.incorporates_trailing_white_space = false;
+        self.ends_with_soft_hyphen = false;
     }
 
     /// Push a single line item to this segment.
@@ -1971,8 +1981,49 @@ impl InlineFormattingContextLayout<'_> {
     }
 
     fn process_line_break(&mut self, forced_line_break: bool, for_block_level: bool) {
+        if !forced_line_break && self.current_line.ends_with_soft_hyphen {
+            self.add_hyphen_to_current_line();
+        }
         self.current_line_segment.trim_leading_whitespace();
         self.finish_current_line_and_reset(forced_line_break, for_block_level);
+    }
+
+    /// <https://drafts.csswg.org/css-text-4/#hyphenate-character>
+    /// A line that breaks after a soft hyphen shows the hyphenation character.
+    fn add_hyphen_to_current_line(&mut self) {
+        let Some(LineItem::TextRun(_, text_item)) = self
+            .current_line
+            .line_items
+            .iter_mut()
+            .rev()
+            .find(|item| matches!(item, LineItem::TextRun(..)))
+        else {
+            return;
+        };
+        let style = text_item.text_fragment_run_data.inline_styles.style.borrow().clone();
+        let hyphen = match &style.get_inherited_text().hyphenate_character {
+            style::values::computed::text::HyphenateCharacter::Auto => "-".to_owned(),
+            style::values::computed::text::HyphenateCharacter::String(string) => {
+                string.to_string()
+            },
+        };
+        if hyphen.is_empty() {
+            return;
+        }
+        let font = text_item.info.font_info.font.clone();
+        let shaped = font.shape_text(&hyphen, &ShapingOptions::from(&text_item.info));
+        let Some(slice) = ShapedTextSlicer::new(shaped).slice_until_character_offset(
+            Utf32CodeUnits(u32::try_from(hyphen.chars().count()).unwrap_or(u32::MAX)),
+            TrailingWhiteSpace {
+                hangable: Utf32CodeUnits(0),
+                removable: Utf32CodeUnits(0),
+            },
+            false,
+        ) else {
+            return;
+        };
+        self.current_line.inline_position += slice.total_advance();
+        text_item.text.push(slice);
     }
 
     fn hypothetical_line_size(&self) -> LogicalVec2<Au> {
@@ -2129,6 +2180,7 @@ impl InlineFormattingContextLayout<'_> {
         self.current_line.line_items.append(&mut segment_items);
         self.current_line_segment.line_items = segment_items;
         self.current_line.has_content |= self.current_line_segment.has_content;
+        self.current_line.ends_with_soft_hyphen = self.current_line_segment.ends_with_soft_hyphen;
 
         self.current_line_segment.reset();
     }
