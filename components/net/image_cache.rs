@@ -266,6 +266,28 @@ struct ParsedSvgDocument {
     tree: usvg::Tree,
     natural_dimensions: VectorImageNaturalDimensions,
     viewport_dependent: Option<ViewportDependentSvg>,
+    background: Option<svgtypes::Color>,
+}
+
+/// The CSS background color of the outermost `<svg>` element, from its `style` attribute.
+/// resvg doesn't paint it, but the root element's background is part of the image.
+fn root_background_color(root: &usvg::roxmltree::Node) -> Option<svgtypes::Color> {
+    let style = root.attribute("style")?;
+    let mut background = None;
+    for declaration in style.split(';') {
+        let Some((name, value)) = declaration.split_once(':') else {
+            continue;
+        };
+        let name = name.trim().to_ascii_lowercase();
+        if name != "background" && name != "background-color" {
+            continue;
+        }
+        let value = value.trim().trim_end_matches("!important").trim();
+        if let Ok(color) = value.parse::<svgtypes::Color>() {
+            background = Some(color);
+        }
+    }
+    background.filter(|color| color.alpha > 0)
 }
 
 /// View attributes selected by an SVG fragment identifier. Only attributes supplied by the
@@ -561,6 +583,7 @@ fn parse_svg_document_in_memory(
             tree,
             natural_dimensions,
             viewport_dependent: None,
+            background: None,
         });
     }
 
@@ -600,6 +623,7 @@ fn parse_svg_document_in_memory(
         tree,
         natural_dimensions,
         viewport_dependent,
+        background: root_background_color(&root),
     })
 }
 
@@ -637,6 +661,7 @@ fn decode_bytes_sync(
                     });
                 DecodedImage::Vector(VectorImageData {
                     svg_tree: Arc::new(document.tree),
+                    background: document.background,
                     natural_dimensions,
                     viewport_dependent: document.viewport_dependent,
                     spatial_fragment,
@@ -775,6 +800,8 @@ impl CompletedLoad {
 struct VectorImageData {
     #[conditional_malloc_size_of]
     svg_tree: Arc<usvg::Tree>,
+    #[ignore_malloc_size_of = "plain data"]
+    background: Option<svgtypes::Color>,
     natural_dimensions: VectorImageNaturalDimensions,
     viewport_dependent: Option<ViewportDependentSvg>,
     spatial_fragment: Option<SpatialFragment>,
@@ -1811,6 +1838,14 @@ impl ImageCache for ImageCacheImpl {
             // `AssertUnwindSafe` should be safe here since we will remove the `vector_image`
             // from `store.vector_images` and won't use it again. This assumes `resvg::render`
             // doesn't use internal global state that could become invalid after the panic.
+            if let Some(color) = vector_image.background {
+                pixmap.fill(tiny_skia::Color::from_rgba8(
+                    color.red,
+                    color.green,
+                    color.blue,
+                    color.alpha,
+                ));
+            }
             SUPPRESS_ABORT_IN_PANIC_HOOK.set(true);
             let resvg_result = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 let viewport_tree = vector_image.viewport_dependent.as_ref().and_then(|svg| {
