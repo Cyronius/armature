@@ -93,6 +93,13 @@ pub trait GenericLayoutDataTrait: Any + MallocSizeOfTrait + Send + Sync + 'stati
     /// The content-box size from the most recent layout, for container queries.
     fn query_container_size(&self) -> euclid::default::Size2D<Option<Au>>;
 
+    /// The scroll state from the most recent layout, for scroll-state container queries.
+    fn query_container_scroll_state(
+        &self,
+    ) -> style::stylesheets::container_rule::ContainerScrollState {
+        Default::default()
+    }
+
     /// Returns whether `new_range` was successfully set on an existing text run
     fn set_text_run_selection(&self, new_range: Option<RangeAny<Utf32CodeUnits>>) -> bool;
 

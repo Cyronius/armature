@@ -464,6 +464,16 @@ impl<'dom> style::dom::TElement for ServoDangerousStyleElement<'dom> {
         self.element.namespace()
     }
 
+    fn query_container_scroll_state(
+        &self,
+    ) -> style::stylesheets::container_rule::ContainerScrollState {
+        self.as_node()
+            .node
+            .layout_data()
+            .map(|data| data.query_container_scroll_state())
+            .unwrap_or_default()
+    }
+
     fn query_container_size(&self, display: &Display) -> Size2D<Option<app_units::Au>> {
         // Size containment has no effect on boxes without a principal box,
         // table boxes, or non-atomic inline boxes.

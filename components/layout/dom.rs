@@ -416,6 +416,51 @@ impl GenericLayoutDataTrait for DOMLayoutData {
             .unwrap_or_else(|| euclid::default::Size2D::new(None, None))
     }
 
+    fn query_container_scroll_state(
+        &self,
+    ) -> style::stylesheets::container_rule::ContainerScrollState {
+        use style::stylesheets::container_rule::{ContainerScrollState, PhysicalSideFlags};
+        let box_fragment = self
+            .0
+            .borrow()
+            .with_fragments(|fragments| {
+                fragments.iter().find_map(|fragment| match fragment {
+                    Fragment::Box(box_fragment) => Some(box_fragment.clone()),
+                    _ => None,
+                })
+            })
+            .flatten();
+        let mut state = ContainerScrollState::default();
+        let Some(box_fragment) = box_fragment else {
+            return state;
+        };
+        if !box_fragment
+            .style()
+            .establishes_scroll_container(box_fragment.base.flags)
+        {
+            return state;
+        }
+        // TODO: Take the current scroll position into account.
+        let padding_rect = box_fragment.padding_rect();
+        let overflow = box_fragment.with_style().scrollable_overflow();
+        let threshold = app_units::Au::from_f32_px(0.5);
+        let mut scrollable = PhysicalSideFlags::empty();
+        if overflow.min_y() < padding_rect.min_y() - threshold {
+            scrollable |= PhysicalSideFlags::TOP;
+        }
+        if overflow.max_y() > padding_rect.max_y() + threshold {
+            scrollable |= PhysicalSideFlags::BOTTOM;
+        }
+        if overflow.min_x() < padding_rect.min_x() - threshold {
+            scrollable |= PhysicalSideFlags::LEFT;
+        }
+        if overflow.max_x() > padding_rect.max_x() + threshold {
+            scrollable |= PhysicalSideFlags::RIGHT;
+        }
+        state.scrollable = scrollable;
+        state
+    }
+
     fn set_text_run_selection(&self, new_range: Option<RangeAny<Utf32CodeUnits>>) -> bool {
         let inner = self.0.borrow();
         // When `::first-letter` is used, one DOM text node can generate multiple text runs
