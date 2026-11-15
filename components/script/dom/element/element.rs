@@ -5739,6 +5739,20 @@ impl Element {
 
     pub(crate) fn set_focus_state(&self, no_gc: &NoGC, value: bool) {
         self.set_state(no_gc, ElementState::FOCUS, value);
+
+        // <https://drafts.csswg.org/selectors-4/#focus-within-pseudo>
+        // > An element matches :focus-within if it matches :focus, or has a descendant,
+        // > including shadow-including descendants, that matches :focus.
+        let elements = if value {
+            self.upcast::<Node>()
+                .inclusive_ancestors(ShadowIncluding::Yes)
+                .filter_map(DomRoot::downcast::<Element>)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.owner_document()
+            .set_focus_within_elements(no_gc, elements);
     }
 
     pub(crate) fn set_focusring_state(&self, no_gc: &NoGC, value: bool) {

@@ -642,6 +642,10 @@ pub(crate) struct Document {
     /// <https://html.spec.whatwg.org/multipage/#autofocus-candidates>
     autofocus_candidates: DomRefCell<Vec<Dom<Element>>>,
 
+    /// The elements that match `:focus-within` because they contained the focused
+    /// element when it gained focus.
+    focus_within_elements: DomRefCell<Vec<Dom<Element>>>,
+
     /// <https://html.spec.whatwg.org/multipage/#autofocus-processed-flag>
     autofocus_processed: Cell<bool>,
     /// <https://w3c.github.io/slection-api/#dfn-selection>
@@ -4327,6 +4331,7 @@ impl Document {
             dirty_canvases: DomRefCell::new(Default::default()),
             has_pending_animated_image_update: Cell::new(false),
             autofocus_candidates: Default::default(),
+            focus_within_elements: Default::default(),
             autofocus_processed: Cell::new(false),
             selection: MutNullableDom::new(None),
             timeline: Dom::from_ref(timeline),
@@ -5520,6 +5525,19 @@ impl Document {
     /// Armature: part of the steps run when an element with the `autofocus` attribute is
     /// inserted into a document.
     /// <https://html.spec.whatwg.org/multipage/#the-autofocus-attribute>
+    /// Mark `elements` as matching `:focus-within`, clearing the elements marked before.
+    pub(crate) fn set_focus_within_elements(&self, no_gc: &NoGC, elements: Vec<DomRoot<Element>>) {
+        let previous = std::mem::take(&mut *self.focus_within_elements.borrow_mut());
+        for element in previous {
+            element.set_state(no_gc, stylo_dom::ElementState::FOCUS_WITHIN, false);
+        }
+        for element in &elements {
+            element.set_state(no_gc, stylo_dom::ElementState::FOCUS_WITHIN, true);
+        }
+        *self.focus_within_elements.borrow_mut() =
+            elements.iter().map(|element| Dom::from_ref(&**element)).collect();
+    }
+
     pub(crate) fn add_autofocus_candidate(&self, element: &Element) {
         if self.autofocus_processed.get() {
             return;
