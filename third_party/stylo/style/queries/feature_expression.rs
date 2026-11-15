@@ -40,6 +40,9 @@ pub enum FeatureType {
     Media,
     /// We're parsing a container feature.
     Container,
+    // Armature (AS-532): Scroll-state container features.
+    /// We're parsing a scroll-state container feature, within `scroll-state()`.
+    ScrollState,
 }
 
 impl FeatureType {
@@ -49,11 +52,13 @@ impl FeatureType {
         #[cfg(feature = "servo")]
         use crate::servo::media_features::MEDIA_FEATURES;
 
-        use crate::stylesheets::container_rule::CONTAINER_FEATURES;
+        use crate::stylesheets::container_rule::{CONTAINER_FEATURES, SCROLL_STATE_FEATURES};
 
         match *self {
             FeatureType::Media => &MEDIA_FEATURES,
             FeatureType::Container => &CONTAINER_FEATURES,
+            // Armature (AS-532): Scroll-state container features.
+            FeatureType::ScrollState => &SCROLL_STATE_FEATURES,
         }
     }
 

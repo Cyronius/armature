@@ -678,6 +678,9 @@ pub enum QueryCondition {
     InParens(Box<QueryCondition>),
     /// A <style> query.
     Style(StyleQuery),
+    // Armature (AS-532): Scroll-state container queries.
+    /// A `scroll-state()` query, and whether its condition is a bare feature.
+    ScrollState(Box<QueryCondition>, bool),
     /// A -moz-pref() query.
     MozPref(MozPrefFeature),
     /// [ <function-token> <any-value>? ) ] | [ ( <any-value>? ) ]
@@ -710,6 +713,21 @@ impl ToCss for QueryCondition {
             Self::Style(ref c) => {
                 dest.write_str("style(")?;
                 c.to_css(dest)?;
+                dest.write_char(')')
+            },
+            // Armature (AS-532): Scroll-state container queries.
+            Self::ScrollState(ref c, bare) => {
+                dest.write_str("scroll-state(")?;
+                if bare {
+                    let inner = c.to_css_string();
+                    let inner = inner
+                        .strip_prefix('(')
+                        .and_then(|inner| inner.strip_suffix(')'))
+                        .unwrap_or(&inner);
+                    dest.write_str(inner)?;
+                } else {
+                    c.to_css(dest)?;
+                }
                 dest.write_char(')')
             },
             Self::MozPref(ref c) => {
@@ -766,6 +784,8 @@ impl QueryCondition {
                 }
             },
             Self::InParens(ref cond) => cond.visit(visitor),
+            // Armature (AS-532): Scroll-state container queries.
+            Self::ScrollState(ref cond, _) => cond.visit(visitor),
         }
     }
 
@@ -837,6 +857,8 @@ impl QueryCondition {
             Self::InParens(ref c) => c.matches(context, custom, attribute_tracker),
             Self::Not(ref c) => !c.matches(context, custom, attribute_tracker),
             Self::Style(ref c) => c.matches(context, attribute_tracker),
+            // Armature (AS-532): Scroll-state container queries.
+            Self::ScrollState(ref c, _) => c.matches(context, custom, attribute_tracker),
             Self::MozPref(ref c) => c.matches(context),
             Self::Operation(ref conditions, op) => {
                 debug_assert!(!conditions.is_empty(), "We never create an empty op");
@@ -972,6 +994,28 @@ impl OperationParser for QueryCondition {
                             return Ok(Self::Style(query));
                         }
                         flags.insert(FeatureFlags::STYLE);
+                    },
+                    // Armature (AS-532): Scroll-state container queries.
+                    "scroll-state" if feature_type == FeatureType::Container &&
+                        crate::pref!("layout.css.scroll-state.enabled") => {
+                        let query = try_parse_block(context, input, start, start_location, |input| {
+                            if let Ok(feature) = input.try_parse(|input| {
+                                let feature = QueryFeatureExpression::parse_in_parenthesis_block(
+                                    context,
+                                    input,
+                                    FeatureType::ScrollState,
+                                )?;
+                                input.expect_exhausted()?;
+                                Ok::<_, ParseError>(feature)
+                            }) {
+                                return Ok(Self::ScrollState(Box::new(Self::Feature(feature)), true));
+                            }
+                            let condition = Self::parse(context, input, FeatureType::ScrollState)?;
+                            Ok(Self::ScrollState(Box::new(condition), false))
+                        });
+                        if let Some(query) = query {
+                            return Ok(query);
+                        }
                     },
                     "-moz-pref" => {
                         let feature = try_parse_block(context, input, start, start_location, |input| {

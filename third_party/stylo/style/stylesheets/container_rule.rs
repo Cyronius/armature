@@ -24,6 +24,8 @@ use crate::values::computed::{CSSPixelLength, ContainerType, Context, Ratio};
 use crate::values::specified::ContainerName;
 use crate::{LocalName, derives::*};
 use app_units::Au;
+use bitflags::bitflags;
+use num_traits::FromPrimitive;
 use cssparser::{Parser, SourceLocation};
 use euclid::default::Size2D;
 #[cfg(feature = "gecko")]
@@ -269,6 +271,13 @@ impl ContainerCondition {
             }
         }
 
+        // Armature (AS-532): Scroll-state features need a scroll-state container.
+        if self.flags.contains(FeatureFlags::CONTAINER_REQUIRES_SCROLL_STATE) &&
+            !container_type.intersects(ContainerType::SCROLL_STATE)
+        {
+            return TraversalResult::InProgress;
+        }
+
         let size = potential_container.query_container_size(box_style.get_display());
         let style = style.to_arc();
         TraversalResult::Done(ContainerLookupResult {
@@ -276,6 +285,7 @@ impl ContainerCondition {
             info: ContainerInfo {
                 size,
                 wm,
+                scroll_state: potential_container.query_container_scroll_state(),
                 inherited_style: {
                     potential_container.traversal_parent().and_then(|parent| {
                         parent
@@ -421,6 +431,8 @@ impl ContainerCondition {
 pub struct ContainerInfo {
     size: Size2D<Option<Au>>,
     wm: WritingMode,
+    // Armature (AS-532): Scroll-state container queries.
+    scroll_state: ContainerScrollState,
     inherited_style: Option<Arc<ComputedValues>>,
 }
 
@@ -767,3 +779,201 @@ impl<'a> ContainerSizeQuery<'a> {
         }
     }
 }
+
+// Armature (AS-532): Scroll-state container queries.
+// <https://drafts.csswg.org/css-conditional-5/#scroll-state-container>
+
+/// The physical sides of a container, for scroll-state queries.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PhysicalSideFlags(u8);
+bitflags! {
+    impl PhysicalSideFlags: u8 {
+        /// The top side.
+        const TOP = 1 << 0;
+        /// The right side.
+        const RIGHT = 1 << 1;
+        /// The bottom side.
+        const BOTTOM = 1 << 2;
+        /// The left side.
+        const LEFT = 1 << 3;
+    }
+}
+
+/// The scroll state of a scroll-state container, provided by layout.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ContainerScrollState {
+    /// The directions in which the container can be scrolled further.
+    pub scrollable: PhysicalSideFlags,
+    /// The sides to which the container is stuck by sticky positioning.
+    pub stuck: PhysicalSideFlags,
+    /// The directions of the most recent relative scroll.
+    pub scrolled: PhysicalSideFlags,
+    /// Whether the container is snapped horizontally and vertically.
+    pub snapped: (bool, bool),
+}
+
+/// A side or axis keyword of scroll-state features.
+#[derive(Clone, Copy, Debug, FromPrimitive, Parse, ToCss)]
+#[repr(u8)]
+#[allow(missing_docs)]
+pub enum ScrollStateDirection {
+    None,
+    Top,
+    Right,
+    Bottom,
+    Left,
+    BlockStart,
+    InlineStart,
+    BlockEnd,
+    InlineEnd,
+    X,
+    Y,
+    Block,
+    Inline,
+}
+
+/// A side keyword of the `stuck` feature.
+#[derive(Clone, Copy, Debug, FromPrimitive, Parse, ToCss)]
+#[repr(u8)]
+#[allow(missing_docs)]
+pub enum ScrollStateSide {
+    None,
+    Top,
+    Right,
+    Bottom,
+    Left,
+    BlockStart,
+    InlineStart,
+    BlockEnd,
+    InlineEnd,
+}
+
+/// An axis keyword of the `snapped` feature.
+#[derive(Clone, Copy, Debug, FromPrimitive, Parse, ToCss)]
+#[repr(u8)]
+#[allow(missing_docs)]
+pub enum ScrollStateAxis {
+    None,
+    X,
+    Y,
+    Block,
+    Inline,
+    Both,
+}
+
+/// The physical sides that a scroll-state keyword selects, or `None` for `none`.
+fn physical_sides(direction: ScrollStateDirection, wm: WritingMode) -> Option<PhysicalSideFlags> {
+    let (block_start, block_end) = if !wm.is_vertical() {
+        (PhysicalSideFlags::TOP, PhysicalSideFlags::BOTTOM)
+    } else if wm.is_vertical_lr() {
+        (PhysicalSideFlags::LEFT, PhysicalSideFlags::RIGHT)
+    } else {
+        (PhysicalSideFlags::RIGHT, PhysicalSideFlags::LEFT)
+    };
+    let inline_forward = if wm.is_vertical() {
+        wm.is_inline_tb()
+    } else {
+        wm.is_bidi_ltr()
+    };
+    let (mut inline_start, mut inline_end) = if wm.is_vertical() {
+        (PhysicalSideFlags::TOP, PhysicalSideFlags::BOTTOM)
+    } else {
+        (PhysicalSideFlags::LEFT, PhysicalSideFlags::RIGHT)
+    };
+    if !inline_forward {
+        std::mem::swap(&mut inline_start, &mut inline_end);
+    }
+    Some(match direction {
+        ScrollStateDirection::None => return None,
+        ScrollStateDirection::Top => PhysicalSideFlags::TOP,
+        ScrollStateDirection::Right => PhysicalSideFlags::RIGHT,
+        ScrollStateDirection::Bottom => PhysicalSideFlags::BOTTOM,
+        ScrollStateDirection::Left => PhysicalSideFlags::LEFT,
+        ScrollStateDirection::BlockStart => block_start,
+        ScrollStateDirection::BlockEnd => block_end,
+        ScrollStateDirection::InlineStart => inline_start,
+        ScrollStateDirection::InlineEnd => inline_end,
+        ScrollStateDirection::X => PhysicalSideFlags::LEFT | PhysicalSideFlags::RIGHT,
+        ScrollStateDirection::Y => PhysicalSideFlags::TOP | PhysicalSideFlags::BOTTOM,
+        ScrollStateDirection::Block => block_start | block_end,
+        ScrollStateDirection::Inline => inline_start | inline_end,
+    })
+}
+
+fn eval_sides(
+    context: &Context,
+    value: Option<ScrollStateDirection>,
+    get: fn(&ContainerScrollState) -> PhysicalSideFlags,
+) -> KleeneValue {
+    let Some(info) = context.container_info.as_ref() else {
+        return KleeneValue::Unknown;
+    };
+    let state = get(&info.scroll_state);
+    KleeneValue::from(match value {
+        None => !state.is_empty(),
+        Some(direction) => match physical_sides(direction, info.wm) {
+            None => state.is_empty(),
+            Some(sides) => state.intersects(sides),
+        },
+    })
+}
+
+fn eval_scrollable(context: &Context, value: Option<ScrollStateDirection>) -> KleeneValue {
+    eval_sides(context, value, |state| state.scrollable)
+}
+
+fn eval_scrolled(context: &Context, value: Option<ScrollStateDirection>) -> KleeneValue {
+    eval_sides(context, value, |state| state.scrolled)
+}
+
+fn eval_stuck(context: &Context, value: Option<ScrollStateSide>) -> KleeneValue {
+    let direction = value.map(|side| {
+        ScrollStateDirection::from_u8(side as u8).unwrap_or(ScrollStateDirection::None)
+    });
+    eval_sides(context, direction, |state| state.stuck)
+}
+
+fn eval_snapped(context: &Context, value: Option<ScrollStateAxis>) -> KleeneValue {
+    let Some(info) = context.container_info.as_ref() else {
+        return KleeneValue::Unknown;
+    };
+    let (x, y) = info.scroll_state.snapped;
+    let (block, inline) = if info.wm.is_vertical() { (x, y) } else { (y, x) };
+    KleeneValue::from(match value {
+        None => x || y,
+        Some(ScrollStateAxis::None) => !x && !y,
+        Some(ScrollStateAxis::X) => x,
+        Some(ScrollStateAxis::Y) => y,
+        Some(ScrollStateAxis::Block) => block,
+        Some(ScrollStateAxis::Inline) => inline,
+        Some(ScrollStateAxis::Both) => x && y,
+    })
+}
+
+/// <https://drafts.csswg.org/css-conditional-5/#scroll-state-container>
+pub static SCROLL_STATE_FEATURES: [QueryFeatureDescription; 4] = [
+    feature!(
+        atom!("scrollable"),
+        AllowsRanges::No,
+        keyword_evaluator!(eval_scrollable, ScrollStateDirection),
+        FeatureFlags::CONTAINER_REQUIRES_SCROLL_STATE,
+    ),
+    feature!(
+        atom!("scrolled"),
+        AllowsRanges::No,
+        keyword_evaluator!(eval_scrolled, ScrollStateDirection),
+        FeatureFlags::CONTAINER_REQUIRES_SCROLL_STATE,
+    ),
+    feature!(
+        atom!("snapped"),
+        AllowsRanges::No,
+        keyword_evaluator!(eval_snapped, ScrollStateAxis),
+        FeatureFlags::CONTAINER_REQUIRES_SCROLL_STATE,
+    ),
+    feature!(
+        atom!("stuck"),
+        AllowsRanges::No,
+        keyword_evaluator!(eval_stuck, ScrollStateSide),
+        FeatureFlags::CONTAINER_REQUIRES_SCROLL_STATE,
+    ),
+];

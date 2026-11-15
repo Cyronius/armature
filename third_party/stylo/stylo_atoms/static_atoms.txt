@@ -217,3 +217,7 @@ webkitTransitionEnd
 webkitTransitionRun
 week
 width
+scrollable
+scrolled
+snapped
+stuck

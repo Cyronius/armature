@@ -938,6 +938,12 @@ pub trait TElement:
         display: &Display,
     ) -> euclid::default::Size2D<Option<app_units::Au>>;
 
+    // Armature (AS-532): Scroll-state container queries.
+    /// Returns the scroll state of the element, for scroll-state container queries.
+    fn query_container_scroll_state(&self) -> crate::stylesheets::container_rule::ContainerScrollState {
+        Default::default()
+    }
+
     /// Returns true if the element has all of specified selector flags.
     fn has_selector_flags(&self, flags: ElementSelectorFlags) -> bool;
 

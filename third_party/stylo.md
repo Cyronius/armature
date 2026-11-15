@@ -513,3 +513,14 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `-moz-box-orient` (aliased as `-webkit-box-orient`) in the box struct, and run the line-clamp
   adjustment for Servo.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-532: Parse and evaluate scroll-state container queries
+- Files: `style/dom.rs`, `style/queries/condition.rs`, `style/queries/feature.rs`,
+  `style/queries/feature_expression.rs`, `style/stylesheets/container_rule.rs`,
+  `stylo_atoms/static_atoms.txt`
+- Why: `@container scroll-state(...)` queries the `scrollable`, `scrolled`, `snapped` and `stuck`
+  state of the nearest `container-type: scroll-state` ancestor. Parse the `scroll-state()`
+  function and its features, select scroll-state containers, and evaluate the features against a
+  scroll state that the embedder provides through `TElement::query_container_scroll_state`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
