@@ -473,6 +473,8 @@ codegen-units = 1
 [patch.crates-io]
 # The SVG rasterizer's parser includes Armature's path-length stroke calibration.
 usvg = { path = "third_party/usvg" }
+# The SVG renderer, with Armature's pattern sampling (see third_party/resvg.md).
+resvg = { path = "third_party/resvg" }
 # The vendored markup5ever (see third_party/markup5ever.md). The vendored html5ever and xml5ever depend on
 # markup5ever by version, so this makes them build against the copy too.
 markup5ever = { path = "third_party/markup5ever" }
