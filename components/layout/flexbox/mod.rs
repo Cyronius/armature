@@ -11,7 +11,9 @@ use style::context::SharedStyleContext;
 use style::logical_geometry::WritingMode;
 use style::properties::ComputedValues;
 use style::properties::longhands::align_items::computed_value::T as AlignItems;
+use style::properties::longhands::_moz_box_orient::computed_value::T as BoxOrient;
 use style::properties::longhands::flex_direction::computed_value::T as FlexDirection;
+use style::values::specified::box_::DisplayInside as StyloDisplayInside;
 use style::properties::longhands::flex_wrap::computed_value::T as FlexWrap;
 use style::values::computed::ContentDistribution;
 use style::values::specified::align::AlignFlags;
@@ -71,7 +73,14 @@ pub(crate) struct FlexContainerConfig {
 
 impl FlexContainerConfig {
     fn new(container_style: &ComputedValues) -> FlexContainerConfig {
-        let flex_direction = container_style.slow_clone_flex_direction();
+        let mut flex_direction = container_style.slow_clone_flex_direction();
+        // A legacy `-webkit-box` ignores `flex-direction` and uses `-webkit-box-orient`.
+        if container_style.get_box().display.inside() == StyloDisplayInside::WebkitBox {
+            flex_direction = match container_style.get_box().slow_clone__moz_box_orient() {
+                BoxOrient::Horizontal => FlexDirection::Row,
+                BoxOrient::Vertical => FlexDirection::Column,
+            };
+        }
         let flex_axis = FlexAxis::from(flex_direction);
         let flex_wrap = container_style.get_position().flex_wrap;
         let container_is_single_line = flex_wrap == FlexWrap::NOWRAP;

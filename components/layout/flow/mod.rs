@@ -50,6 +50,7 @@ use crate::{ConstraintSpace, ContainingBlock, ContainingBlockSize, IndefiniteCon
 mod construct;
 pub mod float;
 pub mod inline;
+mod line_clamp;
 mod root;
 mod same_formatting_context_block;
 
@@ -482,9 +483,25 @@ impl BlockFormattingContext {
             sequential_layout_state.calculate_clearance(Clear::Both, &CollapsedMargin::zero())
         });
 
-        let content_block_size = flow_layout.content_block_size +
+        let mut content_block_size = flow_layout.content_block_size +
             flow_layout.collapsible_margins_in_children.end.solve() +
             clearance.unwrap_or_default();
+
+        if containing_block.style.line_clamp_applies() {
+            // Content after the clamp point, including floats, doesn't contribute to
+            // the size of the line-clamp container.
+            content_block_size = flow_layout.content_block_size +
+                flow_layout.collapsible_margins_in_children.end.solve();
+            line_clamp::clamp_block_formatting_context(
+                &mut flow_layout.fragments,
+                &mut content_block_size,
+                containing_block.style,
+                containing_block,
+                layout_context,
+            );
+            content_block_size = content_block_size
+                .max(line_clamp::floats_block_end(&flow_layout.fragments, Au::zero()));
+        }
 
         // Buttons center their contents in the block axis. Therefore, create an `AnonymousFragment`
         // that contains the fragments of the contents, and place it as desired.

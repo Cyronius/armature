@@ -78,6 +78,7 @@ mod shaping_queue;
 mod small_kana;
 pub mod text_run;
 mod text_overflow;
+pub(crate) use text_overflow::place_block_ellipsis;
 pub mod text_transform;
 
 use std::cell::{Cell, OnceCell};
@@ -116,6 +117,7 @@ use style::context::{QuirksMode, SharedStyleContext};
 use style::properties::ComputedValues;
 use style::values::computed::BaselineShift;
 use style::values::generics::box_::{BaselineShiftKeyword, BlockEllipsis};
+use style::values::specified::box_::DisplayInside as StyloDisplayInside;
 use style::values::generics::font::LineHeight;
 use style::values::specified::box_::BaselineSource;
 use style::values::specified::text::TextAlignKeyword;
@@ -2488,9 +2490,17 @@ impl InlineFormattingContext {
         // the lines are direct children of the clamped block. Descendant block
         // lines need to be counted by the block formatting context instead.
         let line_clamp = &style.get_box().line_clamp;
+        // Lines in blocks within inline boxes are clamped by the block formatting
+        // context instead.
+        let contains_block_level = self
+            .inline_items
+            .iter()
+            .any(|item| matches!(item, InlineItem::BlockLevel(_)));
         if !style.writing_mode.is_vertical() &&
             style.writing_mode.is_bidi_ltr() &&
-            !line_clamp.webkit_legacy
+            !contains_block_level &&
+            (!line_clamp.webkit_legacy ||
+                style.get_box().original_display.inside() == StyloDisplayInside::WebkitBox)
         {
             let specified_max_lines = line_clamp
                 .max_lines
@@ -2541,12 +2551,25 @@ impl InlineFormattingContext {
                     }
                 }
                 if line_count > max_lines {
+                    // Out-of-flow boxes after the clamp point are still laid out and
+                    // painted; only their placeholders' tree position changes.
+                    let keep_from = match clamp_at {
+                        Some((index, _)) if max_lines != 0 => index + 1,
+                        _ => 0,
+                    };
+                    let mut hoisted = Vec::new();
+                    super::line_clamp::collect_hoisted_placeholders(
+                        &layout.fragments[keep_from..],
+                        &mut hoisted,
+                    );
                     if max_lines == 0 {
                         layout.fragments.clear();
                         layout.placement_state.current_block_direction_position = Au::zero();
                         layout.placement_state.inflow_baselines = Baselines::default();
+                        layout.fragments.extend(hoisted.drain(..));
                     } else if let Some((index, rect)) = clamp_at {
                         layout.fragments.truncate(index + 1);
+                        layout.fragments.extend(hoisted.drain(..));
                         layout.placement_state.current_block_direction_position =
                             rect.origin.y + rect.size.height;
                         layout.placement_state.inflow_baselines.last = layout
@@ -3947,3 +3970,4 @@ fn restyle_first_line_children(
             })
             .collect()
 }
+

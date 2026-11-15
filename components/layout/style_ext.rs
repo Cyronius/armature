@@ -353,6 +353,7 @@ pub(crate) trait ComputedValuesExt {
     fn effective_overflow(&self, fragment_flags: FragmentFlags) -> AxesOverflow;
     fn used_transform_style(&self, fragment_flags: FragmentFlags) -> ComputedTransformStyle;
     fn establishes_block_formatting_context(&self, fragment_flags: FragmentFlags) -> bool;
+    fn line_clamp_applies(&self) -> bool;
     fn establishes_stacking_context(&self, fragment_flags: FragmentFlags) -> bool;
     fn establishes_scroll_container(&self, fragment_flags: FragmentFlags) -> bool;
     fn establishes_or_extends_3d_rendering_context(&self, fragment_flags: FragmentFlags) -> bool;
@@ -753,6 +754,12 @@ impl ComputedValuesExt for ComputedValues {
             return true;
         }
 
+        // A line-clamp container establishes an independent formatting context.
+        // <https://drafts.csswg.org/css-overflow-4/#line-clamp-containers>
+        if self.line_clamp_applies() {
+            return true;
+        }
+
         // Per <https://drafts.csswg.org/css-align/#distribution-block>:
         // Block containers with an `align-content` value that is not `normal` should
         // form an independent block formatting context. This should really only happen
@@ -764,6 +771,17 @@ impl ComputedValuesExt for ComputedValues {
 
         // TODO: We need to handle CSS Contain here.
         false
+    }
+
+    /// Whether `line-clamp` makes a box with this style a line-clamp container. The
+    /// legacy `-webkit-line-clamp` only applies to a vertical `-webkit-box`, which is
+    /// then computed to `flow-root`.
+    fn line_clamp_applies(&self) -> bool {
+        let box_style = self.get_box();
+        !box_style.line_clamp.is_none() &&
+            (!box_style.line_clamp.webkit_legacy ||
+                (box_style.original_display.inside() == stylo::DisplayInside::WebkitBox &&
+                    box_style.display.inside() != stylo::DisplayInside::WebkitBox))
     }
 
     /// Whether or not the `overflow` value of this style establishes a scroll container.
@@ -1403,7 +1421,9 @@ impl From<stylo::Display> for Display {
             stylo::DisplayInside::FlowRoot => DisplayInside::FlowRoot {
                 is_list_item: packed.is_list_item(),
             },
-            stylo::DisplayInside::Flex => DisplayInside::Flex,
+            // `-webkit-box` is laid out as a flex container whose direction comes from
+            // `-webkit-box-orient`.
+            stylo::DisplayInside::Flex | stylo::DisplayInside::WebkitBox => DisplayInside::Flex,
             stylo::DisplayInside::Grid => DisplayInside::Grid,
             stylo::DisplayInside::GridLanes => DisplayInside::GridLanes,
             stylo::DisplayInside::Table => DisplayInside::Table,
@@ -1419,10 +1439,6 @@ impl From<stylo::Display> for Display {
             stylo::DisplayInside::TableFooterGroup |
             stylo::DisplayInside::TableRow |
             stylo::DisplayInside::TableCell => unreachable!("Internal DisplayInside found"),
-
-            // Allows Stylo to add legacy display types.
-            #[allow(unreachable_patterns)]
-            _ => DisplayInside::Flex,
         };
         Display::GeneratingBox(DisplayGeneratingBox::OutsideInside { outside, inside })
     }

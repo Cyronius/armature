@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use app_units::Au;
 use fonts::{FontRef, ShapedTextSlice, ShapedTextSlicer, ShapingOptions, TrailingWhiteSpace};
+use servo_arc::Arc as ServoArc;
 use servo_base::text::Utf32CodeUnits;
 use style::Zero;
 use style::computed_values::overflow_x::T as Overflow;
@@ -17,6 +18,7 @@ use style::properties::ComputedValues;
 use style::values::specified::text::TextOverflowSide;
 
 use crate::context::LayoutContext;
+use crate::geom::{PhysicalPoint, PhysicalRect, PhysicalSize};
 use crate::style_ext::ComputedValuesExt;
 use crate::flow::inline::text_run::FontAndScriptInfo;
 use crate::fragment_tree::{
@@ -287,4 +289,88 @@ pub(super) fn apply_text_overflow(
     }
 }
 
-use servo_arc::Arc as ServoArc;
+
+/// Place a block ellipsis (`marker`) at the end of the content of `line`, eliding the
+/// content that it would otherwise overlap. Returns `None` when `line` has no text
+/// whose data the marker can reuse.
+pub(crate) fn place_block_ellipsis(
+    line: &PositioningFragment,
+    marker: &str,
+    font: &FontRef,
+    layout_context: &LayoutContext,
+) -> Option<Fragment> {
+    let glyphs = shape_marker(font, marker)?;
+    let marker_width = glyphs.total_advance();
+    let rect = line.base.rect();
+
+    // Trailing white space that is removed at the end of the line doesn't count.
+    let mut end = content_end(&line.children, Au::zero());
+    if let Some(Fragment::Text(text)) = line.children.last() {
+        let text_rect = text.base.rect();
+        if text_rect.origin.x + text_rect.size.width == end {
+            end -= text
+                .glyphs
+                .last()
+                .map_or(Au::zero(), |slice| slice.removable_advance());
+        }
+    }
+
+    let mut elider = Elider {
+        available: (rect.size.width - marker_width).max(Au::zero()),
+        end: Au::zero(),
+        done: false,
+        kept_any: false,
+        last_text: None,
+    };
+    let (mut children, marker_start) = if end + marker_width <= rect.size.width {
+        let mut last_text = None;
+        find_last_text(&line.children, &mut last_text);
+        elider.last_text = last_text;
+        (line.children.clone(), end)
+    } else {
+        let children = elider.elide(&line.children, Au::zero());
+        let end = elider.end;
+        (children, end)
+    };
+    let text = elider.last_text.as_ref()?;
+
+    let text_rect = text.base.rect();
+    let baseline = text_rect.origin.y + text.font_metrics.ascent;
+    let metrics = font.metrics();
+    let marker_rect = PhysicalRect::new(
+        PhysicalPoint::new(marker_start, baseline - metrics.ascent),
+        PhysicalSize::new(marker_width, metrics.ascent + metrics.descent),
+    );
+    let character_end = text.character_range_in_dom_node.end;
+    children.push(Fragment::Text(Arc::new(TextFragment {
+        base: BaseFragment::new(BaseFragmentInfo::anonymous(), marker_rect),
+        run_data: text.run_data.clone(),
+        font_metrics: metrics.clone(),
+        font_key: font.key(layout_context.painter_id, &layout_context.font_context),
+        glyphs: vec![glyphs],
+        justification_adjustment: Au::zero(),
+        character_range_in_dom_node: character_end..character_end,
+        is_empty_for_text_cursor: false,
+    })));
+    Some(Fragment::Positioning(PositioningFragment::new_anonymous(
+        line.style.borrow().clone(),
+        rect,
+        children,
+        true,
+    )))
+}
+
+/// Find the last text fragment within the inline content `fragments`.
+fn find_last_text(fragments: &[Fragment], result: &mut Option<Arc<TextFragment>>) {
+    for fragment in fragments {
+        match fragment {
+            Fragment::Text(text) => *result = Some(text.clone()),
+            Fragment::Box(box_fragment)
+                if box_fragment.style().is_inline_box(box_fragment.base.flags) =>
+            {
+                find_last_text(&box_fragment.children, result)
+            },
+            _ => {},
+        }
+    }
+}
