@@ -1510,6 +1510,8 @@ impl InlineFormattingContextLayout<'_> {
                 }
             },
             TextAlignKeyword::Justify => TextAlign::Start,
+            #[expect(unreachable_patterns)]
+            _ => TextAlign::Start,
         };
 
         let available_space = self.available_line_space();

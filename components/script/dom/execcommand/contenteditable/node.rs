@@ -1649,8 +1649,8 @@ impl Node {
             TextAlignKeyword::Left | TextAlignKeyword::MozLeft => "left",
             TextAlignKeyword::Right | TextAlignKeyword::MozRight => "right",
             // Step 6. Return "left".
-            //
-            // Note: Never reached, since there are no other computed values of "text-align".
+            #[expect(unreachable_patterns)]
+            _ => "left",
         }
     }
 
