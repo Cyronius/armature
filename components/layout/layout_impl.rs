@@ -1379,6 +1379,11 @@ impl LayoutThread {
         stylist_update
             .invalidation_set
             .process_style(dangerous_root_element, Some(&snapshot_map));
+        let relative_selectors_invalidated = invalidate_relative_selectors(
+            &self.stylist,
+            &snapshot_map,
+            &_snapshot_setter.elements_with_snapshot,
+        );
 
         if self.previously_highlighted_dom_node.get() != reflow_request.highlighted_dom_node {
             // Need to manually force layout to build a new display list regardless of whether the box tree
@@ -1418,11 +1423,17 @@ impl LayoutThread {
         {
             let _span = profile_traits::trace_span!("Styling").entered();
 
-            let original_dirty_root = unsafe {
-                ServoLayoutNode::new(&restyle.dirty_root.unwrap())
-                    .as_element()
-                    .unwrap()
-                    .dangerous_style_element()
+            // Relative selector invalidation can restyle elements outside of the
+            // dirty root, such as the ancestors and earlier siblings of changed elements.
+            let original_dirty_root = if relative_selectors_invalidated {
+                dangerous_root_element
+            } else {
+                unsafe {
+                    ServoLayoutNode::new(&restyle.dirty_root.unwrap())
+                        .as_element()
+                        .unwrap()
+                        .dangerous_style_element()
+                }
             };
 
             recalc_style_traversal = RecalcStyle::new(&layout_context);
@@ -2163,6 +2174,134 @@ impl Debug for LayoutFontMetricsProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("LayoutFontMetricsProvider").finish()
     }
+}
+
+/// Invalidate the elements whose `:has()` selectors depend on the state or attributes of
+/// elements that changed, as recorded in their snapshots.
+fn invalidate_relative_selectors(
+    stylist: &Stylist,
+    snapshot_map: &SnapshotMap,
+    elements: &[ServoLayoutElement<'_>],
+) -> bool {
+    use style::invalidation::element::element_wrapper::{ElementSnapshot, Snapshots};
+    use style::invalidation::element::invalidator::{InvalidationResult, SiblingTraversalMap};
+    use style::invalidation::element::relative_selector::RelativeSelectorInvalidator;
+
+    fn mark_dirty_up_from<E: TElement>(element: E) {
+        let mut current = Some(element);
+        while let Some(element) = current {
+            let already_dirty = element.has_dirty_descendants();
+            unsafe { element.set_dirty_descendants() };
+            if already_dirty {
+                break;
+            }
+            current = element.traversal_parent();
+        }
+    }
+
+    fn invalidated_at<E: TElement>(element: E, result: &InvalidationResult) {
+        if result.has_invalidated_siblings() {
+            if let Some(parent) = element.traversal_parent() {
+                mark_dirty_up_from(parent);
+            }
+        } else if result.has_invalidated_descendants() {
+            mark_dirty_up_from(element);
+        } else if result.has_invalidated_self() &&
+            let Some(parent) = element.traversal_parent()
+        {
+            mark_dirty_up_from(parent);
+        }
+    }
+
+    if elements.is_empty() {
+        return false;
+    }
+    let snapshots = Snapshots::new(snapshot_map);
+    let quirks_mode = stylist.quirks_mode();
+    let mut found_dependencies = false;
+    for element in elements {
+        let element = unsafe { element.dangerous_style_element() };
+        let Some(snapshot) = snapshot_map.get(&element) else {
+            continue;
+        };
+        let state_changes = snapshot
+            .state()
+            .map_or(element.state() ^ element.state(), |state| state ^ element.state());
+        let mut old_classes = Vec::new();
+        if snapshot.class_changed() {
+            snapshot.each_class(|class| old_classes.push(class.0.clone()));
+        }
+        let old_id = if snapshot.id_changed() {
+            snapshot.id_attr()
+        } else {
+            None
+        };
+        let attributes_changed =
+            snapshot.id_changed() || snapshot.class_changed() || snapshot.other_attr_changed();
+        if state_changes.is_empty() && !attributes_changed {
+            continue;
+        }
+        let invalidator = RelativeSelectorInvalidator {
+            element,
+            quirks_mode,
+            snapshots: Some(&snapshots),
+            invalidated: invalidated_at,
+            sibling_traversal_map: SiblingTraversalMap::default(),
+        };
+        invalidator.invalidate_relative_selectors_for_this(
+            stylist,
+            |element, scope, data, quirks_mode, collector| {
+                let map = data.relative_selector_invalidation_map();
+                if !state_changes.is_empty() {
+                    map.state_affecting_selectors.lookup_with_additional(
+                        *element,
+                        quirks_mode,
+                        None,
+                        &[],
+                        state_changes,
+                        |dependency| {
+                            if dependency.state.intersects(state_changes) {
+                                found_dependencies = true;
+                                collector.add_dependency(&dependency.dep, *element, scope);
+                            }
+                            true
+                        },
+                    );
+                }
+                if snapshot.id_changed() {
+                    for id in old_id.into_iter().chain(element.id()) {
+                        if let Some(dependencies) = map.id_to_selector.get(id, quirks_mode) {
+                            for dependency in dependencies {
+                                found_dependencies = true;
+                                collector.add_dependency(dependency, *element, scope);
+                            }
+                        }
+                    }
+                }
+                if snapshot.class_changed() {
+                    let mut classes = old_classes.clone();
+                    element.each_class(|class| classes.push(class.0.clone()));
+                    for class in &classes {
+                        if let Some(dependencies) = map.class_to_selector.get(class, quirks_mode) {
+                            for dependency in dependencies {
+                                found_dependencies = true;
+                                collector.add_dependency(dependency, *element, scope);
+                            }
+                        }
+                    }
+                }
+                snapshot.each_attr_changed(|name| {
+                    if let Some(dependencies) = map.other_attribute_affecting_selectors.get(name) {
+                        for dependency in dependencies {
+                            found_dependencies = true;
+                                collector.add_dependency(dependency, *element, scope);
+                        }
+                    }
+                });
+            },
+        );
+    }
+    found_dependencies
 }
 
 struct SnapshotSetter<'dom> {

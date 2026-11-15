@@ -5466,6 +5466,30 @@ impl VirtualMethods for Element {
         }
 
         let flags = self.get_selector_flags();
+
+        // A child that was inserted or removed may change whether a `:has()` selector of
+        // an ancestor, or of a sibling of an ancestor, matches. The elements that `:has()`
+        // matching visits are flagged with the direction of their anchors.
+        // TODO: Only invalidate the anchors whose relative selectors depend on the change.
+        let relative_selector_search =
+            ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR_SIBLING |
+                ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR |
+                ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR_NON_SUBJECT;
+        let in_relative_selector_search = flags.intersects(relative_selector_search) ||
+            self.upcast::<Node>()
+                .children_unrooted(cx.no_gc())
+                .filter_map(|child| child.downcast::<Element>().map(|element| element.get_selector_flags()))
+                .any(|child_flags| child_flags.intersects(relative_selector_search));
+        if in_relative_selector_search &&
+            let Some(root) = self.owner_document().GetDocumentElement()
+        {
+            let doc = self.owner_document();
+            doc.ensure_pending_restyle(&root)
+                .hint
+                .insert(RestyleHint::restyle_subtree());
+            doc.note_dirty_element(cx.no_gc(), &root);
+        }
+
         if flags.intersects(ElementSelectorFlags::HAS_SLOW_SELECTOR) {
             // All children of this node need to be restyled when any child changes.
             self.upcast::<Node>().dirty(cx.no_gc(), NodeDamage::Other);
