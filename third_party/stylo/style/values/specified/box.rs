@@ -2017,6 +2017,14 @@ pub enum BreakBetween {
     Avoid,
     Left,
     Right,
+    // Armature (AS-535): The remaining CSS Fragmentation values.
+    AvoidPage,
+    Recto,
+    Verso,
+    AvoidColumn,
+    Column,
+    AvoidRegion,
+    Region,
 }
 
 impl BreakBetween {
@@ -2032,7 +2040,8 @@ impl BreakBetween {
             BreakBetween::Auto | BreakBetween::Avoid | BreakBetween::Left | BreakBetween::Right => {
                 Ok(break_value)
             },
-            BreakBetween::Page => Err(ParseError::custom(StyleParseErrorKind::UnspecifiedError)),
+            // Armature (AS-535): Only the legacy values are accepted.
+            _ => Err(ParseError::custom(StyleParseErrorKind::UnspecifiedError)),
         }
     }
 
@@ -2049,7 +2058,8 @@ impl BreakBetween {
                 self.to_css(dest)
             },
             BreakBetween::Page => dest.write_str("always"),
-            BreakBetween::Always => Ok(()),
+            // Armature (AS-535): Values without a legacy equivalent.
+            _ => Ok(()),
         }
     }
 }
@@ -2080,6 +2090,8 @@ pub enum BreakWithin {
     Avoid,
     AvoidPage,
     AvoidColumn,
+    // Armature (AS-535): The remaining CSS Fragmentation value.
+    AvoidRegion,
 }
 
 impl BreakWithin {
@@ -2092,7 +2104,8 @@ impl BreakWithin {
         let break_value = BreakWithin::parse(input)?;
         match break_value {
             BreakWithin::Auto | BreakWithin::Avoid => Ok(break_value),
-            BreakWithin::AvoidPage | BreakWithin::AvoidColumn => {
+            // Armature (AS-535): Only the legacy values are accepted.
+            BreakWithin::AvoidPage | BreakWithin::AvoidColumn | BreakWithin::AvoidRegion => {
                 Err(ParseError::custom(StyleParseErrorKind::UnspecifiedError))
             },
         }
@@ -2108,7 +2121,8 @@ impl BreakWithin {
     {
         match *self {
             BreakWithin::Auto | BreakWithin::Avoid => self.to_css(dest),
-            BreakWithin::AvoidPage | BreakWithin::AvoidColumn => Ok(()),
+            // Armature (AS-535): Values without a legacy equivalent.
+            BreakWithin::AvoidPage | BreakWithin::AvoidColumn | BreakWithin::AvoidRegion => Ok(()),
         }
     }
 }

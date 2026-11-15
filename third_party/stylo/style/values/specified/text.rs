@@ -122,6 +122,51 @@ pub enum HyphenateCharacter {
     String(crate::OwnedStr),
 }
 
+// Armature (AS-535): hyphenate-limit-lines.
+/// A value for the `hyphenate-limit-lines` property.
+pub type HyphenateLimitLines = crate::values::generics::text::GenericHyphenateLimitLines<Integer>;
+
+impl Parse for HyphenateLimitLines {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
+        if input.try_parse(|i| i.expect_ident_matching("no-limit")).is_ok() {
+            return Ok(Self::NoLimit);
+        }
+        Ok(Self::Integer(Integer::parse_non_negative(context, input)?))
+    }
+}
+
+// Armature (AS-535): text-group-align.
+/// A value for the `text-group-align` property.
+#[allow(missing_docs)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    FromPrimitive,
+    Hash,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    Serialize,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(u8)]
+pub enum TextGroupAlign {
+    None,
+    Start,
+    End,
+    Left,
+    Right,
+    Center,
+}
+
 /// A value for the `hyphenate-limit-chars` property.
 pub type HyphenateLimitChars = GenericHyphenateLimitChars<Integer>;
 

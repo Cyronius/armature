@@ -538,3 +538,14 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `border-{block,inline}-{start,end}-radius`, which set the radii of the two corners of one side
   as `<corner> [ / <corner> ]?`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-535: Parse more CSS Fragmentation and Text properties
+- Files: `style/properties/counted_unknown_properties.py`, `style/properties/data.py`,
+  `style/properties/longhands.toml`, `style/values/computed/mod.rs`,
+  `style/values/computed/text.rs`, `style/values/generics/text.rs`,
+  `style/values/specified/box.rs`, `style/values/specified/mod.rs`,
+  `style/values/specified/text.rs`
+- Why: Accept the remaining `break-before`, `break-after` and `break-inside` values, and parse
+  `orphans`, `widows`, `hyphenate-limit-lines` and `text-group-align` for Servo, so that their
+  computed values are available even though layout does not use them yet.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

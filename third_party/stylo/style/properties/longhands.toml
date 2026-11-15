@@ -2813,6 +2813,45 @@ spec = "https://drafts.csswg.org/css-ruby/#ruby-position-property"
 animation_type = "discrete"
 affects = "layout"
 
+# Armature (AS-535): CSS Fragmentation orphans and widows.
+[orphans]
+type = "Integer"
+initial = "2"
+struct = "inherited_text"
+engine = "servo"
+parse_method = "parse_positive"
+spec = "https://drafts.csswg.org/css-break/#widows-orphans"
+affects = "layout"
+
+[widows]
+type = "Integer"
+initial = "2"
+struct = "inherited_text"
+engine = "servo"
+parse_method = "parse_positive"
+spec = "https://drafts.csswg.org/css-break/#widows-orphans"
+affects = "layout"
+
+# Armature (AS-535): hyphenate-limit-lines.
+[hyphenate-limit-lines]
+type = "HyphenateLimitLines"
+initial = "computed::HyphenateLimitLines::NoLimit"
+struct = "inherited_text"
+engine = "servo"
+animation_type = "discrete"
+spec = "https://drafts.csswg.org/css-text-4/#propdef-hyphenate-limit-lines"
+affects = "layout"
+
+# Armature (AS-535): text-group-align.
+[text-group-align]
+type = "TextGroupAlign"
+initial = "computed::TextGroupAlign::None"
+struct = "text"
+engine = "servo"
+animation_type = "discrete"
+spec = "https://drafts.csswg.org/css-text-4/#propdef-text-group-align"
+affects = "layout"
+
 [tab-size]
 type = "NonNegativeLengthOrNumber"
 initial = "generics::length::LengthOrNumber::Number(From::from(8.0))"

@@ -102,6 +102,11 @@ pub type TextIndent = GenericTextIndent<LengthPercentage>;
 /// A computed value for the `hyphenate-character` property.
 pub type HyphenateLimitChars = GenericHyphenateLimitChars<CSSInteger>;
 
+// Armature (AS-535): hyphenate-limit-lines and text-group-align.
+/// A computed value for the `hyphenate-limit-lines` property.
+pub type HyphenateLimitLines = crate::values::generics::text::GenericHyphenateLimitLines<CSSInteger>;
+pub use crate::values::specified::text::TextGroupAlign;
+
 impl HyphenateLimitChars {
     /// Return the `auto` value, which has all three component values as `auto`.
     #[inline]

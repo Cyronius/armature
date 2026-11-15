@@ -7,8 +7,7 @@ COUNTED_UNKNOWN_PROPERTIES = [
     "speak",
     "text-size-adjust",
     "-webkit-user-drag",
-    "orphans",
-    "widows",
+    # Armature (AS-535): orphans and widows are known properties now.
     "-webkit-user-modify",
     "-webkit-margin-before",
     "-webkit-margin-after",

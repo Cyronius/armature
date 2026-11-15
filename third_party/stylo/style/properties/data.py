@@ -623,6 +623,8 @@ class Longhand(Property):
                 "TextRendering",
                 "TextCombineUpright",
                 "RubyAlign",
+                # Armature (AS-535): text-group-align.
+                "TextGroupAlign",
                 "TextSizeAdjust",
                 "Hyphens",
                 "EmptyCells",

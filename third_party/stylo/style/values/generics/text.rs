@@ -35,6 +35,30 @@ pub enum NumberOrAuto<N> {
     Number(N),
 }
 
+// Armature (AS-535): hyphenate-limit-lines.
+/// A generic value for the `hyphenate-limit-lines` property.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(C, u8)]
+#[typed(todo_derive_fields)]
+pub enum GenericHyphenateLimitLines<Integer> {
+    /// There is no limit.
+    NoLimit,
+    /// The maximum number of consecutive hyphenated lines.
+    Integer(Integer),
+}
+
 /// A generic value for the `hyphenate-limit-chars` property.
 #[derive(
     Animate,
