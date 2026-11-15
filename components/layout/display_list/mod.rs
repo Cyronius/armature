@@ -74,6 +74,7 @@ use crate::style_ext::{BorderStyleColor, ComputedValuesExt};
 mod background;
 mod clip;
 mod conversions;
+mod corner_shape;
 mod gap_decorations;
 pub(crate) use gap_decorations::style_has_gap_rules;
 mod gradient;
@@ -389,7 +390,22 @@ impl DisplayListBuilder<'_> {
         );
 
         let spatial_id = self.spatial_id(clip.parent_scroll_node_id);
-        let new_clip_id = if let Some(mask) = clip.mask.as_deref() {
+        let new_clip_id = if let Some(clip::MaskClip::Polygon { points, even_odd }) =
+            clip.mask.as_deref()
+        {
+            match self.polygon_mask(points, *even_odd) {
+                Some((image, rect)) => self.wr().define_clip_image_mask(
+                    spatial_id,
+                    wr::ImageMask { image, rect },
+                    &[],
+                    wr::FillRule::Nonzero,
+                ),
+                None => self.wr().define_clip_rect(
+                    spatial_id,
+                    LayoutRect::from_origin_and_size(clip.rect.min, LayoutSize::zero()),
+                ),
+            }
+        } else if let Some(clip::MaskClip::Image(mask)) = clip.mask.as_deref() {
             match self.mask_image_clip(mask) {
                 Ok(Some((image, rect))) => self.wr().define_clip_image_mask(
                     spatial_id,
@@ -437,6 +453,61 @@ impl DisplayListBuilder<'_> {
     /// Add a new clip to the WebRender display list being built. This only happens during
     /// WebRender display list building and these clips should be added after all clips
     /// from the `StackingContextTree` have already been processed.
+    /// Rasterize a polygon into a WebRender mask image covering its bounds.
+    fn polygon_mask(
+        &mut self,
+        points: &[LayoutPoint],
+        even_odd: bool,
+    ) -> Option<(wr::ImageKey, LayoutRect)> {
+        use resvg::tiny_skia;
+        use std::hash::{Hash, Hasher};
+
+        let bounds = LayoutRect::from_points(points.iter().copied()).round_out();
+        let scale = self.device_pixel_ratio.get();
+        let width = (bounds.width() * scale).ceil() as u32;
+        let height = (bounds.height() * scale).ceil() as u32;
+        if width == 0 || height == 0 || width > 8192 || height > 8192 {
+            return None;
+        }
+        let mut builder = tiny_skia::PathBuilder::new();
+        for (index, point) in points.iter().enumerate() {
+            let x = (point.x - bounds.min.x) * scale;
+            let y = (point.y - bounds.min.y) * scale;
+            if index == 0 {
+                builder.move_to(x, y);
+            } else {
+                builder.line_to(x, y);
+            }
+        }
+        builder.close();
+        let path = builder.finish()?;
+        let mut pixmap = tiny_skia::Pixmap::new(width, height)?;
+        let mut paint = tiny_skia::Paint::default();
+        paint.set_color(tiny_skia::Color::WHITE);
+        paint.anti_alias = true;
+        pixmap.fill_path(
+            &path,
+            &paint,
+            if even_odd {
+                tiny_skia::FillRule::EvenOdd
+            } else {
+                tiny_skia::FillRule::Winding
+            },
+            tiny_skia::Transform::identity(),
+            None,
+        );
+        let pixels = pixmap.take();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (width, height).hash(&mut hasher);
+        pixels.hash(&mut hasher);
+        let key = self.image_resolver.image_cache.generated_image_key(
+            hasher.finish(),
+            DeviceIntSize::new(width as i32, height as i32),
+            pixels,
+        )?;
+        Some((key, bounds))
+    }
+
     /// Resolve the image and position of the mask layer of a `mask-image` clip. Only the
     /// top image layer is used, as a single tile. Returns `Ok(None)` when the element is
     /// not masked, and `Err(())` when it is masked out entirely.
@@ -444,7 +515,7 @@ impl DisplayListBuilder<'_> {
     /// <https://drafts.fxtf.org/css-masking-1/#the-mask-image>
     fn mask_image_clip(
         &mut self,
-        mask: &clip::MaskClip,
+        mask: &clip::MaskImageClip,
     ) -> Result<Option<(wr::ImageKey, LayoutRect)>, ()> {
         let svg = mask.style.get_svg();
         let mut found = None;
@@ -1881,10 +1952,12 @@ impl<'a> BuilderForBoxFragment<'a> {
         }
 
         self.build_backdrop_filter(builder, state);
-        self.build_background(builder, state);
-        self.build_box_shadow(builder, state);
-        if !self.fragment.is_table_grid_with_collapsed_borders() {
-            self.build_border(builder, state);
+        if !self.build_corner_shaped_decorations(builder, state) {
+            self.build_background(builder, state);
+            self.build_box_shadow(builder, state);
+            if !self.fragment.is_table_grid_with_collapsed_borders() {
+                self.build_border(builder, state);
+            }
         }
         self.build_gap_decorations(builder, state);
 
@@ -1914,6 +1987,125 @@ impl<'a> BuilderForBoxFragment<'a> {
                     .to_webrender(),
             );
         }
+    }
+
+    /// Paint the background color, border and box shadows of a box with non-round
+    /// `corner-shape` values as a rasterized image. Returns false if the box has no
+    /// shaped corners or uses decorations this does not support, in which case the
+    /// regular painting applies.
+    ///
+    /// <https://drafts.csswg.org/css-borders-4/#corner-shaping>
+    fn build_corner_shaped_decorations(
+        &self,
+        builder: &mut DisplayListBuilder,
+        state: &TraversalState,
+    ) -> bool {
+        let style = self.fragment.style();
+        let border = style.get_border();
+        let shapes = [
+            border.corner_top_left_shape.k as f64,
+            border.corner_top_right_shape.k as f64,
+            border.corner_bottom_right_shape.k as f64,
+            border.corner_bottom_left_shape.k as f64,
+        ];
+        let radius = self.border_radius();
+        let radii = [
+            radius.top_left,
+            radius.top_right,
+            radius.bottom_right,
+            radius.bottom_left,
+        ]
+        .map(|size| [size.width as f64, size.height as f64]);
+        let shaped = shapes
+            .iter()
+            .zip(&radii)
+            .any(|(shape, radius)| (*shape - 1.).abs() > 1e-4 && radius[0] > 0. && radius[1] > 0.);
+        if !shaped ||
+            self.fragment.has_collapsed_borders() ||
+            style
+                .get_background()
+                .background_image
+                .0
+                .iter()
+                .any(|image| !matches!(image, style::values::computed::Image::None))
+        {
+            return false;
+        }
+
+        let widths = self.fragment.border;
+        let border_widths = corner_shape::Insets {
+            left: widths.left.to_f64_px(),
+            top: widths.top.to_f64_px(),
+            right: widths.right.to_f64_px(),
+            bottom: widths.bottom.to_f64_px(),
+        };
+        let border_color = (widths.left > Au::zero() ||
+            widths.top > Au::zero() ||
+            widths.right > Au::zero() ||
+            widths.bottom > Au::zero())
+        .then(|| {
+            let current_color = style.get_inherited_text().get_color();
+            BorderStyleColor::from_border(border, current_color).top.color
+        });
+        let background_color = style.resolve_color(&style.get_background().background_color);
+        let shadows = style
+            .get_effects()
+            .box_shadow
+            .0
+            .iter()
+            .map(|shadow| corner_shape::Shadow {
+                inset: shadow.inset,
+                offset: (
+                    shadow.base.horizontal.px() as f64,
+                    shadow.base.vertical.px() as f64,
+                ),
+                spread: shadow.spread.px() as f64,
+                color: style.resolve_color(&shadow.base.color),
+            })
+            .collect();
+        let decorations = corner_shape::CornerShapedDecorations {
+            shape: corner_shape::CornerShapedBox {
+                width: self.border_rect.width() as f64,
+                height: self.border_rect.height() as f64,
+                radii,
+                shapes,
+            },
+            border_widths,
+            border_color,
+            background_color: (background_color.alpha > 0.).then_some(background_color),
+            shadows,
+        };
+        let scale = builder.device_pixel_ratio.get();
+        let Some(raster) = decorations.rasterize(scale) else {
+            return false;
+        };
+        let Some(image_key) = builder.image_resolver.image_cache.generated_image_key(
+            raster.content_hash,
+            DeviceIntSize::new(raster.size.0 as i32, raster.size.1 as i32),
+            raster.bgra_pixels,
+        ) else {
+            return false;
+        };
+        let rect = LayoutRect::from_origin_and_size(
+            LayoutPoint::new(
+                self.border_rect.min.x + raster.origin.0 as f32,
+                self.border_rect.min.y + raster.origin.1 as f32,
+            ),
+            LayoutSize::new(
+                raster.size.0 as f32 / raster.scale,
+                raster.size.1 as f32 / raster.scale,
+            ),
+        );
+        let common = builder.common_properties(state, rect, style);
+        builder.wr().push_image(
+            &common,
+            rect,
+            wr::ImageRendering::Auto,
+            wr::AlphaType::PremultipliedAlpha,
+            image_key,
+            wr::ColorF::WHITE,
+        );
+        true
     }
 
     /// Paint the gap decorations of a grid or flex container.

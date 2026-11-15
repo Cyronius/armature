@@ -839,12 +839,22 @@ impl BoxFragment {
             )
             .or(clip_id);
 
-        let mask_clip_id = stacking_context_tree.clip_store.add_for_mask(
+        let polygon_clip_id = stacking_context_tree.clip_store.add_for_clip_path_polygon(
+            &style.get_svg().clip_path,
             spatial_id.unwrap_or(containing_block.scroll_node_id),
             clip_id.unwrap_or(containing_block.clip_id),
             with_style,
             containing_block.rect.origin,
         );
+        let mask_clip_id = stacking_context_tree
+            .clip_store
+            .add_for_mask(
+                spatial_id.unwrap_or(containing_block.scroll_node_id),
+                polygon_clip_id.or(clip_id).unwrap_or(containing_block.clip_id),
+                with_style,
+                containing_block.rect.origin,
+            )
+            .or(polygon_clip_id);
 
         let containing_block = if clip_id.is_some() || spatial_id.is_some() {
             if let Some(clip_id) = clip_id {

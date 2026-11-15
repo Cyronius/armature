@@ -53,11 +53,25 @@ pub(crate) struct Clip {
     pub mask: Option<Box<MaskClip>>,
 }
 
+/// A clip that WebRender applies through an image mask, which it supports only on
+/// stacking contexts.
+#[derive(Clone, MallocSizeOf)]
+pub(crate) enum MaskClip {
+    /// The `mask-image` of an element.
+    Image(MaskImageClip),
+    /// A `clip-path: polygon()`, with its points in layout space.
+    Polygon {
+        #[ignore_malloc_size_of = "euclid"]
+        points: Vec<LayoutPoint>,
+        even_odd: bool,
+    },
+}
+
 /// The `mask-image` of an element, and the boxes its mask layers are positioned in.
 ///
 /// <https://drafts.fxtf.org/css-masking-1/#mask-layers>
 #[derive(Clone, MallocSizeOf)]
-pub(crate) struct MaskClip {
+pub(crate) struct MaskImageClip {
     #[ignore_malloc_size_of = "Arc"]
     pub style: ServoArc<ComputedValues>,
     pub node: Option<OpaqueNode>,
@@ -96,6 +110,59 @@ impl StackingContextTreeClipStore {
         id
     }
 
+    /// Add a mask clip for a `clip-path: polygon()`, if the box has one.
+    pub(super) fn add_for_clip_path_polygon(
+        &mut self,
+        clip_path: &ClipPath,
+        parent_scroll_node_id: ScrollTreeNodeId,
+        parent_clip_id: ClipId,
+        box_fragment: &BoxFragmentWithStyle<'_>,
+        containing_block_origin: PhysicalPoint<Au>,
+    ) -> Option<ClipId> {
+        let ClipPath::Shape(shape, geometry_box) = clip_path else {
+            return None;
+        };
+        let BasicShape::Polygon(polygon) = &**shape else {
+            return None;
+        };
+        let shape_box = match geometry_box {
+            ShapeGeometryBox::ShapeBox(shape_box) => *shape_box,
+            _ => ShapeBox::BorderBox,
+        };
+        let fragment_builder = BuilderForBoxFragment::new(box_fragment, containing_block_origin);
+        let reference = match shape_box {
+            ShapeBox::BorderBox => fragment_builder.border_rect,
+            ShapeBox::ContentBox => *fragment_builder.content_rect(),
+            ShapeBox::PaddingBox => *fragment_builder.padding_rect(),
+            ShapeBox::MarginBox => *fragment_builder.margin_rect(),
+        };
+        let points = polygon
+            .coordinates
+            .iter()
+            .map(|coordinate| {
+                LayoutPoint::new(
+                    reference.min.x +
+                        coordinate.0.to_used_value(Au::from_f32_px(reference.width())).to_f32_px(),
+                    reference.min.y +
+                        coordinate.1.to_used_value(Au::from_f32_px(reference.height())).to_f32_px(),
+                )
+            })
+            .collect();
+        let id = ClipId(self.0.len());
+        self.0.push(Clip {
+            id,
+            radii: BorderRadius::zero(),
+            rect: reference,
+            parent_scroll_node_id,
+            parent_clip_id,
+            mask: Some(Box::new(MaskClip::Polygon {
+                points,
+                even_odd: polygon.fill == style::values::generics::basic_shape::FillRule::Evenodd,
+            })),
+        });
+        Some(id)
+    }
+
     /// Add a clip for the `mask-image` of a box, if it has one.
     pub(super) fn add_for_mask(
         &mut self,
@@ -116,13 +183,13 @@ impl StackingContextTreeClipStore {
             rect: fragment_builder.border_rect,
             parent_scroll_node_id,
             parent_clip_id,
-            mask: Some(Box::new(MaskClip {
+            mask: Some(Box::new(MaskClip::Image(MaskImageClip {
                 style: style.clone(),
                 node: box_fragment.box_fragment.base.tag.map(|tag| tag.node),
                 border_rect: fragment_builder.border_rect,
                 padding_rect: *fragment_builder.padding_rect(),
                 content_rect: *fragment_builder.content_rect(),
-            })),
+            }))),
         });
         Some(id)
     }

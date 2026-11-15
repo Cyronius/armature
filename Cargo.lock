@@ -8788,6 +8788,7 @@ dependencies = [
  "phf 0.14.0",
  "quickcheck",
  "rayon",
+ "resvg",
  "rustc-hash 2.1.3",
  "selectors",
  "serde",
