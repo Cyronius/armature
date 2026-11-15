@@ -1419,6 +1419,10 @@ impl From<stylo::Display> for Display {
             stylo::DisplayInside::TableFooterGroup |
             stylo::DisplayInside::TableRow |
             stylo::DisplayInside::TableCell => unreachable!("Internal DisplayInside found"),
+
+            // Allows Stylo to add legacy display types.
+            #[allow(unreachable_patterns)]
+            _ => DisplayInside::Flex,
         };
         Display::GeneratingBox(DisplayGeneratingBox::OutsideInside { outside, inside })
     }
