@@ -17,6 +17,7 @@ use style::values::specified::background::{
 use webrender_api::{self as wr, units};
 use wr::ClipChainId;
 
+use crate::display_list::conversions::ToWebRender;
 use crate::display_list::{DisplayListBuilder, TraversalState};
 use crate::replaced::NaturalSizes;
 
@@ -107,7 +108,27 @@ impl<'a> BackgroundPainter<'a> {
             Clip::BorderBox => {
                 fragment_builder.border_edge_clip(builder, state, force_clip_creation)
             },
-            Clip::BorderArea | Clip::Text => unreachable!("Should be disabled behind a pref"),
+            // <https://drafts.csswg.org/css-backgrounds-4/#valdef-background-clip-border-area>
+            // The area painted by the border: the border box outside the padding box.
+            // TODO: Only paint the dashes, dots or lines of non-solid border styles.
+            Clip::BorderArea => {
+                let outer = fragment_builder.border_edge_clip(builder, state, true)?;
+                let radii = super::offset_radii(
+                    fragment_builder.border_radius(),
+                    -fragment_builder.fragment.border.to_webrender(),
+                );
+                let spatial_id = builder.spatial_id(state.spatial_id);
+                let inner = builder.wr().define_clip_rounded_rect(
+                    spatial_id,
+                    wr::ComplexClipRegion {
+                        rect: *fragment_builder.padding_rect(),
+                        radii,
+                        mode: wr::ClipMode::ClipOut,
+                    },
+                );
+                Some(builder.wr().define_clip_chain(Some(outer), [inner]))
+            },
+            Clip::Text => unreachable!("Should be disabled behind a pref"),
         }
     }
 
