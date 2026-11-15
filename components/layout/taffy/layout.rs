@@ -707,6 +707,15 @@ impl TaffyContainer {
                 let mut item_lanes = vec![(0, 0); self.children.len()];
                 let mut alignment_gaps: Vec<Option<f32>> = vec![None; self.children.len()];
                 let mut placed_items = Vec::new();
+                // <https://drafts.csswg.org/css-grid-3/#grid-lanes-dense-packing>
+                // With dense packing, items may backfill the spaces that spanning items
+                // skip, which are tracked per lane as stacking-axis intervals.
+                let dense = container_style
+                    .get_position()
+                    .grid_auto_flow
+                    .contains(style::computed_values::grid_auto_flow::T::DENSE) &&
+                    !preserve_legacy_placement;
+                let mut holes: Vec<Vec<(f32, f32)>> = vec![Vec::new(); tracks.len()];
                 stacking_alignment_space = vec![(0.0, 0.0); self.children.len()];
                 let mut placement_index = 0;
                 // Among equally short lanes, continue at the next lane in the
@@ -798,6 +807,7 @@ impl TaffyContainer {
                     if first_lane + span > tracks.len() {
                         continue;
                     }
+                    let previous_cursor = placement_cursor;
                     if !explicit {
                         placement_cursor = if track_reverse {
                             first_lane
@@ -809,6 +819,97 @@ impl TaffyContainer {
                         .iter()
                         .copied()
                         .fold(content_start, f32::max);
+
+                    if dense {
+                        let layout = &child.taffy_layout;
+                        let outer_size = if row_lanes {
+                            layout.size.width + layout.margin.left + layout.margin.right
+                        } else {
+                            layout.size.height + layout.margin.top + layout.margin.bottom
+                        }
+                        .max(0.0);
+                        let needed = outer_size + gap;
+                        let span_size =
+                            tracks[first_lane + span - 1].end - tracks[first_lane].start;
+                        let candidates = if explicit {
+                            first_lane..=first_lane
+                        } else {
+                            0..=tracks.len() - span
+                        };
+                        // The highest position at which the item fits in each lane range.
+                        let mut fits: Vec<(usize, f32)> = Vec::new();
+                        for lane in candidates {
+                            let size = tracks[lane + span - 1].end - tracks[lane].start;
+                            if (size - span_size).abs() > 0.01 {
+                                continue;
+                            }
+                            let range = &holes[lane..lane + span];
+                            let covered = |position: f32| {
+                                range.iter().all(|lane_holes| {
+                                    lane_holes.iter().any(|&(start, end)| {
+                                        start <= position + 0.001 &&
+                                            position + needed <= end + 0.001
+                                    })
+                                })
+                            };
+                            let best = range
+                                .iter()
+                                .flatten()
+                                .map(|&(start, _)| start)
+                                .filter(|&position| position < stacking_start && covered(position))
+                                .fold(f32::INFINITY, f32::min);
+                            if best.is_finite() {
+                                fits.push((lane, best));
+                            }
+                        }
+                        let highest = fits
+                            .iter()
+                            .map(|&(_, position)| position)
+                            .fold(f32::INFINITY, f32::min);
+                        if let Some(&(lane, position)) = fits
+                            .iter()
+                            .find(|&&(_, position)| position <= highest + flow_tolerance)
+                        {
+                            for lane_holes in &mut holes[lane..lane + span] {
+                                let mut split = Vec::with_capacity(lane_holes.len() + 1);
+                                for &(start, end) in lane_holes.iter() {
+                                    if start <= position + 0.001 &&
+                                        position + needed <= end + 0.001
+                                    {
+                                        if position - start > 0.001 {
+                                            split.push((start, position));
+                                        }
+                                        if end - (position + needed) > 0.001 {
+                                            split.push((position + needed, end));
+                                        }
+                                    } else {
+                                        split.push((start, end));
+                                    }
+                                }
+                                *lane_holes = split;
+                            }
+                            let original_track =
+                                &track_info.positions[usize::from(start_line - 1)];
+                            let offset = tracks[lane].start - original_track.start;
+                            let layout = &mut child.taffy_layout;
+                            if row_lanes {
+                                layout.location.y += offset;
+                                layout.location.x = position + layout.margin.left;
+                            } else {
+                                layout.location.x += offset;
+                                layout.location.y = position + layout.margin.top;
+                            }
+                            item_lanes[child_index] = (lane, span);
+                            placed_items.push(child_index);
+                            placement_cursor = previous_cursor;
+                            continue;
+                        }
+                        for lane in first_lane..first_lane + span {
+                            if stacking_start - lane_ends[lane] > 0.001 {
+                                holes[lane].push((lane_ends[lane], stacking_start));
+                            }
+                        }
+                    }
                     // A spanning item closes the preceding packing range in each
                     // lane. Its preceding single-lane items may align in the space
                     // between their outer edge and the spanning item's start.
