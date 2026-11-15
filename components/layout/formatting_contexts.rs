@@ -296,6 +296,18 @@ impl IndependentFormattingContext {
         layout_context: &LayoutContext,
         constraint_space: &ConstraintSpace,
     ) -> InlineContentSizesResult {
+        // Size containment makes the box size as if it had no contents.
+        // <https://drafts.csswg.org/css-contain-2/#containment-size>
+        if self
+            .base
+            .style
+            .has_size_containment(self.base.base_fragment_info.flags)
+        {
+            return InlineContentSizesResult {
+                sizes: Default::default(),
+                depends_on_block_constraints: false,
+            };
+        }
         self.base
             .inline_content_sizes(layout_context, constraint_space, &self.contents)
     }
@@ -522,6 +534,11 @@ impl IndependentFormattingContext {
         preferred_aspect_ratio: Option<AspectRatio>,
         lazy_block_size: &LazySize,
     ) -> IndependentFormattingContextLayoutResult {
+        lazy_block_size.set_size_contained(
+            self.base
+                .style
+                .has_size_containment(self.base.base_fragment_info.flags),
+        );
         match &self.contents {
             IndependentFormattingContextContents::Replaced(replaced, widget) => {
                 let mut replaced_layout = replaced.layout(

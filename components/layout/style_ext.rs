@@ -355,6 +355,8 @@ pub(crate) trait ComputedValuesExt {
     fn effective_overflow(&self, fragment_flags: FragmentFlags) -> AxesOverflow;
     fn used_transform_style(&self, fragment_flags: FragmentFlags) -> ComputedTransformStyle;
     fn establishes_block_formatting_context(&self, fragment_flags: FragmentFlags) -> bool;
+    fn has_layout_or_paint_containment(&self, fragment_flags: FragmentFlags) -> bool;
+    fn has_size_containment(&self, fragment_flags: FragmentFlags) -> bool;
     fn line_clamp_applies(&self) -> bool;
     fn establishes_stacking_context(&self, fragment_flags: FragmentFlags) -> bool;
     fn establishes_scroll_container(&self, fragment_flags: FragmentFlags) -> bool;
@@ -392,6 +394,19 @@ pub(crate) trait ComputedValuesExt {
     /// i.e. if it is `white-space-collapse: preserve` and `text-wrap-mode: wrap`.
     fn white_space_may_hang_conditionally(&self) -> bool;
     fn has_mask_image(&self) -> bool;
+}
+
+/// Whether this is an internal table box other than a cell, to which containment doesn't apply.
+fn is_table_track_or_group(style: &ComputedValues) -> bool {
+    matches!(
+        style.get_box().display.inside(),
+        stylo::DisplayInside::TableRow |
+            stylo::DisplayInside::TableRowGroup |
+            stylo::DisplayInside::TableHeaderGroup |
+            stylo::DisplayInside::TableFooterGroup |
+            stylo::DisplayInside::TableColumn |
+            stylo::DisplayInside::TableColumnGroup
+    )
 }
 
 impl ComputedValuesExt for ComputedValues {
@@ -758,8 +773,41 @@ impl ComputedValuesExt for ComputedValues {
     /// NOTE: This should be kept in sync with the checks in `impl
     /// TElement::compute_layout_damage` for `ServoLayoutElement` in
     /// `components/script/layout_dom/element.rs`.
+    /// Whether this box has layout containment or paint containment (`content-visibility:
+    /// hidden` implies both). These apply to all boxes except non-atomic inlines and
+    /// internal table boxes.
+    /// <https://drafts.csswg.org/css-contain-2/#containment-layout>
+    fn has_layout_or_paint_containment(&self, fragment_flags: FragmentFlags) -> bool {
+        let box_style = self.get_box();
+        if !box_style.contain.intersects(Contain::LAYOUT | Contain::PAINT) &&
+            box_style.content_visibility != ContentVisibility::Hidden
+        {
+            return false;
+        }
+        !self.is_inline_box(fragment_flags) && !is_table_track_or_group(self)
+    }
+
+    /// Whether this box has size containment (`content-visibility: hidden` implies it).
+    /// It doesn't apply to non-atomic inlines, internal table boxes, or replaced elements
+    /// (which are handled by their own sizing).
+    /// <https://drafts.csswg.org/css-contain-2/#containment-size>
+    fn has_size_containment(&self, fragment_flags: FragmentFlags) -> bool {
+        let box_style = self.get_box();
+        if !box_style.contain.contains(Contain::SIZE) &&
+            box_style.content_visibility != ContentVisibility::Hidden
+        {
+            return false;
+        }
+        !self.is_inline_box(fragment_flags) &&
+            !is_table_track_or_group(self) &&
+            !fragment_flags.intersects(FragmentFlags::IS_REPLACED | FragmentFlags::IS_WIDGET) &&
+            self.get_box().display.inside() != stylo::DisplayInside::TableCell
+    }
+
     fn establishes_block_formatting_context(&self, fragment_flags: FragmentFlags) -> bool {
-        if self.establishes_scroll_container(fragment_flags) {
+        if self.establishes_scroll_container(fragment_flags) ||
+            self.has_layout_or_paint_containment(fragment_flags)
+        {
             return true;
         }
 
@@ -786,7 +834,6 @@ impl ComputedValuesExt for ComputedValues {
             return true;
         }
 
-        // TODO: We need to handle CSS Contain here.
         false
     }
 
@@ -835,6 +882,12 @@ impl ComputedValuesExt for ComputedValues {
         if will_change_bits
             .intersects(WillChangeBits::STACKING_CONTEXT_UNCONDITIONAL | WillChangeBits::OPACITY)
         {
+            return true;
+        }
+
+        // <https://drafts.csswg.org/css-contain-2/#containment-layout>
+        // <https://drafts.csswg.org/css-contain-2/#containment-paint>
+        if self.has_layout_or_paint_containment(fragment_flags) {
             return true;
         }
 
@@ -988,6 +1041,11 @@ impl ComputedValuesExt for ComputedValues {
         // > containing block for fixed positioned elements, specifying that property in will-change
         // > must cause the element to generate a containing block for fixed positioned elements.
         let will_change_bits = self.get_will_change().bits;
+
+        // Layout and paint containment make the box a containing block for all descendants.
+        if self.has_layout_or_paint_containment(fragment_flags) {
+            return true;
+        }
 
         // From <https://drafts.csswg.org/css-transforms-1/#transform-rendering>:
         // > any value other than `none` for the `transform` property also causes the element

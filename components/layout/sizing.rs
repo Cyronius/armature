@@ -819,6 +819,10 @@ struct LazySizeData<'a> {
 pub(crate) struct LazySize<'a> {
     result: OnceCell<Au>,
     data: Option<LazySizeData<'a>>,
+    /// Whether the box has size containment, so that its contents don't contribute to its
+    /// automatic block size.
+    /// <https://drafts.csswg.org/css-contain-2/#containment-size>
+    size_contained: Cell<bool>,
 }
 
 impl<'a> LazySize<'a> {
@@ -832,6 +836,7 @@ impl<'a> LazySize<'a> {
     ) -> Self {
         Self {
             result: OnceCell::new(),
+            size_contained: Cell::new(false),
             data: Some(LazySizeData {
                 sizes,
                 axis,
@@ -853,6 +858,13 @@ impl<'a> LazySize<'a> {
         self
     }
 
+    /// Make the intrinsic size of this [`LazySize`] zero, as size containment requires.
+    pub(crate) fn set_size_contained(&self, size_contained: bool) {
+        if size_contained {
+            self.size_contained.set(true);
+        }
+    }
+
     /// Creates a [`LazySize`] that will resolve to the intrinsic size.
     /// Should be equivalent to [`LazySize::new()`] with default parameters,
     /// but avoiding the trouble of getting a reference to a [`Sizes::default()`]
@@ -863,6 +875,7 @@ impl<'a> LazySize<'a> {
     pub(crate) fn intrinsic() -> Self {
         Self {
             result: OnceCell::new(),
+            size_contained: Cell::new(false),
             data: None,
         }
     }
@@ -872,6 +885,14 @@ impl<'a> LazySize<'a> {
     ///
     /// TODO: The intrinsic size should probably be a [`ContentSizes`] instead of [`Au`].
     pub(crate) fn resolve(&self, get_content_size: impl FnOnce() -> Au) -> Au {
+        let size_contained = self.size_contained.get();
+        let get_content_size = move || {
+            if size_contained {
+                Au::zero()
+            } else {
+                get_content_size()
+            }
+        };
         *self.result.get_or_init(|| {
             let Some(ref data) = self.data else {
                 return get_content_size();
@@ -912,6 +933,10 @@ impl From<Au> for LazySize<'_> {
     fn from(value: Au) -> Self {
         let result = OnceCell::new();
         result.set(value).unwrap();
-        LazySize { result, data: None }
+        LazySize {
+            result,
+            data: None,
+            size_contained: Cell::new(false),
+        }
     }
 }
