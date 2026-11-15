@@ -79,6 +79,7 @@ mod small_kana;
 pub mod text_run;
 mod text_overflow;
 pub(crate) use text_overflow::place_block_ellipsis;
+use text_overflow::run_data_with_styles;
 pub mod text_transform;
 
 use std::cell::{Cell, OnceCell};
@@ -2622,6 +2623,12 @@ impl InlineFormattingContext {
                                         let mut ellipsis_rect = text.base.rect();
                                         ellipsis_rect.origin.x += ellipsis_rect.size.width;
                                         ellipsis_rect.size.width = ellipsis.total_advance();
+                                        // The ellipsis sits on the baseline of the text, in
+                                        // the first font of the container.
+                                        ellipsis_rect.origin.y += text.font_metrics.ascent -
+                                            font.metrics().ascent;
+                                        ellipsis_rect.size.height =
+                                            font.metrics().ascent + font.metrics().descent;
                                         let simple_text_line = children
                                             .iter()
                                             .all(|child| matches!(child, Fragment::Text(_)));
@@ -2704,7 +2711,10 @@ impl InlineFormattingContext {
                                                     BaseFragmentInfo::anonymous(),
                                                     ellipsis_rect,
                                                 ),
-                                                run_data: text.run_data.clone(),
+                                                run_data: run_data_with_styles(
+                                                    &text.run_data,
+                                                    self.shared_inline_styles.clone(),
+                                                ),
                                                 font_metrics: font.metrics().clone(),
                                                 font_key: font.key(
                                                     layout_context.painter_id,

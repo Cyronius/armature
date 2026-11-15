@@ -20,7 +20,9 @@ use style::values::specified::text::TextOverflowSide;
 use crate::context::LayoutContext;
 use crate::geom::{PhysicalPoint, PhysicalRect, PhysicalSize};
 use crate::style_ext::ComputedValuesExt;
-use crate::flow::inline::text_run::FontAndScriptInfo;
+use crate::cell::ArcRefCell;
+use crate::flow::inline::SharedInlineStyles;
+use crate::flow::inline::text_run::{FontAndScriptInfo, SharedTextRunData};
 use crate::fragment_tree::{
     BaseFragment, BaseFragmentInfo, BoxFragment, Fragment, PositioningFragment, TextFragment,
 };
@@ -342,9 +344,14 @@ pub(crate) fn place_block_ellipsis(
         PhysicalSize::new(marker_width, metrics.ascent + metrics.descent),
     );
     let character_end = text.character_range_in_dom_node.end;
+    let line_style = line.style.borrow().clone();
+    let inline_styles = SharedInlineStyles {
+        style: ArcRefCell::new(line_style.clone()),
+        selected: ArcRefCell::new(line_style),
+    };
     children.push(Fragment::Text(Arc::new(TextFragment {
         base: BaseFragment::new(BaseFragmentInfo::anonymous(), marker_rect),
-        run_data: text.run_data.clone(),
+        run_data: run_data_with_styles(&text.run_data, inline_styles),
         font_metrics: metrics.clone(),
         font_key: font.key(layout_context.painter_id, &layout_context.font_context),
         glyphs: vec![glyphs],
@@ -373,4 +380,22 @@ fn find_last_text(fragments: &[Fragment], result: &mut Option<Arc<TextFragment>>
             _ => {},
         }
     }
+}
+
+/// A copy of `run_data` whose text is styled by `inline_styles`, for markers that are
+/// styled by their block container rather than by the text they follow.
+pub(crate) fn run_data_with_styles(
+    run_data: &SharedTextRunData,
+    inline_styles: SharedInlineStyles,
+) -> Arc<SharedTextRunData> {
+    Arc::new(SharedTextRunData {
+        text_content: run_data.text_content.clone(),
+        inline_styles,
+        character_range_in_ifc_text: run_data.character_range_in_ifc_text.clone(),
+        original_offset: run_data.original_offset,
+        selection: Default::default(),
+        paints_caret: false,
+        needs_caret_placeholder: false,
+        offset_map: run_data.offset_map.clone(),
+    })
 }

@@ -149,13 +149,14 @@ pub(super) fn collect_hoisted_placeholders(fragments: &[Fragment], result: &mut 
 }
 
 /// Remove the content of `fragments` after the line at `path`, returning the new block
-/// end of the content.
+/// end of the content, without and then with the block-end margin of the last box,
+/// which may collapse with the margins of its ancestors.
 fn truncate_after(
     fragments: &mut Vec<Fragment>,
     path: &[usize],
     ellipsis: Option<&str>,
     layout_context: &LayoutContext,
-) -> Au {
+) -> (Au, Au) {
     let index = path[0];
     let mut hoisted = Vec::new();
     collect_hoisted_placeholders(&fragments[index + 1..], &mut hoisted);
@@ -174,11 +175,12 @@ fn truncate_after(
                     fragments[index] = line;
                 }
             }
-            block_end
+            (block_end, Au::zero())
         },
         Fragment::Positioning(positioning) => {
             let mut children = positioning.children.clone();
-            let child_end = truncate_after(&mut children, &path[1..], ellipsis, layout_context);
+            let (child_end, child_margin) =
+                truncate_after(&mut children, &path[1..], ellipsis, layout_context);
             let mut rect = positioning.base.rect();
             let is_line_box = positioning.is_line_box();
             if !is_line_box {
@@ -191,16 +193,29 @@ fn truncate_after(
                 children,
                 is_line_box,
             ));
-            rect.origin.y + child_end.max(rect.size.height)
+            (rect.origin.y + child_end.max(rect.size.height), child_margin)
         },
         Fragment::Box(box_fragment) => {
             let mut children = box_fragment.children.clone();
-            let child_end = truncate_after(&mut children, &path[1..], ellipsis, layout_context);
+            let (child_end, child_margin) =
+                truncate_after(&mut children, &path[1..], ellipsis, layout_context);
             let style = box_fragment.style().clone();
             let mut rect = box_fragment.base.rect();
             let inline_box = is_inline_box(box_fragment);
+            // Without block-end padding and border, the block-end margin of the last
+            // child collapses through this box.
+            let margins_collapse = !inline_box &&
+                (box_fragment.padding.bottom + box_fragment.border.bottom).is_zero();
+            let mut margin = box_fragment.margin;
+            if margins_collapse {
+                margin.bottom = margin.bottom.max(child_margin);
+            }
             if !inline_box && style.get_position().height.is_auto() {
-                rect.size.height = child_end;
+                rect.size.height = if margins_collapse {
+                    child_end
+                } else {
+                    child_end + child_margin
+                };
                 if let GenericSize::LengthPercentage(min) = &style.get_position().min_height &&
                     let Some(min) = min.0.to_length()
                 {
@@ -228,9 +243,9 @@ fn truncate_after(
                 );
             }
             let block_end = if inline_box {
-                rect.origin.y + child_end
+                (rect.origin.y + child_end, child_margin)
             } else {
-                new_box.margin_rect().max_y()
+                (new_box.border_rect().max_y(), margin.bottom)
             };
             fragments[index] = Fragment::Box(new_box.into());
             block_end
@@ -306,10 +321,7 @@ pub(crate) fn clamp_block_formatting_context(
         BlockEllipsis::NoEllipsis => None,
     }
     .filter(|text| !text.is_empty());
-    *content_block_size = truncate_after(
-        fragments,
-        &lines[clamp_after].path,
-        ellipsis,
-        layout_context,
-    );
+    let (block_end, margin) =
+        truncate_after(fragments, &lines[clamp_after].path, ellipsis, layout_context);
+    *content_block_size = block_end + margin;
 }
