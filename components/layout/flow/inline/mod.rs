@@ -175,6 +175,11 @@ pub(crate) struct InlineFormattingContext {
     /// share styles with all [`TextRun`] children.
     shared_inline_styles: SharedInlineStyles,
 
+    /// The `::first-line` style of the block container, if this inline formatting context
+    /// contains its first formatted line.
+    #[conditional_malloc_size_of]
+    first_line_style: Option<ServoArc<ComputedValues>>,
+
     /// The default font that is used for the root of this [`InlineFormattingContext`]. This is the
     /// font used when the font fallback code path is not taken. It may be `None` if no default
     /// font was found (this typically means that no characters can be rendered).
@@ -2316,6 +2321,7 @@ impl InlineFormattingContext {
             inline_items: builder.inline_items,
             inline_boxes: builder.inline_boxes,
             shared_inline_styles,
+            first_line_style: builder.first_line_style.clone(),
             default_font,
             has_first_formatted_line,
             contains_floats: builder.contains_floats,
@@ -2323,6 +2329,26 @@ impl InlineFormattingContext {
             has_right_to_left_content,
             tab_size_multiplier: Default::default(),
         }
+    }
+
+    /// <https://drafts.csswg.org/css-pseudo/#first-line-pseudo>
+    /// Paint the text of the first line, that is directly inside the block container, with
+    /// its `::first-line` style. Text inside inline boxes keeps its own style.
+    fn apply_first_line_style(&self, fragments: &mut [Fragment]) {
+        let Some(first_line_style) = self.first_line_style.as_ref() else {
+            return;
+        };
+        let Some(Fragment::Positioning(line)) = fragments
+            .iter_mut()
+            .find(|fragment| matches!(fragment, Fragment::Positioning(_)))
+        else {
+            return;
+        };
+        let root_color = self.shared_inline_styles.style.borrow().get_inherited_text().color;
+        let children = restyle_first_line_children(&line.children, first_line_style, &root_color);
+        let rect = line.base.rect();
+        let style = line.style.borrow().clone();
+        *line = PositioningFragment::new_anonymous(style, rect, children, true);
     }
 
     pub(crate) fn text_content(&self) -> &str {
@@ -2680,6 +2706,8 @@ impl InlineFormattingContext {
                 }
             }
         }
+
+        self.apply_first_line_style(&mut layout.fragments);
 
         let fragment_count = layout.fragments.len();
         let line_indices: Vec<(usize, Au)> = layout
@@ -3839,4 +3867,80 @@ fn char_prevents_soft_wrap_opportunity_when_before_or_after_atomic(character: ch
         ICULineBreak::for_char(character),
         ICULineBreak::Glue | ICULineBreak::WordJoiner | ICULineBreak::ZWJ
     )
+}
+
+/// Replace the style of the first line's text with the `::first-line` style, where the
+/// text inherits its color from the block container.
+fn restyle_first_line_children(
+    children: &[Fragment],
+    first_line_style: &ServoArc<ComputedValues>,
+    root_color: &style::color::AbsoluteColor,
+) -> Vec<Fragment> {
+    children
+        .iter()
+            .map(|child| {
+                let text = match child {
+                    Fragment::Text(text) => text,
+                    Fragment::Box(box_fragment)
+                        if box_fragment.style().is_inline_box(box_fragment.base.flags) =>
+                    {
+                        let children = restyle_first_line_children(
+                            &box_fragment.children,
+                            first_line_style,
+                            root_color,
+                        );
+                        return Fragment::Box(Arc::new(
+                            crate::fragment_tree::BoxFragment::new(
+                                BaseFragmentInfo {
+                                    tag: box_fragment.base.tag,
+                                    flags: box_fragment.base.flags,
+                                },
+                                box_fragment.style().clone(),
+                                children,
+                                box_fragment.base.rect(),
+                                box_fragment.padding,
+                                box_fragment.border,
+                                box_fragment.margin,
+                                None,
+                            ),
+                        ));
+                    },
+                    _ => return child.clone(),
+                };
+                // Text whose color is inherited from the block takes the first line's.
+                if text.run_data.inline_styles.style.borrow().get_inherited_text().color != *root_color {
+                    return child.clone();
+                }
+                let run_data = &text.run_data;
+                let first_line_run_data = Arc::new(text_run::SharedTextRunData {
+                    text_content: run_data.text_content.clone(),
+                    inline_styles: SharedInlineStyles {
+                        style: SharedStyle::new(first_line_style.clone()),
+                        selected: run_data.inline_styles.selected.clone(),
+                    },
+                    character_range_in_ifc_text: run_data.character_range_in_ifc_text.clone(),
+                    original_offset: run_data.original_offset,
+                    selection: atomic_refcell::AtomicRefCell::new(*run_data.selection.borrow()),
+                    paints_caret: run_data.paints_caret,
+                    needs_caret_placeholder: run_data.needs_caret_placeholder,
+                    offset_map: run_data.offset_map.clone(),
+                });
+                Fragment::Text(Arc::new(TextFragment {
+                    base: BaseFragment::new(
+                        BaseFragmentInfo {
+                            tag: text.base.tag,
+                            flags: text.base.flags,
+                        },
+                        text.base.rect(),
+                    ),
+                    run_data: first_line_run_data,
+                    font_metrics: text.font_metrics.clone(),
+                    font_key: text.font_key,
+                    glyphs: text.glyphs.clone(),
+                    justification_adjustment: text.justification_adjustment,
+                    character_range_in_dom_node: text.character_range_in_dom_node.clone(),
+                    is_empty_for_text_cursor: text.is_empty_for_text_cursor,
+                }))
+            })
+            .collect()
 }

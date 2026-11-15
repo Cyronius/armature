@@ -38,6 +38,10 @@ use crate::style_ext::ComputedValuesExt;
 
 #[derive(Default)]
 pub(crate) struct InlineFormattingContextBuilder {
+    /// The `::first-line` style of the block container, if this inline formatting context
+    /// contains its first formatted line.
+    pub first_line_style: Option<servo_arc::Arc<style::properties::ComputedValues>>,
+
     /// A stack of [`SharedInlineStyles`] including one for the root, one for each inline box on the
     /// inline box stack, and importantly, one for every `display: contents` element that we are
     /// currently processing. Normally `display: contents` elements don't affect the structure of
@@ -148,6 +152,14 @@ impl InlineFormattingContextBuilder {
             )],
             has_right_to_left_content,
             should_process_first_letter,
+            // ::first-line applies to the first formatted line, like ::first-letter.
+            first_line_style: (should_process_first_letter &&
+                info.pseudo_element_chain().is_empty())
+            .then(|| {
+                    info.with_pseudo_element(context, style::selector_parser::PseudoElement::FirstLine)
+                })
+                .flatten()
+                .map(|info| info.style),
             ..Default::default()
         }
     }
