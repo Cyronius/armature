@@ -74,6 +74,7 @@ use crate::style_ext::{BorderStyleColor, ComputedValuesExt};
 mod background;
 mod clip;
 mod conversions;
+mod gap_decorations;
 mod gradient;
 mod hit_test;
 mod paint_timing_handler;
@@ -1765,6 +1766,7 @@ impl<'a> BuilderForBoxFragment<'a> {
         if !self.fragment.is_table_grid_with_collapsed_borders() {
             self.build_border(builder, state);
         }
+        self.build_gap_decorations(builder, state);
 
         let overflow = self
             .fragment
@@ -1791,6 +1793,134 @@ impl<'a> BuilderForBoxFragment<'a> {
                     .translate(self.containing_block_origin.to_vector())
                     .to_webrender(),
             );
+        }
+    }
+
+    /// Paint the gap decorations of a grid container.
+    ///
+    /// <https://drafts.csswg.org/css-gaps-1/#painting>
+    fn build_gap_decorations(&self, builder: &mut DisplayListBuilder, state: &TraversalState) {
+        let layout_info = self.fragment.specific_layout_info();
+        let Some(SpecificLayoutInfo::Grid(grid_info)) = layout_info.as_deref() else {
+            return;
+        };
+        let style = self.fragment.style();
+        if style.get_display().inside() != style::values::specified::box_::DisplayInside::Grid {
+            return;
+        }
+        let info = &grid_info.info;
+        // Collapsed `auto-fit` tracks don't produce gaps; drop them and remap item lines.
+        let tracks = |tracks: &taffy::DetailedGridTracksInfo<_>| -> (Vec<(f32, f32)>, Vec<usize>) {
+            let mut kept_before = Vec::with_capacity(tracks.positions.len() + 1);
+            let mut kept = Vec::new();
+            for (index, line) in tracks.positions.iter().enumerate() {
+                kept_before.push(kept.len());
+                if !tracks
+                    .collapsed_tracks
+                    .iter()
+                    .any(|range| range.contains(&index))
+                {
+                    kept.push((line.start, line.end));
+                }
+            }
+            kept_before.push(kept.len());
+            (kept, kept_before)
+        };
+        let (mut columns, column_map) = tracks(&info.columns);
+        let (mut rows, row_map) = tracks(&info.rows);
+        // Tracks are listed in placement order. Mirror an axis whose tracks run
+        // right-to-left or bottom-to-top, so that gap decorations can be computed in
+        // logical order, and mirror the resulting rules back.
+        let mirror = |tracks: &mut Vec<(f32, f32)>| {
+            let reversed = tracks.len() > 1 && tracks[0].0 > tracks[tracks.len() - 1].0;
+            if reversed {
+                for track in tracks.iter_mut() {
+                    *track = (-track.1, -track.0);
+                }
+            }
+            reversed
+        };
+        let columns_reversed = mirror(&mut columns);
+        let rows_reversed = mirror(&mut rows);
+        let map_line = |map: &[usize], line: u16| {
+            let index = (line as usize).saturating_sub(1);
+            map.get(index).copied().unwrap_or(*map.last().unwrap_or(&0))
+        };
+        let layout = gap_decorations::GridGapLayout {
+            columns,
+            rows,
+            items: info
+                .items
+                .iter()
+                .map(|item| {
+                    (
+                        map_line(&row_map, item.row_start)..map_line(&row_map, item.row_end),
+                        map_line(&column_map, item.column_start)..
+                            map_line(&column_map, item.column_end),
+                    )
+                })
+                .collect(),
+        };
+        let origin = self.border_rect.min;
+
+        // Rules scroll with the content of a scroll container and are clipped by it.
+        let mut inner_state = state.clone();
+        inner_state.spatial_id = self
+            .fragment
+            .generated_scroll_tree_node_id()
+            .unwrap_or(state.spatial_id);
+        inner_state.clip_id = self.fragment.generated_clip_id().unwrap_or(state.clip_id);
+        let state = &inner_state;
+
+        for mut segment in layout.segments(style) {
+            // Undo the mirroring of reversed axes.
+            let (center_reversed, extent_reversed) = if segment.vertical {
+                (columns_reversed, rows_reversed)
+            } else {
+                (rows_reversed, columns_reversed)
+            };
+            if center_reversed {
+                segment.center = -segment.center;
+            }
+            if extent_reversed {
+                (segment.start, segment.end) = (-segment.end, -segment.start);
+            }
+            let half = segment.width / 2.;
+            let (rect, widths) = if segment.vertical {
+                (
+                    LayoutRect::from_origin_and_size(
+                        LayoutPoint::new(origin.x + segment.center - half, origin.y + segment.start),
+                        LayoutSize::new(segment.width, segment.end - segment.start),
+                    ),
+                    SideOffsets2D::new(0., 0., 0., segment.width),
+                )
+            } else {
+                (
+                    LayoutRect::from_origin_and_size(
+                        LayoutPoint::new(origin.x + segment.start, origin.y + segment.center - half),
+                        LayoutSize::new(segment.end - segment.start, segment.width),
+                    ),
+                    SideOffsets2D::new(segment.width, 0., 0., 0.),
+                )
+            };
+            let side = self.build_border_side(BorderStyleColor {
+                style: segment.style,
+                color: segment.color,
+            });
+            let none = wr::BorderSide {
+                color: side.color,
+                style: wr::BorderStyle::None,
+            };
+            let details = wr::BorderDetails::Normal(wr::NormalBorder {
+                top: if segment.vertical { none } else { side },
+                right: none,
+                bottom: none,
+                left: if segment.vertical { side } else { none },
+                radius: BorderRadius::zero(),
+                do_aa: true,
+            });
+            let common = builder.common_properties(state, rect, style);
+            builder.wr().push_border(&common, rect, widths, details);
         }
     }
 
