@@ -524,3 +524,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   scroll state that the embedder provides through `TElement::query_container_scroll_state`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
 
+### AS-533: Mark the :has() search path when fast-rejecting
+- Files: `selectors/matching.rs`
+- Why: Matching a relative selector flags the elements it visits with their search direction, and
+  relative selector invalidation ignores changes to unflagged elements. The Bloom filter fast
+  reject skipped the flagging, so an element that later started matching never invalidated the
+  `:has()` anchor. Flag the search path when fast-rejecting too.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

@@ -499,6 +499,60 @@ fn matches_complex_selector_list<E: Element>(
     })
 }
 
+// Armature (AS-533): Mark the search path of a fast-rejected relative selector.
+/// Apply the flags that `matches_relative_selector` applies to the elements that it
+/// would visit, without matching.
+fn mark_relative_selector_search_path<E: Element>(
+    relative_selector: &RelativeSelector<E::Impl>,
+    element: E,
+) {
+    fn mark_subtree<E: Element>(element: E) {
+        let mut child = element.first_element_child();
+        while let Some(el) = child {
+            el.apply_selector_flags(
+                ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR,
+            );
+            mark_subtree(el);
+            child = el.next_sibling_element();
+        }
+    }
+    if relative_selector.match_hint.is_descendant_direction() {
+        element.apply_selector_flags(
+            ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR,
+        );
+        if relative_selector.match_hint.is_subtree() {
+            mark_subtree(element);
+        } else {
+            let mut child = element.first_element_child();
+            while let Some(el) = child {
+                el.apply_selector_flags(
+                    ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR,
+                );
+                child = el.next_sibling_element();
+            }
+        }
+        return;
+    }
+    element.apply_selector_flags(ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_SIBLING);
+    let subtree = relative_selector.match_hint.is_subtree();
+    let sibling_flag = if subtree {
+        ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR_SIBLING
+    } else {
+        ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_SIBLING
+    };
+    let mut sibling = element.next_sibling_element();
+    while let Some(el) = sibling {
+        el.apply_selector_flags(sibling_flag);
+        if subtree {
+            mark_subtree(el);
+        }
+        if relative_selector.match_hint.is_next_sibling() {
+            break;
+        }
+        sibling = el.next_sibling_element();
+    }
+}
+
 fn matches_relative_selector<E: Element>(
     relative_selector: &RelativeSelector<E::Impl>,
     element: E,
@@ -604,6 +658,11 @@ fn relative_selector_match_early<E: Element>(
         .relative_selector_filter_map
         .fast_reject(element, selector, context.quirks_mode())
     {
+        // Armature (AS-533): Mark the search path even when fast-rejecting, so that a
+        // later change of an element in it invalidates this anchor.
+        if context.needs_selector_flags() {
+            mark_relative_selector_search_path(selector, element);
+        }
         // Alright, add as unmatched to cache.
         context.selector_caches.relative_selector.add(
             element.opaque(),
