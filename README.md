@@ -15,12 +15,12 @@ Two builds ran on the same machine: upstream Servo at the commit Armature forked
 (`90c3f623175`, 30 October 2026) and Armature at `568f69bdeac`. As on [wpt.fyi](https://wpt.fyi/), each test counts
 once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. The
 Total row reports 63,770 more passing subtests than upstream Servo (2,088,378 against 2,024,608) and predates the
-WebGL rerun. The CSS row records Armature's 13 November 2026 result on the current test selection; its upstream and
+WebGL rerun. The CSS row records Armature's 15 November 2026 result on the current test selection; its upstream and
 subtest figures are carried forward until the next full-suite rerun.
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| CSS | 29,211 | 67.0% | **75.73%** | +8.7 | +23,261 |
+| CSS | 29,542 | 67.0% | **77.75%** | +10.8 | +23,261 |
 | HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,030 |
 | WebGL conformance | 2,939 | 40.5% | **82.2%** | +41.7 | — |
 | Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
@@ -207,6 +207,14 @@ explicit CSS tests. Earlier focused projections counted gains in `css-counter-st
 Clamping a negative `calc()` weight in additive counter symbols to zero restores the passing
 `css-values/negative-calc-to-non-negative-integer.html` reftest. The 484 counter-style and list tests retain their
 previous results; a full CSS rerun after this final fix is pending.
+
+On 15 November 2026, on a new machine, a full `css` run selected 29,542 tests through the current `include.ini` and
+measured **75.66%** (22,351.3 test-equivalents) before further work. After the changes below, the same selection
+measured **77.75%** (22,970.2), a gain of 618.9. The largest contributions were gap decorations (about 270 across
+`css-gaps` and Grid Lanes), `corner-shape` and polygon `clip-path` (about 100), visible control characters (61), SVG
+pattern sampling (36), `mask-image` (36), gap decoration interpolation (22), SVG image root backgrounds (21) and
+`:focus-within` (18). The few tests that changed from passing to failing in the full run are listed with the
+remaining work below.
 
 The CSS gains come mostly from Stylo features that Armature enables and from the Web Animations API, which the
 interpolation tests throughout `css/` use, and whose `CSSAnimation` and `CSSTransition` objects most of
@@ -935,6 +943,20 @@ Notes on the numbers:
     mutation observer callbacks in creation order.
   - Web Audio: `WaveShaperNode`, `BiquadFilterNode.getFrequencyResponse()`, `AudioParam` automation event tracking and
     validation, `AudioNode.connect()` and `disconnect()` validation, and `OfflineAudioContext.suspend()`.
+- **CSS Gap Decorations**: `column-rule-*` accept value lists with `repeat()`, and the `row-rule-*`, `rule-*`,
+  `rule-break`, `rule-visibility-items`, `rule-inset` and `rule-overlap` properties and shorthands are parsed and
+  interpolated. Rules are painted in the gaps of grid, flex and Grid Lanes containers, with breaks around spanning
+  items, visibility, insets at caps and junctions, and paint order. Grid Lanes placement honours `flow-tolerance`.
+- **Shapes and masks**: boxes with non-round `corner-shape` values paint their background, border and unblurred box
+  shadows from a rasterized contour, and `clip-path` geometry boxes follow the shaped corners. `clip-path: polygon()`
+  and the top image layer of `mask-image` clip through image masks on the element's stacking context.
+- **Text**: control characters render as U+FFFD; lines that break after a soft hyphen show the `hyphenate-character`;
+  `text-overflow` elides overflowing horizontal left-to-right lines of clipping containers with an ellipsis or string;
+  `text-decoration-inset` shortens decorations at the decorating box's edges.
+- **Other**: `:focus-within` matches; SVG images paint their root element's background; resvg (vendored in
+  `third_party/resvg`) samples axis-aligned pattern tiles without filtering; spread box shadows adjust their corner
+  radii; `aspect-ratio` transfers a definite block size to an auto inline size; absolutely positioned items in
+  vertical grids are placed in their grid areas.
 
 ## What has not been done
 
@@ -1020,6 +1042,12 @@ Notes on the numbers:
   feature: `WebSocketStream` (and WebSocket over HTTP/2), MathML layout, WebAssembly type reflection (a SpiderMonkey
   build option), the Shadow DOM reference-target feature, and a configurable audio render quantum
   (`renderSizeHint`). XMLHttpRequest also lacks request header case preservation and `.asis` responses without a body.
+- Gap decorations are not painted in multi-column containers or across fragmentation, and subgrid gaps are not
+  decorated. `text-overflow` does not handle scroll containers, right-to-left or vertical lines, or anonymous block
+  wrappers. `mask-image` uses only the top image layer as a single tile and treats gradients as opaque, so
+  `mask-repeat`, `mask-composite` and inline-box masks are not supported. `corner-shape` does not yet clip overflow or
+  outlines. `::first-line`, ruby (which the `text-emphasis` references need), `text-spacing-trim`, intrinsic
+  `auto-fill` tracks and Grid Lanes subgrid are not implemented.
 - Conformance outside the directories above has not been measured or improved, and other missing features have not
   been implemented.
 - Nothing here has been reviewed by the upstream Servo maintainers.
