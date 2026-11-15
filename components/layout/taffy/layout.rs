@@ -8,6 +8,7 @@ use style::logical_geometry::LogicalAxis;
 use style::properties::ComputedValues;
 use style::values::computed::length_percentage::{CalcLengthPercentage, LengthPercentage};
 use style::values::computed::{CSSPixelLength, GridLanesDirection};
+use style::values::generics::position::GenericFlowTolerance;
 use style::values::generics::grid::{TrackBreadth, TrackListValue, TrackSize};
 use style::values::generics::length::LengthPercentageOrNormal;
 use style::values::specified::GenericGridTemplateComponent;
@@ -41,7 +42,7 @@ use crate::{ConstraintSpace, ContainingBlock, ContainingBlockSize, IndefiniteCon
 
 const DUMMY_NODE_ID: taffy::NodeId = taffy::NodeId::new(u64::MAX);
 
-fn grid_lanes_use_rows(style: &ComputedValues) -> bool {
+pub(crate) fn grid_lanes_use_rows(style: &ComputedValues) -> bool {
     let position = style.get_position();
     let direction = position.grid_lanes_direction;
     if direction.contains(GridLanesDirection::ROW) {
@@ -689,6 +690,16 @@ impl TaffyContainer {
                 } else {
                     (pbm.padding.block_start + pbm.border.block_start).to_f32_px()
                 };
+                // <https://drafts.csswg.org/css-grid-3/#item-tolerance>
+                let flow_tolerance = match &container_style.get_position().flow_tolerance {
+                    GenericFlowTolerance::Normal => {
+                        container_style.get_font().font_size.computed_size().px()
+                    },
+                    GenericFlowTolerance::LengthPercentage(value) => {
+                        value.0.resolve(CSSPixelLength::new(0.)).px()
+                    },
+                    GenericFlowTolerance::Infinite => f32::INFINITY,
+                };
                 let mut lane_ends = vec![content_start; tracks.len()];
                 let mut last_in_lane: Vec<Option<usize>> = vec![None; tracks.len()];
                 let mut single_lane_item = vec![false; self.children.len()];
@@ -729,16 +740,36 @@ impl TaffyContainer {
                     let first_lane = if explicit {
                         usize::from(start_line - 1)
                     } else {
+                        let running_position = |lane: usize| {
+                            lane_ends[lane..lane + span]
+                                .iter()
+                                .copied()
+                                .fold(content_start, f32::max)
+                        };
+                        // <https://drafts.csswg.org/css-grid-3/#item-tolerance>
+                        // Positions within the tolerance of the earliest one are treated
+                        // as equal, so that items keep to the placement order. The
+                        // initial `normal` tolerance is 1em.
+                        let earliest = (0..=tracks.len() - span)
+                            .map(running_position)
+                            .fold(f32::INFINITY, f32::min);
+                        let tolerance = if preserve_legacy_placement {
+                            0.0
+                        } else {
+                            flow_tolerance
+                        };
+                        let effective_end = |lane: usize| {
+                            let end = running_position(lane);
+                            if end <= earliest + tolerance {
+                                earliest
+                            } else {
+                                end
+                            }
+                        };
                         (0..=tracks.len() - span)
                             .min_by(|&left, &right| {
-                                let left_end = lane_ends[left..left + span]
-                                    .iter()
-                                    .copied()
-                                    .fold(content_start, f32::max);
-                                let right_end = lane_ends[right..right + span]
-                                    .iter()
-                                    .copied()
-                                    .fold(content_start, f32::max);
+                                let left_end = effective_end(left);
+                                let right_end = effective_end(right);
                                 left_end.total_cmp(&right_end).then_with(|| {
                                     if track_reverse {
                                         if preserve_legacy_placement {
