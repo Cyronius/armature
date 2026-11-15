@@ -489,8 +489,10 @@ impl DisplayListBuilder<'_> {
             DeviceIntSize::new(size.0 as i32, size.1 as i32),
             pixels,
         )?;
+        // Snap the mask to device pixels like the content it clips.
+        let mask_origin = LayoutPoint::new(origin.x + offset.0 as f32, origin.y + offset.1 as f32);
         let rect = LayoutRect::from_origin_and_size(
-            LayoutPoint::new(origin.x + offset.0 as f32, origin.y + offset.1 as f32),
+            (mask_origin.to_vector() * scale).round().to_point() / scale,
             LayoutSize::new(size.0 as f32 / scale, size.1 as f32 / scale),
         );
         Some((key, rect))
@@ -505,8 +507,20 @@ impl DisplayListBuilder<'_> {
         use resvg::tiny_skia;
         use std::hash::{Hash, Hasher};
 
-        let bounds = LayoutRect::from_points(points.iter().copied()).round_out();
+        // Pad the mask so that its filtered edges don't blend the polygon's edges with
+        // transparent texels outside the image.
         let scale = self.device_pixel_ratio.get();
+        let bounds = LayoutRect::from_points(points.iter().copied()).inflate(1., 1.);
+        // Snap the mask to device pixels like the content it clips, keeping the polygon's
+        // position relative to the snapped content.
+        let snapped_origin = (bounds.min.to_vector() * scale).round() / scale;
+        let shift = snapped_origin - bounds.min.to_vector();
+        let bounds = LayoutRect::from_origin_and_size(
+            snapped_origin.to_point(),
+            ((bounds.size() * scale).ceil()) / scale,
+        );
+        let points: Vec<LayoutPoint> = points.iter().map(|point| *point + shift).collect();
+        let points = &points[..];
         let width = (bounds.width() * scale).ceil() as u32;
         let height = (bounds.height() * scale).ceil() as u32;
         if width == 0 || height == 0 || width > 8192 || height > 8192 {
@@ -2146,11 +2160,13 @@ impl<'a> BuilderForBoxFragment<'a> {
         ) else {
             return false;
         };
+        // Snap the image to device pixels like other box decorations.
+        let image_origin = LayoutPoint::new(
+            self.border_rect.min.x + raster.origin.0 as f32,
+            self.border_rect.min.y + raster.origin.1 as f32,
+        );
         let rect = LayoutRect::from_origin_and_size(
-            LayoutPoint::new(
-                self.border_rect.min.x + raster.origin.0 as f32,
-                self.border_rect.min.y + raster.origin.1 as f32,
-            ),
+            (image_origin.to_vector() * scale).round().to_point() / scale,
             LayoutSize::new(
                 raster.size.0 as f32 / raster.scale,
                 raster.size.1 as f32 / raster.scale,
