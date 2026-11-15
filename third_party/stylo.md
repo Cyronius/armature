@@ -491,3 +491,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Grid Lanes placement treats running positions within the `flow-tolerance` of the earliest one
   as equal. The property must enter computed styles so layout can use it.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-529: Interpolate gap decoration lists
+- Files: `style/properties/longhands.toml`, `style/values/generics/gaps.rs`
+- Why: Gap decoration colors, widths and insets animate by computed value. Lists expand their
+  integer repeaters and interpolate as repeatable lists; automatic repeaters interpolate only with
+  automatic repeaters that have the same number of leading and trailing values.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

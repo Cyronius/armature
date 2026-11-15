@@ -9,6 +9,8 @@
 use crate::derives::*;
 use crate::parser::{Parse, ParserContext};
 use crate::typed_om::ToTyped;
+use crate::values::animated::{Animate, Procedure, ToAnimatedZero};
+use crate::values::distance::{ComputeSquaredDistance, SquaredDistance};
 use crate::OwnedSlice;
 use cssparser::Parser;
 use std::fmt::{self, Write};
@@ -176,3 +178,188 @@ pub enum GenericGapRuleInset<LP> {
 }
 
 impl<LP> ToTyped for GenericGapRuleInset<LP> {}
+
+/// A gap decoration list split around its automatic repeater, with integer
+/// repeaters expanded.
+///
+/// https://drafts.csswg.org/css-gaps-1/#interpolation
+struct ExpandedGapRuleList<'a, T> {
+    leading: Vec<&'a T>,
+    auto: Option<&'a [T]>,
+    trailing: Vec<&'a T>,
+}
+
+impl<T, I: Clone + Into<i32>> GenericGapRuleList<T, I> {
+    fn expanded(&self) -> ExpandedGapRuleList<'_, T> {
+        let mut result = ExpandedGapRuleList {
+            leading: Vec::new(),
+            auto: None,
+            trailing: Vec::new(),
+        };
+        for item in self.items() {
+            let target = if result.auto.is_some() {
+                &mut result.trailing
+            } else {
+                &mut result.leading
+            };
+            match item {
+                GenericGapRuleListItem::Value(value) => target.push(value),
+                GenericGapRuleListItem::Repeat(count, values) => {
+                    for _ in 0..count.clone().into().max(1) {
+                        target.extend(values.iter());
+                    }
+                },
+                GenericGapRuleListItem::AutoRepeat(values) => result.auto = Some(values),
+            }
+        }
+        result
+    }
+}
+
+fn animate_repeatable<T: Animate>(
+    left: &[&T],
+    right: &[&T],
+    procedure: Procedure,
+) -> Result<Vec<T>, ()> {
+    if left.is_empty() || right.is_empty() {
+        return Err(());
+    }
+    let len = num_integer::lcm(left.len(), right.len());
+    left.iter()
+        .cycle()
+        .zip(right.iter().cycle())
+        .take(len)
+        .map(|(left, right)| left.animate(right, procedure))
+        .collect()
+}
+
+fn animate_pairwise<T: Animate>(left: &[&T], right: &[&T], procedure: Procedure) -> Result<Vec<T>, ()> {
+    if left.len() != right.len() {
+        return Err(());
+    }
+    left.iter()
+        .zip(right)
+        .map(|(left, right)| left.animate(right, procedure))
+        .collect()
+}
+
+impl<T: Animate + Clone, I: Clone + Into<i32>> Animate for GenericGapRuleList<T, I> {
+    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
+        let (left, right) = (self.expanded(), other.expanded());
+        let values = |values: Vec<T>| values.into_iter().map(GenericGapRuleListItem::Value);
+        match (left.auto, right.auto) {
+            (None, None) => {
+                let mut all_left = left.leading;
+                all_left.extend(left.trailing);
+                let mut all_right = right.leading;
+                all_right.extend(right.trailing);
+                let result = animate_repeatable(&all_left, &all_right, procedure)?;
+                Ok(Self(values(result).collect::<Vec<_>>().into()))
+            },
+            (Some(left_auto), Some(right_auto)) => {
+                let leading = animate_pairwise(&left.leading, &right.leading, procedure)?;
+                let trailing = animate_pairwise(&left.trailing, &right.trailing, procedure)?;
+                let left_auto: Vec<&T> = left_auto.iter().collect();
+                let right_auto: Vec<&T> = right_auto.iter().collect();
+                let auto = animate_repeatable(&left_auto, &right_auto, procedure)?;
+                let mut items: Vec<_> = values(leading).collect();
+                items.push(GenericGapRuleListItem::AutoRepeat(auto.into()));
+                items.extend(values(trailing));
+                Ok(Self(items.into()))
+            },
+            _ => Err(()),
+        }
+    }
+}
+
+impl<T: ComputeSquaredDistance, I: Clone + Into<i32>> ComputeSquaredDistance
+    for GenericGapRuleList<T, I>
+{
+    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
+        let (left, right) = (self.expanded(), other.expanded());
+        let distance = |left: &[&T], right: &[&T]| -> Result<SquaredDistance, ()> {
+            if left.is_empty() || right.is_empty() {
+                return Err(());
+            }
+            let len = num_integer::lcm(left.len(), right.len());
+            left.iter()
+                .cycle()
+                .zip(right.iter().cycle())
+                .take(len)
+                .map(|(left, right)| left.compute_squared_distance(right))
+                .sum()
+        };
+        let mut all_left = left.leading;
+        all_left.extend(left.trailing);
+        let mut all_right = right.leading;
+        all_right.extend(right.trailing);
+        match (left.auto, right.auto) {
+            (None, None) => distance(&all_left, &all_right),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<T: ToAnimatedZero, I: Clone> ToAnimatedZero for GenericGapRuleList<T, I> {
+    fn to_animated_zero(&self) -> Result<Self, ()> {
+        let zero = |values: &[T]| -> Result<OwnedSlice<T>, ()> {
+            Ok(values
+                .iter()
+                .map(|value| value.to_animated_zero())
+                .collect::<Result<Vec<_>, _>>()?
+                .into())
+        };
+        Ok(Self(
+            self.items()
+                .iter()
+                .map(|item| {
+                    Ok(match item {
+                        GenericGapRuleListItem::Value(value) => {
+                            GenericGapRuleListItem::Value(value.to_animated_zero()?)
+                        },
+                        GenericGapRuleListItem::Repeat(count, values) => {
+                            GenericGapRuleListItem::Repeat(count.clone(), zero(values)?)
+                        },
+                        GenericGapRuleListItem::AutoRepeat(values) => {
+                            GenericGapRuleListItem::AutoRepeat(zero(values)?)
+                        },
+                    })
+                })
+                .collect::<Result<Vec<_>, ()>>()?
+                .into(),
+        ))
+    }
+}
+
+impl<LP: Animate> Animate for GenericGapRuleInset<LP> {
+    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
+        match (self, other) {
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
+                Ok(Self::LengthPercentage(left.animate(right, procedure)?))
+            },
+            (Self::OverlapJoin, Self::OverlapJoin) => Ok(Self::OverlapJoin),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<LP: ComputeSquaredDistance> ComputeSquaredDistance for GenericGapRuleInset<LP> {
+    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
+        match (self, other) {
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
+                left.compute_squared_distance(right)
+            },
+            (Self::OverlapJoin, Self::OverlapJoin) => Ok(SquaredDistance::from_sqrt(0.)),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<LP: ToAnimatedZero> ToAnimatedZero for GenericGapRuleInset<LP> {
+    fn to_animated_zero(&self) -> Result<Self, ()> {
+        match self {
+            Self::LengthPercentage(value) => Ok(Self::LengthPercentage(value.to_animated_zero()?)),
+            Self::OverlapJoin => Err(()),
+        }
+    }
+}
