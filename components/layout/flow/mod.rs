@@ -1268,6 +1268,25 @@ impl IndependentFormattingContext {
         } else {
             viewport.width
         };
+        // <https://drafts.csswg.org/css-writing-modes-4/#orthogonal-auto>
+        // Otherwise the fallback is the smallest of the containing block's fixed inner
+        // max size, floored by its fixed inner min size, and the initial containing block.
+        let parent_style = containing_block.style;
+        let fixed_length = |size: &Size<style::values::computed::LengthPercentage>| match size {
+            Size::Numeric(length_percentage) => length_percentage.to_length().map(Au::from),
+            _ => None,
+        };
+        let parent_mode = parent_style.writing_mode;
+        let parent_max = fixed_length(&parent_style.max_box_size(parent_mode).block);
+        let parent_min = fixed_length(&parent_style.min_box_size(parent_mode).block);
+        let fallback_inline_size = match parent_max {
+            Some(max) => {
+                max.max(parent_min.unwrap_or_default())
+                    .min(fallback_inline_size)
+                    .max(Au::zero())
+            },
+            None => fallback_inline_size,
+        };
         let child_inline_stretch = containing_block
             .block_stretch_size(pbm_sums.block)
             .unwrap_or(fallback_inline_size);
