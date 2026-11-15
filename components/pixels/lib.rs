@@ -465,6 +465,39 @@ impl RasterImage {
         (descriptor, data, should_animate)
     }
 
+    /// Returns a WebRender descriptor and data for the first frame of this image, with
+    /// every channel set to the frame's alpha. WebRender image masks read a single color
+    /// channel, so this lets the image be used as an alpha mask.
+    pub fn alpha_mask_descriptor_and_data(&self) -> (ImageDescriptor, GenericSharedMemory) {
+        let frame = &self.frames[0];
+        let bytes = &self.bytes[frame.byte_range.clone()];
+        let pixel_count = (frame.width * frame.height) as usize;
+        let mut mask = Vec::with_capacity(pixel_count * 4);
+        match self.format {
+            PixelFormat::BGRA8 | PixelFormat::RGBA8 => {
+                for pixel in bytes.chunks(4) {
+                    let alpha = pixel[3];
+                    mask.extend_from_slice(&[alpha, alpha, alpha, alpha]);
+                }
+            },
+            PixelFormat::KA8 => {
+                for pixel in bytes.chunks(2) {
+                    let alpha = pixel[1];
+                    mask.extend_from_slice(&[alpha, alpha, alpha, alpha]);
+                }
+            },
+            PixelFormat::RGB8 | PixelFormat::K8 => mask.resize(pixel_count * 4, 0xff),
+        }
+        let descriptor = ImageDescriptor {
+            size: DeviceIntSize::new(frame.width as i32, frame.height as i32),
+            stride: None,
+            format: WebRenderImageFormat::BGRA8,
+            offset: 0,
+            flags: ImageDescriptorFlags::empty(),
+        };
+        (descriptor, GenericSharedMemory::from_vec(mask))
+    }
+
     /// For animations the image already exists in a cache in 'Painter'. We just send the description.
     /// Currently we do not support 'PixelFormat::RGB8'
     pub fn webrender_image_descriptor_and_offset_for_frame(&self) -> Option<ImageDescriptor> {

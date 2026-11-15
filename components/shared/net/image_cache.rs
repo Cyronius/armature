@@ -253,6 +253,10 @@ pub trait ImageCache: Sync + Send {
         svg_id: Option<Uuid>,
     ) -> Option<RasterImage>;
 
+    /// Returns the WebRender key of a copy of `image` whose color channels hold its
+    /// alpha, for use as a WebRender image mask, uploading it the first time.
+    fn alpha_mask_image_key(&self, image: &RasterImage) -> Option<ImageKey>;
+
     /// Rasterize a loaded SVG image synchronously for a canvas image source.
     fn rasterize_vector_image_for_canvas(
         &self,

@@ -1046,6 +1046,9 @@ struct ImageCacheStore {
     /// Cross-process `Paint` API instance.
     paint_api: CrossProcessPaintApi,
 
+    /// Keys of the alpha mask copies of images, by the key of the image.
+    alpha_mask_keys: FxHashMap<WebRenderImageKey, WebRenderImageKey>,
+
     /// The [`WebView`] of the `Webview` associated with this [`ImageCache`].
     webview_id: WebViewId,
 
@@ -1399,6 +1402,7 @@ impl ImageCacheFactory for ImageCacheFactoryImpl {
                 rasterized_vector_images: FxHashMap::default(),
                 broken_image_icon_image: OnceCell::new(),
                 paint_api: paint_api.clone(),
+                alpha_mask_keys: Default::default(),
                 pipeline_id,
                 webview_id,
                 key_cache: KeyCache::new(),
@@ -1470,6 +1474,21 @@ impl ImageCache for ImageCacheImpl {
     #[cfg(feature = "test-util")]
     fn number_of_rasterize_tasks(&self) -> usize {
         self.store.lock().number_of_rasterize_tasks()
+    }
+
+    fn alpha_mask_image_key(&self, image: &RasterImage) -> Option<WebRenderImageKey> {
+        let source_key = image.id?;
+        if let Some(key) = self.store.lock().alpha_mask_keys.get(&source_key) {
+            return Some(*key);
+        }
+        let mask_key = self.get_image_key()?;
+        let (descriptor, data) = image.alpha_mask_descriptor_and_data();
+        let mut store = self.store.lock();
+        store
+            .paint_api
+            .add_image(mask_key, descriptor, SerializableImageData::Raw(data), false);
+        store.alpha_mask_keys.insert(source_key, mask_key);
+        Some(mask_key)
     }
 
     fn get_image_key(&self) -> Option<WebRenderImageKey> {
