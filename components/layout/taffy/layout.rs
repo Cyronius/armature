@@ -1197,6 +1197,37 @@ impl TaffyContainer {
                         let static_position_rect = candidate
                             .map(|candidate| {
                                 let taffy::Point { x, y } = candidate.static_position;
+                                // A vertical grid is laid out in its logical axes; map the
+                                // area to physical axes like in-flow items.
+                                if container_style.writing_mode.is_vertical() {
+                                    let inline_start = Au::from_f32_px(x.area.start) -
+                                        pbm.padding.inline_start -
+                                        pbm.border.inline_start;
+                                    let block_start = Au::from_f32_px(y.area.start) -
+                                        pbm.padding.block_start -
+                                        pbm.border.block_start;
+                                    let inline_extent = Au::from_f32_px(x.area.end - x.area.start);
+                                    let block_extent = Au::from_f32_px(y.area.end - y.area.start);
+                                    let block_size = content_box_size_override
+                                        .size
+                                        .block
+                                        .to_definite()
+                                        .unwrap_or_else(|| {
+                                            Au::from_f32_px(output.size.height) -
+                                                pbm.padding_border_sums.block
+                                        });
+                                    return PhysicalRect::new(
+                                        PhysicalPoint::new(
+                                            if container_style.writing_mode.is_vertical_rl() {
+                                                block_size - block_start - block_extent
+                                            } else {
+                                                block_start
+                                            },
+                                            inline_start,
+                                        ),
+                                        PhysicalSize::new(block_extent, inline_extent),
+                                    );
+                                }
                                 PhysicalRect::new(
                                     PhysicalPoint::new(
                                         Au::from_f32_px(x.area.start),
