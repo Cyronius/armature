@@ -51,6 +51,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "layout_css_appearance_enabled",
     "layout_css_at_scope_enabled",
     "layout_css_backdrop_filter_enabled",
+    "layout_css_background_clip_border_area_enabled",
     "layout_css_basic_shape_shape_enabled",
     "layout_css_break_properties_enabled",
     "layout_css_columns_enabled",
@@ -116,6 +117,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "layout_css_text_wrap_style_balance_enabled",
     "layout_css_text_wrap_style_pretty_enabled",
     "layout_css_transform_box_enabled",
+    "layout_css_tree_counting_functions_enabled",
     "layout_css_view_transitions_enabled",
     "layout_css_white_space_collapse_preserve_spaces_enabled",
     "layout_css_word_break_break_word_enabled",
@@ -126,12 +128,11 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     // These Stylo features are not in this list, because layout or the CSSOM does not support
     // them yet and asserts that they are disabled: layout_css_anchor_positioning_enabled,
     // layout_css_appearance_base_enabled,
-    // layout_css_background_clip_border_area_enabled, layout_css_background_clip_text_enabled,
+    // layout_css_background_clip_text_enabled,
     // layout_css_custom_media_enabled, layout_css_display_grid_lanes_enabled,
     // layout_css_font_palette_enabled,
     // layout_css_font_variant_caps_all_values_enabled, layout_css_margin_rules_enabled,
-    // layout_css_random_enabled, layout_css_starting_style_at_rules_enabled and
-    // layout_css_tree_counting_functions_enabled.
+    // layout_css_random_enabled, layout_css_starting_style_at_rules_enabled.
 ];
 
 #[cfg_attr(any(target_os = "android", target_env = "ohos"), expect(dead_code))]
