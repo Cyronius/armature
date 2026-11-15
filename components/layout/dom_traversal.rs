@@ -13,8 +13,12 @@ use script::layout_dom::ServoLayoutNode;
 use servo_arc::Arc as ServoArc;
 use style::dom::NodeInfo;
 use style::properties::ComputedValues;
+use style::properties::longhands::content_visibility::computed_value::T as ContentVisibility;
 use style::selector_parser::PseudoElement;
 use style::values::generics::counters::{Content, ContentItem};
+use style::values::specified::box_::{
+    DisplayInside as StyloDisplayInside, DisplayOutside as StyloDisplayOutside,
+};
 
 use crate::context::LayoutContext;
 use crate::dom::{BoxSlot, LayoutBox, NodeExt};
@@ -150,6 +154,22 @@ fn traverse_children_of<'dom>(
         .set_uses_content_attribute_with_attr(false);
 
     let is_element = parent_element_info.pseudo_element_chain().is_empty();
+
+    // <https://drafts.csswg.org/css-contain-2/#content-visibility>
+    // The contents of an element with `content-visibility: hidden` are skipped: they
+    // generate no boxes at all (so they are neither laid out nor painted).
+    // It doesn't apply to `display: contents`, nor to non-atomic inlines.
+    if is_element &&
+        parent_element_info.style.get_box().content_visibility == ContentVisibility::Hidden
+    {
+        let display = parent_element_info.style.get_box().display;
+        let non_atomic_inline = display.outside() == StyloDisplayOutside::Inline &&
+            display.inside() == StyloDisplayInside::Flow;
+        if !display.is_contents() && !non_atomic_inline {
+            return;
+        }
+    }
+
     if is_element {
         traverse_eager_pseudo_element(PseudoElement::Before, parent_element_info, context, handler);
     }
