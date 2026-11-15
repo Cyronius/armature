@@ -257,6 +257,15 @@ pub trait ImageCache: Sync + Send {
     /// alpha, for use as a WebRender image mask, uploading it the first time.
     fn alpha_mask_image_key(&self, image: &RasterImage) -> Option<ImageKey>;
 
+    /// Returns the WebRender key of an image with the given premultiplied BGRA pixels,
+    /// uploading it the first time a given `content_hash` is seen.
+    fn generated_image_key(
+        &self,
+        content_hash: u64,
+        size: DeviceIntSize,
+        bgra_pixels: Vec<u8>,
+    ) -> Option<ImageKey>;
+
     /// Rasterize a loaded SVG image synchronously for a canvas image source.
     fn rasterize_vector_image_for_canvas(
         &self,
