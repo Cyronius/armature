@@ -1476,7 +1476,10 @@ impl InlineFormattingContextLayout<'_> {
         let style = containing_block.style;
         let mut text_align_keyword = style.get_text_align();
 
-        if last_line_or_forced_line_break {
+        // `justify-all` also justifies the last line.
+        if text_align_keyword == &TextAlignKeyword::JustifyAll {
+            text_align_keyword = &TextAlignKeyword::Justify;
+        } else if last_line_or_forced_line_break {
             text_align_keyword = match style.get_text_align_last() {
                 TextAlignLast::Auto if text_align_keyword == &TextAlignKeyword::Justify => {
                     &TextAlignKeyword::Start
@@ -1509,9 +1512,7 @@ impl InlineFormattingContextLayout<'_> {
                     TextAlign::Start
                 }
             },
-            TextAlignKeyword::Justify => TextAlign::Start,
-            #[expect(unreachable_patterns)]
-            _ => TextAlign::Start,
+            TextAlignKeyword::Justify | TextAlignKeyword::JustifyAll => TextAlign::Start,
         };
 
         let available_space = self.available_line_space();

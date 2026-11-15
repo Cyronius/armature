@@ -1645,12 +1645,12 @@ impl Node {
             // Note: The align attribute of div and the center element map to the "-moz-" prefixed
             // values, which we treat like their unprefixed counterparts.
             TextAlignKeyword::Center | TextAlignKeyword::MozCenter => "center",
-            TextAlignKeyword::Justify => "justify",
+            TextAlignKeyword::Justify | TextAlignKeyword::JustifyAll => "justify",
             TextAlignKeyword::Left | TextAlignKeyword::MozLeft => "left",
             TextAlignKeyword::Right | TextAlignKeyword::MozRight => "right",
             // Step 6. Return "left".
-            #[expect(unreachable_patterns)]
-            _ => "left",
+            //
+            // Note: Never reached, since there are no other computed values of "text-align".
         }
     }
 
