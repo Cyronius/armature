@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use app_units::Au;
 use servo_base::id::ScrollTreeNodeId;
+use style::values::computed::text::TextDecorationInset;
 use style::values::computed::TextDecorationLine;
 
 use crate::display_list::{
@@ -629,11 +630,28 @@ impl TraversalState {
             line => {
                 let mut new_vector = (*propagated_text_decorations).clone();
                 let color = &style.get_inherited_text().color;
+                // <https://drafts.csswg.org/css-text-decor-4/#text-decoration-inset-property>
+                let content_rect = box_fragment.content_rect();
+                let width = content_rect.size.width;
+                let inset = match &style.get_text().text_decoration_inset {
+                    TextDecorationInset::Auto => {
+                        let auto = Au::from_f32_px(
+                            (style.get_font().font_size.computed_size().px() / 12.5).max(1.0),
+                        );
+                        (auto, auto)
+                    },
+                    TextDecorationInset::LengthPercentage { start, end } => {
+                        (start.to_used_value(width), end.to_used_value(width))
+                    },
+                };
+                let start = self.origin.x + content_rect.origin.x;
                 new_vector.push(FragmentTextDecoration {
                     line: *line,
                     color: style.get_text_decoration_color().resolve_to_absolute(color),
                     style: style.slow_clone_text_decoration_style(),
                     thickness: style.slow_clone_text_decoration_thickness(),
+                    extent: Some((start, start + width)),
+                    inset,
                 });
                 Rc::new(new_vector)
             },

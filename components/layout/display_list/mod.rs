@@ -1628,6 +1628,23 @@ impl Fragment {
             rect.origin.y += y_offset;
             rect.size.height = height;
 
+            // Shorten the line where the text meets the decorating box's edges.
+            if let Some((start, end)) = text_decoration.extent {
+                let tolerance = Au::from_f32_px(0.5);
+                let absolute_start = rect.origin.x;
+                let absolute_end = absolute_start + rect.size.width;
+                if absolute_start <= start + tolerance {
+                    rect.origin.x += text_decoration.inset.0;
+                    rect.size.width -= text_decoration.inset.0;
+                }
+                if absolute_end >= end - tolerance {
+                    rect.size.width -= text_decoration.inset.1;
+                }
+                if rect.size.width <= Au::zero() {
+                    continue;
+                }
+            }
+
             let mut rect = rect.to_webrender();
             let wavy_line_thickness = rect.height().ceil();
             if style == ComputedTextDecorationStyle::Wavy {

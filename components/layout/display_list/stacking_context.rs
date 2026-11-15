@@ -167,6 +167,8 @@ impl StackingContextParentInfo {
                     color: style.get_text_decoration_color().resolve_to_absolute(color),
                     style: style.slow_clone_text_decoration_style(),
                     thickness: style.slow_clone_text_decoration_thickness(),
+                    extent: None,
+                    inset: (Au::zero(), Au::zero()),
                 });
                 Rc::new(new_vector)
             },
@@ -419,6 +421,10 @@ pub(crate) struct FragmentTextDecoration {
     pub color: AbsoluteColor,
     pub style: TextDecorationStyle,
     pub thickness: TextDecorationThickness,
+    /// The inline start and end edges of the decorating box's content, in the paint
+    /// traversal's coordinate space, and the `text-decoration-inset` applied at each.
+    pub extent: Option<(Au, Au)>,
+    pub inset: (Au, Au),
 }
 
 #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq)]
