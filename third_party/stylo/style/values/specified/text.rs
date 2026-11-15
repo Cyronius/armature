@@ -503,6 +503,8 @@ pub enum TextAlignKeyword {
     MozLeft,
     #[parse(aliases = "-webkit-right")]
     MozRight,
+    /// Armature (AS-530): `justify-all`, which justifies every line, including the last.
+    JustifyAll,
 }
 
 /// Specified value of text-align property.

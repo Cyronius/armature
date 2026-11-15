@@ -498,3 +498,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   integer repeaters and interpolate as repeatable lists; automatic repeaters interpolate only with
   automatic repeaters that have the same number of leading and trailing values.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-530: Parse text-align: justify-all
+- Files: `style/values/specified/text.rs`
+- Why: `text-align: justify-all` justifies every line of a block, including the last. Accept it as a
+  `text-align` keyword so that layout can justify the last line too.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
