@@ -315,14 +315,22 @@ impl<'a> TextTransformationIterator<'a> {
             TextTransformCase::None | TextTransformCase::MathAuto => {
                 Box::new(iterator) as Box<dyn Iterator<Item = CharacterTransformIteration>>
             },
-            TextTransformCase::Lowercase => {
-                Box::new(simple_case_transform_iterator(iterator, |character| {
-                    CharacterTransformIteration::case_mapped(character.to_lowercase())
-                }))
-            },
+            TextTransformCase::Lowercase => Box::new(lowercase_iterator(
+                iterator,
+                style
+                    .get__x_lang()
+                    .0
+                    .parse()
+                    .unwrap_or(LanguageIdentifier::UNKNOWN),
+            )),
             TextTransformCase::Uppercase => {
-                Box::new(simple_case_transform_iterator(iterator, |character| {
-                    CharacterTransformIteration::case_mapped(character.to_uppercase())
+                let language: LanguageIdentifier = style
+                    .get__x_lang()
+                    .0
+                    .parse()
+                    .unwrap_or(LanguageIdentifier::UNKNOWN);
+                Box::new(simple_case_transform_iterator(iterator, move |character| {
+                    language_case_mapping(character, &language, true)
                 }))
             },
             TextTransformCase::Capitalize => Box::new(capitalization_iterator(
@@ -383,6 +391,73 @@ fn simple_case_transform_iterator(
             iteration
         }
     })
+}
+
+/// Map a character to its full uppercase or lowercase, using the tailoring of the
+/// content language (for example, Turkish dotted and dotless i).
+fn language_case_mapping(
+    character: char,
+    language: &LanguageIdentifier,
+    uppercase: bool,
+) -> CharacterTransformIteration {
+    let mut buffer = [0; 4];
+    let text = character.encode_utf8(&mut buffer);
+    let mut mapped = CaseMappingSink::default();
+    let mapper = CaseMapper::new();
+    // Tailorings such as Turkish casing apply to the language's Latin writing system,
+    // not to text tagged with another script.
+    let root = LanguageIdentifier::UNKNOWN;
+    let language = match language.script {
+        Some(script) if script.as_str() != "Latn" => &root,
+        _ => language,
+    };
+    let result = if uppercase {
+        mapper.uppercase(text, language).write_to(&mut mapped)
+    } else {
+        mapper.lowercase(text, language).write_to(&mut mapped)
+    };
+    if result.is_err() {
+        return CharacterTransformIteration::case_mapped(if uppercase {
+            character.to_uppercase().collect::<Vec<_>>().into_iter()
+        } else {
+            character.to_lowercase().collect::<Vec<_>>().into_iter()
+        });
+    }
+    CharacterTransformIteration::case_mapped(mapped.0.into_iter())
+}
+
+/// Lowercase one-to-one mapped characters with the tailoring of the content language.
+/// A capital sigma at the end of a word becomes a final sigma, as in Unicode's
+/// SpecialCasing.txt.
+fn lowercase_iterator(
+    input_iterator: impl Iterator<Item = CharacterTransformIteration>,
+    language: LanguageIdentifier,
+) -> impl Iterator<Item = CharacterTransformIteration> {
+    let iterations: Vec<_> = input_iterator.collect();
+    let characters: Vec<Option<char>> = iterations
+        .iter()
+        .map(|iteration| iteration.is_one_to_one().then(|| iteration.characters[0]))
+        .collect();
+    let is_cased_letter = |character: Option<char>| {
+        character.is_some_and(|character| character.is_alphabetic())
+    };
+    let mut result = Vec::with_capacity(iterations.len());
+    for (index, iteration) in iterations.into_iter().enumerate() {
+        let Some(character) = characters[index] else {
+            result.push(iteration);
+            continue;
+        };
+        if character == 'Σ' {
+            let preceded = index > 0 && is_cased_letter(characters[index - 1]);
+            let followed = is_cased_letter(characters.get(index + 1).copied().flatten());
+            if preceded && !followed {
+                result.push(CharacterTransformIteration::case_mapped(['ς'].into_iter()));
+                continue;
+            }
+        }
+        result.push(language_case_mapping(character, &language, false));
+    }
+    result.into_iter()
 }
 
 /// From <https://drafts.csswg.org/css-text-4/#typographic-letter-unit>:
