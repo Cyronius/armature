@@ -703,6 +703,7 @@ impl TaffyContainer {
                 let mut lane_ends = vec![content_start; tracks.len()];
                 let mut last_in_lane: Vec<Option<usize>> = vec![None; tracks.len()];
                 let mut single_lane_item = vec![false; self.children.len()];
+                let mut item_lanes = vec![(0, 0); self.children.len()];
                 let mut alignment_gaps: Vec<Option<f32>> = vec![None; self.children.len()];
                 let mut placed_items = Vec::new();
                 let mut placement_index = 0;
@@ -811,9 +812,17 @@ impl TaffyContainer {
                     // between their outer edge and the spanning item's start.
                     if span > 1 {
                         for lane in first_lane..first_lane + span {
-                            if let Some(previous) =
-                                last_in_lane[lane].filter(|&index| single_lane_item[index])
-                            {
+                            // A preceding item may also span lanes, as long as it is the
+                            // last item in each of them.
+                            let is_last_in_its_lanes = |index: usize| {
+                                let (first, count) = item_lanes[index];
+                                last_in_lane[first..first + count]
+                                    .iter()
+                                    .all(|last| *last == Some(index))
+                            };
+                            if let Some(previous) = last_in_lane[lane].filter(|&index| {
+                                single_lane_item[index] || is_last_in_its_lanes(index)
+                            }) {
                                 let free_space = stacking_start - lane_ends[lane];
                                 if free_space > 0.0 {
                                     alignment_gaps[previous] = Some(
@@ -866,6 +875,7 @@ impl TaffyContainer {
                     lane_ends[first_lane..first_lane + span].fill(end);
                     last_in_lane[first_lane..first_lane + span].fill(Some(child_index));
                     single_lane_item[child_index] = span == 1;
+                    item_lanes[child_index] = (first_lane, span);
                     placed_items.push(child_index);
                 }
 
@@ -873,8 +883,16 @@ impl TaffyContainer {
                 // end edge against which trailing items can align.
                 if !row_lanes && content_box_size_override.size.block.to_definite().is_none() {
                     let longest_lane = lane_ends.iter().copied().fold(content_start, f32::max);
-                    for (lane, previous) in last_in_lane.into_iter().enumerate() {
-                        if let Some(previous) = previous.filter(|&index| single_lane_item[index]) {
+                    for (lane, previous) in last_in_lane.iter().copied().enumerate() {
+                        let is_last_in_its_lanes = |index: usize| {
+                            let (first, count) = item_lanes[index];
+                            last_in_lane[first..first + count]
+                                .iter()
+                                .all(|last| *last == Some(index))
+                        };
+                        if let Some(previous) = previous.filter(|&index| {
+                            single_lane_item[index] || is_last_in_its_lanes(index)
+                        }) {
                             let free_space = longest_lane - lane_ends[lane];
                             if free_space > 0.0 {
                                 alignment_gaps[previous] =
