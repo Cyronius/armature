@@ -77,6 +77,7 @@ mod mathml_italics;
 mod shaping_queue;
 mod small_kana;
 pub mod text_run;
+mod text_overflow;
 pub mod text_transform;
 
 use std::cell::{Cell, OnceCell};
@@ -2627,6 +2628,21 @@ impl InlineFormattingContext {
                 }
             }
         }
+
+        let fragment_count = layout.fragments.len();
+        let line_indices: Vec<(usize, Au)> = layout
+            .line_baselines
+            .iter()
+            .copied()
+            .filter(|(index, _)| *index < fragment_count)
+            .collect();
+        text_overflow::apply_text_overflow(
+            &mut layout.fragments,
+            line_indices.into_iter(),
+            &style.to_arc(),
+            self.default_font.as_ref(),
+            layout_context,
+        );
 
         let (content_block_size, collapsible_margins_in_children, baselines) =
             layout.placement_state.finish();
