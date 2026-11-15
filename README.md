@@ -20,7 +20,7 @@ subtest figures are carried forward until the next full-suite rerun.
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
-| CSS | 29,542 | 67.0% | **77.75%** | +10.8 | +23,261 |
+| CSS | 29,542 | 67.0% | **78.87%** | +11.9 | +23,261 |
 | HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,030 |
 | WebGL conformance | 2,939 | 40.5% | **82.2%** | +41.7 | — |
 | Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
