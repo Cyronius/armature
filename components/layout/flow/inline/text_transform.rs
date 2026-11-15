@@ -100,6 +100,10 @@ pub struct WhitespaceCollapse<InputIterator> {
     /// the collapsed whitespace and in the next iteration the non-whitespace character
     /// must be returned. This value caches it until the next iteration.
     character_pending_to_return: Option<char>,
+
+    /// The last non-white space character produced, used by the segment break
+    /// transformation rules.
+    previous_character: Option<char>,
 }
 
 impl<InputIterator: Iterator<Item = char>> WhitespaceCollapse<InputIterator> {
@@ -114,6 +118,7 @@ impl<InputIterator: Iterator<Item = char>> WhitespaceCollapse<InputIterator> {
             following_newline: false,
             trimming_leading_white_space: should_trim_leading_white_space,
             character_pending_to_return: None,
+            previous_character: None,
         }
     }
 
@@ -166,6 +171,7 @@ impl<InputIterator: Iterator<Item = char>> Iterator for WhitespaceCollapse<Input
             // Once we produce a non-whitespace character, we are no longer trimming leading whitespace.
             self.trimming_leading_white_space = false;
             self.following_newline = false;
+            self.previous_character = Some(character);
             return Some(CharacterTransformIteration::one_to_one(character));
         }
 
@@ -200,6 +206,36 @@ impl<InputIterator: Iterator<Item = char>> Iterator for WhitespaceCollapse<Input
                 // >    collapsible segment break is removed.
                 // > 2. Then any remaining segment break is either transformed into a space (U+0020)
                 // >    or removed depending on the context before and after the break.
+                if self.white_space_collapse == WhiteSpaceCollapse::Collapse {
+                    // Look past the white space after the segment break to the next
+                    // character, which decides whether the break becomes a space.
+                    let mut collapsed = collected_whitespace + Utf32CodeUnits(1);
+                    let mut next_character = None;
+                    for character in self.input_iterator.by_ref() {
+                        if InlineFormattingContextBuilder::is_document_white_space(character) {
+                            collapsed += Utf32CodeUnits(1);
+                            continue;
+                        }
+                        next_character = Some(character);
+                        break;
+                    }
+                    let removed = self.previous_character.zip(next_character).is_some_and(
+                        |(before, after)| segment_break_is_removed(before, after),
+                    );
+                    let iteration = if removed ||
+                        self.following_newline ||
+                        self.trimming_leading_white_space
+                    {
+                        CharacterTransformIteration::collapse(collapsed, None)
+                    } else {
+                        CharacterTransformIteration::collapse(collapsed, Some(' '))
+                    };
+                    match next_character {
+                        Some(character) => self.character_pending_to_return = Some(character),
+                        None => self.following_newline = true,
+                    }
+                    return Some(iteration);
+                }
                 let iteration = if self.white_space_collapse != WhiteSpaceCollapse::Collapse {
                     CharacterTransformIteration::collapse(
                         collected_whitespace + Utf32CodeUnits(1),
@@ -234,11 +270,31 @@ impl<InputIterator: Iterator<Item = char>> Iterator for WhitespaceCollapse<Input
             // Once we produce a non-whitespace character, we are no longer trimming leading whitespace.
             self.trimming_leading_white_space = false;
             self.following_newline = false;
+            self.previous_character = Some(character);
             return Some(CharacterTransformIteration::one_to_one(character));
         }
 
         self.iteration_for_collected_white_space(collected_whitespace)
     }
+}
+
+/// <https://drafts.csswg.org/css-text-3/#line-break-transform>
+/// > If the character immediately before or immediately after the segment break is the
+/// > zero-width space character (U+200B), then the break is removed […]. Otherwise, if the
+/// > East Asian Width property of both the character before and after the segment break is
+/// > F, W, or H (not A), and neither side is Hangul, then the segment break is removed.
+fn segment_break_is_removed(before: char, after: char) -> bool {
+    use icu_properties::props::{EastAsianWidth, Script};
+    if before == '\u{200B}' || after == '\u{200B}' {
+        return true;
+    }
+    let wide = |character: char| {
+        matches!(
+            EastAsianWidth::for_char(character),
+            EastAsianWidth::Fullwidth | EastAsianWidth::Wide | EastAsianWidth::Halfwidth
+        ) && Script::for_char(character) != Script::Hangul
+    };
+    wide(before) && wide(after)
 }
 
 /// <https://drafts.csswg.org/css-text-3/#white-space-processing>
