@@ -75,6 +75,7 @@ mod background;
 mod clip;
 mod conversions;
 mod gap_decorations;
+pub(crate) use gap_decorations::style_has_gap_rules;
 mod gradient;
 mod hit_test;
 mod paint_timing_handler;
@@ -1796,10 +1797,21 @@ impl<'a> BuilderForBoxFragment<'a> {
         }
     }
 
-    /// Paint the gap decorations of a grid container.
+    /// Paint the gap decorations of a grid or flex container.
     ///
     /// <https://drafts.csswg.org/css-gaps-1/#painting>
     fn build_gap_decorations(&self, builder: &mut DisplayListBuilder, state: &TraversalState) {
+        let layout_info = self.fragment.specific_layout_info();
+        if let Some(SpecificLayoutInfo::Flex(flex_info)) = layout_info.as_deref() {
+            let segments = gap_decorations::flex_segments(self.fragment.style(), flex_info);
+            let origin = self.content_rect().min;
+            self.paint_gap_segments(builder, state, origin, segments, false, false);
+            return;
+        }
+        self.build_grid_gap_decorations(builder, state);
+    }
+
+    fn build_grid_gap_decorations(&self, builder: &mut DisplayListBuilder, state: &TraversalState) {
         let layout_info = self.fragment.specific_layout_info();
         let Some(SpecificLayoutInfo::Grid(grid_info)) = layout_info.as_deref() else {
             return;
@@ -1862,7 +1874,28 @@ impl<'a> BuilderForBoxFragment<'a> {
                 .collect(),
         };
         let origin = self.border_rect.min;
+        self.paint_gap_segments(
+            builder,
+            state,
+            origin,
+            layout.segments(style),
+            columns_reversed,
+            rows_reversed,
+        );
+    }
 
+    /// Paint gap decoration segments, given relative to `origin`. Reversed axes were
+    /// mirrored for the computation and are mirrored back here.
+    fn paint_gap_segments(
+        &self,
+        builder: &mut DisplayListBuilder,
+        state: &TraversalState,
+        origin: LayoutPoint,
+        segments: Vec<gap_decorations::GapRuleSegment>,
+        columns_reversed: bool,
+        rows_reversed: bool,
+    ) {
+        let style = self.fragment.style();
         // Rules scroll with the content of a scroll container and are clipped by it.
         let mut inner_state = state.clone();
         inner_state.spatial_id = self
@@ -1872,7 +1905,7 @@ impl<'a> BuilderForBoxFragment<'a> {
         inner_state.clip_id = self.fragment.generated_clip_id().unwrap_or(state.clip_id);
         let state = &inner_state;
 
-        for mut segment in layout.segments(style) {
+        for mut segment in segments {
             // Undo the mirroring of reversed axes.
             let (center_reversed, extent_reversed) = if segment.vertical {
                 (columns_reversed, rows_reversed)

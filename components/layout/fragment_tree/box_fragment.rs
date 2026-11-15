@@ -54,6 +54,8 @@ pub(crate) struct ExtraBackground {
 
 #[derive(Clone, Debug, MallocSizeOf)]
 pub(crate) enum SpecificLayoutInfo {
+    /// The geometry of a flex container's lines, used to paint gap decorations.
+    Flex(Box<crate::flexbox::FlexGapInfo>),
     Grid(Box<SpecificTaffyGridInfo>),
     TableCellWithCollapsedBorders,
     TableGridWithCollapsedBorders(Box<SpecificTableGridInfo>),

@@ -32,6 +32,21 @@ pub(crate) struct GapRuleSegment {
     pub color: AbsoluteColor,
 }
 
+/// Whether a container's style can paint any gap decoration.
+pub(crate) fn style_has_gap_rules(style: &ComputedValues) -> bool {
+    let column = style.get_column();
+    let paints = |list: &GenericGapRuleList<BorderStyle, PositiveInteger>| {
+        list.items().iter().any(|item| match item {
+            GenericGapRuleListItem::Value(style) => !style.none_or_hidden(),
+            GenericGapRuleListItem::Repeat(_, styles) |
+            GenericGapRuleListItem::AutoRepeat(styles) => {
+                styles.iter().any(|style| !style.none_or_hidden())
+            },
+        })
+    };
+    paints(&column.column_rule_style) || paints(&column.row_rule_style)
+}
+
 /// Expands a gap decoration value list into one value per gap.
 ///
 /// <https://drafts.csswg.org/css-gaps-1/#gap-decoration-value-assignment>
@@ -425,5 +440,179 @@ impl GridGapLayout {
                 rows
             },
         }
+    }
+}
+
+/// Computes the gap decorations of a flex container, in paint order, relative to its
+/// content box. Each flex line has its own main-axis gaps, between its items; the
+/// cross-axis gaps lie between lines.
+pub(crate) fn flex_segments(
+    style: &ComputedValues,
+    info: &crate::flexbox::FlexGapInfo,
+) -> Vec<GapRuleSegment> {
+    let px = |au: app_units::Au| au.to_f32_px();
+    let horizontal = info.main_axis_is_horizontal;
+    let lines = &info.lines;
+
+    // The physical start and end of the gap between two ranges in placement order.
+    let between = |a: (f32, f32), b: (f32, f32)| {
+        if a.1 <= b.0 {
+            (a.1, b.0)
+        } else {
+            (b.1, a.0)
+        }
+    };
+
+    // Main-axis gaps, numbered across lines.
+    let mut main_gaps = Vec::new();
+    for (line_index, line) in lines.iter().enumerate() {
+        for pair in line.items.windows(2) {
+            let gap = between((px(pair[0].0), px(pair[0].1)), (px(pair[1].0), px(pair[1].1)));
+            main_gaps.push((line_index, gap));
+        }
+    }
+    let cross_gaps: Vec<(f32, f32)> = lines
+        .windows(2)
+        .map(|pair| {
+            between(
+                (px(pair[0].cross.0), px(pair[0].cross.1)),
+                (px(pair[1].cross.0), px(pair[1].cross.1)),
+            )
+        })
+        .collect();
+
+    // In a row flex container, main-axis gaps are column gaps.
+    let main_rules = AxisRules::new(style, horizontal, main_gaps.len());
+    let cross_rules = AxisRules::new(style, !horizontal, cross_gaps.len());
+
+    let mut main_segments = Vec::new();
+    for (index, (line_index, gap)) in main_gaps.iter().enumerate() {
+        if !main_rules.paints(index) {
+            continue;
+        }
+        let line = &lines[*line_index];
+        let (cross_start, cross_end) = (px(line.cross.0), px(line.cross.1));
+        // The line's edges abut the cross-axis gaps before and after it, if any.
+        let junction = |cross_gap: Option<usize>| {
+            cross_gap
+                .filter(|gap| cross_rules.paints(*gap))
+                .map(|gap| (cross_gaps[gap].1 - cross_gaps[gap].0, cross_rules.widths[gap]))
+        };
+        let before = junction(line_index.checked_sub(1));
+        let after = junction((*line_index + 1 < lines.len()).then_some(*line_index));
+        // Lines may be placed in reverse; find which junction is at the physical start.
+        let reversed = lines.len() > 1 && lines[0].cross.0 > lines[lines.len() - 1].cross.0;
+        let (start_junction, end_junction) = if reversed {
+            (after, before)
+        } else {
+            (before, after)
+        };
+        let start_inset = match start_junction {
+            Some((size, width)) => resolve_inset(&main_rules.inset_junction_start, Some(size), width),
+            None => resolve_inset(&main_rules.inset_cap_start, None, 0.),
+        };
+        let end_inset = match end_junction {
+            Some((size, width)) => resolve_inset(&main_rules.inset_junction_end, Some(size), width),
+            None => resolve_inset(&main_rules.inset_cap_end, None, 0.),
+        };
+        let (start, end) = (cross_start + start_inset, cross_end - end_inset);
+        if end > start {
+            main_segments.push(GapRuleSegment {
+                center: (gap.0 + gap.1) / 2.,
+                start,
+                end,
+                vertical: horizontal,
+                width: main_rules.widths[index],
+                style: main_rules.styles[index],
+                color: main_rules.colors[index],
+            });
+        }
+    }
+
+    let mut cross_segments = Vec::new();
+    let main_size = px(info.main_size);
+    for (index, gap) in cross_gaps.iter().enumerate() {
+        if !cross_rules.paints(index) {
+            continue;
+        }
+        // Junctions are where main-axis gaps of the lines on either side abut this gap.
+        let mut junctions: Vec<(f32, f32, f32)> = main_gaps
+            .iter()
+            .enumerate()
+            .filter(|(main_index, (line_index, _))| {
+                (*line_index == index || *line_index == index + 1) && main_rules.paints(*main_index)
+            })
+            .map(|(main_index, (_, main_gap))| (main_gap.0, main_gap.1, main_rules.widths[main_index]))
+            .collect();
+        junctions.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut merged: Vec<(f32, f32, f32)> = Vec::new();
+        for junction in junctions {
+            match merged.last_mut() {
+                Some(last) if junction.0 <= last.1 => {
+                    last.1 = last.1.max(junction.1);
+                    last.2 = last.2.max(junction.2);
+                },
+                _ => merged.push(junction),
+            }
+        }
+
+        // With `intersection`, segments break at every junction; otherwise the rule spans
+        // the whole gap.
+        let mut pieces: Vec<(f32, Option<(f32, f32)>, f32, Option<(f32, f32)>)> = Vec::new();
+        if cross_rules.rule_break == GapRuleBreak::Intersection {
+            let mut start = 0.;
+            let mut start_junction = None;
+            for (junction_start, junction_end, width) in &merged {
+                let size = junction_end - junction_start;
+                pieces.push((start, start_junction, *junction_start, Some((size, *width))));
+                start = *junction_end;
+                start_junction = Some((size, *width));
+            }
+            pieces.push((start, start_junction, main_size, None));
+        } else {
+            pieces.push((0., None, main_size, None));
+        }
+        for (start, start_junction, end, end_junction) in pieces {
+            let start_inset = match start_junction {
+                Some((size, width)) => {
+                    resolve_inset(&cross_rules.inset_junction_start, Some(size), width)
+                },
+                None => resolve_inset(&cross_rules.inset_cap_start, None, 0.),
+            };
+            let end_inset = match end_junction {
+                Some((size, width)) => resolve_inset(&cross_rules.inset_junction_end, Some(size), width),
+                None => resolve_inset(&cross_rules.inset_cap_end, None, 0.),
+            };
+            let (start, end) = (start + start_inset, end - end_inset);
+            if end > start {
+                cross_segments.push(GapRuleSegment {
+                    center: (gap.0 + gap.1) / 2.,
+                    start,
+                    end,
+                    vertical: !horizontal,
+                    width: cross_rules.widths[index],
+                    style: cross_rules.styles[index],
+                    color: cross_rules.colors[index],
+                });
+            }
+        }
+    }
+
+    // Row rules paint over column rules by default.
+    let (mut columns, rows) = if horizontal {
+        (main_segments, cross_segments)
+    } else {
+        (cross_segments, main_segments)
+    };
+    match style.get_column().rule_overlap {
+        RuleOverlap::RowOverColumn => {
+            columns.extend(rows);
+            columns
+        },
+        RuleOverlap::ColumnOverRow => {
+            let mut rows = rows;
+            rows.extend(columns);
+            rows
+        },
     }
 }

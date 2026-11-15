@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use geom::{FlexAxis, MainStartCrossStart};
+use app_units::Au;
 use malloc_size_of_derive::MallocSizeOf;
 use script::layout_dom::ServoLayoutNode;
 use servo_arc::Arc as ServoArc;
@@ -28,6 +29,28 @@ use crate::positioned::AbsolutelyPositionedBox;
 
 mod geom;
 mod layout;
+
+/// The geometry of a flex container's lines, relative to its content box, used to paint
+/// gap decorations. Lines and items are in placement order.
+///
+/// <https://drafts.csswg.org/css-gaps-1/>
+#[derive(Clone, Debug, MallocSizeOf)]
+pub(crate) struct FlexGapInfo {
+    /// Whether the main axis is horizontal.
+    pub main_axis_is_horizontal: bool,
+    /// The size of the content box along the main axis.
+    pub main_size: Au,
+    pub lines: Vec<FlexGapLine>,
+}
+
+/// One flex line of a [`FlexGapInfo`].
+#[derive(Clone, Debug, MallocSizeOf)]
+pub(crate) struct FlexGapLine {
+    /// The physical start and end of the line along the cross axis.
+    pub cross: (Au, Au),
+    /// The physical start and end of each item's margin box along the main axis.
+    pub items: Vec<(Au, Au)>,
+}
 
 /// A structure to hold the configuration of a flex container for use during layout
 /// and preferred width calculation.

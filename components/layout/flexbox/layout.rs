@@ -25,6 +25,7 @@ use style::values::generics::length::LengthPercentageOrNormal;
 use style::values::specified::align::AlignFlags;
 
 use super::geom::{FlexAxis, FlexRelativeRect, FlexRelativeSides, FlexRelativeVec2};
+use super::{FlexGapInfo, FlexGapLine};
 use super::{FlexContainer, FlexContainerConfig, FlexItemBox, FlexLevelBox};
 use crate::cell::ArcRefCell;
 use crate::context::LayoutContext;
@@ -888,6 +889,10 @@ impl FlexContainer {
         };
 
         let inline_axis_is_main_axis = self.config.flex_axis == FlexAxis::Row;
+        // Record the line geometry when the container paints gap decorations.
+        let mut gap_lines = (self.style.writing_mode.is_horizontal() &&
+            crate::display_list::style_has_gap_rules(&self.style))
+        .then(Vec::new);
         let mut baseline_alignment_participating_baselines = Baselines::default();
         let mut all_baselines = Baselines::default();
         let mut flex_item_fragments = initial_line_layouts.into_iter().enumerate().flat_map(
@@ -970,6 +975,29 @@ impl FlexContainer {
                 for (fragment, _) in &mut final_line_layout.item_fragments {
                     fragment.base.translate_rect(physical_line_position);
                 }
+                if let Some(gap_lines) = gap_lines.as_mut() {
+                    let cross_start = if inline_axis_is_main_axis {
+                        flow_relative_line_position.block
+                    } else {
+                        flow_relative_line_position.inline
+                    };
+                    let items = final_line_layout
+                        .item_fragments
+                        .iter()
+                        .map(|(fragment, _)| {
+                            let rect = fragment.margin_rect();
+                            if inline_axis_is_main_axis {
+                                (rect.min_x(), rect.max_x())
+                            } else {
+                                (rect.min_y(), rect.max_y())
+                            }
+                        })
+                        .collect();
+                    gap_lines.push(FlexGapLine {
+                        cross: (cross_start, cross_start + final_line_layout.cross_size),
+                        items,
+                    });
+                }
                 final_line_layout.item_fragments
             },
         );
@@ -1002,6 +1030,7 @@ impl FlexContainer {
 
         // There should be no more flex items
         assert!(flex_item_fragments.next().is_none());
+        drop(flex_item_fragments);
 
         let baselines = Baselines {
             first: baseline_alignment_participating_baselines
@@ -1032,7 +1061,13 @@ impl FlexContainer {
             content_inline_size_for_table: None,
             baselines,
             depends_on_block_constraints,
-            specific_layout_info: None,
+            specific_layout_info: gap_lines.map(|lines| {
+                SpecificLayoutInfo::Flex(Box::new(FlexGapInfo {
+                    main_axis_is_horizontal: inline_axis_is_main_axis,
+                    main_size: container_main_size,
+                    lines,
+                }))
+            }),
             collapsible_margins_in_children: CollapsedBlockMargins::zero(),
         }
     }
