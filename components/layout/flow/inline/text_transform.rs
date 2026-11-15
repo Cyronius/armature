@@ -241,6 +241,20 @@ impl<InputIterator: Iterator<Item = char>> Iterator for WhitespaceCollapse<Input
     }
 }
 
+/// <https://drafts.csswg.org/css-text-3/#white-space-processing>
+/// > Control characters (Unicode category Cc)—other than tabs (U+0009), line feeds
+/// > (U+000A), carriage returns (U+000D) and sequences that form a segment break—must be
+/// > rendered as a visible glyph which the UA must synthesize or select from a font.
+///
+/// Fonts have no glyphs for them, so they are drawn as U+FFFD REPLACEMENT CHARACTER.
+fn make_control_character_visible(character: char) -> char {
+    if character.is_control() && !matches!(character, '\t' | '\n' | '\r' | '\0') {
+        '\u{FFFD}'
+    } else {
+        character
+    }
+}
+
 pub(crate) struct TextTransformationIterator<'a> {
     case_map_iterator: Box<dyn Iterator<Item = CharacterTransformIteration> + 'a>,
     full_width: bool,
@@ -276,6 +290,7 @@ impl<'a> TextTransformationIterator<'a> {
 
         let chars = text
             .chars()
+            .map(make_control_character_visible)
             .map(move |character| map_character_for_webkit_text_security(text_security, character));
         let white_space_collapse = style.slow_clone_white_space_collapse();
         let iterator =
