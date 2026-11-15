@@ -3114,13 +3114,40 @@ impl<'a> BuilderForBoxFragment<'a> {
                 },
                 BoxShadowClipMode::Outset => self.border_radius(),
             };
-            let shadow_radius = offset_radii(
-                border_radius,
-                SideOffsets2D::new_all_same(match clip_mode {
-                    BoxShadowClipMode::Inset => -spread,
-                    BoxShadowClipMode::Outset => spread,
-                }),
-            );
+            let shadow_radius = match clip_mode {
+                BoxShadowClipMode::Inset => {
+                    offset_radii(border_radius, SideOffsets2D::new_all_same(-spread))
+                },
+                // <https://drafts.csswg.org/css-backgrounds/#shadow-shape>
+                // An outer shadow's radii grow with its spread, adjusted so that sharp
+                // corners stay sharp relative to the box size.
+                BoxShadowClipMode::Outset if spread > 0. => {
+                    let size = rect.size();
+                    let adjust = |radius: LayoutSize| {
+                        let coverage = (2. *
+                            (radius.width / size.width).min(radius.height / size.height))
+                        .max(0.);
+                        let dimension = |r: f32| {
+                            if r > spread || coverage > 1. {
+                                r + spread
+                            } else {
+                                let ratio = r / spread;
+                                r + spread * (1. - (1. - ratio).powi(3) * (1. - coverage.powi(3)))
+                            }
+                        };
+                        LayoutSize::new(dimension(radius.width), dimension(radius.height))
+                    };
+                    BorderRadius {
+                        top_left: adjust(border_radius.top_left),
+                        top_right: adjust(border_radius.top_right),
+                        bottom_left: adjust(border_radius.bottom_left),
+                        bottom_right: adjust(border_radius.bottom_right),
+                    }
+                },
+                BoxShadowClipMode::Outset => {
+                    offset_radii(border_radius, SideOffsets2D::new_all_same(spread))
+                },
+            };
             let common = builder.common_properties(state, clip_rect, style);
             builder.wr().push_box_shadow(
                 &common,
