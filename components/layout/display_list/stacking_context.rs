@@ -470,6 +470,10 @@ pub struct StackingContext {
     /// The clip id of this [`StackingContext`] if it has one.
     pub(crate) clip_id: ClipId,
 
+    /// The clip of this [`StackingContext`]'s `mask-image`, applied to its WebRender
+    /// stacking context, since WebRender only supports image masks there.
+    pub(crate) mask_clip_id: ClipId,
+
     /// The z-index of this [`StackingContext`]. Note that `auto` is represented as 0.
     pub(crate) z_index: i32,
 
@@ -501,6 +505,7 @@ impl StackingContext {
             containing_block_origin: Default::default(),
             scroll_tree_node_id,
             clip_id: ClipId::INVALID,
+            mask_clip_id: ClipId::INVALID,
             z_index: 0,
             text_decorations: Default::default(),
             container_timing_roots: None,
@@ -530,6 +535,7 @@ impl StackingContext {
             children: Default::default(),
             scroll_tree_node_id: spatial_id,
             clip_id,
+            mask_clip_id: ClipId::INVALID,
             z_index,
             text_decorations: parent_info.text_decorations.clone(),
             container_timing_roots: parent_info.container_timing_roots.clone(),
@@ -833,6 +839,13 @@ impl BoxFragment {
             )
             .or(clip_id);
 
+        let mask_clip_id = stacking_context_tree.clip_store.add_for_mask(
+            spatial_id.unwrap_or(containing_block.scroll_node_id),
+            clip_id.unwrap_or(containing_block.clip_id),
+            with_style,
+            containing_block.rect.origin,
+        );
+
         let containing_block = if clip_id.is_some() || spatial_id.is_some() {
             if let Some(clip_id) = clip_id {
                 self.set_generated_clip_id(clip_id);
@@ -859,6 +872,7 @@ impl BoxFragment {
             reference_frame_info,
             parent_info,
         );
+        child_stacking_context.mask_clip_id = mask_clip_id.unwrap_or(ClipId::INVALID);
         with_style.build_stacking_context_tree_for_children(
             stacking_context_tree,
             containing_block,

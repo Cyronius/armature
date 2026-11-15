@@ -389,7 +389,24 @@ impl DisplayListBuilder<'_> {
         );
 
         let spatial_id = self.spatial_id(clip.parent_scroll_node_id);
-        let new_clip_id = if clip.radii.is_zero() {
+        let new_clip_id = if let Some(mask) = clip.mask.as_deref() {
+            match self.mask_image_clip(mask) {
+                Ok(Some((image, rect))) => self.wr().define_clip_image_mask(
+                    spatial_id,
+                    wr::ImageMask { image, rect },
+                    &[],
+                    wr::FillRule::Nonzero,
+                ),
+                Ok(None) => self.wr().define_clip_rect(
+                    spatial_id,
+                    LayoutRect::new(LayoutPoint::new(-1e9, -1e9), LayoutPoint::new(1e9, 1e9)),
+                ),
+                // Without an image to show through, everything is masked out.
+                Err(()) => self
+                    .wr()
+                    .define_clip_rect(spatial_id, LayoutRect::from_origin_and_size(clip.rect.min, LayoutSize::zero())),
+            }
+        } else if clip.radii.is_zero() {
             self.wr().define_clip_rect(spatial_id, clip.rect)
         } else {
             self.wr().define_clip_rounded_rect(
@@ -420,6 +437,98 @@ impl DisplayListBuilder<'_> {
     /// Add a new clip to the WebRender display list being built. This only happens during
     /// WebRender display list building and these clips should be added after all clips
     /// from the `StackingContextTree` have already been processed.
+    /// Resolve the image and position of the mask layer of a `mask-image` clip. Only the
+    /// top image layer is used, as a single tile. Returns `Ok(None)` when the element is
+    /// not masked, and `Err(())` when it is masked out entirely.
+    ///
+    /// <https://drafts.fxtf.org/css-masking-1/#the-mask-image>
+    fn mask_image_clip(
+        &mut self,
+        mask: &clip::MaskClip,
+    ) -> Result<Option<(wr::ImageKey, LayoutRect)>, ()> {
+        let svg = mask.style.get_svg();
+        let mut found = None;
+        let mut has_image_layer = false;
+        for (index, image) in svg.mask_image.0.iter().enumerate() {
+            match image {
+                style::values::computed::Image::None => continue,
+                // References to SVG `<mask>` elements are not supported; ignore the layer.
+                style::values::computed::Image::Url(url)
+                    if url.url().is_none_or(|url| url.as_str().contains('#')) =>
+                {
+                    continue;
+                },
+                _ => {},
+            }
+            has_image_layer = true;
+            match self.image_resolver.resolve_image(mask.node, image) {
+                // Gradients and colors can't be rasterized into a mask; treat them as
+                // opaque, which leaves the element unmasked.
+                Ok(ResolvedImage::Gradient(_)) | Ok(ResolvedImage::Color(_)) => return Ok(None),
+                Ok(ResolvedImage::Image { image, size, .. }) => {
+                    if found.is_none() {
+                        found = Some((index, image, size));
+                    }
+                },
+                // An image that fails to load is a transparent mask layer.
+                Err(_) => {},
+            }
+        }
+        if !has_image_layer {
+            return Ok(None);
+        }
+        let (index, image, size) = found.ok_or(())?;
+        let natural_sizes = match &image {
+            Image::Vector(vector_image) => NaturalSizes::from_vector_image(vector_image, 1.),
+            Image::Raster(_) => NaturalSizes::from_width_and_height(size.width, size.height),
+        };
+        let area = |origin: &style::computed_values::background_origin::single_value::T| match origin {
+            style::computed_values::background_origin::single_value::T::ContentBox => {
+                mask.content_rect
+            },
+            style::computed_values::background_origin::single_value::T::PaddingBox => {
+                mask.padding_rect
+            },
+            style::computed_values::background_origin::single_value::T::BorderBox => {
+                mask.border_rect
+            },
+        };
+        let positioning_area = area(background::get_cyclic(&svg.mask_origin.0, index));
+        let tile = background::layout_tile(
+            positioning_area,
+            mask.border_rect,
+            natural_sizes,
+            background::get_cyclic(&svg.mask_size.0, index),
+            background::get_cyclic(&svg.mask_repeat.0, index),
+            background::get_cyclic(&svg.mask_position_x.0, index),
+            background::get_cyclic(&svg.mask_position_y.0, index),
+        ).ok_or(())?;
+        let rect = LayoutRect::from_origin_and_size(tile.bounds.min, tile.tile_size);
+        let scale = self.device_pixel_ratio.get();
+        let device_size = Size2D::new(
+            (tile.tile_size.width * scale) as i32,
+            (tile.tile_size.height * scale) as i32,
+        );
+        let raster = match &image {
+            Image::Raster(raster) => Some((**raster).clone()),
+            Image::Vector(vector_image) => mask.node.and_then(|node| {
+                self.image_resolver.rasterize_vector_image(
+                    vector_image.id,
+                    device_size,
+                    node,
+                    vector_image.svg_id,
+                )
+            }),
+        }
+        .ok_or(())?;
+        let key = self
+            .image_resolver
+            .image_cache
+            .alpha_mask_image_key(&raster)
+            .ok_or(())?;
+        Ok(Some((key, rect)))
+    }
+
     fn maybe_create_clip(
         &mut self,
         state: &TraversalState,
@@ -437,6 +546,7 @@ impl DisplayListBuilder<'_> {
             rect,
             parent_scroll_node_id: state.spatial_id,
             parent_clip_id: state.clip_id,
+            mask: None,
         }))
     }
 
@@ -464,7 +574,11 @@ impl DisplayListBuilder<'_> {
         // should be used for primitives, but `None` is used for stacking contexts and
         // clip chains. We convert to the `Option<ClipChainId>` representation here. Just
         // passing Some(ClipChainId::INVALID) causes a panic.
-        let clip_chain_id = match stacking_context.clip_id {
+        let clip_id = match stacking_context.mask_clip_id {
+            ClipId::INVALID => stacking_context.clip_id,
+            mask_clip_id => mask_clip_id,
+        };
+        let clip_chain_id = match clip_id {
             ClipId::INVALID => None,
             clip_id => Some(self.clip_chain_id(clip_id)),
         };
@@ -524,7 +638,8 @@ impl DisplayListBuilder<'_> {
                     effects.backdrop_filter.0.is_empty() &&
                     effects.opacity == 1.0 &&
                     effects.mix_blend_mode == ComputedMixBlendMode::Normal &&
-                    style.get_svg().clip_path == ComputedClipPath::None
+                    style.get_svg().clip_path == ComputedClipPath::None &&
+                    stacking_context.mask_clip_id == ClipId::INVALID
                 {
                     return false;
                 }
@@ -561,7 +676,11 @@ impl DisplayListBuilder<'_> {
         // should be used for primitives, but `None` is used for stacking contexts and
         // clip chains. We convert to the `Option<ClipChainId>` representation here. Just
         // passing Some(ClipChainId::INVALID) causes a panic.
-        let clip_chain_id = match stacking_context.clip_id {
+        let clip_id = match stacking_context.mask_clip_id {
+            ClipId::INVALID => stacking_context.clip_id,
+            mask_clip_id => mask_clip_id,
+        };
+        let clip_chain_id = match clip_id {
             ClipId::INVALID => None,
             clip_id => Some(self.clip_chain_id(clip_id)),
         };

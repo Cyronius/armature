@@ -388,6 +388,7 @@ pub(crate) trait ComputedValuesExt {
     /// Whether or not this style causes conditional hanging in inline layout
     /// i.e. if it is `white-space-collapse: preserve` and `text-wrap-mode: wrap`.
     fn white_space_may_hang_conditionally(&self) -> bool;
+    fn has_mask_image(&self) -> bool;
 }
 
 impl ComputedValuesExt for ComputedValues {
@@ -722,6 +723,7 @@ impl ComputedValuesExt for ComputedValues {
             !effects.filter.0.is_empty() ||
             !effects.clip.is_auto() ||
             self.get_svg().clip_path != ClipPath::None ||
+            self.has_mask_image() ||
             self.get_box().isolation == ComputedIsolation::Isolate ||
             effects.mix_blend_mode != ComputedMixBlendMode::Normal
         {
@@ -778,6 +780,15 @@ impl ComputedValuesExt for ComputedValues {
         // > participates in that context.
         self.is_transformable(fragment_flags) &&
             self.used_transform_style(fragment_flags) == ComputedTransformStyle::Preserve3d
+    }
+
+    /// Whether any `mask-image` layer is not `none`.
+    fn has_mask_image(&self) -> bool {
+        self.get_svg()
+            .mask_image
+            .0
+            .iter()
+            .any(|image| !matches!(image, style::values::computed::Image::None))
     }
 
     /// Returns true if this fragment establishes a new stacking context and false otherwise.
@@ -874,6 +885,12 @@ impl ComputedValuesExt for ComputedValues {
         // > A computed value of other than `none` results in the creation of a stacking context.
         // Note `will-change: clip-path` is handled above by `STACKING_CONTEXT_UNCONDITIONAL`.
         if self.get_svg().clip_path != ClipPath::None {
+            return true;
+        }
+
+        // From <https://drafts.fxtf.org/css-masking-1/#the-mask-image>
+        // > A computed value of other than none results in the creation of a stacking context.
+        if self.has_mask_image() {
             return true;
         }
 

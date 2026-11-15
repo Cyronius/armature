@@ -179,6 +179,46 @@ pub(super) fn layout_layer(
     let common =
         painter.common_properties(fragment_builder, builder, state, layer_index, painting_area);
 
+    let b = painter.style.get_background();
+    let tile = layout_tile(
+        positioning_area,
+        painting_area,
+        natural_sizes,
+        get_cyclic(&b.background_size.0, layer_index),
+        get_cyclic(&b.background_repeat.0, layer_index),
+        get_cyclic(&b.background_position_x.0, layer_index),
+        get_cyclic(&b.background_position_y.0, layer_index),
+    )?;
+    let blend_mode = *get_cyclic(&b.background_blend_mode.0, layer_index);
+    Some(BackgroundLayer {
+        common,
+        bounds: tile.bounds,
+        tile_size: tile.tile_size,
+        tile_spacing: tile.tile_spacing,
+        repeat: tile.repeat,
+        blend_mode,
+    })
+}
+
+/// The placement of the tiles of a background or mask layer.
+pub(super) struct TileLayout {
+    pub bounds: units::LayoutRect,
+    pub tile_size: units::LayoutSize,
+    pub tile_spacing: units::LayoutSize,
+    pub repeat: bool,
+}
+
+/// Lay out the tiles of a background or mask layer, given its size, repeat and
+/// position values.
+pub(super) fn layout_tile(
+    positioning_area: units::LayoutRect,
+    painting_area: units::LayoutRect,
+    natural_sizes: NaturalSizes,
+    size: &Size,
+    repeat: &RepeatXY,
+    position_x: &LengthPercentage,
+    position_y: &LengthPercentage,
+) -> Option<TileLayout> {
     // https://drafts.csswg.org/css-backgrounds/#background-size
     enum ContainOrCover {
         Contain,
@@ -204,8 +244,7 @@ pub(super) fn layout_layer(
         tile_size
     };
 
-    let b = painter.style.get_background();
-    let mut tile_size = match get_cyclic(&b.background_size.0, layer_index) {
+    let mut tile_size = match size {
         Size::Contain => size_contain_or_cover(ContainOrCover::Contain),
         Size::Cover => size_contain_or_cover(ContainOrCover::Cover),
         Size::ExplicitSize { width, height } => {
@@ -257,11 +296,11 @@ pub(super) fn layout_layer(
         return None;
     }
 
-    let RepeatXY(repeat_x, repeat_y) = *get_cyclic(&b.background_repeat.0, layer_index);
+    let RepeatXY(repeat_x, repeat_y) = *repeat;
     let result_x = layout_1d(
         &mut tile_size.width,
         repeat_x,
-        get_cyclic(&b.background_position_x.0, layer_index),
+        position_x,
         painting_area.min.x - positioning_area.min.x,
         painting_area.size().width,
         positioning_area.size().width,
@@ -269,7 +308,7 @@ pub(super) fn layout_layer(
     let result_y = layout_1d(
         &mut tile_size.height,
         repeat_y,
-        get_cyclic(&b.background_position_y.0, layer_index),
+        position_y,
         painting_area.min.y - positioning_area.min.y,
         painting_area.size().height,
         positioning_area.size().height,
@@ -280,14 +319,11 @@ pub(super) fn layout_layer(
     );
     let tile_spacing = units::LayoutSize::new(result_x.tile_spacing, result_y.tile_spacing);
 
-    let blend_mode = *get_cyclic(&b.background_blend_mode.0, layer_index);
-    Some(BackgroundLayer {
-        common,
+    Some(TileLayout {
         bounds,
         tile_size,
         tile_spacing,
         repeat: result_x.repeat || result_y.repeat,
-        blend_mode,
     })
 }
 

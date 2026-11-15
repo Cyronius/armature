@@ -7,6 +7,9 @@ use std::cell::LazyCell;
 use app_units::Au;
 use malloc_size_of_derive::MallocSizeOf;
 use servo_base::id::ScrollTreeNodeId;
+use servo_arc::Arc as ServoArc;
+use style::dom::OpaqueNode;
+use style::properties::ComputedValues;
 use style::values::computed::basic_shape::{BasicShape, ClipPath};
 use style::values::computed::position::Position;
 use style::values::computed::{Length, LengthPercentage};
@@ -18,6 +21,7 @@ use webrender_api::units::{LayoutPoint, LayoutRect, LayoutSideOffsets, LayoutSiz
 use super::{BuilderForBoxFragment, compute_margin_box_radius};
 use crate::fragment_tree::BoxFragmentWithStyle;
 use crate::geom::PhysicalPoint;
+use crate::style_ext::ComputedValuesExt;
 
 /// An identifier for a clip used during StackingContextTree construction. This is a simple index in
 /// a [`ClipStore`]s vector of clips.
@@ -45,6 +49,21 @@ pub(crate) struct Clip {
     pub rect: LayoutRect,
     pub parent_scroll_node_id: ScrollTreeNodeId,
     pub parent_clip_id: ClipId,
+    /// A `mask-image` to clip with, resolved when the WebRender clip is created.
+    pub mask: Option<Box<MaskClip>>,
+}
+
+/// The `mask-image` of an element, and the boxes its mask layers are positioned in.
+///
+/// <https://drafts.fxtf.org/css-masking-1/#mask-layers>
+#[derive(Clone, MallocSizeOf)]
+pub(crate) struct MaskClip {
+    #[ignore_malloc_size_of = "Arc"]
+    pub style: ServoArc<ComputedValues>,
+    pub node: Option<OpaqueNode>,
+    pub border_rect: LayoutRect,
+    pub padding_rect: LayoutRect,
+    pub content_rect: LayoutRect,
 }
 
 /// A simple vector of [`Clip`] that is built during `StackingContextTree` construction.
@@ -72,8 +91,40 @@ impl StackingContextTreeClipStore {
             rect,
             parent_scroll_node_id,
             parent_clip_id,
+            mask: None,
         });
         id
+    }
+
+    /// Add a clip for the `mask-image` of a box, if it has one.
+    pub(super) fn add_for_mask(
+        &mut self,
+        parent_scroll_node_id: ScrollTreeNodeId,
+        parent_clip_id: ClipId,
+        box_fragment: &BoxFragmentWithStyle<'_>,
+        containing_block_origin: PhysicalPoint<Au>,
+    ) -> Option<ClipId> {
+        let style = box_fragment.style();
+        if !style.has_mask_image() {
+            return None;
+        }
+        let fragment_builder = BuilderForBoxFragment::new(box_fragment, containing_block_origin);
+        let id = ClipId(self.0.len());
+        self.0.push(Clip {
+            id,
+            radii: BorderRadius::zero(),
+            rect: fragment_builder.border_rect,
+            parent_scroll_node_id,
+            parent_clip_id,
+            mask: Some(Box::new(MaskClip {
+                style: style.clone(),
+                node: box_fragment.box_fragment.base.tag.map(|tag| tag.node),
+                border_rect: fragment_builder.border_rect,
+                padding_rect: *fragment_builder.padding_rect(),
+                content_rect: *fragment_builder.content_rect(),
+            })),
+        });
+        Some(id)
     }
 
     pub(super) fn add_for_clip_path(
