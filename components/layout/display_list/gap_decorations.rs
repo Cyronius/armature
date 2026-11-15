@@ -616,3 +616,229 @@ pub(crate) fn flex_segments(
         },
     }
 }
+
+/// The geometry of a grid lanes container used to compute gap decorations, in a
+/// coordinate space where `u` runs across the grid tracks and `v` along the stacking
+/// axis.
+pub(crate) struct GridLanesGapLayout {
+    /// Start and end of each grid track along `u`, in placement order.
+    pub tracks: Vec<(f32, f32)>,
+    /// The margin box of each item: `u` start and end, then `v` start and end.
+    pub items: Vec<(f32, f32, f32, f32)>,
+    /// The start and end of the content box along `v`.
+    pub stacking_extent: (f32, f32),
+    /// The used gap between items along the stacking axis.
+    pub stacking_gap: f32,
+    /// Whether the grid tracks are rows (so that `u` is vertical).
+    pub tracks_are_rows: bool,
+}
+
+impl GridLanesGapLayout {
+    /// The tracks an item occupies.
+    fn item_tracks(&self, item: &(f32, f32, f32, f32)) -> Range<usize> {
+        let mut first = None;
+        let mut last = 0;
+        for (index, track) in self.tracks.iter().enumerate() {
+            if item.0 < track.1 - 0.5 && track.0 + 0.5 < item.1 {
+                first.get_or_insert(index);
+                last = index;
+            }
+        }
+        match first {
+            Some(first) => first..last + 1,
+            None => 0..0,
+        }
+    }
+
+    /// The ranges along the stacking axis covered by the items in a track, with the
+    /// stacking gaps between consecutive items included.
+    fn occupied_ranges(&self, item_tracks: &[Range<usize>], track: usize) -> Vec<(f32, f32)> {
+        let ranges = self
+            .items
+            .iter()
+            .zip(item_tracks)
+            .filter(|(_, tracks)| tracks.contains(&track))
+            .map(|(item, _)| (item.2, item.3 + self.stacking_gap + 0.01))
+            .collect();
+        union_ranges(ranges)
+            .into_iter()
+            .map(|(start, end)| (start, end - self.stacking_gap - 0.01))
+            .collect()
+    }
+
+    /// Computes all gap decorations of the container, in paint order. Segment
+    /// coordinates are in the container's border box space.
+    pub(crate) fn segments(&self, style: &ComputedValues) -> Vec<GapRuleSegment> {
+        let grid_gaps = self.tracks.len().saturating_sub(1);
+        // Rules in the gaps between tracks: column rules when the tracks are columns.
+        let grid_rules = AxisRules::new(style, !self.tracks_are_rows, grid_gaps);
+        let item_tracks: Vec<Range<usize>> =
+            self.items.iter().map(|item| self.item_tracks(item)).collect();
+
+        let mut grid_segments = Vec::new();
+        for gap in 0..grid_gaps {
+            if !grid_rules.paints(gap) {
+                continue;
+            }
+            let center = (self.tracks[gap].1 + self.tracks[gap + 1].0) / 2.;
+            // Items spanning the gap interrupt the rule, keeping the stacking gap clear.
+            let mut blocked: Vec<(f32, f32)> = self
+                .items
+                .iter()
+                .zip(&item_tracks)
+                .filter(|(_, tracks)| tracks.start <= gap && tracks.end > gap + 1)
+                .map(|(item, _)| (item.2 - self.stacking_gap, item.3 + self.stacking_gap))
+                .collect();
+            blocked.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut pieces = Vec::new();
+            let mut cursor = self.stacking_extent.0;
+            if grid_rules.rule_break == GapRuleBreak::None {
+                pieces.push((cursor, self.stacking_extent.1));
+            } else {
+                for (start, end) in blocked {
+                    if start > cursor {
+                        pieces.push((cursor, start));
+                    }
+                    cursor = cursor.max(end);
+                }
+                if cursor < self.stacking_extent.1 {
+                    pieces.push((cursor, self.stacking_extent.1));
+                }
+            }
+            // <https://drafts.csswg.org/css-gaps-1/#visibility>
+            // Paint only where items sit on one (`around`) or both (`between`) sides. The
+            // stacking gaps between consecutive items do not count as empty.
+            let pieces = match grid_rules.visibility {
+                GapRuleVisibilityItems::All | GapRuleVisibilityItems::Normal => pieces,
+                visibility => {
+                    let before = self.occupied_ranges(&item_tracks, gap);
+                    let after = self.occupied_ranges(&item_tracks, gap + 1);
+                    let visible = if visibility == GapRuleVisibilityItems::Around {
+                        union_ranges(before.into_iter().chain(after).collect())
+                    } else {
+                        intersect_ranges(&before, &after)
+                    };
+                    intersect_ranges(&pieces, &visible)
+                },
+            };
+            for (start, end) in pieces {
+                let start = start + resolve_inset(&grid_rules.inset_cap_start, None, 0.);
+                let end = end - resolve_inset(&grid_rules.inset_cap_end, None, 0.);
+                if end > start {
+                    grid_segments.push(GapRuleSegment {
+                        center,
+                        start,
+                        end,
+                        vertical: !self.tracks_are_rows,
+                        width: grid_rules.widths[gap],
+                        style: grid_rules.styles[gap],
+                        color: grid_rules.colors[gap],
+                    });
+                }
+            }
+        }
+
+        // Rules between consecutive items in each track. The value list restarts in each
+        // track.
+        let mut stacking_segments = Vec::new();
+        for track in 0..self.tracks.len() {
+            let mut items: Vec<(f32, f32)> = self
+                .items
+                .iter()
+                .zip(&item_tracks)
+                .filter(|(_, tracks)| tracks.contains(&track))
+                .map(|(item, _)| (item.2, item.3))
+                .collect();
+            items.sort_by(|a, b| a.0.total_cmp(&b.0));
+            if items.len() < 2 {
+                continue;
+            }
+            let rules = AxisRules::new(style, self.tracks_are_rows, items.len() - 1);
+            // The track's edges abut the gaps between tracks, if any.
+            let junction = |gap: Option<usize>| {
+                gap.filter(|gap| grid_rules.paints(*gap)).map(|gap| {
+                    (
+                        self.tracks[gap + 1].0 - self.tracks[gap].1,
+                        grid_rules.widths[gap],
+                    )
+                })
+            };
+            let start_junction = junction(track.checked_sub(1));
+            let end_junction = junction((track + 1 < self.tracks.len()).then_some(track));
+            for (index, pair) in items.windows(2).enumerate() {
+                if !rules.paints(index) {
+                    continue;
+                }
+                let start_inset = match start_junction {
+                    Some((size, width)) => {
+                        resolve_inset(&rules.inset_junction_start, Some(size), width)
+                    },
+                    None => resolve_inset(&rules.inset_cap_start, None, 0.),
+                };
+                let end_inset = match end_junction {
+                    Some((size, width)) => resolve_inset(&rules.inset_junction_end, Some(size), width),
+                    None => resolve_inset(&rules.inset_cap_end, None, 0.),
+                };
+                let start = self.tracks[track].0 + start_inset;
+                let end = self.tracks[track].1 - end_inset;
+                if end > start {
+                    stacking_segments.push(GapRuleSegment {
+                        center: (pair[0].1 + pair[1].0) / 2.,
+                        start,
+                        end,
+                        vertical: self.tracks_are_rows,
+                        width: rules.widths[index],
+                        style: rules.styles[index],
+                        color: rules.colors[index],
+                    });
+                }
+            }
+        }
+
+        let (mut columns, rows) = if self.tracks_are_rows {
+            (stacking_segments, grid_segments)
+        } else {
+            (grid_segments, stacking_segments)
+        };
+        match style.get_column().rule_overlap {
+            RuleOverlap::RowOverColumn => {
+                columns.extend(rows);
+                columns
+            },
+            RuleOverlap::ColumnOverRow => {
+                let mut rows = rows;
+                rows.extend(columns);
+                rows
+            },
+        }
+    }
+}
+
+/// Merges overlapping ranges, returning them sorted.
+fn union_ranges(mut ranges: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+    ranges.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut merged: Vec<(f32, f32)> = Vec::new();
+    for range in ranges {
+        match merged.last_mut() {
+            Some(last) if range.0 <= last.1 => last.1 = last.1.max(range.1),
+            _ => merged.push(range),
+        }
+    }
+    merged
+}
+
+/// Intersects two sorted lists of disjoint ranges.
+fn intersect_ranges(a: &[(f32, f32)], b: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    let mut result = Vec::new();
+    for x in a {
+        for y in b {
+            let start = x.0.max(y.0);
+            let end = x.1.min(y.1);
+            if end > start {
+                result.push((start, end));
+            }
+        }
+    }
+    result.sort_by(|p, q| p.0.total_cmp(&q.0));
+    result
+}

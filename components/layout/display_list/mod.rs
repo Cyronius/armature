@@ -1817,10 +1817,14 @@ impl<'a> BuilderForBoxFragment<'a> {
             return;
         };
         let style = self.fragment.style();
+        let info = &grid_info.info;
+        if style.get_display().inside() == style::values::specified::box_::DisplayInside::GridLanes {
+            self.build_grid_lanes_gap_decorations(builder, state, info);
+            return;
+        }
         if style.get_display().inside() != style::values::specified::box_::DisplayInside::Grid {
             return;
         }
-        let info = &grid_info.info;
         // Collapsed `auto-fit` tracks don't produce gaps; drop them and remap item lines.
         let tracks = |tracks: &taffy::DetailedGridTracksInfo<_>| -> (Vec<(f32, f32)>, Vec<usize>) {
             let mut kept_before = Vec::with_capacity(tracks.positions.len() + 1);
@@ -1882,6 +1886,95 @@ impl<'a> BuilderForBoxFragment<'a> {
             columns_reversed,
             rows_reversed,
         );
+    }
+
+    fn build_grid_lanes_gap_decorations(
+        &self,
+        builder: &mut DisplayListBuilder,
+        state: &TraversalState,
+        info: &taffy::DetailedGridInfo<style::Atom>,
+    ) {
+        let style = self.fragment.style();
+        let tracks_are_rows = crate::taffy::grid_lanes_use_rows(style);
+        let track_info = if tracks_are_rows {
+            &info.rows
+        } else {
+            &info.columns
+        };
+        // Collapsed `auto-fit` tracks don't produce gaps.
+        let mut tracks: Vec<(f32, f32)> = track_info
+            .positions
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| {
+                !track_info
+                    .collapsed_tracks
+                    .iter()
+                    .any(|range| range.contains(index))
+            })
+            .map(|(_, line)| (line.start, line.end))
+            .collect();
+        let reversed = tracks.len() > 1 && tracks[0].0 > tracks[tracks.len() - 1].0;
+        if reversed {
+            tracks.reverse();
+        }
+
+        // Item margin boxes, in the container's border box space.
+        let content_offset = self.fragment.content_rect().origin.to_vector() -
+            self.fragment.border_rect().origin.to_vector();
+        let items = self
+            .fragment
+            .children
+            .iter()
+            .filter_map(|child| match child {
+                Fragment::Box(box_fragment) => {
+                    let rect = box_fragment.margin_rect().translate(content_offset);
+                    let (x0, x1) = (rect.min_x().to_f32_px(), rect.max_x().to_f32_px());
+                    let (y0, y1) = (rect.min_y().to_f32_px(), rect.max_y().to_f32_px());
+                    Some(if tracks_are_rows {
+                        (y0, y1, x0, x1)
+                    } else {
+                        (x0, x1, y0, y1)
+                    })
+                },
+                _ => None,
+            })
+            .collect();
+        let content = self
+            .fragment
+            .content_rect()
+            .translate(-self.fragment.border_rect().origin.to_vector());
+        let (stacking_extent, stacking_size, stacking_gap) = if tracks_are_rows {
+            (
+                (content.min_x(), content.max_x()),
+                content.width(),
+                style.get_column_gap(),
+            )
+        } else {
+            (
+                (content.min_y(), content.max_y()),
+                content.height(),
+                style.get_row_gap(),
+            )
+        };
+        let stacking_gap = match stacking_gap {
+            style::values::computed::length::NonNegativeLengthPercentageOrNormal::LengthPercentage(
+                value,
+            ) => value.to_used_value(stacking_size),
+            _ => Au::zero(),
+        };
+        let layout = gap_decorations::GridLanesGapLayout {
+            tracks,
+            items,
+            stacking_extent: (
+                stacking_extent.0.to_f32_px(),
+                stacking_extent.1.to_f32_px(),
+            ),
+            stacking_gap: stacking_gap.to_f32_px(),
+            tracks_are_rows,
+        };
+        let origin = self.border_rect.min;
+        self.paint_gap_segments(builder, state, origin, layout.segments(style), false, false);
     }
 
     /// Paint gap decoration segments, given relative to `origin`. Reversed axes were
