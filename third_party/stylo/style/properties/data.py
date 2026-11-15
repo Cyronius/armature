@@ -677,6 +677,9 @@ class Longhand(Property):
                 "GridAutoFlow",
                 # Armature (AS-526): The Grid Lanes direction value is copyable.
                 "GridLanesDirection",
+                # Armature (AS-527): Gap decoration keywords are copyable.
+                "GapRuleBreak",
+                "GapRuleVisibilityItems",
                 "ImageDecoding",
                 "ImageRendering",
                 "Inert",
@@ -710,6 +713,8 @@ class Longhand(Property):
                 "ForcedColorAdjust",
                 "Resize",
                 "RubyPosition",
+                # Armature (AS-527): The gap decoration overlap keyword is copyable.
+                "RuleOverlap",
                 "SVGPaintOrder",
                 "ScrollbarGutter",
                 "ScrollSnapAlign",

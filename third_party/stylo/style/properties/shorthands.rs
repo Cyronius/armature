@@ -811,39 +811,540 @@ pub mod columns {
 }
 
 // Armature (AS-304): Build for Servo too, now that column-rule is enabled there.
-pub mod column_rule {
-    pub use crate::properties::generated::shorthands::column_rule::*;
+// Armature (AS-527): Gap decoration shorthands.
+// https://drafts.csswg.org/css-gaps-1/
+mod gap_rules {
+    use super::*;
+    use crate::values::generics::gaps::{GenericGapRuleList, GenericGapRuleListItem};
+    use crate::values::specified::gaps::{GapRule, GapRuleInset};
+    use crate::values::specified::{
+        BorderSideWidth, BorderStyle, Color, GapRuleColor, GapRuleStyle, GapRuleWidth,
+        PositiveInteger,
+    };
+    use crate::OwnedSlice;
+
+    type RuleList = GenericGapRuleList<GapRule, PositiveInteger>;
+
+    fn map_values<T>(values: &[GapRule], f: impl Fn(&GapRule) -> T) -> OwnedSlice<T> {
+        values.iter().map(f).collect::<Vec<_>>().into()
+    }
+
+    fn map_list<T>(list: &RuleList, f: impl Fn(&GapRule) -> T + Copy) -> GenericGapRuleList<T, PositiveInteger> {
+        GenericGapRuleList(
+            list.items()
+                .iter()
+                .map(|item| match item {
+                    GenericGapRuleListItem::Value(rule) => GenericGapRuleListItem::Value(f(rule)),
+                    GenericGapRuleListItem::Repeat(count, values) => {
+                        GenericGapRuleListItem::Repeat(count.clone(), map_values(values, f))
+                    },
+                    GenericGapRuleListItem::AutoRepeat(values) => {
+                        GenericGapRuleListItem::AutoRepeat(map_values(values, f))
+                    },
+                })
+                .collect::<Vec<_>>()
+                .into(),
+        )
+    }
+
+    /// Parses `<gap-rule-list> | <gap-auto-rule-list>` into width, style and
+    /// color lists.
+    pub fn parse(
+        context: &ParserContext,
+        input: &mut Parser,
+    ) -> Result<(GapRuleWidth, GapRuleStyle, GapRuleColor), ParseError> {
+        let list = RuleList::parse(context, input)?;
+        Ok((
+            map_list(&list, |rule| {
+                rule.width.clone().unwrap_or_else(BorderSideWidth::medium)
+            }),
+            map_list(&list, |rule| rule.style.unwrap_or(BorderStyle::None)),
+            map_list(&list, |rule| {
+                rule.color.clone().unwrap_or_else(Color::currentcolor)
+            }),
+        ))
+    }
+
+    fn rule_to_css<W: Write>(
+        width: &BorderSideWidth,
+        style: &BorderStyle,
+        color: &Color,
+        dest: &mut CssWriter<W>,
+    ) -> fmt::Result {
+        let mut writer = SequenceWriter::new(dest, " ");
+        let mut wrote = false;
+        if *width != BorderSideWidth::medium() {
+            writer.item(width)?;
+            wrote = true;
+        }
+        if *style != BorderStyle::None {
+            writer.item(style)?;
+            wrote = true;
+        }
+        if *color != Color::currentcolor() {
+            writer.item(color)?;
+            wrote = true;
+        }
+        if !wrote {
+            writer.item(width)?;
+        }
+        Ok(())
+    }
+
+    fn values_to_css<W: Write>(
+        widths: &[BorderSideWidth],
+        styles: &[BorderStyle],
+        colors: &[Color],
+        dest: &mut CssWriter<W>,
+    ) -> fmt::Result {
+        for ((width, style), color) in widths.iter().zip(styles).zip(colors) {
+            dest.write_str(", ")?;
+            rule_to_css(width, style, color, dest)?;
+        }
+        dest.write_char(')')
+    }
+
+    /// Whether the three lists have matching repeaters, so that they can be
+    /// serialized as one shorthand list.
+    fn repeater_aligned(width: &GapRuleWidth, style: &GapRuleStyle, color: &GapRuleColor) -> bool {
+        let (w, s, c) = (width.items(), style.items(), color.items());
+        if w.len() != s.len() || w.len() != c.len() {
+            return false;
+        }
+        w.iter().zip(s).zip(c).all(|((w, s), c)| match (w, s, c) {
+            (
+                GenericGapRuleListItem::Value(_),
+                GenericGapRuleListItem::Value(_),
+                GenericGapRuleListItem::Value(_),
+            ) => true,
+            (
+                GenericGapRuleListItem::Repeat(wn, wv),
+                GenericGapRuleListItem::Repeat(sn, sv),
+                GenericGapRuleListItem::Repeat(cn, cv),
+            ) => wn == sn && wn == cn && wv.len() == sv.len() && wv.len() == cv.len(),
+            (
+                GenericGapRuleListItem::AutoRepeat(wv),
+                GenericGapRuleListItem::AutoRepeat(sv),
+                GenericGapRuleListItem::AutoRepeat(cv),
+            ) => wv.len() == sv.len() && wv.len() == cv.len(),
+            _ => false,
+        })
+    }
+
+    /// Serializes width, style and color lists as a gap rule list, writing
+    /// nothing if they cannot be combined.
+    pub fn to_css<W: Write>(
+        width: &GapRuleWidth,
+        style: &GapRuleStyle,
+        color: &GapRuleColor,
+        dest: &mut CssWriter<W>,
+    ) -> fmt::Result {
+        if !repeater_aligned(width, style, color) {
+            return Ok(());
+        }
+        let mut first = true;
+        for ((w, s), c) in width.items().iter().zip(style.items()).zip(color.items()) {
+            if !first {
+                dest.write_str(", ")?;
+            }
+            first = false;
+            match (w, s, c) {
+                (
+                    GenericGapRuleListItem::Value(w),
+                    GenericGapRuleListItem::Value(s),
+                    GenericGapRuleListItem::Value(c),
+                ) => rule_to_css(w, s, c, dest)?,
+                (
+                    GenericGapRuleListItem::Repeat(count, w),
+                    GenericGapRuleListItem::Repeat(_, s),
+                    GenericGapRuleListItem::Repeat(_, c),
+                ) => {
+                    dest.write_str("repeat(")?;
+                    count.to_css(dest)?;
+                    values_to_css(w, s, c, dest)?;
+                },
+                (
+                    GenericGapRuleListItem::AutoRepeat(w),
+                    GenericGapRuleListItem::AutoRepeat(s),
+                    GenericGapRuleListItem::AutoRepeat(c),
+                ) => {
+                    dest.write_str("repeat(auto")?;
+                    values_to_css(w, s, c, dest)?;
+                },
+                _ => unreachable!("lists are repeater aligned"),
+            }
+        }
+        Ok(())
+    }
+
+    /// Parses `<cap-start> <cap-end>? [ / <junction-start> <junction-end>? ]?`
+    /// into cap start, cap end, junction start and junction end.
+    pub fn parse_inset(
+        context: &ParserContext,
+        input: &mut Parser,
+    ) -> Result<[GapRuleInset; 4], ParseError> {
+        let (cap_start, cap_end) = parse_inset_pair(context, input)?;
+        let (junction_start, junction_end) = if input.try_parse(|i| i.expect_delim('/')).is_ok() {
+            parse_inset_pair(context, input)?
+        } else {
+            (cap_start.clone(), cap_end.clone())
+        };
+        Ok([cap_start, cap_end, junction_start, junction_end])
+    }
+
+    /// Parses `<inset-value> <inset-value>?`, copying the first value when the
+    /// second is omitted.
+    pub fn parse_inset_pair(
+        context: &ParserContext,
+        input: &mut Parser,
+    ) -> Result<(GapRuleInset, GapRuleInset), ParseError> {
+        let start = GapRuleInset::parse(context, input)?;
+        let end = input
+            .try_parse(|i| GapRuleInset::parse(context, i))
+            .unwrap_or_else(|_| start.clone());
+        Ok((start, end))
+    }
+
+    /// Serializes an inset pair, collapsing equal values.
+    pub fn inset_pair_to_css<W: Write>(
+        start: &GapRuleInset,
+        end: &GapRuleInset,
+        dest: &mut CssWriter<W>,
+    ) -> fmt::Result {
+        start.to_css(dest)?;
+        if start != end {
+            dest.write_char(' ')?;
+            end.to_css(dest)?;
+        }
+        Ok(())
+    }
+
+    /// Serializes the four insets of a universal inset shorthand.
+    pub fn inset_to_css<W: Write>(
+        cap_start: &GapRuleInset,
+        cap_end: &GapRuleInset,
+        junction_start: &GapRuleInset,
+        junction_end: &GapRuleInset,
+        dest: &mut CssWriter<W>,
+    ) -> fmt::Result {
+        if cap_start == cap_end && cap_start == junction_start && cap_start == junction_end {
+            return cap_start.to_css(dest);
+        }
+        cap_start.to_css(dest)?;
+        dest.write_char(' ')?;
+        cap_end.to_css(dest)?;
+        dest.write_str(" / ")?;
+        junction_start.to_css(dest)?;
+        dest.write_char(' ')?;
+        junction_end.to_css(dest)
+    }
+}
+
+macro_rules! gap_rule_shorthand {
+    ($module: ident, $width: ident, $style: ident, $color: ident) => {
+        pub mod $module {
+            pub use crate::properties::generated::shorthands::$module::*;
+
+            use super::*;
+
+            pub fn parse_value(
+                context: &ParserContext,
+                input: &mut Parser,
+            ) -> Result<Longhands, ParseError> {
+                let (width, style, color) = gap_rules::parse(context, input)?;
+                Ok(expanded! {
+                    $width: width,
+                    $style: style,
+                    $color: color,
+                })
+            }
+
+            impl<'a> ToCss for LonghandsToSerialize<'a> {
+                fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+                where
+                    W: fmt::Write,
+                {
+                    gap_rules::to_css(self.$width, self.$style, self.$color, dest)
+                }
+            }
+        }
+    };
+}
+
+gap_rule_shorthand!(column_rule, column_rule_width, column_rule_style, column_rule_color);
+gap_rule_shorthand!(row_rule, row_rule_width, row_rule_style, row_rule_color);
+
+pub mod rule {
+    pub use crate::properties::generated::shorthands::rule::*;
 
     use super::*;
-    use crate::properties::longhands::column_rule_color;
-    use crate::properties::longhands::{column_rule_style, column_rule_width};
 
     pub fn parse_value(
         context: &ParserContext,
         input: &mut Parser,
     ) -> Result<Longhands, ParseError> {
-        let mut column_rule_width = None;
-        let mut column_rule_style = None;
-        let mut column_rule_color = None;
-        let mut parsed = 0;
-        loop {
-            parsed += 1;
-            try_parse_one!(context, input, column_rule_width, column_rule_width::parse);
-            try_parse_one!(context, input, column_rule_style, column_rule_style::parse);
-            try_parse_one!(context, input, column_rule_color, column_rule_color::parse);
-            parsed -= 1;
-            break;
-        }
-        if parsed == 0 {
-            return Err(ParseError::custom(StyleParseErrorKind::UnspecifiedError));
-        }
+        let (width, style, color) = gap_rules::parse(context, input)?;
         Ok(expanded! {
-            column_rule_width: unwrap_or_initial!(column_rule_width),
-            column_rule_style: unwrap_or_initial!(column_rule_style),
-            column_rule_color: unwrap_or_initial!(column_rule_color),
+            column_rule_width: width.clone(),
+            column_rule_style: style.clone(),
+            column_rule_color: color.clone(),
+            row_rule_width: width,
+            row_rule_style: style,
+            row_rule_color: color,
         })
     }
+
+    impl<'a> ToCss for LonghandsToSerialize<'a> {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+        where
+            W: fmt::Write,
+        {
+            if self.column_rule_width != self.row_rule_width ||
+                self.column_rule_style != self.row_rule_style ||
+                self.column_rule_color != self.row_rule_color
+            {
+                return Ok(());
+            }
+            gap_rules::to_css(
+                self.column_rule_width,
+                self.column_rule_style,
+                self.column_rule_color,
+                dest,
+            )
+        }
+    }
 }
+
+/// A shorthand that sets the same value on two longhands, and serializes only
+/// when they are equal.
+macro_rules! gap_pair_shorthand {
+    ($module: ident, $first: ident, $second: ident) => {
+        pub mod $module {
+            pub use crate::properties::generated::shorthands::$module::*;
+
+            use super::*;
+            use crate::properties::longhands::$first;
+
+            pub fn parse_value(
+                context: &ParserContext,
+                input: &mut Parser,
+            ) -> Result<Longhands, ParseError> {
+                let value = $first::parse(context, input)?;
+                Ok(expanded! {
+                    $first: value.clone(),
+                    $second: value,
+                })
+            }
+
+            impl<'a> ToCss for LonghandsToSerialize<'a> {
+                fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+                where
+                    W: fmt::Write,
+                {
+                    if self.$first != self.$second {
+                        return Ok(());
+                    }
+                    self.$first.to_css(dest)
+                }
+            }
+        }
+    };
+}
+
+gap_pair_shorthand!(rule_color, column_rule_color, row_rule_color);
+gap_pair_shorthand!(rule_style, column_rule_style, row_rule_style);
+gap_pair_shorthand!(rule_width, column_rule_width, row_rule_width);
+gap_pair_shorthand!(rule_break, column_rule_break, row_rule_break);
+gap_pair_shorthand!(rule_visibility_items, column_rule_visibility_items, row_rule_visibility_items);
+gap_pair_shorthand!(column_rule_inset_start, column_rule_inset_cap_start, column_rule_inset_junction_start);
+gap_pair_shorthand!(column_rule_inset_end, column_rule_inset_cap_end, column_rule_inset_junction_end);
+gap_pair_shorthand!(row_rule_inset_start, row_rule_inset_cap_start, row_rule_inset_junction_start);
+gap_pair_shorthand!(row_rule_inset_end, row_rule_inset_cap_end, row_rule_inset_junction_end);
+
+/// A shorthand that sets the same value on four longhands.
+macro_rules! gap_quad_shorthand {
+    ($module: ident, $a: ident, $b: ident, $c: ident, $d: ident) => {
+        pub mod $module {
+            pub use crate::properties::generated::shorthands::$module::*;
+
+            use super::*;
+            use crate::values::specified::GapRuleInset;
+
+            pub fn parse_value(
+                context: &ParserContext,
+                input: &mut Parser,
+            ) -> Result<Longhands, ParseError> {
+                let value = GapRuleInset::parse(context, input)?;
+                Ok(expanded! {
+                    $a: value.clone(),
+                    $b: value.clone(),
+                    $c: value.clone(),
+                    $d: value,
+                })
+            }
+
+            impl<'a> ToCss for LonghandsToSerialize<'a> {
+                fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+                where
+                    W: fmt::Write,
+                {
+                    if self.$a != self.$b || self.$a != self.$c || self.$a != self.$d {
+                        return Ok(());
+                    }
+                    self.$a.to_css(dest)
+                }
+            }
+        }
+    };
+}
+
+gap_quad_shorthand!(
+    rule_inset_start,
+    column_rule_inset_cap_start,
+    column_rule_inset_junction_start,
+    row_rule_inset_cap_start,
+    row_rule_inset_junction_start
+);
+gap_quad_shorthand!(
+    rule_inset_end,
+    column_rule_inset_cap_end,
+    column_rule_inset_junction_end,
+    row_rule_inset_cap_end,
+    row_rule_inset_junction_end
+);
+
+/// `<inset-value> <inset-value>?` setting a start and end longhand, for each
+/// axis listed.
+macro_rules! gap_inset_pair_shorthand {
+    ($module: ident, $( ($start: ident, $end: ident) ),+) => {
+        pub mod $module {
+            pub use crate::properties::generated::shorthands::$module::*;
+
+            use super::*;
+
+            pub fn parse_value(
+                context: &ParserContext,
+                input: &mut Parser,
+            ) -> Result<Longhands, ParseError> {
+                let (start, end) = gap_rules::parse_inset_pair(context, input)?;
+                Ok(expanded! {
+                    $(
+                        $start: start.clone(),
+                        $end: end.clone(),
+                    )+
+                })
+            }
+
+            impl<'a> ToCss for LonghandsToSerialize<'a> {
+                fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+                where
+                    W: fmt::Write,
+                {
+                    let pairs = [$( (self.$start, self.$end) ),+];
+                    if pairs.iter().any(|pair| *pair != pairs[0]) {
+                        return Ok(());
+                    }
+                    gap_rules::inset_pair_to_css(pairs[0].0, pairs[0].1, dest)
+                }
+            }
+        }
+    };
+}
+
+gap_inset_pair_shorthand!(column_rule_inset_cap, (column_rule_inset_cap_start, column_rule_inset_cap_end));
+gap_inset_pair_shorthand!(row_rule_inset_cap, (row_rule_inset_cap_start, row_rule_inset_cap_end));
+gap_inset_pair_shorthand!(
+    column_rule_inset_junction,
+    (column_rule_inset_junction_start, column_rule_inset_junction_end)
+);
+gap_inset_pair_shorthand!(
+    row_rule_inset_junction,
+    (row_rule_inset_junction_start, row_rule_inset_junction_end)
+);
+gap_inset_pair_shorthand!(
+    rule_inset_cap,
+    (column_rule_inset_cap_start, column_rule_inset_cap_end),
+    (row_rule_inset_cap_start, row_rule_inset_cap_end)
+);
+gap_inset_pair_shorthand!(
+    rule_inset_junction,
+    (column_rule_inset_junction_start, column_rule_inset_junction_end),
+    (row_rule_inset_junction_start, row_rule_inset_junction_end)
+);
+
+/// The universal inset shorthands, for each axis listed.
+macro_rules! gap_inset_shorthand {
+    ($module: ident, $( ($cs: ident, $ce: ident, $js: ident, $je: ident) ),+) => {
+        pub mod $module {
+            pub use crate::properties::generated::shorthands::$module::*;
+
+            use super::*;
+
+            pub fn parse_value(
+                context: &ParserContext,
+                input: &mut Parser,
+            ) -> Result<Longhands, ParseError> {
+                let [cs, ce, js, je] = gap_rules::parse_inset(context, input)?;
+                Ok(expanded! {
+                    $(
+                        $cs: cs.clone(),
+                        $ce: ce.clone(),
+                        $js: js.clone(),
+                        $je: je.clone(),
+                    )+
+                })
+            }
+
+            impl<'a> ToCss for LonghandsToSerialize<'a> {
+                fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+                where
+                    W: fmt::Write,
+                {
+                    let axes = [$( (self.$cs, self.$ce, self.$js, self.$je) ),+];
+                    if axes.iter().any(|axis| *axis != axes[0]) {
+                        return Ok(());
+                    }
+                    let (cs, ce, js, je) = axes[0];
+                    gap_rules::inset_to_css(cs, ce, js, je, dest)
+                }
+            }
+        }
+    };
+}
+
+gap_inset_shorthand!(
+    column_rule_inset,
+    (
+        column_rule_inset_cap_start,
+        column_rule_inset_cap_end,
+        column_rule_inset_junction_start,
+        column_rule_inset_junction_end
+    )
+);
+gap_inset_shorthand!(
+    row_rule_inset,
+    (
+        row_rule_inset_cap_start,
+        row_rule_inset_cap_end,
+        row_rule_inset_junction_start,
+        row_rule_inset_junction_end
+    )
+);
+gap_inset_shorthand!(
+    rule_inset,
+    (
+        column_rule_inset_cap_start,
+        column_rule_inset_cap_end,
+        column_rule_inset_junction_start,
+        column_rule_inset_junction_end
+    ),
+    (
+        row_rule_inset_cap_start,
+        row_rule_inset_cap_end,
+        row_rule_inset_junction_start,
+        row_rule_inset_junction_end
+    )
+);
 
 pub mod text_wrap {
     pub use crate::properties::generated::shorthands::text_wrap::*;

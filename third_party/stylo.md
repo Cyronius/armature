@@ -474,3 +474,13 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Grid Lanes direction and reversal values need to enter computed styles so the
   layout algorithm can place items in the requested order.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-527: Parse gap decoration properties in Servo
+- Files: `style/properties/data.py`, `style/properties/longhands.toml`, `style/properties/shorthands.rs`,
+  `style/properties/shorthands.toml`, `style/values/computed/gaps.rs`, `style/values/computed/mod.rs`,
+  `style/values/generics/gaps.rs`, `style/values/generics/mod.rs`, `style/values/specified/gaps.rs`,
+  `style/values/specified/mod.rs`
+- Why: CSS Gap Decorations paint rules in the gaps of grid and flex containers. `column-rule-*` accept
+  value lists with `repeat()`, and the `row-rule-*`, `rule-*`, rule break, visibility, inset and overlap
+  properties and their shorthands enter computed styles, behind the columns preference.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

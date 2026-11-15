@@ -78,6 +78,11 @@ pub use self::color::{
     Color, ColorOrAuto, ColorPropertyValue, ColorScheme, ForcedColorAdjust, PrintColorAdjust,
 };
 pub use self::column::{ColumnCount, ColumnFill, ColumnSpan};
+// Armature (AS-527): Gap decoration values.
+pub use self::gaps::{
+    GapRuleBreak, GapRuleColor, GapRuleInset, GapRuleStyle, GapRuleVisibilityItems, GapRuleWidth,
+    RuleOverlap,
+};
 pub use self::corner_shape::{CornerShape, CornerShapeRect};
 pub use self::counters::{Content, ContentItem, CounterIncrement, CounterReset, CounterSet};
 pub use self::easing::TimingFunction;
@@ -168,6 +173,8 @@ pub mod counters;
 pub mod easing;
 pub mod effects;
 pub mod flex;
+// Armature (AS-527): Gap decoration values.
+pub mod gaps;
 pub mod font;
 pub mod image;
 pub mod length;

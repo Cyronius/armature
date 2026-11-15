@@ -22,6 +22,8 @@ pub mod counters;
 pub mod easing;
 pub mod effects;
 pub mod flex;
+// Armature (AS-527): Gap decoration values.
+pub mod gaps;
 pub mod font;
 pub mod grid;
 pub mod image;
