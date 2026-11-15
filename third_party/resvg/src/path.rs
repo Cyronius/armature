@@ -61,7 +61,7 @@ pub fn fill_path(
             paint.shader = tiny_skia::Pattern::new(
                 pattern_pixmap.as_ref(),
                 tiny_skia::SpreadMode::Repeat,
-                tiny_skia::FilterQuality::Bicubic,
+                pattern_filter_quality(patt_ts),
                 fill.opacity().get(),
                 patt_ts,
             );
@@ -101,7 +101,7 @@ fn stroke_path(
             paint.shader = tiny_skia::Pattern::new(
                 pattern_pixmap.as_ref(),
                 tiny_skia::SpreadMode::Repeat,
-                tiny_skia::FilterQuality::Bicubic,
+                pattern_filter_quality(patt_ts),
                 stroke.opacity().get(),
                 patt_ts,
             );
@@ -202,4 +202,15 @@ fn render_pattern_pixmap(
     ts = ts.pre_scale(1.0 / sx, 1.0 / sy);
 
     Some((pixmap, ts))
+}
+
+/// Armature (AR-001): Sample pattern tiles without filtering when the tile maps to the
+/// canvas without rotation or skew. Filtering a repeated tile blends colors from the
+/// opposite edge of the tile into its edges.
+fn pattern_filter_quality(transform: tiny_skia::Transform) -> tiny_skia::FilterQuality {
+    if transform.kx == 0.0 && transform.ky == 0.0 {
+        tiny_skia::FilterQuality::Nearest
+    } else {
+        tiny_skia::FilterQuality::Bicubic
+    }
 }
