@@ -25,6 +25,8 @@ pub use crate::values::specified::box_::{
     PositionProperty, ScrollBehavior, ScrollSnapAlign, ScrollSnapAxis, ScrollSnapStop,
     ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter, TextOrientation, TopLayer, TouchAction,
     Visibility, WillChange, WritingModeProperty,
+    // Armature (AS-536): Scroll marker properties.
+    ScrollAxisLock, ScrollMarkerGroup, ScrollTargetGroup,
 };
 
 /// A computed value for the `baseline-shift` property.

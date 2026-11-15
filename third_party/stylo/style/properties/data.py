@@ -625,6 +625,10 @@ class Longhand(Property):
                 "RubyAlign",
                 # Armature (AS-535): text-group-align.
                 "TextGroupAlign",
+                # Armature (AS-536): Scroll marker properties.
+                "ScrollTargetGroup",
+                "ScrollAxisLock",
+                "ScrollMarkerGroup",
                 "TextSizeAdjust",
                 "Hyphens",
                 "EmptyCells",

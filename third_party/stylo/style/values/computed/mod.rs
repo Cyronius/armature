@@ -70,6 +70,8 @@ pub use self::box_::{
     ContainIntrinsicSize, ContainerName, ContainerType, ContentVisibility, DirectionProperty,
     Display, DominantBaseline, Float, ImageOrientation, Isolation, LineClamp, MarginTrim, Orient,
     Overflow, OverflowAnchor, OverflowClipMargin, OverscrollBehavior, Perspective,
+    // Armature (AS-536): Scroll marker properties.
+    ScrollAxisLock, ScrollMarkerGroup, ScrollTargetGroup,
     PositionProperty, Resize, ScrollBehavior, ScrollSnapAlign, ScrollSnapAxis, ScrollSnapStop,
     ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter, ScrollbarInset, TextOrientation,
     TopLayer, TouchAction, Visibility, WillChange, WritingModeProperty, Zoom,

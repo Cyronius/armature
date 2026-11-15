@@ -2852,6 +2852,34 @@ animation_type = "discrete"
 spec = "https://drafts.csswg.org/css-text-4/#propdef-text-group-align"
 affects = "layout"
 
+# Armature (AS-536): Scroll marker properties.
+[scroll-target-group]
+type = "ScrollTargetGroup"
+initial = "computed::ScrollTargetGroup::None"
+struct = "box"
+engine = "servo"
+animation_type = "discrete"
+spec = "https://drafts.csswg.org/css-overflow-5/#scroll-target-group"
+affects = ""
+
+[scroll-axis-lock]
+type = "ScrollAxisLock"
+initial = "computed::ScrollAxisLock::Auto"
+struct = "box"
+engine = "servo"
+animation_type = "discrete"
+spec = "https://drafts.csswg.org/css-overflow-5/#propdef-scroll-axis-lock"
+affects = ""
+
+[scroll-marker-group]
+type = "ScrollMarkerGroup"
+initial = "computed::ScrollMarkerGroup::none()"
+struct = "box"
+engine = "servo"
+animation_type = "discrete"
+spec = "https://drafts.csswg.org/css-overflow-5/#scroll-marker-group-property"
+affects = "layout"
+
 [tab-size]
 type = "NonNegativeLengthOrNumber"
 initial = "generics::length::LengthOrNumber::Number(From::from(8.0))"

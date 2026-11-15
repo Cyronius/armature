@@ -2645,3 +2645,171 @@ pub enum DirectionProperty {
     Ltr,
     Rtl,
 }
+
+// Armature (AS-536): Scroll marker properties.
+/// The `scroll-target-group` property.
+#[allow(missing_docs)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    Serialize,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(u8)]
+pub enum ScrollTargetGroup {
+    None,
+    Auto,
+}
+
+/// The `scroll-axis-lock` property.
+#[allow(missing_docs)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    Serialize,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(u8)]
+pub enum ScrollAxisLock {
+    Auto,
+    None,
+}
+
+/// The position of a scroll marker group.
+#[allow(missing_docs)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    Serialize,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(u8)]
+pub enum ScrollMarkerGroupSide {
+    None,
+    Before,
+    After,
+}
+
+/// The navigation mode of a scroll marker group.
+#[allow(missing_docs)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    Serialize,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(u8)]
+pub enum ScrollMarkerGroupMode {
+    Links,
+    Tabs,
+}
+
+/// The `scroll-marker-group` property: `none | [ before | after ] [ links | tabs ]?`.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+    ToTyped,
+)]
+#[repr(C)]
+#[typed(todo_derive_fields)]
+pub struct ScrollMarkerGroup {
+    /// Where the group is generated.
+    pub side: ScrollMarkerGroupSide,
+    /// The navigation mode, which computes to `links` when omitted.
+    #[css(skip_if = "Option::is_none")]
+    pub mode: Option<ScrollMarkerGroupMode>,
+}
+
+impl ScrollMarkerGroup {
+    /// The initial value, `none`.
+    pub fn none() -> Self {
+        Self {
+            side: ScrollMarkerGroupSide::None,
+            mode: None,
+        }
+    }
+}
+
+impl Parse for ScrollMarkerGroup {
+    fn parse(_: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
+        let side = Some(ScrollMarkerGroupSide::parse(input)?);
+        let mode = input.try_parse(ScrollMarkerGroupMode::parse).ok();
+        match (side, mode) {
+            (Some(ScrollMarkerGroupSide::None), None) => Ok(Self::none()),
+            (Some(ScrollMarkerGroupSide::None), Some(_)) | (None, _) => {
+                Err(ParseError::custom(StyleParseErrorKind::UnspecifiedError))
+            },
+            (Some(side), mode) => Ok(Self { side, mode }),
+        }
+    }
+}
+
+impl crate::values::computed::ToComputedValue for ScrollMarkerGroup {
+    type ComputedValue = Self;
+
+    fn to_computed_value(&self, _: &crate::values::computed::Context) -> Self {
+        if self.side == ScrollMarkerGroupSide::None {
+            return Self::none();
+        }
+        Self {
+            side: self.side,
+            mode: Some(self.mode.unwrap_or(ScrollMarkerGroupMode::Links)),
+        }
+    }
+
+    fn from_computed_value(computed: &Self) -> Self {
+        *computed
+    }
+}

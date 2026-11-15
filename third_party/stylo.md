@@ -549,3 +549,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   `orphans`, `widows`, `hyphenate-limit-lines` and `text-group-align` for Servo, so that their
   computed values are available even though layout does not use them yet.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-536: Parse the scroll marker properties
+- Files: `style/properties/data.py`, `style/properties/longhands.toml`, `style/values/computed/box.rs`,
+  `style/values/computed/mod.rs`, `style/values/specified/box.rs`, `style/values/specified/mod.rs`
+- Why: Parse `scroll-target-group`, `scroll-axis-lock` and `scroll-marker-group` for Servo. An
+  omitted `scroll-marker-group` mode computes to `links`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
