@@ -531,3 +531,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   reject skipped the flagging, so an element that later started matching never invalidated the
   `:has()` anchor. Flag the search path when fast-rejecting too.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-534: Add the side shorthands of border-radius
+- Files: `style/properties/shorthands.rs`, `style/properties/shorthands.toml`
+- Why: CSS Borders 4 adds `border-{top,right,bottom,left}-radius` and
+  `border-{block,inline}-{start,end}-radius`, which set the radii of the two corners of one side
+  as `<corner> [ / <corner> ]?`.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

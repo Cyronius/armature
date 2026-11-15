@@ -231,6 +231,82 @@ pub mod border_radius {
     }
 }
 
+// Armature (AS-534): Side shorthands of border-radius.
+/// `<corner> [ / <corner> ]?` for the two corners of one side, where each corner is a
+/// horizontal radius and an optional vertical one.
+macro_rules! border_side_radius_shorthand {
+    ($module: ident, $first: ident, $second: ident) => {
+        pub mod $module {
+            pub use crate::properties::generated::shorthands::$module::*;
+
+            use super::*;
+            use crate::values::generics::border::BorderCornerRadius;
+            use crate::values::specified::NonNegativeLengthPercentage;
+
+            fn parse_corner(
+                context: &ParserContext,
+                input: &mut Parser,
+            ) -> Result<BorderCornerRadius<NonNegativeLengthPercentage>, ParseError> {
+                let width = NonNegativeLengthPercentage::parse(context, input)?;
+                let height = input
+                    .try_parse(|input| NonNegativeLengthPercentage::parse(context, input))
+                    .unwrap_or_else(|_| width.clone());
+                Ok(BorderCornerRadius::new(width, height))
+            }
+
+            pub fn parse_value(
+                context: &ParserContext,
+                input: &mut Parser,
+            ) -> Result<Longhands, ParseError> {
+                let first = parse_corner(context, input)?;
+                let second = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                    parse_corner(context, input)?
+                } else {
+                    first.clone()
+                };
+                Ok(expanded! {
+                    $first: first,
+                    $second: second,
+                })
+            }
+
+            impl<'a> ToCss for LonghandsToSerialize<'a> {
+                fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+                where
+                    W: fmt::Write,
+                {
+                    fn corner<W: fmt::Write, L: ToCss + PartialEq>(
+                        radius: &BorderCornerRadius<L>,
+                        dest: &mut CssWriter<W>,
+                    ) -> fmt::Result {
+                        radius.0.width.to_css(dest)?;
+                        if radius.0.height != radius.0.width {
+                            dest.write_char(' ')?;
+                            radius.0.height.to_css(dest)?;
+                        }
+                        Ok(())
+                    }
+                    corner(&self.$first, dest)?;
+                    if self.$first != self.$second {
+                        dest.write_str(" / ")?;
+                        corner(&self.$second, dest)?;
+                    }
+                    Ok(())
+                }
+            }
+        }
+    };
+}
+
+border_side_radius_shorthand!(border_top_radius, border_top_left_radius, border_top_right_radius);
+border_side_radius_shorthand!(border_right_radius, border_top_right_radius, border_bottom_right_radius);
+border_side_radius_shorthand!(border_bottom_radius, border_bottom_left_radius, border_bottom_right_radius);
+border_side_radius_shorthand!(border_left_radius, border_top_left_radius, border_bottom_left_radius);
+border_side_radius_shorthand!(border_block_start_radius, border_start_start_radius, border_start_end_radius);
+border_side_radius_shorthand!(border_block_end_radius, border_end_start_radius, border_end_end_radius);
+border_side_radius_shorthand!(border_inline_start_radius, border_start_start_radius, border_end_start_radius);
+border_side_radius_shorthand!(border_inline_end_radius, border_start_end_radius, border_end_end_radius);
+
 pub mod corner_shape {
     pub use crate::properties::generated::shorthands::corner_shape::*;
 
