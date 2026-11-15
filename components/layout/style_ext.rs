@@ -18,6 +18,8 @@ use style::properties::ComputedValues;
 use style::properties::longhands::backface_visibility::computed_value::T as BackfaceVisiblity;
 use style::properties::longhands::box_sizing::computed_value::T as BoxSizing;
 use style::properties::longhands::column_span::computed_value::T as ColumnSpan;
+use style::properties::longhands::contain::computed_value::T as Contain;
+use style::properties::longhands::content_visibility::computed_value::T as ContentVisibility;
 use style::properties::style_structs::Border;
 use style::servo::selector_parser::PseudoElement;
 use style::values::CSSFloat;
@@ -685,6 +687,21 @@ impl ComputedValuesExt for ComputedValues {
         };
         if ignores_overflow {
             return AxesOverflow::default();
+        }
+
+        // <https://drafts.csswg.org/css-contain-2/#containment-paint>
+        // Paint containment clips the contents to the overflow clip edge, as `overflow: clip`
+        // does. `content-visibility: hidden` implies paint containment.
+        let box_style = self.get_box();
+        if box_style.contain.contains(Contain::PAINT) ||
+            box_style.content_visibility == ContentVisibility::Hidden
+        {
+            if overflow.x == Overflow::Visible {
+                overflow.x = Overflow::Clip;
+            }
+            if overflow.y == Overflow::Visible {
+                overflow.y = Overflow::Clip;
+            }
         }
 
         overflow
