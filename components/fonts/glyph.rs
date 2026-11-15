@@ -736,6 +736,26 @@ impl ShapedTextSlice {
         })
     }
 
+    /// Produce a new [`ShapedTextSlice`] with only the leading glyphs (in physical
+    /// order) whose advances fit in `max_advance`, or `None` if no glyph fits.
+    pub fn truncated_to_advance(&self, max_advance: Au) -> Option<Arc<Self>> {
+        let mut kept = 0;
+        let mut advance = Au::zero();
+        for glyph in self.glyphs() {
+            if advance + glyph.advance() > max_advance {
+                break;
+            }
+            advance += glyph.advance();
+            kept += 1;
+        }
+        if kept == 0 {
+            return None;
+        }
+        let mut new = self.clone();
+        new.split_off_count(self.glyph_count() - kept);
+        Some(Arc::new(new))
+    }
+
     /// Produce a new [`ShapedTextSlice`] that includes all of the glyphs that `self`
     /// does except for the removable portion of the slice.
     pub fn without_removable_white_space(&self) -> Arc<Self> {
