@@ -73,3 +73,8 @@
 
 - Files: `src/parser/paint_server.rs`
 - Why: The CSS `currentcolor` keyword is case-insensitive in `stop-color`. Resolve it from the stop's inherited color instead of painting black when its capitalization differs.
+
+### AU-015: Break indirect clip-path, mask and filter cycles
+
+- Files: `src/parser/svgtree/parse.rs`
+- Why: A clipping path whose content is clipped by another clipping path can reach itself through any number of links, not just one. Follow the links transitively and replace the link that closes a cycle with `none`, so conversion doesn't overflow the stack.

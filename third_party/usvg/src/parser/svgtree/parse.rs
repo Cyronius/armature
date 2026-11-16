@@ -11,7 +11,11 @@ use simplecss::Declaration;
 use svgtypes::FontShorthand;
 
 // Armature (AU-013): Decode URL fragments before matching SVG IDs.
-use super::{AId, Attribute, Document, EId, NodeData, NodeId, NodeKind, ShortRange, percent_decode_fragment};
+// Armature (AU-015): SvgNode is used by link_reaches.
+use super::{
+    AId, Attribute, Document, EId, NodeData, NodeId, NodeKind, ShortRange, SvgNode,
+    percent_decode_fragment,
+};
 
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
@@ -914,26 +918,37 @@ fn find_recursive_link(eid: EId, aid: AId, doc: &Document) -> Option<NodeId> {
     {
         for child in node.descendants() {
             if let Some(link) = child.node_attribute(aid) {
-                if link == node {
-                    // If an element child has a link to the element itself
-                    // then we have to replace it with `none`.
-                    // Otherwise we will get endless loop/recursion and stack overflow.
+                // Armature (AU-015): Follow links through any number of elements, not just one,
+                // so that a cycle such as clip0 -> clip -> clip2 -> clip0 is broken too.
+                // If an element child links back to the element, directly or indirectly,
+                // then we have to replace that link with `none`.
+                // Otherwise we will get endless loop/recursion and stack overflow.
+                let mut visited = Vec::new();
+                if link_reaches(link, node, aid, &mut visited) {
                     return Some(child.id);
-                } else {
-                    // Check that linked node children doesn't link this element.
-                    for node2 in link.descendants() {
-                        if let Some(link2) = node2.node_attribute(aid) {
-                            if link2 == node {
-                                return Some(node2.id);
-                            }
-                        }
-                    }
                 }
             }
         }
     }
 
     None
+}
+
+// Armature (AU-015): Whether `target` can be reached from `from` by following `aid` links
+// from `from` or its descendants.
+fn link_reaches(from: SvgNode, target: SvgNode, aid: AId, visited: &mut Vec<NodeId>) -> bool {
+    if from == target {
+        return true;
+    }
+    if visited.contains(&from.id) {
+        return false;
+    }
+    visited.push(from.id);
+    from.descendants().any(|descendant| {
+        descendant
+            .node_attribute(aid)
+            .is_some_and(|link| link_reaches(link, target, aid, visited))
+    })
 }
 
 /// Detects cases like:
