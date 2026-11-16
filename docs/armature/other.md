@@ -17,8 +17,24 @@ Detail behind the Other directories row of the [README](../../README.md) conform
     mutation observer callbacks in creation order.
   - Web Audio: `WaveShaperNode`, `BiquadFilterNode.getFrequencyResponse()`, `AudioParam` automation event tracking and
     validation, `AudioNode.connect()` and `disconnect()` validation, and `OfflineAudioContext.suspend()`.
+- **Crashes**: 16 tests that recorded a crash now run. Panics are fixed in:
+  - the HTML parser dropping text, doctypes and reparented children that script made impossible to insert
+  - service worker registration from a detached iframe
+  - trusted types violation samples with non-ASCII text
+  - intersection observation through an unrendered iframe
+  - WebDriver send keys after Shift
+  - indirect `clip-path` cycles in SVG
+
+  The other tests on the list had stopped crashing earlier.
 
 ## What has not been done
+
+- 16 test files still record a crash. Of these, 11 hang until the harness kills them, including:
+  - an `<iframe srcdoc>` that is re-inserted from its own `load` handler reloads synchronously, so the loop never
+    yields
+  - setting `options.length` to 100,000 rescans every option on each insertion
+  - a `pattern` attribute with catastrophic backtracking runs without limit
+  - several iframe navigation and unload cases
 
 - WebAssembly, WebSockets, MathML, XMLHttpRequest, Shadow DOM and Web Audio still have failures, each needing a whole
   feature: `WebSocketStream` (and WebSocket over HTTP/2), MathML layout, WebAssembly type reflection (a SpiderMonkey
