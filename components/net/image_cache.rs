@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::cell::{Cell, OnceCell};
+use std::cell::OnceCell;
 use std::cmp::min;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::{mem, thread_local};
+use std::mem;
 
 use imsz::imsz_from_reader;
 use log::{debug, error, warn};
@@ -43,9 +43,7 @@ use webrender_api::units::DeviceIntSize;
 
 use crate::image_cache::KeyCacheState::PipelineClosed;
 
-thread_local! {
-    pub static SUPPRESS_ABORT_IN_PANIC_HOOK: Cell<bool> = const { Cell::new(false) };
-}
+pub use servo_base::panic::SUPPRESS_ABORT_IN_PANIC_HOOK;
 
 /// Returns `true` if embedder's custom panic hook handler should *not* treat the panic
 /// as a fatal error that requires termination of the engine.

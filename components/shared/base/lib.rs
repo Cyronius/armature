@@ -13,6 +13,7 @@ pub mod cross_process_instant;
 pub mod generic_channel;
 #[macro_use]
 pub mod id;
+pub mod panic;
 pub mod print_tree;
 mod rope;
 pub mod text;
