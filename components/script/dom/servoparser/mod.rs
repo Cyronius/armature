@@ -1783,6 +1783,10 @@ fn insert(
         },
         NodeOrText::AppendText(t) => {
             // https://html.spec.whatwg.org/multipage/#insert-a-character
+            // Step 3. If the adjusted insertion location is in a Document node, then return.
+            if parent.is::<Document>() {
+                return;
+            }
             // A CDATA section is a Text node too, but text that follows one (in an XML
             // document) starts a Text node of its own.
             let text = reference_child
@@ -1795,9 +1799,10 @@ fn insert(
                 text.upcast::<CharacterData>().append_data(cx, &t);
             } else {
                 let text = Text::new(cx, String::from(t).into(), &parent.owner_doc());
-                parent
-                    .InsertBefore(cx, text.upcast(), reference_child)
-                    .unwrap();
+                // Script can move the reference child elsewhere first, which makes this
+                // insertion fail; the text is then dropped, as with an element that can't be
+                // inserted.
+                let _ = parent.InsertBefore(cx, text.upcast(), reference_child);
             }
         },
     }
@@ -2074,9 +2079,9 @@ impl TreeSink for Sink {
             Some(DOMString::from(String::from(system_id))),
             doc,
         );
-        doc.upcast::<Node>()
-            .AppendChild(cx, doctype.upcast())
-            .expect("Appending failed");
+        // document.write() into a document that already has an element can produce a doctype
+        // token that the document can't accept; drop it then.
+        let _ = doc.upcast::<Node>().AppendChild(cx, doctype.upcast());
     }
 
     #[expect(unsafe_code)]
@@ -2124,7 +2129,11 @@ impl TreeSink for Sink {
         let cx = &mut cx;
 
         while let Some(ref child) = node.GetFirstChild() {
-            new_parent.AppendChild(cx, child).unwrap();
+            // A custom element reaction can make `new_parent` a descendant of `node`'s children.
+            // Appending would then create a cycle, so stop reparenting instead.
+            if new_parent.AppendChild(cx, child).is_err() {
+                break;
+            }
         }
     }
 
