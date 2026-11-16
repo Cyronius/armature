@@ -52,6 +52,7 @@ subtest figures are carried forward until the next full-suite rerun.
 | Clipboard | 61 | 25.8% | 27.4% | +1.6 | +1 |
 | Focus | 43 | 60.9% | 60.9% | +0.0 | +0 |
 | Scroll-driven Animations | 17 | 21.6% | 100.0% | +78.4 | +372 |
+| WebNN | 598 | — | **89.9%** | — | +12,772 |
 | Everything else | 3,604 | 69.5% | 69.6% | +0.1 | +606 |
 | **Total** | **61,548** | **66.5%** | **69.5%** | **+2.9** | **+63,770** |
 
@@ -268,9 +269,20 @@ Notes on the numbers:
   both the test and the reference. The other small drops in the table (Upgrade Insecure Requests, Mixed Content and a
   few single tests) come from tests that crash,
   time out or fail intermittently when the whole suite runs.
+- The WebNN row was measured on 15 November 2026 by running only `webnn/` (598 tests, counting the `?cpu`, `?gpu`
+  and `?npu` variants separately). Upstream Servo has no WebNN and does not run these tests, so it has no upstream
+  score, and the row is not included in the Total.
 
 ## What has been done
 
+- **[Web Neural Network API](https://webmachinelearning.github.io/webnn/)** (`navigator.ml`), behind the `webnn`
+  Cargo feature (on in servoshell's default build) and the `dom_webnn_enabled` preference (off by default; on for
+  WPT). All of `ML`, `MLContext`, `MLGraphBuilder` (every operator), `MLGraph`, `MLOperand` and `MLTensor` are
+  implemented except the `GPUDevice` overloads. Graphs are validated and recorded on the script thread with the
+  [rustnn](https://github.com/rustnn/rustnn) crate and compiled and run with ONNX Runtime on a WebNN thread, which
+  shares one small ONNX Runtime thread pool between all graphs. ONNX Runtime is loaded when the first context is
+  created (`libonnxruntime.so`, or `ORT_DYLIB_PATH`); without it `createContext()` rejects with
+  `NotSupportedError`. `webnn/` is now enabled and passes 12,772 of 13,755 subtests (89.9% of tests).
 - **WebGL2 texture sources and dEQP coverage**: WebGL2 image and subimage uploads now accept canvas, image, SVG,
   video and `ImageData` sources in 2D and 3D. Typed-array 3D subimages and pixel unpack buffer 2D subimages are
   supported. Twelve WebGL2 texture source directories and eight dEQP groups (456 tests) are enabled, bringing the
@@ -960,6 +972,13 @@ Notes on the numbers:
 
 ## What has not been done
 
+- WebNN: rustnn accepts some operator arguments the specification rejects, which accounts for 765 of the 983
+  failing `webnn/` subtests (mostly `conv2d`, `convTranspose2d`, pooling, recurrent and normalization validation).
+  About 90 subtests differ from the expected values by more than the allowed ULP distance. `opSupportLimits()`
+  reports rustnn's generic limits rather than what ONNX Runtime supports. Only ONNX Runtime's CPU execution provider
+  is used, so `accelerated` is always false; there is no NPU or GPU backend yet. `createContext(GPUDevice)`,
+  `createExportableTensor()`, `exportToGPU()` and `MLGraph.devices` are missing, and `MLNumber` arguments are typed
+  `any` because the bindings don't support `bigint`.
 - CSS counter support still lacks some predefined and custom numbering systems, counter-style descriptors, and
   `CSSCounterStyleRule` mutation. Four reversed-list counter scope reftests still fail.
 - `margin-trim` still needs flex and grid item trimming and some block fragmentation cases; its WPT directory remains
@@ -1082,6 +1101,8 @@ For more detailed build instructions, see the Servo Book under [Getting the Code
 - Install `rustup`: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - Restart your shell to make sure `cargo` is available
 - Install the other dependencies: `./mach bootstrap`
+  - On Arch, which `./mach bootstrap` doesn't support, also install `protobuf` (the `webnn` feature needs `protoc`
+    to build) and, to run WebNN, `onnxruntime-cpu`.
 - Build servoshell: `./mach build`
 
 ### Windows
