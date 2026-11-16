@@ -9,6 +9,7 @@
 mod actions;
 mod capabilities;
 mod script_argument_extraction;
+mod send_keys;
 mod session;
 mod timeout;
 mod user_prompt;
@@ -35,7 +36,7 @@ use embedder_traits::{
 use euclid::{Point2D, Rect, Size2D};
 use http::method::Method;
 use image::{DynamicImage, ImageFormat};
-use keyboard_types::webdriver::{Event as DispatchStringEvent, KeyInputState, send_keys};
+use keyboard_types::webdriver::{Event as DispatchStringEvent, KeyInputState};
 use keyboard_types::{Code, Key, KeyState, KeyboardEvent, Location, NamedKey};
 use log::{debug, error, info};
 use serde::de::{Deserializer, MapAccess, Visitor};
@@ -75,6 +76,7 @@ use webdriver::server::{Session, SessionTeardownKind, WebDriverHandler};
 use crate::actions::{
     ActionItem, ELEMENT_CLICK_BUTTON, InputSourceState, PendingActions, PointerInputState,
 };
+use crate::send_keys::send_keys;
 use crate::session::{PageLoadStrategy, WebDriverSession};
 use crate::timeout::{DEFAULT_PAGE_LOAD_TIMEOUT, SCREENSHOT_TIMEOUT};
 

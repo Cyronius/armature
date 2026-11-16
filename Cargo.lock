@@ -10155,6 +10155,7 @@ dependencies = [
  "servo-url",
  "stylo_traits",
  "time",
+ "unicode-segmentation",
  "uuid",
  "webdriver",
 ]
