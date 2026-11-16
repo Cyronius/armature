@@ -1,0 +1,81 @@
+# Armature: HTML
+
+Detail behind the HTML row of the [README](../../README.md) conformance table: what Armature changed and what is still missing. Other areas are listed in [the index](README.md).
+
+## What has been done
+
+- **HTML reflecting attributes**: about 130 missing IDL attributes (table, table cell, row and column, heading and
+  `body` colors, `ol`/`li`/`dl`, `embed`/`object`/`param`/`area`, frames, `marquee`, form controls, `meta.media`,
+  `a.download`/`ping`, `enterKeyHint`, `inputMode` and more). The 11 automated `html/dom/reflection-*` files now
+  pass all 61,302 subtests, down from about 5,300 failures. Table `span`, `colSpan` and `rowSpan` keep the assigned
+  content attribute while clamping the reflected value, fixing 38 subtests. HTML floating-point reflection now
+  parses numeric prefixes after ASCII whitespace and serializes exponent values as JavaScript does; `textarea`
+  positive-value fallback, negative `pre.width`, and empty `track.kind` reflection close the remaining 47 failures
+  in the seven-file baseline. The enumerated ARIA attributes (`ariaBusy`, `ariaLive`, ...) are behind the
+  `dom_aria_enumerated_reflection_enabled` preference.
+- **Fetch priority reflection**: `fetchPriority` reflects `fetchpriority` on HTML `img`, `link` and `script`, and SVG
+  `image` and `script` elements. All 10 focused subtests now pass across five files.
+- **[Popover API](https://html.spec.whatwg.org/multipage/popover.html)**, behind the `dom_popover_enabled`
+  preference (off by default; enabled for the tests): the `popover` attribute (`auto`, `manual` and `hint`),
+  `showPopover()`/`hidePopover()`/`togglePopover()`, `beforetoggle`/`toggle` events, `popovertarget` on buttons and
+  inputs, button `commandForElement` reflection and activation, light dismiss, nested popovers, and dialog and
+  fullscreen integration. Open popovers now join sequential focus navigation at their invoker, including across
+  slots and with explicit tabindex values. The fallback `<summary>` in a `<details>` without an explicit summary
+  now participates in focus navigation, and WebDriver keys sent to an active shadow host reach its focused
+  descendant. Twelve more focus subtests pass. An open popover used as the `source` of another popover now remains its
+  ancestor, preserving auto and hint stacks; six more subtests pass. Canceled form resets no longer block later
+  resets, empty labels inside invoker buttons allow button activation, and pointer events on disabled controls now
+  light-dismiss open popovers; six more subtests pass. Light dismiss now ignores right clicks and touch scrolls, and
+  leaves a popover open if its press target is removed; three more subtests pass. Activation now uses the original
+  click target across shadow boundaries, so a nested popover stays open when clicked; one more subtest passes.
+  A displayed popover with an otherwise generic accessibility role now maps to `group`, and its role updates when
+  display or the `popover` attribute changes; two more subtests pass. `html/semantics/popovers` has 25 failures in
+  the latest run, down from 3,902. Pressing Escape now also closes
+  dialogs and close watchers.
+- **`HTMLElement.draggable`** (323 subtests), **fractional `MouseEvent` coordinates** as CSSOM View specifies (433),
+  and the current HTML rules for **valid custom element names** (113). Element names with code points above U+10FFF,
+  such as most emoji, are no longer rejected.
+- **Vendored html5ever**: the HTML parser is vendored in `third_party/html5ever/` with a change log
+  (`third_party/html5ever.md`), checked by `./mach test-tidy` like the Stylo one. Its changes implement the
+  parsing rules for SVG `script` end tags and self-closing `<script/>` in SVG, which upstream had not implemented,
+  tell Servo about every element the parser closes, and give the `xmlns` attribute of inline SVG and MathML no
+  prefix (it had the empty prefix, so its `name` was `":xmlns"`).
+- **Processing instructions in HTML**: the HTML parser now parses `<?target data?>` into a `ProcessingInstruction`
+  node, following the HTML Standard's new tokenizer states (it used to make a bogus comment; `<?xml ...>`,
+  `<?xml-stylesheet ...>` and invalid targets still do). This fixes all 83 `processing-instructions` html5lib tree
+  construction subtests in each of the three html5lib test files, 12 more html5lib subtests, the 20 parser subtests of
+  the `ProcessingInstruction` attributes test, and 52 Sanitizer API subtests. The XML parser no longer creates a
+  `ProcessingInstruction` node for the XML declaration (`<?xml version="1.0"?>`).
+- **XML serialization**: `XMLSerializer`, `innerHTML` and `outerHTML` in XML documents, and the drawing of inline SVG
+  now use an implementation of the [DOM Parsing](https://w3c.github.io/DOM-Parsing/#xml-serialization) XML
+  serialization algorithm instead of xml5ever's serializer. It keeps namespaces with prefixes and `xmlns`
+  declarations as the spec says, escapes attribute values (`<`, `>`, `"`, tabs and newlines), writes doctypes with
+  their public and system IDs, and makes `innerHTML`/`outerHTML` throw `InvalidStateError` for markup that would not
+  be well-formed. 48 failing subtests and 14 reftests now pass in `domparsing`, `html/syntax`, the
+  `ProcessingInstruction` tests and the SVG tests, among them inline SVG `<image>` elements with `data:` URLs that
+  contain `<`. Inline SVG `<use>` also follows `xlink:href`. `XMLHttpRequest.send()` with an XML document uses it
+  too (it used the HTML serializer), which fixes 4 `xhr` subtests.
+- **Vendored xml5ever**: the XML parser is vendored in `third_party/xml5ever/` with a change log
+  (`third_party/xml5ever.md`), checked by `./mach test-tidy` like the other vendored copies. Parsed XML documents now
+  keep their namespace declarations (`xmlns`, `xmlns:p`) as attributes, in source order, which fixes 10 more
+  `XMLSerializer` subtests and 7 `Node.lookupPrefix()` subtests.
+- **Vendored markup5ever and CDATA sections**: markup5ever, which holds the interface (`TreeSink`) through which
+  both parsers build the DOM, is vendored in `third_party/markup5ever/` with its own change log
+  (`third_party/markup5ever.md`). A new `TreeSink` method lets the XML parser create CDATA sections, which it used to
+  turn into text: `DOMParser` now produces `CDATASection` nodes (also empty ones), and CDATA sections survive a parse
+  and serialize round trip, which fixes 14 `domparsing` subtests.
+- **Images in embedded elements**: `<embed src>` and `<object data>` resolve image URLs and use the image cache's
+  natural dimensions for `object-fit` and `object-position`. In the 85-file CSS Images reftest run, 81 tests newly
+  pass; eight related `object-position` reftests also pass. Four tentative `contain-intrinsic-size` cases still fail.
+
+## What has not been done
+
+- Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
+  expect behaviour that the DOM Parsing spec changed in August 2026 and that Armature follows: a doctype ID that
+  contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
+  prefix itself (an open web-platform-tests change updates the tests). One more expects a redundant `xmlns=""` to be
+  kept, which the spec drops.
+- 25 popover subtests still fail in the latest run: layout has no real top layer or `::backdrop` (open popovers are
+  drawn as `position: fixed`), some focus navigation cases remain incomplete, four inactive-document cases expect
+  listeners to run despite the DOM Standard's fully active document check, and 6 other tests contradict the spec.
+- The tentative ARIA reflection test still has 30 failing subtests.
