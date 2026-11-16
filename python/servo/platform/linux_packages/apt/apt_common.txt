@@ -44,3 +44,4 @@ m4
 xorg-dev
 libxkbcommon0
 libxkbcommon-x11-0
+protobuf-compiler

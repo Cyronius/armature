@@ -101,7 +101,7 @@ stdenv.mkDerivation (androidEnvironment // {
     udev # Needed by libudev-sys for GamePad API.
 
     # Build utilities
-    cmake dbus gcc git pkg-config which llvm perl yasm m4
+    cmake dbus gcc git pkg-config which llvm perl protobuf yasm m4
 
     # Ensure the Python version is same as the one in `.python-version` file so
     # that `uv` will just symlink to the one in nix store. Otherwise `uv` will

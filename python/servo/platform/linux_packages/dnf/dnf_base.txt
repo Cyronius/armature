@@ -36,3 +36,4 @@ libjpeg-turbo
 vulkan-loader
 libxkbcommon
 libxkbcommon-x11
+protobuf-compiler

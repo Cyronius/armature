@@ -31,3 +31,4 @@ gst-plugins-ugly1
 vulkan-loader
 libxkbcommon
 libxkbcommon-x11
+protobuf
