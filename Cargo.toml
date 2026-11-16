@@ -199,6 +199,7 @@ ohos-window-manager-sys = "0.1"
 ohos-window-sys = "0.1.7"
 once_cell = "1.21.4"
 openxr = "0.21"
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic"] }
 p256 = { version = "0.14", features = ["ecdh"] }
 p384 = { version = "0.14", features = ["ecdh"] }
 p521 = { version = "0.14", features = ["ecdh"] }
@@ -230,6 +231,7 @@ rsa = "=0.10.0-rc.19"
 rusqlite = { version = "0.38", features = ["bundled"] }
 rustc-demangle = "0.1"
 rustc-hash = "2.1.2"
+rustnn = { version = "0.6.0", default-features = false, features = ["onnx-runtime"] }
 rustls = { version = "0.23", default-features = false, features = ["logging", "std", "tls12"] }
 rustls-pki-types = "1.14"
 rustls-platform-verifier = "0.7.0"

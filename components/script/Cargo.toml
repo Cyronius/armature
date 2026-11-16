@@ -52,6 +52,7 @@ webgpu = [
     "script_bindings/webgpu",
     "script_traits/webgpu",
 ]
+webnn = ["dep:half", "dep:ort", "dep:rustnn", "script_bindings/webnn"]
 webxr = ["webgl", "gamepad", "webxr-api", "script_bindings/webxr"]
 
 [lints]
@@ -85,6 +86,7 @@ flate2 = { workspace = true }
 fonts = { workspace = true }
 fonts_traits = { workspace = true }
 glow = { workspace = true }
+half = { workspace = true, optional = true }
 hashlink = { workspace = true }
 headers = { workspace = true }
 html5ever = { workspace = true }
@@ -113,6 +115,7 @@ net_traits = { workspace = true }
 nom-rfc8288 = { workspace = true }
 num-traits = { workspace = true }
 num_cpus = { workspace = true }
+ort = { workspace = true, optional = true }
 paint_api = { workspace = true }
 parking_lot = { workspace = true }
 percent-encoding = { workspace = true }
@@ -124,6 +127,7 @@ rand = { workspace = true }
 regex = { workspace = true }
 resvg = { workspace = true }
 rustc-hash = { workspace = true }
+rustnn = { workspace = true, optional = true }
 script_bindings = { workspace = true }
 script_webcrypto = { workspace = true, optional = true }
 script_webgpu = { workspace = true, optional = true }

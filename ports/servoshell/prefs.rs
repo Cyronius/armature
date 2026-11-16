@@ -47,6 +47,7 @@ pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "dom_web_animations_enabled",
     "dom_webgl2_enabled",
     "dom_webgpu_enabled",
+    "dom_webnn_enabled",
     "layout_css_accent_color_enabled",
     "layout_css_appearance_enabled",
     "layout_css_at_scope_enabled",

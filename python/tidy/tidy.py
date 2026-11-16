@@ -148,6 +148,7 @@ WEBIDL_STANDARDS = [
     b"//cookiestore.spec.whatwg.org/",
     b"//compression.spec.whatwg.org/",
     b"//webidl.spec.whatwg.org/",
+    b"//webmachinelearning.github.io/webnn/",
     # Not a URL
     b"// This interface is entirely internal to Servo, and should not be" + b" accessible to\n// web pages.",
 ]

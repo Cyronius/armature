@@ -443,6 +443,8 @@ pub struct Preferences {
     pub dom_webgpu_enabled: bool,
     /// List of comma-separated backends to be used by wgpu.
     pub dom_webgpu_wgpu_backend: String,
+    /// Enable the Web Neural Network API (`navigator.ml`).
+    pub dom_webnn_enabled: bool,
     // feature: Adopted Stylesheet | #38132 | Web/API/Document/adoptedStyleSheets
     pub dom_adoptedstylesheet_enabled: bool,
     pub dom_allow_preloading_module_descendants: bool,
@@ -918,6 +920,7 @@ impl Preferences {
             dom_webgl2_enabled: false,
             dom_webgpu_enabled: false,
             dom_webgpu_wgpu_backend: String::new(),
+            dom_webnn_enabled: false,
             dom_webrtc_enabled: false,
             dom_webrtc_transceiver_enabled: false,
             dom_webxr_enabled: true,
