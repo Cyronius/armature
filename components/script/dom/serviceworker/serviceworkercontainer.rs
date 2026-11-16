@@ -367,7 +367,18 @@ impl ServiceWorkerContainerMethods<crate::DomTypeHolder> for ServiceWorkerContai
                     },
                 }
             },
-            None => script_url.join("./").unwrap(),
+            // A script URL that can't be a base (for example in a detached iframe's
+            // about:blank document) has no default scope.
+            None => match script_url.join("./") {
+                Ok(url) => url,
+                Err(_) => {
+                    promise.reject_error(
+                        realm,
+                        Error::Type(c"Only secure origins are allowed".to_owned()),
+                    );
+                    return promise;
+                },
+            },
         };
 
         // A: Step 6 -> invoke B.
