@@ -8,6 +8,47 @@ Servo project.
 Servo's [AI usage policy](https://book.servo.org/policy/ai-usage.html) does not accept AI-generated contributions,
 so this work is not intended for, and has not been sent to, upstream Servo.
 
+## Added features
+
+Capabilities Armature has that upstream Servo does not, beyond fixes that raise conformance.
+
+### WebNN: neural networks in the browser
+
+Armature implements the W3C [Web Neural Network API](https://webmachinelearning.github.io/webnn/) (WebNN), which
+lets web pages build and run machine-learning models on the device's own hardware. Upstream Servo has no WebNN at
+all; Chromium ships it behind a flag and Firefox has only an experimental prototype.
+
+- **The whole API:** `navigator.ml`, `MLContext`, `MLGraphBuilder` with every operator in the specification (about 95,
+  from `add` to `lstm`), `MLGraph`, `MLOperand` and `MLTensor`, in windows and workers.
+- **Real execution:** graphs are compiled and run by [ONNX Runtime](https://onnxruntime.ai/), through the Rust
+  [rustnn](https://github.com/rustnn/rustnn) crate, on a dedicated thread so pages stay responsive.
+- **Conformance:** `webnn/` in web-platform-tests passes 12,772 of 13,755 subtests (89.9%).
+
+Try it with the `webnn` Cargo feature (on by default) and ONNX Runtime installed (Arch: `onnxruntime-cpu`; or point
+`ORT_DYLIB_PATH` at `libonnxruntime.so`):
+
+```
+./target/release/servoshell --pref dom_webnn_enabled page.html
+```
+
+```js
+const context = await navigator.ml.createContext();
+const builder = new MLGraphBuilder(context);
+const desc = {dataType: "float32", shape: [2, 2]};
+const x = builder.input("x", desc);
+const y = builder.relu(builder.add(x, builder.constant(desc, new Float32Array([10, 20, 30, 40]))));
+const graph = await builder.build({y});
+const input = await context.createTensor({...desc, writable: true});
+const output = await context.createTensor({...desc, readable: true});
+context.writeTensor(input, new Float32Array([1, 2, 3, 4]));
+context.dispatch(graph, {x: input}, {y: output});
+console.log(new Float32Array(await context.readTensor(output)));  // [11, 22, 33, 44]
+```
+
+WebNN currently runs on the CPU. Next: hardware acceleration, starting with AMD's XDNA2 NPU, either through ONNX
+Runtime's NPU execution provider or a new rustnn backend. The remaining gaps are listed under
+[What has not been done](#what-has-not-been-done).
+
 ## Conformance
 
 Except for CSS, the table below was measured on 7 November 2026 using the 61,548 web-platform-tests selected then.
