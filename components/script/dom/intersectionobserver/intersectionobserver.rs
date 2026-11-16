@@ -964,10 +964,11 @@ fn compute_the_intersection(
 
                     intersection_rect = intersect_rectangle(&intersection_rect, &viewport_rect)?;
 
+                    // A frame container without a box (for example one that is no longer
+                    // rendered) shows nothing of its document, so the target doesn't intersect.
                     let current_offset = frame_container
                         .upcast::<Node>()
-                        .padding_box(cx)
-                        .unwrap()
+                        .padding_box(cx)?
                         .origin
                         .to_vector();
                     intersection_rect.origin += current_offset;
