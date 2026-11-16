@@ -290,8 +290,27 @@ impl CspReporting for Option<CspList> {
             return true;
         };
 
-        let (allowed_by_csp, violations) =
-            csp_list.is_trusted_type_policy_creation_allowed(policy_name, created_policy_names);
+        // The content-security-policy crate clips the violation sample to the first 40 bytes
+        // of the policy name, which panics inside a multi-byte character. A name that isn't
+        // ASCII never matches the trusted-types policy name grammar, so checking an ASCII
+        // stand-in gives the same result; the sample is then clipped from the real name.
+        if policy_name.is_ascii() {
+            let (allowed_by_csp, violations) =
+                csp_list.is_trusted_type_policy_creation_allowed(policy_name, created_policy_names);
+            global.report_csp_violations(cx, violations, None, None);
+            return allowed_by_csp == CheckResult::Allowed;
+        }
+        let ascii_name: String = policy_name
+            .chars()
+            .map(|c| if c.is_ascii() { c } else { '!' })
+            .collect();
+        let (allowed_by_csp, mut violations) =
+            csp_list.is_trusted_type_policy_creation_allowed(&ascii_name, created_policy_names);
+        for violation in &mut violations {
+            if let ViolationResource::TrustedTypePolicy { sample } = &mut violation.resource {
+                *sample = clip_violation_sample(policy_name);
+            }
+        }
 
         global.report_csp_violations(cx, violations, None, None);
 
@@ -324,8 +343,44 @@ impl CspReporting for Option<CspList> {
             return false;
         };
 
-        let (allowed_by_csp, violations) = csp_list
-            .should_sink_type_mismatch_violation_be_blocked_by_csp(sink, sink_group, source);
+        if source.is_ascii() {
+            let (allowed_by_csp, violations) = csp_list
+                .should_sink_type_mismatch_violation_be_blocked_by_csp(sink, sink_group, source);
+            global.report_csp_violations(cx, violations, None, None);
+            return allowed_by_csp == CheckResult::Blocked;
+        }
+
+        // The content-security-policy crate truncates the sample to 40 bytes, which panics
+        // inside a multi-byte character. The source only feeds the sample, so check an ASCII
+        // stand-in and build the sample from the real source.
+        let ascii_source: String = source
+            .chars()
+            .map(|c| if c.is_ascii() { c } else { '?' })
+            .collect();
+        let (allowed_by_csp, mut violations) = csp_list
+            .should_sink_type_mismatch_violation_be_blocked_by_csp(sink, sink_group, &ascii_source);
+        // Step 3. If sink is "Function", strip the anonymous function prefix from the sample.
+        let sample = if sink == "Function" {
+            [
+                "function anonymous",
+                "async function anonymous",
+                "function* anonymous",
+                "async function* anonymous",
+            ]
+            .iter()
+            .find_map(|prefix| source.strip_prefix(prefix))
+            .unwrap_or(source)
+        } else {
+            source
+        };
+        for violation in &mut violations {
+            if let ViolationResource::TrustedTypeSink {
+                sample: violation_sample,
+            } = &mut violation.resource
+            {
+                *violation_sample = format!("{sink}|{}", clip_violation_sample(sample));
+            }
+        }
 
         global.report_csp_violations(cx, violations, None, None);
 
@@ -396,6 +451,20 @@ fn compute_scripted_caller_source_position(cx: &mut JSContext) -> SourcePosition
             column_number: 0,
         },
     }
+}
+
+/// Clip a violation sample to 40 UTF-16 code units, keeping a surrogate pair that starts
+/// within them whole, as Firefox does: <https://github.com/w3c/webappsec-csp/issues/704>.
+fn clip_violation_sample(sample: &str) -> String {
+    let mut code_units = 0;
+    sample
+        .chars()
+        .take_while(|c| {
+            let keep = code_units < 40;
+            code_units += c.len_utf16();
+            keep
+        })
+        .collect()
 }
 
 /// <https://www.w3.org/TR/CSP3/#obtain-violation-blocked-uri>
