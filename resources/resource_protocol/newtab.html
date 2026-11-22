@@ -1,20 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Servo - New Tab</title>
-    <link rel="stylesheet" href="resource:///newtab.css" />
+    <title>Armature — New Tab</title>
+    <link rel="stylesheet" href="resource:///newtab.css">
   </head>
   <body>
-    <a href="https://servo.org">
-      <img class="light" src="resource:///servo-color-positive-no-container.svg" draggable="false"/>
-      <img class="dark" src="resource:///servo-color-negative-no-container.svg" draggable="false"/>
-    </a>
-    <form action="https://duckduckgo.com/html/">
-      <input name="q" placeholder="Search the web…" autofocus />
-      <button type="submit">Go!</button>
-    </form>
-    <a href="https://servo.org">Home</a>
+    <main>
+      <h1>
+        <svg aria-hidden="true" width="52" height="52" viewBox="0 0 32 32" fill="none" stroke="currentColor">
+          <path stroke-width="3.2" d="M26 26H15a11 11 0 1 1 13-11v2a3.25 3.25 0 0 1-6.5 0v-3c0-4-5-5-9-3"/>
+          <path stroke-width="2.35" d="M21.5 16h-5c-5.5 0-5.5 5.5-1 5.5h1c2 0 4-1 5-2.5"/>
+        </svg>
+        Armature
+      </h1>
+      <form role="search" action="https://duckduckgo.com/html/">
+        <input type="search" name="q" aria-label="Search the web" placeholder="Search the web" required>
+        <button type="submit">Search</button>
+      </form>
+      <a href="https://github.com/Cyronius/armature">Armature on GitHub</a>
+    </main>
   </body>
 </html>

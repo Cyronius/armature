@@ -202,7 +202,10 @@ impl Default for ServoShellPreferences {
             device_pixel_ratio_override: None,
             headless: false,
             web_chrome: false,
+            #[cfg(any(target_os = "android", target_env = "ohos"))]
             homepage: "https://servo.org".into(),
+            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+            homepage: "servo:newtab".into(),
             initial_window_size: Size2D::new(1024, 740),
             no_native_titlebar: true,
             screen_size_override: None,
@@ -821,14 +824,7 @@ fn parse_arguments_helper(args_without_binary: Args) -> ArgumentParsingResult {
     }
 
     let servoshell_preferences = ServoShellPreferences {
-        url: cmd_args
-            .url
-            .or_else(|| (!cmd_args.web_chrome).then(|| "https://www.servo.org".into())),
-        homepage: if cmd_args.web_chrome {
-            "servo:newtab".into()
-        } else {
-            ServoShellPreferences::default().homepage
-        },
+        url: cmd_args.url,
         no_native_titlebar: cmd_args.no_native_titlebar,
         device_pixel_ratio_override: cmd_args.device_pixel_ratio,
         clean_shutdown: cmd_args.clean_shutdown,

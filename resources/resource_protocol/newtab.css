@@ -2,124 +2,87 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-html,
-body {
-  height: 100%;
-  padding: 0;
-  margin: 0;
+:root {
+  color-scheme: light dark;
+  font: 16px system-ui, sans-serif;
+  color: #202636;
+  background: #f5f6fa;
+  --field: white;
+  --border: #9ca7bc;
+  --accent: #395891;
+  --button-text: white;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #f3f4f9;
+    background: #161a23;
+    --field: #10141b;
+    --border: #536079;
+    --accent: #a9c7ff;
+    --button-text: #121a29;
+  }
 }
 
 body {
-  font-family: sans-serif;
-  font-weight: 400;
-  line-height: 1.5;
+  min-height: 100vh;
+  margin: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 
-img {
-  margin-bottom: 1em;
-  width: 25vw;
+main {
+  width: 32rem;
+  max-width: calc(100% - 2rem);
+  text-align: center;
 }
 
-form {
-  margin: 1em;
+h1 {
+  margin: 0 0 1.5rem;
   display: flex;
-  justify-items: center;
-  gap: 1.0em;
+  align-items: center;
+  justify-content: center;
+  gap: .2em;
+  font-size: 2.75rem;
+  letter-spacing: -.04em;
+}
+
+h1 svg, a { color: var(--accent); }
+
+form {
+  display: flex;
+  gap: .5rem;
+  margin-bottom: 1.25rem;
+}
+
+input, button {
+  box-sizing: border-box;
+  height: 2.75rem;
+  padding: 0 .9rem;
+  border-radius: .5rem;
+  font: inherit;
 }
 
 input {
-  border-width: 0;
-  border-radius: 5px;
-  height: 2.5em;
-  width: 50vw;
-  text-indent: 3px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  color: inherit;
+  background: var(--field);
 }
 
-/* This should not be needed but paper over missing default styles */
 button {
-  padding-inline: 8px;
-  border-radius: 5px;
-  border: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  /* Servo has trouble with button styling */
-  display: flex;
-  justify-items: center;
-  align-items: center;
-  line-height: 1;
-}
-
-button:hover {
+  border: 0;
+  font-weight: 600;
+  color: var(--button-text);
+  background: var(--accent);
   cursor: pointer;
 }
 
-a {
-  cursor: pointer;
-  text-decoration: none;
-}
+a { font-size: .875rem; }
 
-:root {
-  --theme-color-primary: #1191e8;
-  --theme-color-secondary: #42bf64;
-}
-
-/* These link colors work well for both light and dark mode */
-a {
-  color: var(--theme-color-primary);
-}
-
-a:hover {
-  color: var(--theme-color-secondary);
-}
-
-@media (prefers-color-scheme: light) {
-  .dark {
-    display: none;
-  }
-
-  body {
-    background: #f9f9f9;
-  }
-
-  input {
-    background-color: white;
-  }
-
-  button {
-    background-color: var(--theme-color-secondary);
-    color: white;
-  }
-
-  button:hover {
-    background-color: #3baa59;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  .light {
-    display: none;
-  }
-
-  body {
-    background-color: #121619;
-    color: hsl(0, 0%, 96%);
-  }
-
-  input {
-    background-color: #333;
-    color: white;
-  }
-
-  button {
-    background-color: #333;
-    color: var(--theme-color-secondary);
-  }
-
-  button:hover {
-    background-color: #292929;
-  }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

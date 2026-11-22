@@ -28,7 +28,11 @@
   button:disabled { opacity: .4; cursor: default; }
   input { background: #10141b; border-color: #384258; padding: 0 8px; min-width: 0; }
   input:focus, button:focus-visible { outline: 2px solid #93b8ff; outline-offset: -2px; }
-  #address { flex: 1; }
+  #address-bar { flex: 1; min-width: 0; display: flex; align-items: center; height: 28px; padding: 0 2px; border: 1px solid #384258; border-radius: 6px; background: #10141b; }
+  #address-bar:focus-within { outline: 2px solid #93b8ff; outline-offset: -2px; }
+  #address { flex: 1; height: 100%; padding: 0 6px; border: 0; background: transparent; outline: none; }
+  #site { width: 26px; height: 24px; padding: 2px; border-radius: 4px; background: transparent; }
+  #site:hover, #site[aria-expanded="true"] { background: #3b4661; }
   .tool { flex: none; width: 32px; padding: 4px; display: grid; place-items: center; }
   .tool svg { width: 19px; height: 19px; }
   #menu svg { width: 22px; height: 22px; }
@@ -53,8 +57,10 @@
   <button type="button" class="tool" id="back" aria-label="Back" title="Back"><svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m19 8-8 8 8 8"/></svg></button>
   <button type="button" class="tool" id="forward" aria-label="Forward" title="Forward"><svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m13 8 8 8-8 8"/></svg></button>
   <button type="button" class="tool" id="reload" aria-label="Reload" title="Reload"><svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M24 12a9 9 0 1 0 1 8m0-14v7h-7"/></svg></button>
-  <button type="button" class="tool" id="site" aria-label="Site controls" title="Site controls"><svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v22m8-22v22m8-22v22M5 12h6m2 9h6m2-10h6"/></svg></button>
-  <input id="address" aria-label="Search or enter an address" autocomplete="off" placeholder="Search or enter an address" spellcheck="false">
+  <div id="address-bar">
+    <button type="button" class="tool" id="site" aria-label="Site settings" title="Site settings"><svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v22m8-22v22m8-22v22M5 12h6m2 9h6m2-10h6"/></svg></button>
+    <input id="address" aria-label="Search or enter an address" autocomplete="off" placeholder="Search or enter an address" spellcheck="false">
+  </div>
   <button type="button" class="tool" id="bookmark" aria-label="Bookmark this page" title="Bookmark this page" aria-pressed="false" disabled><svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m16 4 3.7 7.6 8.3 1.2-6 5.9 1.4 8.3-7.4-4-7.4 4 1.4-8.3-6-5.9 8.3-1.2z"/></svg></button>
   <button type="button" class="tool" id="downloads" hidden aria-label="Downloads" title="Downloads"><svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path class="arrow" d="M16 5v15m-6-6 6 6 6-6"/><path d="M6 22v5h20v-5"/></svg></button>
   <button type="button" class="tool" id="menu" aria-label="Armature menu" title="Armature menu"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="3.2" stroke-linecap="butt" d="M26 26H15a11 11 0 1 1 13-11v2a3.25 3.25 0 0 1-6.5 0v-3c0-4-5-5-9-3"/><path stroke-width="2.35" d="M21.5 16h-5c-5.5 0-5.5 5.5-1 5.5h1c2 0 4-1 5-2.5"/></svg></button>
@@ -180,7 +186,7 @@
     panel.replaceChildren();
     if (!openPanel) { reportPanel(); return; }
     const tab = tabSnapshot.find(tab => tab.active);
-    const label = {site:"Site controls",history:"History",bookmarks:"Bookmarks",downloads:"Downloads",menu:"Armature",settings:"Settings",find:"Find in page",switcher:"Open tabs"};
+    const label = {site:"Site settings",history:"History",bookmarks:"Bookmarks",downloads:"Downloads",menu:"Armature",settings:"Settings",find:"Find in page",switcher:"Open tabs"};
     panel.append(make("h2", label[openPanel]));
     const actions = make("div", "");
     actions.className = "actions";

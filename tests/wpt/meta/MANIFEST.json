@@ -433086,6 +433086,19 @@
        {}
       ]
      ],
+     "continuous-fill-rendering.html": [
+      "80bedffdc036bfdeec4d7fa93ae4ff99ab9ca7eb",
+      [
+       null,
+       [
+        [
+         "/svg/struct/reftests/reference/green-100x100.html",
+         "=="
+        ]
+       ],
+       {}
+      ]
+     ],
      "invalid-attribute-type-does-not-block-other-animations.html": [
       "a8d920604d5b655d808c7a6478bb76766a79f5d9",
       [
@@ -433767,6 +433780,32 @@
      ],
      "image-embedding-svg-with-viewport-units.svg": [
       "653856de21bc50a48d8d2aa55fdaa276f994b8f6",
+      [
+       null,
+       [
+        [
+         "/svg/embedded/reference/green-rect-100x100.svg",
+         "=="
+        ]
+       ],
+       {}
+      ]
+     ],
+     "image-external-resource-in-svg-document.svg": [
+      "524c119e4bd012d1623e6220588873b40be396bc",
+      [
+       null,
+       [
+        [
+         "/svg/embedded/reference/image-external-resource-in-svg-document-ref.svg",
+         "=="
+        ]
+       ],
+       {}
+      ]
+     ],
+     "image-external-svg-in-svg-document.svg": [
+      "b2378fa17cb20ef7a363b1637e3e107cbe183d2f",
       [
        null,
        [
@@ -440100,6 +440139,19 @@
        [
         [
          "/svg/styling/use-element-transitions-ref.html",
+         "=="
+        ]
+       ],
+       {}
+      ]
+     ],
+     "viewport-units-min-max-calc.svg": [
+      "7a779c167ff76d36e4f43a4b7a3d3876bfe07ae3",
+      [
+       null,
+       [
+        [
+         "/svg/styling/viewport-units-min-max-calc-ref.svg",
          "=="
         ]
        ],
@@ -595323,6 +595375,10 @@
        "120941444a4898197d6b6001f9908a6cd48b62ba",
        []
       ],
+      "image-external-resource-in-svg-document-ref.svg": [
+       "1509bb2493609605b2cf86f60ea836f9f445b840",
+       []
+      ],
       "image-with-nested-rects.html": [
        "a9aa379d1aa1bb8a700696e61b4424551c1f8779",
        []
@@ -596948,6 +597004,10 @@
      ],
      "use-element-transitions-ref.html": [
       "f564b90de8cd962a19a6205338afdfa9a24e461f",
+      []
+     ],
+     "viewport-units-min-max-calc-ref.svg": [
+      "801440c702b869331dc4139d3eab1eb21c285706",
       []
      ]
     },
@@ -1335202,7 +1335262,7 @@
        ]
       ],
       "popover-minimum-role.html": [
-       "b46ca81fb526d828ce15806850999d002cc01ab0",
+       "a582d632aee66bbf05e6c38e1645576b9b87acd1",
        [
         null,
         {
@@ -1421614,6 +1421674,13 @@
       ]
      ],
      "scripted": {
+      "css-geometry-dom.svg": [
+       "18e647bbc9b1102a184892dc0053eea2a77fde1b",
+       [
+        null,
+        {}
+       ]
+      ],
       "disabled-shapes-not-hit.svg": [
        "409ee4b35c11ab675e85c36138f11f9af47d0238",
        [
@@ -1421628,8 +1421695,22 @@
         {}
        ]
       ],
+      "rect-rounded-geometry-dom.svg": [
+       "40ec1ef4be2e8c1d67e37e94229c6fe4c1185b5d",
+       [
+        null,
+        {}
+       ]
+      ],
       "shapes-clip-path.svg": [
        "18682a30cb35a5660d5491c919ac58549815fe33",
+       [
+        null,
+        {}
+       ]
+      ],
+      "stroke-dash-percentage.svg": [
+       "807ab337c07a8a44ccd966c99770ee4b00c6e1eb",
        [
         null,
         {}
@@ -1421845,6 +1421926,13 @@
        ]
       ]
      },
+     "systemLanguage-focus.html": [
+      "542f3a91c6c95c3d1e257d4214fb48d88a8aacc0",
+      [
+       null,
+       {}
+      ]
+     ],
      "systemLanguage-matching.html": [
       "375bc1e1c9e5e2230a4221123ec0a2a2e3b6faa2",
       [
@@ -1421854,6 +1421942,13 @@
      ],
      "systemLanguage-parsing.html": [
       "33cfd6657b42bfa1bc7ec0155d6977b1172bb7ae",
+      [
+       null,
+       {}
+      ]
+     ],
+     "systemLanguage-raster.html": [
+      "6a32117bdbeb1f038fcddbe936cf315d56f2a5a9",
       [
        null,
        {}
@@ -1422644,8 +1422739,22 @@
         {}
        ]
       ],
+      "SVGGeometryElement.isPointInStroke-css-transform.svg": [
+       "360f54e34ba9f81e60c8d94e119e22611c8a9884",
+       [
+        null,
+        {}
+       ]
+      ],
       "SVGGraphicsElement-clone.svg": [
        "bcea083b9a1a89aeb1ec666e18c2af24384d7c19",
+       [
+        null,
+        {}
+       ]
+      ],
+      "SVGGraphicsElement-css-image-foreignobject-geometry.svg": [
+       "72705f0fa9d1105f67b8d6dcc5c325463908bd9c",
        [
         null,
         {}

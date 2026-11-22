@@ -1,0 +1,3 @@
+{
+  "exclude": ["tests/wpt/", "tests/blink_perf_tests/", "tests/dromaeo/", "tests/jquery/", "tests/html/"]
+}

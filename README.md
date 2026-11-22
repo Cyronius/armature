@@ -62,6 +62,7 @@ Capabilities Armature has that upstream Servo does not, beyond fixes that raise 
 ### Experimental web chrome
 
 Run `./target/release/servoshell --web-chrome` after a release build to open the HTML desktop shell.
+A fresh desktop session and new tabs open the bundled Armature start page.
 With a persistent profile, launching without a URL reopens the previous windows, tabs, and selected tab in each
 window. Back and Forward reload saved URLs on demand (up to 50 entries in each direction per tab). Session
 restore saves HTTP(S) addresses, blank pages, and new tabs. It does not save form contents or resubmit POST bodies.
@@ -69,7 +70,7 @@ Passing a URL opens that page directly. Previous windows can then be opened from
 Ctrl/Cmd+L selects the address, Enter opens the URL or searches, and Escape cancels the edit and returns to the page.
 The address toolbar includes a bookmark star and shows Downloads after the first transfer. The Armature @ menu
 opens History, Bookmarks, Downloads, Settings, find-in-page, the tab switcher, and tab recovery. Settings can place tabs on top or on the left. F11 toggles
-browser fullscreen. The Downloads panel accepts public HTTP(S) file URLs and tracks pages saved as HTML. The site controls show
+browser fullscreen. The Downloads panel accepts public HTTP(S) file URLs and tracks pages saved as HTML. The site settings button inside the address field shows
 the current web origin and URL scheme.
 
 Bundled chrome scripts can call `window.armature.tabs()` to get tab IDs, then use `queryDOM`, `mutateDOM`, and
