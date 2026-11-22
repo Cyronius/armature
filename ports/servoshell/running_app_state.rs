@@ -179,12 +179,16 @@ pub(crate) enum UserInterfaceCommand {
     Forward,
     Reload,
     ReloadAll,
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+    RestoreSession,
     NewWebView,
     CloseWebView(WebViewId),
     NewWindow(TopLevelWebViewCreationRequest),
 }
 
 pub(crate) struct RunningAppState {
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+    pub(crate) browser_data: RefCell<crate::desktop::chrome::BrowserData>,
     /// The gamepad provider, used for handling gamepad events and set on each WebView.
     /// May be `None` if gamepad support is disabled or failed to initialize.
     #[cfg(all(
@@ -279,6 +283,12 @@ impl RunningAppState {
             Cell::new(servoshell_preferences.experimental_preferences_enabled);
 
         Self {
+            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+            browser_data: RefCell::new(if servoshell_preferences.web_chrome {
+                crate::desktop::chrome::BrowserData::new()
+            } else {
+                Default::default()
+            }),
             windows: Default::default(),
             focused_window: Default::default(),
             #[cfg(all(
@@ -308,6 +318,13 @@ impl RunningAppState {
         let window = Rc::new(ServoShellWindow::new(platform_window.clone()));
         self.windows.borrow_mut().push(window.clone());
         window.create_and_activate_toplevel_webview(self.clone(), creation_request);
+
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        if self.servoshell_preferences.web_chrome &&
+            let Some(headed) = platform_window.as_headed_window()
+        {
+            headed.create_chrome(self, &window);
+        }
 
         // If the window already has platform focus, mark it as focused in our application state.
         if platform_window.has_platform_focus() {
@@ -340,10 +357,17 @@ impl RunningAppState {
                 .set_focused(false);
         }
 
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        let chrome_has_focus = window
+            .platform_window()
+            .as_headed_window()
+            .is_some_and(|headed| headed.chrome_has_focus());
+        #[cfg(any(target_os = "android", target_env = "ohos"))]
+        let chrome_has_focus = false;
         window
             .webview_collection
             .borrow_mut()
-            .set_focused(has_focus);
+            .set_focused(has_focus && !chrome_has_focus);
 
         if let Some(previously_focused_window) = &*focused_window &&
             Rc::ptr_eq(previously_focused_window, &window) &&
@@ -480,7 +504,14 @@ impl RunningAppState {
 
         self.servo.spin_event_loop();
 
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        let mut snapshot_needed = false;
         for window in self.windows.borrow().iter() {
+            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+            if let Some(headed) = window.platform_window().as_headed_window() {
+                headed.tick_chrome(window, self);
+                snapshot_needed |= window.needs_update();
+            }
             window.update_and_request_repaint_if_necessary(self);
         }
 
@@ -494,6 +525,18 @@ impl RunningAppState {
             self.schedule_exit();
         }
 
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        if self.servoshell_preferences.web_chrome &&
+            (snapshot_needed ||
+                self.exit_scheduled.get() ||
+                self.windows()
+                    .iter()
+                    .any(|window| window.needs_update() || window.should_close()))
+        {
+            self.browser_data
+                .borrow_mut()
+                .snapshot(&self.windows(), self.exit_scheduled.get());
+        }
         self.close_empty_windows();
 
         // When no more windows are open, exit the application. Do not do this when
@@ -504,6 +547,10 @@ impl RunningAppState {
             self.schedule_exit()
         }
 
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        if self.exit_scheduled.get() {
+            self.browser_data.borrow_mut().finish_writes();
+        }
         !self.exit_scheduled.get()
     }
 
@@ -737,6 +784,11 @@ impl RunningAppState {
         }
 
         for window in self.windows().iter() {
+            if let Some(headed) = window.platform_window().as_headed_window() &&
+                let Some(chrome) = headed.chrome().as_ref()
+            {
+                chrome.view.set_accessibility_active(active);
+            }
             for (_, webview) in window.webviews() {
                 // Activate accessibility in the WebView.
                 // There are two sites like this; this is the a11y activation site.
@@ -760,6 +812,14 @@ impl WebViewDelegate for RunningAppState {
     }
 
     fn notify_history_changed(&self, webview: WebView, _entries: Vec<Url>, _current: usize) {
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        if self.servoshell_preferences.web_chrome {
+            let history = crate::desktop::session::SavedTab::from_history(&_entries, _current);
+            self.browser_data
+                .borrow_mut()
+                .tab_history
+                .insert(webview.id(), history.map(Rc::new));
+        }
         self.window_for_webview(&webview).set_needs_update();
     }
 
@@ -874,8 +934,11 @@ impl WebViewDelegate for RunningAppState {
     }
 
     fn request_permission(&self, webview: WebView, permission_request: PermissionRequest) {
-        self.platform_window_for_webview(&webview)
+        let window = self.window_for_webview(&webview);
+        window
+            .platform_window()
             .show_permission_dialog(webview.id(), permission_request);
+        window.set_needs_repaint();
     }
 
     fn notify_new_frame_ready(&self, webview: WebView) {

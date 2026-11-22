@@ -668,10 +668,16 @@ impl ServoInner {
                     );
                 }
             },
-            EmbedderMsg::PromptPermission(webview_id, requested_feature, response_sender) => {
+            EmbedderMsg::PromptPermission(
+                webview_id,
+                requested_feature,
+                origin,
+                response_sender,
+            ) => {
                 if let Some(webview) = self.get_webview_handle(webview_id) {
                     let permission_request = PermissionRequest {
                         requested_feature,
+                        origin,
                         allow_deny_request: AllowOrDenyRequest::new(
                             response_sender,
                             AllowOrDeny::Deny,
@@ -683,10 +689,11 @@ impl ServoInner {
                         .request_permission(webview, permission_request);
                 }
             },
-            EmbedderMsg::RequestPermission(webview_id, requested_feature, callback) => {
+            EmbedderMsg::RequestPermission(webview_id, requested_feature, origin, callback) => {
                 if let Some(webview) = self.get_webview_handle(webview_id) {
                     let permission_request = PermissionRequest {
                         requested_feature,
+                        origin,
                         allow_deny_request: AllowOrDenyRequest::new_from_callback(
                             callback,
                             AllowOrDeny::Deny,

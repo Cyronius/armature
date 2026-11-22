@@ -27,8 +27,8 @@ use servo_base::generic_channel::GenericSender;
 use servo_base::id::WebViewId;
 use servo_config::pref;
 use servo_constellation_traits::{
-    EmbedderToConstellationMessage, HistoryTraversalSource, SessionHistoryTraversalRequest,
-    TraversalDirection,
+    EmbedderToConstellationMessage, HistoryTraversalSource, JavaScriptEvaluationScope,
+    SessionHistoryTraversalRequest, TraversalDirection,
 };
 use servo_geometry::DeviceIndependentPixel;
 use servo_url::ServoUrl;
@@ -236,6 +236,7 @@ impl WebView {
                     .send(EmbedderToConstellationMessage::NewWebView(
                         url.into(),
                         new_webview_details,
+                        builder.restored_history,
                     ));
             },
         }
@@ -746,6 +747,26 @@ impl WebView {
         self.servo().javascript_evaluator_mut().evaluate(
             self.id(),
             script.to_string(),
+            JavaScriptEvaluationScope::Current,
+            Box::new(callback),
+        );
+    }
+
+    /// Evaluate JavaScript in the active top-level document, optionally requiring a document ID
+    /// from an earlier evaluation. The result is an object with a decimal string `document` ID
+    /// and a `value` containing the evaluation result.
+    pub fn evaluate_javascript_in_document(
+        &self,
+        expected_document: Option<u64>,
+        script: String,
+        callback: impl FnOnce(Result<JSValue, JavaScriptEvaluationError>) + 'static,
+    ) {
+        self.servo().javascript_evaluator_mut().evaluate(
+            self.id(),
+            script,
+            JavaScriptEvaluationScope::Document {
+                expected: expected_document,
+            },
             Box::new(callback),
         );
     }
@@ -1105,6 +1126,7 @@ pub struct WebViewBuilder {
     rendering_context: Rc<dyn RenderingContext>,
     delegate: Rc<dyn WebViewDelegate>,
     url: Option<Url>,
+    restored_history: servo_constellation_traits::RestoredHistory,
     hidpi_scale_factor: Scale<f32, DeviceIndependentPixel, DevicePixel>,
     create_new_webview_responder: Option<AutomaticResponder<Option<NewWebViewDetails>>>,
     user_content_manager: Option<Rc<UserContentManager>>,
@@ -1124,6 +1146,7 @@ impl WebViewBuilder {
             servo: servo.clone(),
             rendering_context,
             url: None,
+            restored_history: Default::default(),
             hidpi_scale_factor: Scale::new(1.0),
             delegate: Rc::new(DefaultWebViewDelegate),
             create_new_webview_responder: None,
@@ -1155,6 +1178,16 @@ impl WebViewBuilder {
     /// Set the initial URL to load in the [`WebView`] being created.
     pub fn url(mut self, url: Url) -> Self {
         self.url = Some(url);
+        self
+    }
+
+    /// Restore the URLs before and after the initial URL in chronological order.
+    /// Traversing a restored entry loads it on demand as a fresh document.
+    pub fn restored_history(mut self, past: Vec<Url>, future: Vec<Url>) -> Self {
+        self.restored_history = servo_constellation_traits::RestoredHistory {
+            past: past.into_iter().map(Into::into).collect(),
+            future: future.into_iter().map(Into::into).collect(),
+        };
         self
     }
 

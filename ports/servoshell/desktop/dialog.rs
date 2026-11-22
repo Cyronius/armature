@@ -10,7 +10,6 @@ use std::task::{Context, Poll, Waker};
 use egui::{
     Area, Button, CornerRadius, Frame, Id, Modal, Order, RichText, Sense, Stroke, Vec2, pos2,
 };
-use euclid::Length;
 use itertools::Either;
 use log::{error, warn};
 use rfd::AsyncFileDialog;
@@ -52,16 +51,16 @@ pub enum Dialog {
     },
     SelectElement {
         maybe_prompt: Option<SelectElement>,
-        toolbar_offset: Length<f32, DeviceIndependentPixel>,
+        toolbar_offset: euclid::Vector2D<f32, DeviceIndependentPixel>,
     },
     ColorPicker {
         current_color: egui::Color32,
         maybe_prompt: Option<ColorPicker>,
-        toolbar_offset: Length<f32, DeviceIndependentPixel>,
+        toolbar_offset: euclid::Vector2D<f32, DeviceIndependentPixel>,
     },
     ContextMenu {
         menu: Option<ContextMenu>,
-        toolbar_offset: Length<f32, DeviceIndependentPixel>,
+        toolbar_offset: euclid::Vector2D<f32, DeviceIndependentPixel>,
     },
 }
 
@@ -129,7 +128,12 @@ impl Dialog {
 
     pub fn new_permission_request_dialog(permission_request: PermissionRequest) -> Self {
         let message = format!(
-            "Do you want to grant permission for {:?}?",
+            "Allow {} to use {:?}?",
+            if permission_request.origin() == "null" {
+                "this page with an opaque origin"
+            } else {
+                permission_request.origin()
+            },
             permission_request.feature()
         );
         Dialog::Permission {
@@ -147,7 +151,7 @@ impl Dialog {
 
     pub fn new_select_element_dialog(
         prompt: SelectElement,
-        toolbar_offset: Length<f32, DeviceIndependentPixel>,
+        toolbar_offset: euclid::Vector2D<f32, DeviceIndependentPixel>,
     ) -> Self {
         Dialog::SelectElement {
             maybe_prompt: Some(prompt),
@@ -157,7 +161,7 @@ impl Dialog {
 
     pub fn new_color_picker_dialog(
         prompt: ColorPicker,
-        toolbar_offset: Length<f32, DeviceIndependentPixel>,
+        toolbar_offset: euclid::Vector2D<f32, DeviceIndependentPixel>,
     ) -> Self {
         let current_color = prompt
             .current_color()
@@ -492,8 +496,10 @@ impl Dialog {
                 let mut is_open = true;
 
                 let mut position = prompt.position();
-                position.min.y += toolbar_offset.0 as i32;
-                position.max.y += toolbar_offset.0 as i32;
+                position.min.x += toolbar_offset.x as i32;
+                position.max.x += toolbar_offset.x as i32;
+                position.min.y += toolbar_offset.y as i32;
+                position.max.y += toolbar_offset.y as i32;
                 let area = egui::Area::new(egui::Id::new("select-window"))
                     .fixed_pos(egui::pos2(position.min.x as f32, position.max.y as f32));
 
@@ -616,8 +622,10 @@ impl Dialog {
                 let mut is_open = true;
 
                 let mut position = prompt.position();
-                position.min.y += toolbar_offset.0 as i32;
-                position.max.y += toolbar_offset.0 as i32;
+                position.min.x += toolbar_offset.x as i32;
+                position.max.x += toolbar_offset.x as i32;
+                position.min.y += toolbar_offset.y as i32;
+                position.max.y += toolbar_offset.y as i32;
                 let area = egui::Area::new(egui::Id::new("select-window"))
                     .fixed_pos(egui::pos2(position.min.x as f32, position.max.y as f32));
 
@@ -665,8 +673,10 @@ impl Dialog {
                 if let Some(context_menu) = menu {
                     let mut selected_action = None;
                     let mut position = context_menu.position();
-                    position.min.y += toolbar_offset.0 as i32;
-                    position.max.y += toolbar_offset.0 as i32;
+                    position.min.x += toolbar_offset.x as i32;
+                    position.max.x += toolbar_offset.x as i32;
+                    position.min.y += toolbar_offset.y as i32;
+                    position.max.y += toolbar_offset.y as i32;
 
                     let response = Area::new(Id::new("context_menu"))
                         .fixed_pos(pos2(position.min.x as f32, position.min.y as f32))
@@ -760,7 +770,7 @@ impl Dialog {
 
     pub(crate) fn new_context_menu(
         menu: ContextMenu,
-        toolbar_offset: Length<f32, DeviceIndependentPixel>,
+        toolbar_offset: euclid::Vector2D<f32, DeviceIndependentPixel>,
     ) -> Dialog {
         Dialog::ContextMenu {
             menu: Some(menu),

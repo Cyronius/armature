@@ -66,6 +66,7 @@ pub struct Gui {
     rendering_context: Rc<OffscreenRenderingContext>,
     context: EguiGlow,
     toolbar_height: Length<f32, DeviceIndependentPixel>,
+    sidebar_width: Length<f32, DeviceIndependentPixel>,
 
     location: String,
 
@@ -254,6 +255,7 @@ impl Gui {
             rendering_context,
             context,
             toolbar_height: Default::default(),
+            sidebar_width: Default::default(),
             location: initial_url.to_string(),
             location_dirty: false,
             load_status: LoadStatus::Complete,
@@ -289,6 +291,10 @@ impl Gui {
 
     /// The height of the top toolbar of this user inteface ie the distance from the top of the
     /// window to the position of the `WebView`.
+    pub(crate) fn sidebar_width(&self) -> Length<f32, DeviceIndependentPixel> {
+        self.sidebar_width
+    }
+
     pub(crate) fn toolbar_height(&self) -> Length<f32, DeviceIndependentPixel> {
         self.toolbar_height
     }
@@ -406,6 +412,7 @@ impl Gui {
             rendering_context,
             context,
             toolbar_height,
+            sidebar_width,
             location,
             location_dirty,
             favicon_textures,
@@ -415,11 +422,61 @@ impl Gui {
         let winit_window = headed_window.winit_window();
         context.run(winit_window, |ctx| {
             load_pending_favicons(ctx, window, favicon_textures);
+            *sidebar_width = Length::default();
 
             // TODO: While in fullscreen add some way to mitigate the increased phishing risk
             // when not displaying the URL bar: https://github.com/servo/servo/issues/32443
             // Show toolbar unless fullscreen is from document (web API)
-            if !headed_window.is_fullscreen_from_document() {
+            if let Some(chrome) = headed_window.chrome().as_ref() &&
+                !headed_window.is_chrome_hidden()
+            {
+                let left = chrome.tabs_left.get();
+                let available = ctx.available_rect_before_wrap();
+                let toolbar = if left { 44.0 } else { super::chrome::HEIGHT };
+                let requested = toolbar + chrome.panel_height.get();
+                let height = requested.min((available.height() - 1.0).max(0.0));
+                let top_rect = Panel::top("web-chrome")
+                    .exact_size(height)
+                    .frame(egui::Frame::NONE)
+                    .show_inside(ctx, |_| {})
+                    .response
+                    .rect;
+                *toolbar_height = Length::new(top_rect.max.y);
+                let chrome_rect = if left {
+                    let width = super::chrome::SIDEBAR_WIDTH.min((available.width() - 1.0).max(0.0));
+                    let shelf = Panel::left("web-tab-shelf")
+                        .exact_size(width)
+                        .frame(egui::Frame::NONE)
+                        .show_inside(ctx, |_| {})
+                        .response.rect;
+                    *sidebar_width = Length::new(shelf.max.x);
+                    available
+                } else {
+                    top_rect
+                };
+                let scale = ctx.pixels_per_point();
+                let size = PhysicalSize::new(
+                    (chrome_rect.width() * scale).round().max(1.0) as u32,
+                    (chrome_rect.height() * scale).round().max(1.0) as u32,
+                );
+                chrome.view.set_hidpi_scale_factor(window.platform_window().hidpi_scale_factor());
+                if chrome.view.size().to_u32() != Size2D::new(size.width, size.height) {
+                    chrome.view.resize(size);
+                }
+                chrome.context.make_current().expect("Could not make chrome context current");
+                chrome.view.paint();
+                chrome.context.present();
+                if chrome_rect.is_positive() {
+                    paint_webview(ctx, chrome_rect, &chrome.context);
+                }
+                if let Some(tree_id) = chrome.view.accesskit_tree_id() {
+                    ctx.accesskit_node_builder(Id::new(chrome.view.id()), |node| {
+                        node.set_tree_id(tree_id);
+                        let scale = f64::from(1.0 / scale);
+                        node.set_transform(Affine::new([scale, 0.0, 0.0, scale, 0.0, 0.0]));
+                    });
+                }
+            } else if headed_window.chrome().is_none() && !headed_window.is_fullscreen_from_document() {
                 let frame = egui::Frame::default()
                     .fill(ctx.style().visuals.window_fill)
                     .inner_margin(4.0);
@@ -645,7 +702,7 @@ impl Gui {
                 // `rect` is sized to just the WebView viewport, which is required by
                 // `OffscreenRenderingContext` See:
                 // <https://github.com/servo/servo/issues/38369#issuecomment-3138378527>
-                webview.resize(PhysicalSize::new(size.width as u32, size.height as u32))
+                webview.resize(PhysicalSize::new((size.width as u32).max(1), (size.height as u32).max(1)))
             }
 
             if let Some(status_text) = &self.status_text {
@@ -660,19 +717,7 @@ impl Gui {
 
             window.repaint_webviews();
 
-            if let Some(render_to_parent) = rendering_context.render_to_parent_callback() {
-                ctx.layer_painter(LayerId::background()).add(PaintCallback {
-                    rect: available_rect,
-                    callback: Arc::new(CallbackFn::new(move |info, painter| {
-                        let clip = info.viewport_in_pixels();
-                        let rect_in_parent = Rect::new(
-                            Point2D::new(clip.left_px, clip.from_bottom_px),
-                            Size2D::new(clip.width_px, clip.height_px),
-                        );
-                        render_to_parent(painter.gl(), rect_in_parent)
-                    })),
-                });
-            }
+            paint_webview(ctx, available_rect, rendering_context);
         });
 
         // If any egui widget requested a repaint, also request a repaint for our
@@ -859,5 +904,21 @@ fn load_pending_favicons(
         // We don't need the handle anymore but we can't drop it either since that would cause
         // the texture to be freed.
         texture_cache.insert(id, (handle, texture));
+    }
+}
+
+fn paint_webview(ctx: &egui::Ui, rect: egui::Rect, rendering_context: &OffscreenRenderingContext) {
+    if let Some(render_to_parent) = rendering_context.render_to_parent_callback() {
+        ctx.layer_painter(LayerId::background()).add(PaintCallback {
+            rect,
+            callback: Arc::new(CallbackFn::new(move |info, painter| {
+                let clip = info.viewport_in_pixels();
+                let rect_in_parent = Rect::new(
+                    Point2D::new(clip.left_px, clip.from_bottom_px),
+                    Size2D::new(clip.width_px, clip.height_px),
+                );
+                render_to_parent(painter.gl(), rect_in_parent);
+            })),
+        });
     }
 }

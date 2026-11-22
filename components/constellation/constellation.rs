@@ -160,10 +160,11 @@ use servo_config::{opts, pref};
 use servo_constellation_traits::{
     AuxiliaryWebViewCreationRequest, AuxiliaryWebViewCreationResponse, ConstellationInterest,
     EmbedderToConstellationMessage, HistoryTraversalSource, IFrameLoadInfo, IFrameLoadInfoWithData,
-    IFrameSizeMsg, LoadData, LogEntry, MessagePortMsg, NavigationHistoryBehavior, PaintMetricEvent,
-    PortMessageTask, PortTransferInfo, RemoteFocusOperation, SWManagerSenders,
-    ScreenshotReadinessResponse, ScriptToConstellationMessage, ScrollStateUpdate,
-    ServiceWorkerAlgorithm, ServiceWorkerManagerFactory, ServiceWorkerManagerMsg, ServiceWorkerMsg,
+    IFrameSizeMsg, JavaScriptEvaluationScope, LoadData, LogEntry, MessagePortMsg,
+    NavigationHistoryBehavior, PaintMetricEvent, PortMessageTask, PortTransferInfo,
+    RemoteFocusOperation, SWManagerSenders, ScreenshotReadinessResponse,
+    ScriptToConstellationMessage, ScrollStateUpdate, ServiceWorkerAlgorithm,
+    ServiceWorkerManagerFactory, ServiceWorkerManagerMsg, ServiceWorkerMsg,
     SessionHistoryTraversalRequest, StructuredSerializedData, TargetSnapshotParams,
     TraversalDirection, UserContentManagerAction, WindowSizeType, WorkerAnimationFrameTick,
 };
@@ -1337,8 +1338,8 @@ where
             },
             // Create a new top level browsing context. Will use response_chan to return
             // the browsing context id.
-            EmbedderToConstellationMessage::NewWebView(url, new_webview_details) => {
-                self.handle_new_top_level_browsing_context(url, new_webview_details);
+            EmbedderToConstellationMessage::NewWebView(url, new_webview_details, history) => {
+                self.handle_new_top_level_browsing_context(url, new_webview_details, history);
             },
             // Close a top level browsing context.
             EmbedderToConstellationMessage::CloseWebView(webview_id) => {
@@ -1408,8 +1409,9 @@ where
                 webview_id,
                 evaluation_id,
                 script,
+                scope,
             ) => {
-                self.handle_evaluate_javascript(webview_id, evaluation_id, script);
+                self.handle_evaluate_javascript(webview_id, evaluation_id, script, scope);
             },
             EmbedderToConstellationMessage::CreateMemoryReport(sender) => {
                 self.mem_profiler_chan.send(ProfilerMsg::Report(sender));
@@ -1579,6 +1581,7 @@ where
         webview_id: WebViewId,
         evaluation_id: JavaScriptEvaluationId,
         script: String,
+        scope: JavaScriptEvaluationScope,
     ) {
         let browsing_context_id = BrowsingContextId::from(webview_id);
         let Some(pipeline) = self
@@ -1593,6 +1596,18 @@ where
             return;
         };
 
+        if let JavaScriptEvaluationScope::Document {
+            expected: Some(expected),
+        } = scope &&
+            u64::from(pipeline.id) != expected
+        {
+            self.handle_finish_javascript_evaluation(
+                evaluation_id,
+                Err(JavaScriptEvaluationError::DocumentNotFound),
+            );
+            return;
+        }
+
         if pipeline
             .event_loop
             .send(ScriptThreadMessage::EvaluateJavaScript(
@@ -1600,6 +1615,7 @@ where
                 pipeline.id,
                 evaluation_id,
                 script,
+                matches!(scope, JavaScriptEvaluationScope::Document { .. }),
             ))
             .is_err()
         {
@@ -3363,6 +3379,7 @@ where
             viewport_details,
             user_content_manager_id,
         }: NewWebViewDetails,
+        history: servo_constellation_traits::RestoredHistory,
     ) {
         let pipeline_id = PipelineId::new();
         let browsing_context_id = BrowsingContextId::from(webview_id);
@@ -3378,6 +3395,42 @@ where
             browsing_context_id,
             user_content_manager_id,
         );
+        // Reuse the ordinary evicted-document traversal path. Only the selected
+        // entry gets a live pipeline until the user traverses to another entry.
+        let dormant = |url| {
+            NeedsToReload::Yes(
+                PipelineId::new(),
+                LoadData::new_for_new_unrelated_webview(url),
+            )
+        };
+        let mut next = NeedsToReload::No(pipeline_id);
+        for url in history.past.into_iter().rev() {
+            let old = dormant(url);
+            new_webview
+                .session_history
+                .past
+                .push(SessionHistoryDiff::BrowsingContext {
+                    browsing_context_id,
+                    old_reloader: old.clone(),
+                    new_reloader: next,
+                });
+            next = old;
+        }
+        new_webview.session_history.past.reverse();
+        let mut previous = NeedsToReload::No(pipeline_id);
+        for url in history.future {
+            let new = dormant(url);
+            new_webview
+                .session_history
+                .future
+                .push(SessionHistoryDiff::BrowsingContext {
+                    browsing_context_id,
+                    old_reloader: previous,
+                    new_reloader: new.clone(),
+                });
+            previous = new;
+        }
+        new_webview.session_history.future.reverse();
         new_webview.add_pending_change(SessionHistoryChange {
             webview_id,
             browsing_context_id,
@@ -5360,85 +5413,64 @@ where
             },
         };
 
-        // If URL was ignored, use the URL of the previous SessionHistoryEntry, which
-        // is the URL of the parent browsing context.
-        let resolve_url_future =
-            |previous_url: &mut ServoUrl, diff: &SessionHistoryDiff| match *diff {
-                SessionHistoryDiff::BrowsingContext {
-                    browsing_context_id,
-                    ref new_reloader,
-                    ..
-                } => {
-                    if browsing_context_id == webview_id {
-                        let url = match *new_reloader {
-                            NeedsToReload::No(pipeline_id) => {
-                                match self.pipelines.get(&pipeline_id) {
-                                    Some(pipeline) => pipeline.url.clone(),
-                                    None => previous_url.clone(),
+        // Track the top-level document while walking either side of the current
+        // entry. A child frame's pushState or fragment must never become the
+        // URL the embedder shows or restores for the top-level document.
+        let project = |past: bool| {
+            move |state: &mut (PipelineId, ServoUrl), diff: &SessionHistoryDiff| {
+                match diff {
+                    SessionHistoryDiff::BrowsingContext {
+                        browsing_context_id: context,
+                        old_reloader,
+                        new_reloader,
+                    } if *context == browsing_context_id => {
+                        match if past { old_reloader } else { new_reloader } {
+                            NeedsToReload::No(id) => {
+                                state.0 = *id;
+                                if let Some(pipeline) = self.pipelines.get(id) {
+                                    state.1 = pipeline.url.clone();
                                 }
                             },
-                            NeedsToReload::Yes(_, ref load_data) => load_data.url.clone(),
-                        };
-                        *previous_url = url.clone();
-                        Some(url)
-                    } else {
-                        Some(previous_url.clone())
-                    }
-                },
-                SessionHistoryDiff::Hash { ref new_url, .. } => {
-                    *previous_url = new_url.clone();
-                    Some(new_url.clone())
-                },
-                _ => Some(previous_url.clone()),
-            };
-
-        let resolve_url_past = |previous_url: &mut ServoUrl, diff: &SessionHistoryDiff| match *diff
-        {
-            SessionHistoryDiff::BrowsingContext {
-                browsing_context_id,
-                ref old_reloader,
-                ..
-            } => {
-                if browsing_context_id == webview_id {
-                    let url = match *old_reloader {
-                        NeedsToReload::No(pipeline_id) => match self.pipelines.get(&pipeline_id) {
-                            Some(pipeline) => pipeline.url.clone(),
-                            None => previous_url.clone(),
-                        },
-                        NeedsToReload::Yes(_, ref load_data) => load_data.url.clone(),
-                    };
-                    *previous_url = url.clone();
-                    Some(url)
-                } else {
-                    Some(previous_url.clone())
+                            NeedsToReload::Yes(id, load) => *state = (*id, load.url.clone()),
+                        }
+                    },
+                    SessionHistoryDiff::Pipeline {
+                        pipeline_reloader,
+                        old_url,
+                        new_url,
+                        ..
+                    } |
+                    SessionHistoryDiff::Hash {
+                        pipeline_reloader,
+                        old_url,
+                        new_url,
+                    } => {
+                        let (NeedsToReload::No(id) | NeedsToReload::Yes(id, _)) = pipeline_reloader;
+                        if *id == state.0 {
+                            state.1 = if past { old_url } else { new_url }.clone();
+                        }
+                    },
+                    _ => {},
                 }
-            },
-            SessionHistoryDiff::Hash { ref old_url, .. } => {
-                *previous_url = old_url.clone();
-                Some(old_url.clone())
-            },
-            _ => Some(previous_url.clone()),
+                Some(state.1.clone())
+            }
         };
-
-        let mut entries: Vec<ServoUrl> = session_history
+        let current = (browsing_context.pipeline_id, current_url.clone());
+        let mut entries: Vec<_> = session_history
             .past
             .iter()
             .rev()
-            .scan(current_url.clone(), &resolve_url_past)
+            .scan(current.clone(), project(true))
             .collect();
-
         entries.reverse();
-
         let current_index = entries.len();
-
-        entries.push(current_url.clone());
-
+        entries.push(current_url);
         entries.extend(
             session_history
                 .future
                 .iter()
                 .rev()
-                .scan(current_url, &resolve_url_future),
+                .scan(current, project(false)),
         );
         self.constellation_to_embedder_proxy
             .send(ConstellationToEmbedderMsg::HistoryChanged(

@@ -88,6 +88,11 @@ impl WakeLockMethods<crate::DomTypeHolder> for WakeLock {
         global.send_to_embedder(EmbedderMsg::RequestPermission(
             webview_id,
             embedder_traits::PermissionFeature::ScreenWakeLock(self.type_.get().convert()),
+            global
+                .origin()
+                .immutable()
+                .ascii_serialization()
+                .into_owned(),
             callback,
         ));
 

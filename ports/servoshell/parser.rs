@@ -6,6 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use servo::{ServoUrl, is_reg_domain};
+use url::form_urlencoded;
 
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub fn parse_url_or_filename(cwd: &Path, input: &str) -> Result<ServoUrl, ()> {
@@ -94,7 +95,9 @@ fn try_as_file(request: &str) -> Option<ServoUrl> {
 }
 
 fn try_as_domain(request: &str) -> Option<ServoUrl> {
-    if !request.contains(' ') && is_reg_domain(request) || is_domain_like(request) {
+    if !request.chars().any(char::is_whitespace) &&
+        (is_reg_domain(request) || is_domain_like(request))
+    {
         return ServoUrl::parse(&format!("https://{}", request)).ok();
     }
     None
@@ -104,7 +107,8 @@ fn try_as_search_page(request: &str, searchpage: &str) -> Option<ServoUrl> {
     if request.is_empty() {
         return None;
     }
-    ServoUrl::parse(&searchpage.replace("%s", request)).ok()
+    let encoded: String = form_urlencoded::byte_serialize(request.as_bytes()).collect();
+    ServoUrl::parse(&searchpage.replace("%s", &encoded.replace('+', "%20"))).ok()
 }
 
 fn is_domain_like(s: &str) -> bool {

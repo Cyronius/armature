@@ -46,6 +46,7 @@ use {
 use super::geometry::{winit_position_to_euclid_point, winit_size_to_euclid_size};
 use super::keyutils::{CMD_OR_ALT, keyboard_event_from_winit};
 use crate::desktop::accelerated_gl_media::setup_gl_accelerated_media;
+use crate::desktop::chrome::Chrome;
 use crate::desktop::dialog::Dialog;
 use crate::desktop::event_loop::{AppEvent, RepaintEventLoopWaker};
 use crate::desktop::gui::Gui;
@@ -65,6 +66,9 @@ pub struct HeadedWindow {
     /// The egui interface that is responsible for showing the user interface elements of
     /// this headed `Window`.
     gui: RefCell<Gui>,
+    chrome: RefCell<Option<Chrome>>,
+    chrome_focused: Cell<bool>,
+    hovered_webview: Cell<Option<WebViewId>>,
     screen_size: Size2D<u32, DeviceIndependentPixel>,
     webview_relative_mouse_point: Cell<Point2D<f32, DevicePixel>>,
     /// The inner size of the window in physical pixels which excludes OS decorations.
@@ -72,6 +76,7 @@ pub struct HeadedWindow {
     inner_size: Cell<PhysicalSize<u32>>,
     fullscreen: Cell<bool>,
     fullscreen_from_document: Cell<bool>,
+    browser_fullscreen: Cell<bool>,
     device_pixel_ratio_override: Option<f32>,
     xr_window_poses: RefCell<Vec<Rc<XRWindowPose>>>,
     modifiers_state: Cell<ModifiersState>,
@@ -113,17 +118,21 @@ impl HeadedWindow {
         event_loop_proxy: EventLoopProxy<AppEvent>,
         initial_url: Url,
     ) -> Rc<Self> {
-        let no_native_titlebar = servoshell_preferences.no_native_titlebar;
+        let no_native_titlebar =
+            servoshell_preferences.no_native_titlebar && !servoshell_preferences.web_chrome;
         let inner_size = servoshell_preferences.initial_window_size;
+        let min_height = MIN_WINDOW_INNER_SIZE.height +
+            if servoshell_preferences.web_chrome {
+                super::chrome::HEIGHT as i32
+            } else {
+                0
+            };
         let window_attr = winit::window::Window::default_attributes()
             .with_title(INITIAL_WINDOW_TITLE.to_string())
             .with_decorations(!no_native_titlebar)
             .with_transparent(no_native_titlebar)
             .with_inner_size(LogicalSize::new(inner_size.width, inner_size.height))
-            .with_min_inner_size(LogicalSize::new(
-                MIN_WINDOW_INNER_SIZE.width,
-                MIN_WINDOW_INNER_SIZE.height,
-            ))
+            .with_min_inner_size(LogicalSize::new(MIN_WINDOW_INNER_SIZE.width, min_height))
             // Must be invisible at startup; accesskit_winit setup needs to
             // happen before the window is shown for the first time.
             .with_visible(false);
@@ -198,10 +207,14 @@ impl HeadedWindow {
         Rc::new(HeadedWindow {
             event_loop_proxy,
             gui,
+            chrome: RefCell::new(None),
+            chrome_focused: Cell::new(false),
+            hovered_webview: Cell::new(None),
             winit_window,
             webview_relative_mouse_point: Cell::new(Point2D::zero()),
             fullscreen: Cell::new(false),
             fullscreen_from_document: Cell::new(false),
+            browser_fullscreen: Cell::new(false),
             inner_size: Cell::new(inner_size),
             screen_size,
             device_pixel_ratio_override: servoshell_preferences.device_pixel_ratio_override,
@@ -220,6 +233,107 @@ impl HeadedWindow {
         })
     }
 
+    pub(crate) fn create_chrome(&self, state: &RunningAppState, window: &Rc<ServoShellWindow>) {
+        self.window_rendering_context
+            .make_current()
+            .expect("Could not make window RenderingContext current");
+        let height = (super::chrome::HEIGHT * self.hidpi_scale_factor().get()).ceil() as u32;
+        let size = PhysicalSize::new(self.inner_size.get().width.max(1), height.max(1));
+        let context = Rc::new(self.window_rendering_context.offscreen_context(size));
+        let chrome = Chrome::new(state, window, context, self.event_loop_proxy.clone());
+        chrome.view.set_focused(false);
+        chrome
+            .view
+            .set_accessibility_active(state.accessibility_active());
+        self.chrome.replace(Some(chrome));
+    }
+
+    pub(crate) fn chrome(&self) -> std::cell::Ref<'_, Option<Chrome>> {
+        self.chrome.borrow()
+    }
+
+    pub(crate) fn tick_chrome(&self, window: &Rc<ServoShellWindow>, state: &Rc<RunningAppState>) {
+        if let Some(chrome) = self.chrome.borrow().as_ref() {
+            chrome.tick(window, state);
+            if self.is_chrome_hidden() {
+                self.focus_chrome(window, false);
+            }
+            chrome
+                .view
+                .set_focused(self.chrome_has_focus() && self.winit_window.has_focus());
+        }
+    }
+
+    pub(super) fn chrome_cursor_changed(&self, view: WebViewId, cursor: Cursor) {
+        if self.hovered_webview.get() == Some(view) {
+            self.set_cursor(cursor);
+        }
+    }
+
+    fn visible_chrome_view(&self) -> Option<WebView> {
+        if self.is_chrome_hidden() {
+            return None;
+        }
+        self.chrome
+            .borrow()
+            .as_ref()
+            .map(|chrome| chrome.view.clone())
+    }
+
+    fn focused_webview(&self, window: &ServoShellWindow) -> Option<WebView> {
+        if self.chrome_focused.get() &&
+            let Some(chrome) = self.visible_chrome_view()
+        {
+            return Some(chrome);
+        }
+        window.active_webview()
+    }
+
+    pub(crate) fn chrome_has_focus(&self) -> bool {
+        self.chrome_focused.get() && !self.is_chrome_hidden()
+    }
+
+    pub(super) fn focus_chrome(&self, window: &ServoShellWindow, focused: bool) {
+        if self.chrome_focused.replace(focused) == focused {
+            return;
+        }
+        if let Some(chrome) = self.visible_chrome_view() {
+            chrome.set_focused(focused && self.winit_window.has_focus());
+        }
+        window
+            .webview_collection
+            .borrow_mut()
+            .set_focused(!focused && self.winit_window.has_focus());
+    }
+
+    pub(crate) fn focus_new_tab_address(&self, window: &ServoShellWindow) {
+        if let Some(chrome) = self.chrome.borrow().as_ref() {
+            self.focus_chrome(window, true);
+            chrome.address_focus_pending.set(true);
+        }
+    }
+
+    fn view_offset(&self, view: WebViewId) -> euclid::Vector2D<f32, DeviceIndependentPixel> {
+        if self
+            .chrome
+            .borrow()
+            .as_ref()
+            .is_some_and(|chrome| chrome.view.id() == view)
+        {
+            euclid::Vector2D::zero()
+        } else {
+            let gui = self.gui.borrow();
+            euclid::Vector2D::new(gui.sidebar_width().get(), gui.toolbar_height().get())
+        }
+    }
+
+    fn chrome_contains(&self, point: Point2D<f32, DeviceIndependentPixel>) -> bool {
+        let gui = self.gui.borrow();
+        point.x >= 0.0 &&
+            point.y >= 0.0 &&
+            (point.y < gui.toolbar_height().get() || point.x < gui.sidebar_width().get())
+    }
+
     pub(crate) fn winit_window(&self) -> &winit::window::Window {
         &self.winit_window
     }
@@ -232,12 +346,15 @@ impl HeadedWindow {
     ) {
         // First, handle servoshell key bindings that are not overridable by, or visible to, the page.
         let keyboard_event = keyboard_event_from_winit(&winit_event, self.modifiers_state.get());
+        let old_tab = window.active_webview().map(|view| view.id());
         if self.handle_intercepted_key_bindings(state, window, &keyboard_event) {
+            if self.chrome_has_focus() && old_tab != window.active_webview().map(|view| view.id()) {
+                self.focus_chrome(window, false);
+            }
             return;
         }
 
-        // Then we deliver character and keyboard events to the page in the active webview.
-        let Some(webview) = window.active_webview() else {
+        let Some(webview) = self.focused_webview(window) else {
             return;
         };
 
@@ -247,9 +364,14 @@ impl HeadedWindow {
         }
 
         let id = webview.notify_input_event(InputEvent::Keyboard(keyboard_event.clone()));
-        self.pending_keyboard_events
-            .borrow_mut()
-            .insert(id, keyboard_event);
+        if window
+            .active_webview()
+            .is_some_and(|page| page.id() == webview.id())
+        {
+            self.pending_keyboard_events
+                .borrow_mut()
+                .insert(id, keyboard_event);
+        }
     }
 
     /// Helper function to handle a click
@@ -301,7 +423,7 @@ impl HeadedWindow {
     /// Helper function to handle mouse move events.
     fn handle_mouse_move_event(&self, webview: &WebView, position: PhysicalPosition<f64>) {
         let mut point = winit_position_to_euclid_point(position).to_f32();
-        point.y -= (self.toolbar_height() * self.hidpi_scale_factor()).0;
+        point -= self.view_offset(webview.id()) * self.hidpi_scale_factor();
 
         let previous_point = self.webview_relative_mouse_point.get();
         self.webview_relative_mouse_point.set(point);
@@ -345,6 +467,50 @@ impl HeadedWindow {
             .shortcut(CMD_OR_CONTROL, 'W', || {
                 window.close_webview(active_webview.id());
             })
+            .optional_shortcut(
+                self.chrome.borrow().is_some(),
+                Modifiers::empty(),
+                Key::Named(NamedKey::F11),
+                || {
+                    if self.fullscreen_from_document.get() {
+                        active_webview.exit_fullscreen();
+                    } else {
+                        self.toggle_browser_fullscreen();
+                    }
+                },
+            )
+            .optional_shortcut(
+                self.visible_chrome_view().is_some(),
+                CMD_OR_CONTROL,
+                'F',
+                || {
+                    self.focus_chrome(window, true);
+                    if let Some(chrome) = self.chrome.borrow().as_ref() {
+                        chrome.open_panel("find");
+                    }
+                },
+            )
+            .optional_shortcut(
+                self.chrome.borrow().is_some(),
+                CMD_OR_CONTROL | Modifiers::SHIFT,
+                'T',
+                || {
+                    if let Some(chrome) = self.chrome.borrow().as_ref() {
+                        chrome.reopen_tab(window, &state);
+                    }
+                },
+            )
+            .optional_shortcut(
+                self.visible_chrome_view().is_some(),
+                CMD_OR_CONTROL | Modifiers::SHIFT,
+                'A',
+                || {
+                    self.focus_chrome(window, true);
+                    if let Some(chrome) = self.chrome.borrow().as_ref() {
+                        chrome.open_panel("switcher");
+                    }
+                },
+            )
             .shortcut(Modifiers::CONTROL, Key::Named(NamedKey::F9), || {
                 active_webview.capture_webrender();
             })
@@ -412,14 +578,40 @@ impl HeadedWindow {
                     window.activate_webview_by_index((index + len - 1) % len);
                 }
             })
+            .optional_shortcut(
+                self.visible_chrome_view().is_some(),
+                CMD_OR_CONTROL,
+                'N',
+                || {
+                    let url = Url::parse("servo:newtab").expect("valid new tab URL");
+                    window.queue_user_interface_command(UserInterfaceCommand::NewWindow(
+                        TopLevelWebViewCreationRequest::WithUrl(url),
+                    ));
+                },
+            )
             .shortcut(CMD_OR_CONTROL, 'T', || {
-                let url = Url::parse("servo:newtab")
-                    .expect("Should be able to unconditionally parse 'servo:newtab' as URL");
-                window.create_and_activate_toplevel_webview(
-                    state.clone(),
-                    TopLevelWebViewCreationRequest::WithUrl(url),
-                );
+                window.queue_user_interface_command(UserInterfaceCommand::NewWebView);
             })
+            .optional_shortcut(
+                self.visible_chrome_view().is_some(),
+                CMD_OR_CONTROL,
+                'L',
+                || {
+                    self.focus_chrome(window, true);
+                    if let Some(chrome) = self.chrome.borrow().as_ref() {
+                        chrome.focus_address();
+                    }
+                },
+            )
+            .optional_shortcut(self.chrome_has_focus(), CMD_OR_CONTROL, 'R', || {
+                active_webview.reload()
+            })
+            .optional_shortcut(
+                self.chrome_has_focus(),
+                Modifiers::empty(),
+                Key::Named(NamedKey::F5),
+                || active_webview.reload(),
+            )
             .shortcut(CMD_OR_CONTROL, 'Q', || state.schedule_exit())
             .otherwise(|| handled = false);
         handled
@@ -441,15 +633,20 @@ impl HeadedWindow {
         }
     }
 
-    fn show_ime(&self, control_id: EmbedderControlId, input_method: InputMethodControl) {
+    fn show_ime(
+        &self,
+        webview: WebViewId,
+        control_id: EmbedderControlId,
+        input_method: InputMethodControl,
+    ) {
         self.visible_input_method.set(Some(control_id));
 
         let position = input_method.position();
         self.winit_window.set_ime_allowed(true);
         self.winit_window.set_ime_cursor_area(
             LogicalPosition::new(
-                position.min.x,
-                position.min.y + (self.toolbar_height().0 as i32),
+                position.min.x + self.view_offset(webview).x as i32,
+                position.min.y + self.view_offset(webview).y as i32,
             ),
             LogicalSize::new(
                 position.max.x - position.min.x,
@@ -463,7 +660,7 @@ impl HeadedWindow {
         window: &ServoShellWindow,
         callback: impl Fn(&mut Dialog) -> bool,
     ) {
-        let Some(active_webview) = window.active_webview() else {
+        let Some(active_webview) = self.focused_webview(window) else {
             return;
         };
         let mut dialogs = self.dialogs.borrow_mut();
@@ -538,13 +735,21 @@ impl HeadedWindow {
                 winit_position_to_euclid_point(position).to_f32() / self.hidpi_scale_factor(),
             ));
         }
+        let chrome_under_pointer = self.visible_chrome_view().filter(|_| {
+            self.last_mouse_position
+                .get()
+                .is_some_and(|point| self.chrome_contains(point))
+        });
         let should_forward_mouse_event_to_egui = || {
             // If a dialog is showing, it always captures all mouse events.
-            if window
-                .active_webview()
+            if self
+                .focused_webview(&window)
                 .is_some_and(|webview| self.has_active_dialog_for_webview(webview.id()))
             {
                 return true;
+            }
+            if self.chrome.borrow().is_some() {
+                return false;
             }
             // Otherwise, if the cursor is over the egui interface, forward the event.
             self.last_mouse_position
@@ -620,7 +825,8 @@ impl HeadedWindow {
                 // forwarded to Gui (above). This is because egui needs to know when
                 // the mouse is moving in other parts of the view in order to properly
                 // hide tooltips.
-                if let WindowEvent::CursorMoved { .. } = event &&
+                if (matches!(event, WindowEvent::CursorMoved { .. }) ||
+                    (self.chrome.borrow().is_some() && matches!(event, WindowEvent::Touch(_)))) &&
                     !should_forward_mouse_event_to_egui()
                 {
                     consumed = false;
@@ -632,7 +838,26 @@ impl HeadedWindow {
             },
         }
 
-        if !consumed && let Some(webview) = window.active_webview() {
+        let input_webview = match event {
+            WindowEvent::MouseInput { .. } |
+            WindowEvent::CursorMoved { .. } |
+            WindowEvent::MouseWheel { .. } |
+            WindowEvent::CursorLeft { .. } => chrome_under_pointer
+                .clone()
+                .or_else(|| window.active_webview()),
+            WindowEvent::Touch(ref touch) => self
+                .visible_chrome_view()
+                .filter(|_| {
+                    self.chrome_contains(
+                        winit_position_to_euclid_point(touch.location).to_f32() /
+                            self.hidpi_scale_factor(),
+                    )
+                })
+                .or_else(|| window.active_webview()),
+            WindowEvent::Ime(_) => self.focused_webview(&window),
+            _ => window.active_webview(),
+        };
+        if !consumed && let Some(webview) = input_webview {
             match event {
                 WindowEvent::KeyboardInput { event, .. } => {
                     self.handle_keyboard_input(state, &window, event)
@@ -641,9 +866,35 @@ impl HeadedWindow {
                     self.modifiers_state.set(modifiers.state())
                 },
                 WindowEvent::MouseInput { state, button, .. } => {
+                    if state == ElementState::Pressed && self.chrome.borrow().is_some() {
+                        self.focus_chrome(&window, chrome_under_pointer.is_some());
+                    }
+                    if self.chrome.borrow().is_some() &&
+                        let Some(point) = self.last_mouse_position.get()
+                    {
+                        let mut point = point * self.hidpi_scale_factor();
+                        point -= self.view_offset(webview.id()) * self.hidpi_scale_factor();
+                        self.webview_relative_mouse_point.set(point);
+                    }
                     self.handle_mouse_button_event(&webview, button, state);
                 },
                 WindowEvent::CursorMoved { position, .. } => {
+                    if self.chrome.borrow().is_some() &&
+                        let Some(previous) = self.hovered_webview.replace(Some(webview.id())) &&
+                        previous != webview.id() &&
+                        let Some(previous) = window.webview_by_id(previous).or_else(|| {
+                            self.visible_chrome_view()
+                                .filter(|view| view.id() == previous)
+                        })
+                    {
+                        previous.notify_input_event(InputEvent::MouseLeftViewport(
+                            MouseLeftViewportEvent::default(),
+                        ));
+                    }
+
+                    if self.chrome.borrow().is_some() {
+                        self.set_cursor(webview.cursor());
+                    }
                     self.handle_mouse_move_event(&webview, position);
                 },
                 WindowEvent::CursorLeft { .. } => {
@@ -680,10 +931,26 @@ impl HeadedWindow {
                     )));
                 },
                 WindowEvent::Touch(touch) => {
+                    if touch.phase == TouchPhase::Started && self.chrome.borrow().is_some() {
+                        self.focus_chrome(
+                            &window,
+                            self.visible_chrome_view()
+                                .is_some_and(|chrome| chrome.id() == webview.id()),
+                        );
+                    }
+                    let offset = if self.chrome.borrow().is_some() {
+                        self.view_offset(webview.id()) * self.hidpi_scale_factor()
+                    } else {
+                        euclid::Vector2D::zero()
+                    };
                     webview.notify_input_event(InputEvent::Touch(TouchEvent::new(
                         winit_phase_to_touch_event_type(touch.phase),
                         TouchId(touch.id as i32),
-                        DevicePoint::new(touch.location.x as f32, touch.location.y as f32).into(),
+                        DevicePoint::new(
+                            touch.location.x as f32 - offset.x,
+                            touch.location.y as f32 - offset.y,
+                        )
+                        .into(),
                         TouchPointerType::Touch,
                     )));
                 },
@@ -786,6 +1053,25 @@ impl HeadedWindow {
             {
                 self.winit_window.request_redraw();
             }
+        }
+    }
+
+    pub(crate) fn is_chrome_hidden(&self) -> bool {
+        self.browser_fullscreen.get() || self.is_fullscreen_from_document()
+    }
+
+    pub(crate) fn toggle_browser_fullscreen(&self) {
+        self.browser_fullscreen.set(!self.browser_fullscreen.get());
+        self.apply_fullscreen();
+        self.winit_window.request_redraw();
+    }
+
+    fn apply_fullscreen(&self) {
+        let state = self.browser_fullscreen.get() || self.fullscreen_from_document.get();
+        if self.fullscreen.replace(state) != state {
+            self.winit_window.set_fullscreen(state.then(|| {
+                winit::window::Fullscreen::Borderless(self.winit_window.current_monitor())
+            }));
         }
     }
 
@@ -922,20 +1208,9 @@ impl PlatformWindow for HeadedWindow {
     }
 
     fn set_fullscreen(&self, state: bool) {
-        let monitor = self
-            .winit_window()
-            .current_monitor()
-            .or_else(|| self.winit_window.available_monitors().nth(0))
-            .expect("No monitor detected");
-        if self.fullscreen.get() != state {
-            self.winit_window.set_fullscreen(if state {
-                Some(winit::window::Fullscreen::Borderless(Some(monitor)))
-            } else {
-                None
-            });
-        }
-        self.fullscreen.set(state);
         self.fullscreen_from_document.set(state);
+        self.apply_fullscreen();
+        self.winit_window.request_redraw();
     }
 
     fn get_fullscreen(&self) -> bool {
@@ -1073,7 +1348,7 @@ impl PlatformWindow for HeadedWindow {
             EmbedderControl::SelectElement(prompt) => {
                 // FIXME: Reading the toolbar height is needed here to properly position the select dialog.
                 // But if the toolbar height changes while the dialog is open then the position won't be updated
-                let offset = self.gui.borrow().toolbar_height();
+                let offset = self.view_offset(webview_id);
                 self.add_dialog(
                     webview_id,
                     Dialog::new_select_element_dialog(prompt, offset),
@@ -1082,14 +1357,14 @@ impl PlatformWindow for HeadedWindow {
             EmbedderControl::ColorPicker(color_picker) => {
                 // FIXME: Reading the toolbar height is needed here to properly position the select dialog.
                 // But if the toolbar height changes while the dialog is open then the position won't be updated
-                let offset = self.gui.borrow().toolbar_height();
+                let offset = self.view_offset(webview_id);
                 self.add_dialog(
                     webview_id,
                     Dialog::new_color_picker_dialog(color_picker, offset),
                 );
             },
             EmbedderControl::InputMethod(input_method_control) => {
-                self.show_ime(control_id, input_method_control);
+                self.show_ime(webview_id, control_id, input_method_control);
             },
             EmbedderControl::FilePicker(file_picker) => {
                 let waker = RepaintEventLoopWaker::new(self.event_loop_proxy.clone(), self.id());
@@ -1102,7 +1377,7 @@ impl PlatformWindow for HeadedWindow {
                 self.add_dialog(webview_id, Dialog::new_simple_dialog(simple_dialog));
             },
             EmbedderControl::ContextMenu(prompt) => {
-                let offset = self.gui.borrow().toolbar_height();
+                let offset = self.view_offset(webview_id);
                 self.add_dialog(webview_id, Dialog::new_context_menu(prompt, offset));
             },
         }

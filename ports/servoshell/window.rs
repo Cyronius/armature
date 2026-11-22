@@ -70,6 +70,8 @@ pub(crate) struct ServoShellWindow {
 
 pub(crate) enum TopLevelWebViewCreationRequest {
     WithUrl(Url),
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+    Restored(Rc<crate::desktop::session::SavedTab>),
     WithCreateRequest(CreateNewWebViewRequest),
 }
 
@@ -108,7 +110,18 @@ impl ServoShellWindow {
         state: Rc<RunningAppState>,
         creation_type: TopLevelWebViewCreationRequest,
     ) -> WebView {
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        let mut restored = None;
         let mut webview_builder = match creation_type {
+            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+            TopLevelWebViewCreationRequest::Restored(tab) => {
+                let builder =
+                    WebViewBuilder::new(state.servo(), self.platform_window.rendering_context())
+                        .url(tab.url.clone())
+                        .restored_history(tab.past.clone(), tab.future.clone());
+                restored = Some(tab);
+                builder
+            },
             TopLevelWebViewCreationRequest::WithUrl(url) => {
                 WebViewBuilder::new(state.servo(), self.platform_window.rendering_context())
                     .url(url)
@@ -131,6 +144,14 @@ impl ServoShellWindow {
         }
 
         let webview = webview_builder.build();
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        if let Some(tab) = restored {
+            state
+                .browser_data
+                .borrow_mut()
+                .tab_history
+                .insert(webview.id(), Some(tab));
+        }
         self.add_webview(webview.clone());
 
         // If `self` is not in `state.windows`, our notify_accessibility_tree_update() will panic.
@@ -163,6 +184,11 @@ impl ServoShellWindow {
 
     pub(crate) fn webview_by_id(&self, id: WebViewId) -> Option<WebView> {
         self.webview_collection.borrow().get(id).cloned()
+    }
+
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+    pub(crate) fn needs_update(&self) -> bool {
+        self.needs_update.get()
     }
 
     pub(crate) fn set_needs_update(&self) {
@@ -244,9 +270,16 @@ impl ServoShellWindow {
     /// the close notification via the [`WebViewDelegate`] later.
     pub(crate) fn close_webview(&self, webview_id: WebViewId) {
         let mut webview_collection = self.webview_collection.borrow_mut();
-        if webview_collection.remove(webview_id).is_none() {
+        let Some(view) = webview_collection.remove(webview_id) else {
             return;
+        };
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        if let Some(headed) = self.platform_window.as_headed_window() &&
+            let Some(chrome) = headed.chrome().as_ref()
+        {
+            chrome.record_closed(&view);
         }
+        drop(view);
         self.platform_window
             .dismiss_embedder_controls_for_webview(webview_id);
 
@@ -368,10 +401,25 @@ impl ServoShellWindow {
                         state.clone(),
                         TopLevelWebViewCreationRequest::WithUrl(url),
                     );
+                    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+                    if let Some(headed) = self.platform_window.as_headed_window() {
+                        headed.focus_new_tab_address(self);
+                    }
                 },
                 UserInterfaceCommand::CloseWebView(id) => {
                     self.set_needs_update();
                     self.close_webview(id);
+                },
+                #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+                UserInterfaceCommand::RestoreSession => {
+                    if let Some(create_window) = create_platform_window {
+                        let previous =
+                            std::mem::take(&mut state.browser_data.borrow_mut().previous);
+                        for saved in previous {
+                            let platform = create_window(saved.tabs[saved.selected].url.clone());
+                            saved.open(state, platform);
+                        }
+                    }
                 },
                 UserInterfaceCommand::NewWindow(creation_request) => {
                     let Some(create_platform_window) = create_platform_window else {
@@ -379,6 +427,8 @@ impl ServoShellWindow {
                     };
                     let url = match &creation_request {
                         TopLevelWebViewCreationRequest::WithUrl(url) => url.clone(),
+                        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+                        TopLevelWebViewCreationRequest::Restored(tab) => tab.url.clone(),
                         TopLevelWebViewCreationRequest::WithCreateRequest(..) => {
                             Url::parse("servo:newtab").unwrap()
                         },

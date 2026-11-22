@@ -5,7 +5,7 @@
 use embedder_traits::{JSValue, JavaScriptEvaluationError, JavaScriptEvaluationId};
 use rustc_hash::FxHashMap;
 use servo_base::id::WebViewId;
-use servo_constellation_traits::EmbedderToConstellationMessage;
+use servo_constellation_traits::{EmbedderToConstellationMessage, JavaScriptEvaluationScope};
 
 use crate::proxies::ConstellationProxy;
 
@@ -37,6 +37,7 @@ impl JavaScriptEvaluator {
         &mut self,
         webview_id: WebViewId,
         script: String,
+        scope: JavaScriptEvaluationScope,
         callback: Box<dyn FnOnce(Result<JSValue, JavaScriptEvaluationError>)>,
     ) {
         let evaluation_id = self.generate_id();
@@ -45,6 +46,7 @@ impl JavaScriptEvaluator {
                 webview_id,
                 evaluation_id,
                 script,
+                scope,
             ));
         self.pending_evaluations
             .insert(evaluation_id, PendingEvaluation { callback });

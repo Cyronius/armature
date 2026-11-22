@@ -136,10 +136,35 @@ impl App {
                 .map(Rc::new),
         ));
         let initial_url = self.initial_url.as_url().clone();
-        running_state.open_window(
-            platform_window,
-            TopLevelWebViewCreationRequest::WithUrl(initial_url),
-        );
+        let previous = if self.servoshell_preferences.web_chrome &&
+            self.servoshell_preferences.url.is_none() &&
+            active_event_loop.is_some()
+        {
+            std::mem::take(&mut running_state.browser_data.borrow_mut().previous)
+        } else {
+            Vec::new()
+        };
+        let mut previous = previous.into_iter();
+        if let Some(first) = previous.next() {
+            first.open(&running_state, platform_window);
+            for saved in previous {
+                let platform = self.create_platform_window(
+                    saved.tabs[saved.selected].url.clone(),
+                    active_event_loop,
+                );
+                saved.open(&running_state, platform);
+            }
+        } else {
+            let focus_address =
+                self.servoshell_preferences.web_chrome && initial_url.as_str() == "servo:newtab";
+            let window = running_state.open_window(
+                platform_window,
+                TopLevelWebViewCreationRequest::WithUrl(initial_url),
+            );
+            if focus_address && let Some(headed) = window.platform_window().as_headed_window() {
+                headed.focus_new_tab_address(&window);
+            }
+        }
 
         self.state = AppState::Running(running_state);
     }
@@ -175,7 +200,13 @@ impl App {
         };
 
         let create_platform_window = |url: Url| self.create_platform_window(url, active_event_loop);
-        if !state.spin_event_loop(Some(&create_platform_window)) {
+        let started = std::time::Instant::now();
+        let running = state.spin_event_loop(Some(&create_platform_window));
+        let elapsed = started.elapsed();
+        if elapsed >= std::time::Duration::from_secs(1) {
+            log::warn!("Armature event loop took {elapsed:?} to process pending browser work");
+        }
+        if !running {
             self.state = AppState::ShuttingDown;
             return false;
         }
@@ -210,7 +241,12 @@ impl ApplicationHandler<AppEvent> for App {
         if let Some(window) = state.window(ServoShellWindowId::from(u64::from(window_id))) &&
             let Some(headed_window) = window.platform_window().as_headed_window()
         {
+            let started = std::time::Instant::now();
             headed_window.handle_winit_window_event(state.clone(), window, window_event);
+            let elapsed = started.elapsed();
+            if elapsed >= std::time::Duration::from_secs(1) {
+                log::warn!("Armature window event took {elapsed:?} to process");
+            }
         }
 
         if !self.pump_servo_event_loop(event_loop.into()) {
@@ -226,7 +262,11 @@ impl ApplicationHandler<AppEvent> for App {
         };
 
         match app_event {
-            AppEvent::Waker => (),
+            AppEvent::Waker(pending) => {
+                if let Some(pending) = pending {
+                    pending.store(false, std::sync::atomic::Ordering::Release);
+                }
+            },
             AppEvent::Accessibility(ref event) => {
                 if let Some(window) =
                     state.window(ServoShellWindowId::from(u64::from(event.window_id))) &&

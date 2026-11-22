@@ -363,6 +363,11 @@ fn prompt_user_from_embedder(name: PermissionName, global_scope: &GlobalScope) -
     global_scope.send_to_embedder(EmbedderMsg::PromptPermission(
         webview_id,
         name.convert(),
+        global_scope
+            .origin()
+            .immutable()
+            .ascii_serialization()
+            .into_owned(),
         sender,
     ));
 
@@ -410,6 +415,11 @@ pub(crate) fn request_permission_to_use_async(
     global_scope.send_to_embedder(EmbedderMsg::RequestPermission(
         webview_id,
         name.convert(),
+        global_scope
+            .origin()
+            .immutable()
+            .ascii_serialization()
+            .into_owned(),
         callback,
     ));
     AsyncPermissionRequest::Prompting

@@ -4,6 +4,7 @@
 
 //! An event loop implementation that works in headless mode.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::Wake;
 use std::time;
@@ -21,7 +22,7 @@ use crate::window::ServoShellWindowId;
 #[derive(Debug)]
 pub enum AppEvent {
     /// Another process or thread has kicked the OS event loop with EventLoopWaker.
-    Waker,
+    Waker(Option<Arc<AtomicBool>>),
     Accessibility(egui_winit::accesskit_winit::Event),
     RequestRepaint(ServoShellWindowId),
     #[cfg(feature = "gamepad")]
@@ -93,19 +94,32 @@ impl ServoShellEventLoop {
 #[derive(Clone)]
 struct HeadedEventLoopWaker {
     proxy: Arc<Mutex<EventLoopProxy<AppEvent>>>,
+    pending: Arc<AtomicBool>,
 }
 
 impl HeadedEventLoopWaker {
     fn new(event_loop: &EventLoop<AppEvent>) -> HeadedEventLoopWaker {
         let proxy = Arc::new(Mutex::new(event_loop.create_proxy()));
-        HeadedEventLoopWaker { proxy }
+        HeadedEventLoopWaker {
+            proxy,
+            pending: Arc::new(AtomicBool::new(false)),
+        }
     }
 }
 
 impl EventLoopWaker for HeadedEventLoopWaker {
     fn wake(&self) {
-        // Kick the OS event loop awake.
-        if let Err(err) = self.proxy.lock().unwrap().send_event(AppEvent::Waker) {
+        // One queued wake is enough to drain all pending Servo messages.
+        if self.pending.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if let Err(err) = self
+            .proxy
+            .lock()
+            .unwrap()
+            .send_event(AppEvent::Waker(Some(self.pending.clone())))
+        {
+            self.pending.store(false, Ordering::Release);
             warn!("Failed to wake up event loop ({}).", err);
         }
     }

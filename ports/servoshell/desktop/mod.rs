@@ -6,6 +6,7 @@
 
 mod accelerated_gl_media;
 pub(crate) mod app;
+pub(crate) mod chrome;
 pub(crate) mod cli;
 pub(crate) mod dialog;
 pub(crate) mod event_loop;
@@ -17,6 +18,7 @@ pub(crate) mod headed_window;
 mod headless_window;
 mod keyutils;
 mod protocols;
+pub(crate) mod session;
 mod tracing;
 #[cfg(feature = "webxr")]
 mod webxr;

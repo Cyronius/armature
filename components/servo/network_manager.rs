@@ -4,8 +4,14 @@
 
 use std::collections::HashSet;
 
-use net_traits::ResourceThreads;
+use net_traits::blob_url_store::UrlWithBlobClaim;
+use net_traits::request::{
+    CredentialsMode, Initiator, Referrer, RequestBuilder, ServiceWorkersMode,
+};
+use net_traits::{FetchResponseMsg, ResourceThreads, fetch_async};
 use servo_constellation_traits::EmbedderToConstellationMessage;
+use servo_url::ServoUrl;
+use url::Url;
 
 use crate::proxies::ConstellationProxy;
 
@@ -22,6 +28,12 @@ impl CacheEntry {
     pub fn key(&self) -> &str {
         &self.key
     }
+}
+
+/// Events for a user-initiated download started by the embedder.
+pub enum DownloadEvent {
+    Data(Vec<u8>),
+    Finished(Result<(), String>),
 }
 
 /// Provides APIs for managing network-related state.
@@ -46,6 +58,59 @@ impl NetworkManager {
             private_resource_threads,
             constellation_proxy,
         }
+    }
+
+    /// Fetch a public HTTP(S) file through Servo's network stack.
+    /// The callback runs on the fetch thread and should dispatch file I/O elsewhere.
+    pub fn download(&self, url: Url, mut callback: impl FnMut(DownloadEvent) + Send + 'static) {
+        if !matches!(url.scheme(), "http" | "https") {
+            callback(DownloadEvent::Finished(Err(
+                "Expected an HTTP or HTTPS URL".into(),
+            )));
+            return;
+        }
+        let url = ServoUrl::from(url);
+        let origin = url.origin();
+        let mut request = RequestBuilder::new(
+            None,
+            UrlWithBlobClaim::from_url_without_having_claimed_blob(url),
+            Referrer::NoReferrer,
+        )
+        .origin(origin)
+        .initiator(Initiator::Download)
+        .credentials_mode(CredentialsMode::Omit);
+        request.service_workers_mode = ServiceWorkersMode::None;
+        let mut finished = false;
+        fetch_async(
+            &self.public_resource_threads.core_thread,
+            request,
+            None,
+            Box::new(move |event| {
+                if finished {
+                    return;
+                }
+                let result = match event {
+                    FetchResponseMsg::ProcessResponse(_, Ok(response)) => {
+                        let status = &response.metadata().status;
+                        if status.is_success() {
+                            return;
+                        }
+                        Err(format!("HTTP {}", status.raw_code()))
+                    },
+                    FetchResponseMsg::ProcessResponse(_, Err(error)) => Err(format!("{error:?}")),
+                    FetchResponseMsg::ProcessResponseChunk(_, bytes) => {
+                        callback(DownloadEvent::Data(bytes.to_vec()));
+                        return;
+                    },
+                    FetchResponseMsg::ProcessResponseEOF(_, result, _) => {
+                        result.map_err(|error| format!("{error:?}"))
+                    },
+                    _ => return,
+                };
+                finished = true;
+                callback(DownloadEvent::Finished(result));
+            }),
+        );
     }
 
     /// Returns cache entries currently stored in the HTTP cache.

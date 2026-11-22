@@ -311,7 +311,7 @@ pub enum ScriptThreadMessage {
     SetScrollStates(PipelineId, ScrollStateUpdate),
     /// Evaluate the given JavaScript and return a result via a corresponding message
     /// to the Constellation.
-    EvaluateJavaScript(WebViewId, PipelineId, JavaScriptEvaluationId, String),
+    EvaluateJavaScript(WebViewId, PipelineId, JavaScriptEvaluationId, String, bool),
     /// A new batch of keys for the image cache for the specific pipeline.
     SendImageKeysBatch(PipelineId, Vec<ImageKey>),
     /// Preferences were updated in the parent process.

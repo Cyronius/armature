@@ -315,3 +315,14 @@ fn test_issue_35754() {
         "https://foo/bar",
     );
 }
+
+#[test]
+fn search_terms_stay_in_one_query_parameter() {
+    let terms = "C++ & Rust #1 / 50%";
+    let result = location_bar_input_to_url(terms, "https://search.example/?q=%s").unwrap();
+    assert_eq!(
+        result.as_url().query_pairs().collect::<Vec<_>>(),
+        vec![("q".into(), terms.into())]
+    );
+    assert_eq!(result.as_url().fragment(), None);
+}

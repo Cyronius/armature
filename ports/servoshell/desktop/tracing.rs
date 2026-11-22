@@ -51,7 +51,7 @@ mod from_winit {
                 },
                 Self::WindowEvent { event, .. } => event.log_target(),
                 Self::DeviceEvent { .. } => target!("DeviceEvent"),
-                Self::UserEvent(AppEvent::Waker) => target!("UserEvent(Waker)"),
+                Self::UserEvent(AppEvent::Waker(_)) => target!("UserEvent(Waker)"),
                 Self::UserEvent(AppEvent::Accessibility(..)) => target!("UserEvent(Accessibility)"),
                 Self::UserEvent(AppEvent::RequestRepaint(..)) => {
                     target!("UserEvent(RequestRepaint)")

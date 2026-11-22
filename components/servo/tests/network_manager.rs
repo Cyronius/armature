@@ -138,3 +138,45 @@ fn test_set_network_online() {
         vec!["offline".to_string(), "online".to_string(),]
     );
 }
+
+#[test]
+fn download_streams_an_http_file() {
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    use servo::DownloadEvent;
+
+    let servo_test = ServoTest::new();
+    let handler = |_: HyperRequest<Incoming>,
+                   response: &mut HyperResponse<BoxBody<Bytes, hyper::Error>>| {
+        *response.body_mut() = make_body(b"Armature download fixture".to_vec());
+    };
+    let (server, url) = make_server(handler);
+    let (sender, receiver) = mpsc::channel();
+    servo_test
+        .servo()
+        .network_manager()
+        .download(url.as_url().clone(), move |event| {
+            let _ = sender.send(event);
+        });
+
+    let mut contents = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        servo_test.servo().spin_event_loop();
+        let event = match receiver.recv_timeout(Duration::from_millis(2)) {
+            Ok(event) => event,
+            Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() < deadline => continue,
+            Err(error) => panic!("download did not complete: {error}"),
+        };
+        match event {
+            DownloadEvent::Data(bytes) => contents.extend(bytes),
+            DownloadEvent::Finished(result) => {
+                result.unwrap();
+                break;
+            },
+        }
+    }
+    assert_eq!(contents, b"Armature download fixture");
+    let _ = server.close();
+}

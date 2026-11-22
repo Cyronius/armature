@@ -155,6 +155,7 @@ pub(crate) struct ServoShellPreferences {
     /// Whether or not to run servoshell in headless mode. While running in headless
     /// mode, image output is supported.
     pub headless: bool,
+    pub web_chrome: bool,
     /// Filter directives for our tracing implementation.
     ///
     /// Overrides directives specified via `SERVO_TRACING` if set.
@@ -200,6 +201,7 @@ impl Default for ServoShellPreferences {
             clean_shutdown: false,
             device_pixel_ratio_override: None,
             headless: false,
+            web_chrome: false,
             homepage: "https://servo.org".into(),
             initial_window_size: Size2D::new(1024, 740),
             no_native_titlebar: true,
@@ -528,6 +530,10 @@ struct CmdArgs {
     #[bpaf(short('z'), long)]
     headless: bool,
 
+    /// Use the experimental HTML browser chrome in a desktop window.
+    #[bpaf(long)]
+    web_chrome: bool,
+
     ///
     /// Path to a hosts file (like `/etc/hosts`).
     /// Ignored if the `HOST_FILE` environment variable is set.
@@ -667,8 +673,8 @@ struct CmdArgs {
     zealous_gc: bool,
 
     /// The url we should load.
-    #[bpaf(positional("URL"), fallback(String::from("https://www.servo.org")))]
-    url: String,
+    #[bpaf(positional("URL"))]
+    url: Option<String>,
 }
 
 fn update_preferences_from_command_line_arguments(
@@ -802,12 +808,32 @@ fn parse_arguments_helper(args_without_binary: Args) -> ArgumentParsingResult {
         log::error!("Memory reporting only works with tracing and tracing-hitrace enabled.");
     }
 
+    if cmd_args.web_chrome &&
+        (cmd_args.headless ||
+            cmd_args.webdriver_port.is_some() ||
+            preferences.devtools_server_enabled ||
+            cfg!(any(target_os = "android", target_env = "ohos")))
+    {
+        eprintln!(
+            "--web-chrome requires desktop windowing and exclusive control of the chrome WebView"
+        );
+        return ArgumentParsingResult::ErrorParsing;
+    }
+
     let servoshell_preferences = ServoShellPreferences {
-        url: Some(cmd_args.url),
+        url: cmd_args
+            .url
+            .or_else(|| (!cmd_args.web_chrome).then(|| "https://www.servo.org".into())),
+        homepage: if cmd_args.web_chrome {
+            "servo:newtab".into()
+        } else {
+            ServoShellPreferences::default().homepage
+        },
         no_native_titlebar: cmd_args.no_native_titlebar,
         device_pixel_ratio_override: cmd_args.device_pixel_ratio,
         clean_shutdown: cmd_args.clean_shutdown,
         headless: cmd_args.headless,
+        web_chrome: cmd_args.web_chrome,
         tracing_filter: cmd_args.tracing_filter,
         initial_window_size: cmd_args.window_size.unwrap_or(default_window_size),
         screen_size_override: cmd_args.screen_size_override,

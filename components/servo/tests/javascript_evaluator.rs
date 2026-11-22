@@ -129,3 +129,68 @@ fn runs_in_csp_restricted() {
     let result = evaluate_javascript(&servo_test, webview.clone(), "document.readyState");
     assert_eq!(result, Ok(JSValue::String("complete".into())));
 }
+
+#[test]
+fn document_scoped_evaluation_targets_background_view_and_rejects_stale_edits() {
+    use std::cell::RefCell;
+
+    use servo::LoadStatus;
+    use url::Url;
+
+    let servo_test = ServoTest::new();
+    let initial = Url::parse("data:text/html,<h1>Before</h1>").unwrap();
+    let destination = Url::parse("data:text/html,<h1>Next page</h1>").unwrap();
+    let background = WebViewBuilder::new(servo_test.servo(), servo_test.rendering_context.clone())
+        .url(initial.clone())
+        .build();
+    let foreground =
+        WebViewBuilder::new(servo_test.servo(), servo_test.rendering_context.clone()).build();
+    background.hide();
+    background.set_focused(false);
+    foreground.show();
+
+    let wait_for_load = |url: &Url| {
+        servo_test.spin(|| {
+            background.url().as_ref() != Some(url) ||
+                background.load_status() != LoadStatus::Complete
+        });
+    };
+    let evaluate = |expected, script: &str| {
+        let result = Rc::new(RefCell::new(None));
+        let output = result.clone();
+        background.evaluate_javascript_in_document(expected, script.to_owned(), move |reply| {
+            output.replace(Some(reply));
+        });
+        servo_test.spin(|| result.borrow().is_none());
+        result.take().expect("evaluation reply")
+    };
+
+    wait_for_load(&initial);
+    let read_heading = "document.querySelector('h1').textContent";
+    let JSValue::Object(result) = evaluate(None, read_heading).unwrap() else {
+        panic!("expected a document ID and value");
+    };
+    assert_eq!(result["value"], JSValue::String("Before".into()));
+    let JSValue::String(document) = &result["document"] else {
+        panic!("expected a decimal document ID");
+    };
+    let document = Some(document.parse().unwrap());
+
+    let edit_heading = "document.querySelector('h1').textContent = 'After'";
+    evaluate(document, edit_heading).unwrap();
+    let JSValue::Object(result) = evaluate(document, read_heading).unwrap() else {
+        panic!("expected a document ID and value");
+    };
+    assert_eq!(result["value"], JSValue::String("After".into()));
+
+    background.load(destination.clone());
+    wait_for_load(&destination);
+    assert_eq!(
+        evaluate(document, edit_heading),
+        Err(JavaScriptEvaluationError::DocumentNotFound),
+    );
+    let JSValue::Object(result) = evaluate(None, read_heading).unwrap() else {
+        panic!("expected a document ID and value");
+    };
+    assert_eq!(result["value"], JSValue::String("Next page".into()));
+}

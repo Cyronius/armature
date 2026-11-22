@@ -59,6 +59,24 @@ subtest figures are carried forward until the next full-suite rerun.
 
 Capabilities Armature has that upstream Servo does not, beyond fixes that raise conformance.
 
+### Experimental web chrome
+
+Run `./target/release/servoshell --web-chrome` after a release build to open the HTML desktop shell.
+With a persistent profile, launching without a URL reopens the previous windows, tabs, and selected tab in each
+window. Back and Forward reload saved URLs on demand (up to 50 entries in each direction per tab). Session
+restore saves HTTP(S) addresses, blank pages, and new tabs. It does not save form contents or resubmit POST bodies.
+Passing a URL opens that page directly. Previous windows can then be opened from the Armature menu.
+Ctrl/Cmd+L selects the address, Enter opens the URL or searches, and Escape cancels the edit and returns to the page.
+The address toolbar includes a bookmark star and shows Downloads after the first transfer. The Armature @ menu
+opens History, Bookmarks, Downloads, Settings, find-in-page, the tab switcher, and tab recovery. Settings can place tabs on top or on the left. F11 toggles
+browser fullscreen. The Downloads panel accepts public HTTP(S) file URLs and tracks pages saved as HTML. The site controls show
+the current web origin and URL scheme.
+
+Bundled chrome scripts can call `window.armature.tabs()` to get tab IDs, then use `queryDOM`, `mutateDOM`, and
+`evaluateScript` on a target with a tab ID and `frame: "top"`. A query returns a document ID that edits and script
+evaluations must include. Navigation to a new document invalidates the previous ID while that document is inactive.
+WebDriver and remote DevTools are unavailable in this mode.
+
 ### WebNN: neural networks in the browser
 
 Armature implements the W3C [Web Neural Network API](https://webmachinelearning.github.io/webnn/) (WebNN), which

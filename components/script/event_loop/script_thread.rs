@@ -1994,8 +1994,16 @@ impl ScriptThread {
                 pipeline_id,
                 evaluation_id,
                 script,
+                scoped,
             ) => {
-                self.handle_evaluate_javascript(cx, webview_id, pipeline_id, evaluation_id, script);
+                self.handle_evaluate_javascript(
+                    cx,
+                    webview_id,
+                    pipeline_id,
+                    evaluation_id,
+                    script,
+                    scoped,
+                );
             },
             ScriptThreadMessage::SendImageKeysBatch(pipeline_id, image_keys) => {
                 if let Some(window) = self.documents.borrow().find_window(pipeline_id) {
@@ -4647,8 +4655,11 @@ impl ScriptThread {
         pipeline_id: PipelineId,
         evaluation_id: JavaScriptEvaluationId,
         script: String,
+        scoped: bool,
     ) {
-        let Some(window) = self.documents.borrow().find_window(pipeline_id) else {
+        let window = self.documents.borrow().find_window(pipeline_id);
+        let Some(window) = window.filter(|window| !scoped || window.Document().is_fully_active())
+        else {
             let _ = self.senders.pipeline_to_constellation_sender.send((
                 webview_id,
                 pipeline_id,
@@ -4680,7 +4691,23 @@ impl ScriptThread {
             return;
         };
 
-        let result = jsval_to_webdriver(cx, global_scope, return_value.handle());
+        let result = jsval_to_webdriver(cx, global_scope, return_value.handle()).map(|value| {
+            if scoped {
+                use embedder_traits::JSValue;
+                JSValue::Object(
+                    [
+                        (
+                            "document".into(),
+                            JSValue::String(u64::from(pipeline_id).to_string()),
+                        ),
+                        ("value".into(), value),
+                    ]
+                    .into(),
+                )
+            } else {
+                value
+            }
+        });
         let _ = self.senders.pipeline_to_constellation_sender.send((
             webview_id,
             pipeline_id,

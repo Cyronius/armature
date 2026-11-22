@@ -42,6 +42,21 @@ use strum::IntoStaticStr;
 use webrender_api::units::LayoutVector2D;
 use webrender_api::{ExternalScrollId, ImageKey};
 
+/// Choose whether to return the document ID with the JavaScript result and optionally pin
+/// execution to a document identified by a previous evaluation.
+#[derive(Clone, Copy)]
+pub enum JavaScriptEvaluationScope {
+    Current,
+    Document { expected: Option<u64> },
+}
+
+/// URLs surrounding the initial document of a restored WebView, in chronological order.
+#[derive(Default)]
+pub struct RestoredHistory {
+    pub past: Vec<ServoUrl>,
+    pub future: Vec<ServoUrl>,
+}
+
 /// Messages to the Constellation from the embedding layer, whether from `ServoRenderer` or
 /// from `libservo` itself.
 #[derive(IntoStaticStr)]
@@ -72,7 +87,7 @@ pub enum EmbedderToConstellationMessage {
     /// A log entry, with the top-level browsing context id and thread name
     LogEntry(Option<ScriptEventLoopId>, Option<String>, LogEntry),
     /// Create a new top level browsing context.
-    NewWebView(ServoUrl, NewWebViewDetails),
+    NewWebView(ServoUrl, NewWebViewDetails, RestoredHistory),
     /// Close a top level browsing context.
     CloseWebView(WebViewId),
     /// Set whether a WebView has system focus. This corresponds to the [HTML
@@ -99,8 +114,13 @@ pub enum EmbedderToConstellationMessage {
     /// Notify the constellation that a particular paint metric event has happened for the given pipeline.
     PaintMetric(PipelineId, PaintMetricEvent),
     /// Evaluate a JavaScript string in the context of a `WebView`. When execution is complete or an
-    /// error is encountered, a correpsonding message will be sent to the embedding layer.
-    EvaluateJavaScript(WebViewId, JavaScriptEvaluationId, String),
+    /// error is encountered, a corresponding message will be sent to the embedding layer.
+    EvaluateJavaScript(
+        WebViewId,
+        JavaScriptEvaluationId,
+        String,
+        JavaScriptEvaluationScope,
+    ),
     /// Create a memory report and return it via the [`GenericCallback`]
     CreateMemoryReport(GenericCallback<MemoryReportResult>),
     /// Sends the generated image key to the image cache associated with this pipeline.

@@ -514,10 +514,20 @@ pub enum EmbedderMsg {
         GenericSender<Option<String>>,
     ),
     /// Open interface to request permission specified by prompt.
-    PromptPermission(WebViewId, PermissionFeature, GenericSender<AllowOrDeny>),
+    PromptPermission(
+        WebViewId,
+        PermissionFeature,
+        String,
+        GenericSender<AllowOrDeny>,
+    ),
     /// Request permission without blocking the script thread. The callback is invoked with the user's
     /// decision once it is known.
-    RequestPermission(WebViewId, PermissionFeature, GenericCallback<AllowOrDeny>),
+    RequestPermission(
+        WebViewId,
+        PermissionFeature,
+        String,
+        GenericCallback<AllowOrDeny>,
+    ),
     /// Request a single geographic position fix. The callback is invoked exactly once.
     RequestGeolocationPosition(
         WebViewId,

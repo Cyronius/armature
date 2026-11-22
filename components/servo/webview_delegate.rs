@@ -75,6 +75,7 @@ impl Drop for NavigationRequest {
 /// interface.
 pub struct PermissionRequest {
     pub(crate) requested_feature: PermissionFeature,
+    pub(crate) origin: String,
     pub(crate) allow_deny_request: AllowOrDenyRequest,
 }
 
@@ -82,6 +83,11 @@ impl PermissionRequest {
     /// Get the [`PermissionFeature`] for which permission is being requested by page content.
     pub fn feature(&self) -> PermissionFeature {
         self.requested_feature
+    }
+
+    /// Return the serialized origin of the document or worker making this request.
+    pub fn origin(&self) -> &str {
+        &self.origin
     }
 
     /// Grant permission to the web content to access the requested feature.
