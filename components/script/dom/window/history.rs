@@ -51,6 +51,8 @@ pub(crate) struct History {
     #[no_trace]
     state_id: Cell<Option<HistoryStateId>>,
     scroll_restoration: Cell<ScrollRestoration>,
+    /// Whether the document pushed a state of its own, which it can traverse back to.
+    pushed_state: Cell<bool>,
 }
 
 impl History {
@@ -61,6 +63,7 @@ impl History {
             state: Heap::default(),
             state_id: Cell::new(None),
             scroll_restoration: Cell::new(ScrollRestoration::Auto),
+            pushed_state: Cell::new(false),
         }
     }
 
@@ -75,6 +78,16 @@ impl History {
     fn traverse_history(&self, direction: TraversalDirection) -> ErrorResult {
         if !self.window.Document().is_fully_active() {
             return Err(Error::Security(Some("Document is not fully active".into())));
+        }
+        // A document that is sandboxed from navigating cannot traverse the history of the
+        // documents that contain it.
+        if !self.window.is_top_level() &&
+            !self.pushed_state.get() &&
+            self.window.Document().has_active_sandboxing_flag(
+                content_security_policy::sandboxing_directive::SandboxingFlagSet::SANDBOXED_NAVIGATION_BROWSING_CONTEXT_FLAG,
+            )
+        {
+            return Ok(());
         }
         let _ = self
             .window
@@ -210,6 +223,10 @@ impl History {
         url: Option<USVString>,
         push_or_replace: PushOrReplace,
     ) -> ErrorResult {
+        if matches!(push_or_replace, PushOrReplace::Push) {
+            self.pushed_state.set(true);
+        }
+
         // Step 1
         let document = self.window.Document();
 
