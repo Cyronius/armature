@@ -2027,6 +2027,16 @@ impl VirtualMethods for HTMLImageElement {
             // - Srcset implementations do not take width as a fallback when sizes is not present
             //   <https://github.com/whatwg/html/pull/5900>
             &local_name!("src") | &local_name!("srcset") | &local_name!("sizes") => {
+                // An image that has no source any more has no current address right away, and
+                // not only once the image data is updated.
+                if mutation.is_removal() &&
+                    attr.local_name() == &local_name!("src") &&
+                    !self.uses_srcset_or_picture()
+                {
+                    let mut current_request = self.current_request.safe_borrow_mut(cx.no_gc());
+                    current_request.source_url = None;
+                    current_request.parsed_url = None;
+                }
                 self.update_the_image_data(cx);
             },
             // <https://html.spec.whatwg.org/multipage/#attr-img-loading>
