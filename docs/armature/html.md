@@ -94,6 +94,12 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
   the parser has finished the element with that id (or an element with that id or an anchor with that name is
   inserted), or until parsing finishes. About 35 render-blocking subtests newly pass; unblocking by removing the
   element or the `blocking` attribute of scripts and styles is still missing.
+- **Preload scanner**: the scanner that fetches resources ahead of a blocked parser now also scans input written by
+  `document.write()`, skips templates, MathML, `nomodule` and unsupported-type scripts, disabled or media-never-matching
+  stylesheets and images that a meta CSP forbids, and fetches `link rel=preload`, video posters, SVG images and scripts
+  by `href`, `srcset` and `picture` sources. About 60 speculative-parsing tests newly pass.
+- **`showPicker()`** on `input` and `select` (validation, cross-origin and activation checks; no picker is shown), and
+  MathML is enabled for the HTML IDL harness.
 - **Offscreen canvas fonts**: an `OffscreenCanvas` in a window now resolves the `font` it is given, against the
   default font; in workers there is no layout to do it with, so the font cannot be changed.
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
