@@ -214,6 +214,11 @@ impl SpecificInputType for RangeInputType {
                     let int_steps = round_halves_positive(steps_from_base);
                     // and snap the value to that rounded value...
                     fval = int_steps * allowed_value_step + step_base;
+                    // Decimal values are not exact as floating point numbers; keep only the precision
+                    // that they have.
+                    if fval.is_finite() && fval.abs() < 1.0e9 {
+                        fval = (fval * 1.0e9).round() / 1.0e9;
+                    }
 
                     // but if after snapping we're now outside min..max
                     // we have to adjust! (adjusting to min last because
