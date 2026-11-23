@@ -1545,6 +1545,14 @@ impl ParserContext {
         // > then language information from a higher-level protocol (such as HTTP),
         // > if any, must be used as the final fallback language instead
         document.set_default_language(content_language);
+        // <https://html.spec.whatwg.org/multipage/#origin-keyed-agent-clusters>
+        document.set_origin_agent_cluster_requested(
+            metadata
+                .as_ref()
+                .and_then(|metadata| metadata.headers.as_ref())
+                .and_then(|headers| headers.get("Origin-Agent-Cluster"))
+                .is_some_and(|value| value.as_bytes().trim_ascii() == b"?1"),
+        );
         if let Some(parser) = document.get_current_parser() {
             self.parser = Some(Trusted::new(&*parser));
         }

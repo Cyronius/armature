@@ -844,6 +844,8 @@ pub(crate) struct Document {
     /// Language specific for this document, set by a meta element
     #[no_trace]
     default_language: AtomicRefCell<Option<String>>,
+    /// Whether the response asked for the document to be origin-keyed with `Origin-Agent-Cluster: ?1`.
+    origin_agent_cluster_requested: Cell<bool>,
 
     /// True if this document is no longer the active document of its associated
     /// window.
@@ -4535,6 +4537,7 @@ impl Document {
             theme: Default::default(),
             theme_override: Default::default(),
             default_language: Default::default(),
+            origin_agent_cluster_requested: Default::default(),
             window_detached: Default::default(),
             live_ranges: Default::default(),
             module_map: Default::default(),
@@ -6211,6 +6214,14 @@ impl Document {
 
     pub(crate) fn default_language(&self) -> Option<String> {
         self.default_language.borrow().clone()
+    }
+
+    pub(crate) fn set_origin_agent_cluster_requested(&self, requested: bool) {
+        self.origin_agent_cluster_requested.set(requested);
+    }
+
+    pub(crate) fn origin_agent_cluster_requested(&self) -> bool {
+        self.origin_agent_cluster_requested.get()
     }
 
     pub(crate) fn set_default_language(&self, new_language: Option<String>) {

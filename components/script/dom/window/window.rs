@@ -2428,6 +2428,17 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
         }
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-originagentcluster>
+    fn OriginAgentCluster(&self) -> bool {
+        let document = self.Document();
+        // Documents with an opaque origin are always origin-keyed.
+        if matches!(document.origin().immutable(), ImmutableOrigin::Opaque(_)) {
+            return true;
+        }
+        document.origin_agent_cluster_requested() && self.IsSecureContext()
+    }
+
+    /// <https://w3c.github.io/webappsec-secure-contexts/#dom-windoworworkerglobalscope-issecurecontext>
     fn IsSecureContext(&self) -> bool {
         self.as_global_scope().is_secure_context()
     }

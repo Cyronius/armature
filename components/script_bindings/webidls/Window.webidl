@@ -16,6 +16,7 @@
     readonly attribute Location location;
   readonly attribute History history;
   readonly attribute CustomElementRegistry customElements;
+  readonly attribute boolean originAgentCluster;
   [Replaceable] readonly attribute BarProp locationbar;
   [Replaceable] readonly attribute BarProp menubar;
   [Replaceable] readonly attribute BarProp personalbar;
