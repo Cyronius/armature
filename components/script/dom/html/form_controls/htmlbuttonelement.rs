@@ -155,6 +155,9 @@ impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
             CommandState::PageBlockEnd => DOMString::from_static("page-block-end"),
             CommandState::PageInlineStart => DOMString::from_static("page-inline-start"),
             CommandState::PageInlineEnd => DOMString::from_static("page-inline-end"),
+            CommandState::ToggleFullscreen => DOMString::from_static("toggle-fullscreen"),
+            CommandState::RequestFullscreen => DOMString::from_static("request-fullscreen"),
+            CommandState::ExitFullscreen => DOMString::from_static("exit-fullscreen"),
             CommandState::StepUp => DOMString::from_static("step-up"),
             CommandState::StepDown => DOMString::from_static("step-down"),
             CommandState::RequestClose => DOMString::from_static("request-close"),
@@ -429,6 +432,15 @@ impl HTMLButtonElement {
             if command.eq_ignore_ascii_case(name) {
                 return state;
             }
+        }
+        if command.eq_ignore_ascii_case("toggle-fullscreen") {
+            return CommandState::ToggleFullscreen;
+        }
+        if command.eq_ignore_ascii_case("request-fullscreen") {
+            return CommandState::RequestFullscreen;
+        }
+        if command.eq_ignore_ascii_case("exit-fullscreen") {
+            return CommandState::ExitFullscreen;
         }
         if command.eq_ignore_ascii_case("step-up") {
             return CommandState::StepUp;
@@ -767,6 +779,9 @@ pub(crate) enum CommandState {
     ToggleMuted,
     StepUp,
     StepDown,
+    ToggleFullscreen,
+    RequestFullscreen,
+    ExitFullscreen,
     PageUp,
     PageDown,
     PageLeft,

@@ -1784,7 +1784,13 @@ impl HTMLElement {
 impl VirtualMethods for HTMLElement {
     /// <https://html.spec.whatwg.org/multipage/#the-button-element:is-valid-command-steps>
     fn is_valid_command_steps(&self, command: CommandState) -> bool {
-        command.scroll_direction().is_some()
+        command.scroll_direction().is_some() ||
+            matches!(
+                command,
+                CommandState::ToggleFullscreen |
+                    CommandState::RequestFullscreen |
+                    CommandState::ExitFullscreen
+            )
     }
 
     /// The commands that scroll the element by a page.
@@ -1794,10 +1800,33 @@ impl VirtualMethods for HTMLElement {
         _source: DomRoot<HTMLButtonElement>,
         command: CommandState,
     ) -> bool {
+        let element = self.as_element();
+        if matches!(
+            command,
+            CommandState::ToggleFullscreen |
+                CommandState::RequestFullscreen |
+                CommandState::ExitFullscreen
+        ) {
+            let document = element.upcast::<Node>().owner_doc();
+            let is_fullscreen = document.fullscreen_element().as_deref() == Some(element);
+            match command {
+                CommandState::RequestFullscreen | CommandState::ToggleFullscreen
+                    if !is_fullscreen =>
+                {
+                    let mut realm = js::realm::CurrentRealm::assert(cx);
+                    let _ = element.RequestFullscreen(&mut realm);
+                    return true;
+                },
+                CommandState::ExitFullscreen | CommandState::ToggleFullscreen if is_fullscreen => {
+                    document.exit_fullscreen(cx);
+                    return true;
+                },
+                _ => return false,
+            }
+        }
         let Some((block_or_physical, forward)) = command.scroll_direction() else {
             return false;
         };
-        let element = self.as_element();
         // Which way the page goes depends on the writing mode and the direction.
         let (vertical, ltr) = element
             .style()
