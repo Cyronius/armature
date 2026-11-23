@@ -68,6 +68,7 @@ dialog {
   color: CanvasText;
 }
 dialog:modal {
+  -servo-top-layer: auto;
   position: fixed;
   overflow: auto;
   inset-block: 0;
@@ -411,7 +412,7 @@ textarea { white-space: pre-wrap; }
 
   /* The internal-only -servo-top-layer property is used
      to implement https://fullscreen.spec.whatwg.org/#top-layer */
-  -servo-top-layer: top;
+  -servo-top-layer: auto;
 }
 
 iframe:fullscreen {
