@@ -108,9 +108,31 @@ pub(crate) fn handle_directional_key(
         return false;
     };
     let tokens = tokens(&owner).unwrap_or_default();
-    let has_inline = tokens.iter().any(|token| token == "inline");
-    let has_block = tokens.iter().any(|token| token == "block");
-    let wraps = tokens.iter().any(|token| token == "wrap");
+    // What the behavior token implies, which the axis and wrap tokens override.
+    let behavior = tokens
+        .iter()
+        .find(|token| BEHAVIOR_TOKENS.contains(&token.as_str()))
+        .map(String::as_str)
+        .unwrap_or("toolbar");
+    let (default_inline, default_block, default_wrap) = match behavior {
+        "tablist" | "menubar" => (true, false, true),
+        "menu" => (false, true, true),
+        "listbox" => (false, true, false),
+        "radiogroup" => (true, true, true),
+        _ => (true, false, false),
+    };
+    let explicit_inline = tokens.iter().any(|token| token == "inline");
+    let explicit_block = tokens.iter().any(|token| token == "block");
+    let (has_inline, has_block) = if explicit_inline || explicit_block {
+        (explicit_inline, explicit_block)
+    } else {
+        (default_inline, default_block)
+    };
+    let wraps = if tokens.iter().any(|token| token == "nowrap") {
+        false
+    } else {
+        default_wrap || tokens.iter().any(|token| token == "wrap")
+    };
 
     let items = items(cx, &owner);
     let Some(index) = items.iter().position(|item| **item == *focused) else {
@@ -151,14 +173,7 @@ pub(crate) fn handle_directional_key(
             } else {
                 (false, positive)
             };
-            // Without axis tokens the group goes both ways.
-            let axis_enabled = if has_inline == has_block {
-                true
-            } else if is_inline {
-                has_inline
-            } else {
-                has_block
-            };
+            let axis_enabled = if is_inline { has_inline } else { has_block };
             if !axis_enabled {
                 return false;
             }
