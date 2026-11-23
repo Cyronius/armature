@@ -90,6 +90,7 @@ impl SpecificInputType for RadioInputType {
         )
         .find(|r| r.Checked());
         let was_checked = input.Checked();
+        input.set_activation_changed_checkedness(!was_checked);
         input.SetChecked(cx, true);
         Some(InputActivationState {
             checked: was_checked,
@@ -218,6 +219,11 @@ impl SpecificInputActivationType for RadioInputActivation {
     ) {
         // Step 1: If the element is not connected, then return.
         if !input.upcast::<Node>().is_connected() {
+            return;
+        }
+
+        // A radio button that was checked already is not changed by the activation.
+        if !input.activation_changed_checkedness() {
             return;
         }
 

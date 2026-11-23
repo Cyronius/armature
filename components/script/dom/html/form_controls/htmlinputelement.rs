@@ -121,6 +121,8 @@ pub(crate) struct HTMLInputElement {
     /// The checkedness of an input is independent of its checked state as every input type can be
     /// checked, but only checkboxes and radio buttons are in the checked state when they are checked.
     checkedness: Cell<bool>,
+    /// Whether the activation that is going on changed the checkedness of a radio button.
+    activation_changed_checkedness: Cell<bool>,
     /// <https://html.spec.whatwg.org/multipage/#concept-input-checked-dirty-flag>
     checked_changed: Cell<bool>,
     /// <https://html.spec.whatwg.org/multipage/#concept-input-indeterminate>
@@ -189,6 +191,7 @@ impl HTMLInputElement {
             is_textual_or_password: Cell::new(true),
             placeholder: DomRefCell::new(DOMString::new().traced()),
             checkedness: Cell::new(false),
+            activation_changed_checkedness: Cell::new(false),
             checked_changed: Cell::new(false),
             indeterminateness: Cell::new(false),
             maxlength: Cell::new(DEFAULT_MAX_LENGTH),
@@ -2036,6 +2039,14 @@ impl HTMLInputElement {
     /// <https://html.spec.whatwg.org/multipage/#concept-fe-mutable>
     pub(crate) fn explicitly_set_popover_target_element(&self) -> Option<DomRoot<Element>> {
         self.explicitly_set_popover_target_element.get()
+    }
+
+    pub(crate) fn set_activation_changed_checkedness(&self, value: bool) {
+        self.activation_changed_checkedness.set(value);
+    }
+
+    pub(crate) fn activation_changed_checkedness(&self) -> bool {
+        self.activation_changed_checkedness.get()
     }
 
     pub(crate) fn is_mutable(&self) -> bool {
