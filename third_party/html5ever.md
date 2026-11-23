@@ -142,3 +142,11 @@ Each entry has this form (the check reads the `### AH-NNN` headings and the `Fil
   html/syntax/serializing-html-fragments/processing-instructions.html and the `innerHTML` of nodes that contain
   processing instructions, such as the `<template for>` tests.
 - Upstream: Could go upstream as is, with the processing instruction parsing.
+
+### AH-006: Treat an empty system identifier as a missing one for the HTML 4.01 quirks check
+- Files: `src/tree_builder/data.rs`
+- Why: A document type with a public identifier that starts with `-//W3C//DTD HTML 4.01 Frameset//` or
+  `-//W3C//DTD HTML 4.01 Transitional//` is in quirks mode when it has no system identifier and in limited quirks
+  mode when it has one (whatwg/html#12023 made an empty system identifier count as missing). Upstream matched only
+  `None`. Affects html/syntax/parsing/doctype-system-identifier-distinction.html.
+- Upstream: Could go upstream as is.
