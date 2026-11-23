@@ -86,6 +86,12 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
   `css/selectors` newly pass.
 - **Body margins**: `marginwidth`, `leftmargin`, `marginheight` and `topmargin` on `<body>` set its margins
   (16 reftests). The margins that a `frame` or `iframe` gives to its document's body are not mapped.
+- **Lazy loading of images**: `img.loading` exists, and `loading=lazy` images (and `srcdoc` iframes) wait to be
+  fetched until they come within 1250px of the viewport or of a scroller, using an intersection observer that
+  the document keeps for them; they no longer delay the window `load` event. About 20 `the-img-element` tests newly
+  pass. Images in nested documents and iframes with a `src` are still loaded right away.
+- **Offscreen canvas fonts**: an `OffscreenCanvas` in a window now resolves the `font` it is given, against the
+  default font; in workers there is no layout to do it with, so the font cannot be changed.
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
   `wordSpacing` and `lang`. Kerning, the spacings and the language affect shaping; the other styles are stored.
 
