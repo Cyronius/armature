@@ -721,6 +721,16 @@ impl HTMLIFrameElement {
         if reason == UpdatePipelineIdReason::Traversal {
             let blocker = &self.load_blocker;
             LoadBlocker::terminate(cx, blocker);
+
+            // Traversing to the document of a nested navigable loads it again, which fires `load`
+            // at the container once the document is completely loaded.
+            let this = Trusted::new(self);
+            self.owner_global()
+                .task_manager()
+                .dom_manipulation_task_source()
+                .queue(task!(iframe_traversal_load_event: move |cx| {
+                    this.root().upcast::<EventTarget>().fire_event(cx, atom!("load"));
+                }));
         }
 
         self.upcast::<Node>().dirty(cx.no_gc(), NodeDamage::Other);
