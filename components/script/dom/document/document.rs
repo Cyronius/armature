@@ -2541,7 +2541,10 @@ impl Document {
             let iframes: Vec<_> = self.iframes().iter().collect();
             for iframe in &iframes {
                 // TODO: handle the case of cross origin iframes.
-                let document = iframe.owner_document();
+                let Some(document) = iframe.pipeline_id().and_then(ScriptThread::find_document)
+                else {
+                    continue;
+                };
                 can_unload = document.check_if_unloading_is_cancelled(cx, true);
                 if !document.salvageable() {
                     self.salvageable.set(false);
@@ -2613,7 +2616,10 @@ impl Document {
             let iframes: Vec<_> = self.iframes().iter().collect();
             for iframe in &iframes {
                 // TODO: handle the case of cross origin iframes.
-                let document = iframe.owner_document();
+                let Some(document) = iframe.pipeline_id().and_then(ScriptThread::find_document)
+                else {
+                    continue;
+                };
                 document.unload(cx, true);
                 if !document.salvageable() {
                     self.salvageable.set(false);
