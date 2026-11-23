@@ -930,6 +930,10 @@ impl HTMLImageElement {
             // TODO Step 1.3. If another instance of this algorithm for this img element was started after
             // this instance (even if it aborted and is no longer running), then return.
             // TODO Step 1.4. Queue a microtask to continue this algorithm.
+            //
+            // Documents that are not fully active, such as those made by `DOMParser`, never become
+            // so, so the image is not loaded.
+            return;
         }
 
         // TODO(https://github.com/whatwg/html/issues/8207): Add spec step once spec is aligned
