@@ -100,6 +100,12 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
   by `href`, `srcset` and `picture` sources. About 60 speculative-parsing tests newly pass.
 - **`showPicker()`** on `input` and `select` (validation, cross-origin and activation checks; no picker is shown), and
   MathML is enabled for the HTML IDL harness.
+- **Form controls and selectors**: `change` fires when a text control that the user edited loses focus; `:in-range`
+  parses (Stylo change AS-538) and `:in-range`, `:out-of-range`, `:required` and `:optional` match; `:read-write` covers
+  editable content and not hidden inputs; `:link` no longer matches `link` elements; clones of inputs get their own
+  validity; `valueAsDate` is null for `datetime-local`; stepping decimal values no longer shows float noise.
+- **Lazy iframes with a `src`** are now deferred until near the viewport, like images and `srcdoc` iframes; framesets
+  are laid out as grids (frames still don't load documents).
 - **Offscreen canvas fonts**: an `OffscreenCanvas` in a window now resolves the `font` it is given, against the
   default font; in workers there is no layout to do it with, so the font cannot be changed.
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
