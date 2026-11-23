@@ -10,7 +10,7 @@ interface TextTrackCue : EventTarget {
 
   attribute DOMString id;
   attribute double startTime;
-  attribute double endTime;
+  [SetterThrows] attribute unrestricted double endTime;
   attribute boolean pauseOnExit;
 
   attribute EventHandler onenter;

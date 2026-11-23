@@ -9,6 +9,7 @@ use dom_struct::dom_struct;
 use script_bindings::cell::DomRefCell;
 use script_bindings::domstring::TracedDOMString;
 
+use crate::dom::bindings::error::{Error, ErrorResult};
 use crate::dom::bindings::codegen::Bindings::TextTrackCueBinding::TextTrackCueMethods;
 use crate::dom::bindings::num::Finite;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
@@ -148,16 +149,21 @@ impl TextTrackCueMethods<crate::DomTypeHolder> for TextTrackCue {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-texttrackcue-endtime>
-    fn EndTime(&self) -> Finite<f64> {
-        Finite::wrap(self.end_time.get())
+    fn EndTime(&self) -> f64 {
+        self.end_time.get()
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-texttrackcue-endtime>
-    fn SetEndTime(&self, value: Finite<f64>) {
-        self.end_time.set(*value);
+    fn SetEndTime(&self, value: f64) -> ErrorResult {
+        // The end time can be positive infinity, but not not-a-number or negative infinity.
+        if value.is_nan() || value == f64::NEG_INFINITY {
+            return Err(Error::Type(c"The end time is not a valid time".to_owned()));
+        }
+        self.end_time.set(value);
         if let Some(text_track) = self.text_track.get() {
             text_track.sort_cue_list();
         }
+        Ok(())
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-texttrackcue-pauseonexit>
