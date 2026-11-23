@@ -3528,6 +3528,9 @@ impl Node {
             &mut writer,
             html_serialize::SerializeOpts {
                 traversal_scope: traversal_scope.clone(),
+                // The contents of a noscript element are escaped when scripting is disabled for
+                // the node, as it is in a document without a browsing context.
+                scripting_enabled: self.owner_doc().scripting_enabled(),
                 ..Default::default()
             },
         );
