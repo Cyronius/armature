@@ -842,10 +842,8 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
                     .get_attr_for_layout(&ns!(), &local_name!("border")),
                 None | Some(&AttrValue::UInt(_, 0))
             ),
-            NonTSPseudoClass::ReadOnly => !self
-                .element
-                .get_state_for_layout()
-                .contains(NonTSPseudoClass::ReadWrite.state_flag()),
+            NonTSPseudoClass::ReadOnly => !self.is_read_write(),
+            NonTSPseudoClass::ReadWrite => self.is_read_write(),
 
             NonTSPseudoClass::Active |
             NonTSPseudoClass::Autofill |
@@ -872,7 +870,6 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
             NonTSPseudoClass::OutOfRange |
             NonTSPseudoClass::PlaceholderShown |
             NonTSPseudoClass::PopoverOpen |
-            NonTSPseudoClass::ReadWrite |
             NonTSPseudoClass::Required |
             NonTSPseudoClass::Target |
             NonTSPseudoClass::UserInvalid |
@@ -998,5 +995,50 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
             .each_custom_state_for_layout(|state| has_state |= state == name);
 
         has_state
+    }
+}
+
+impl<'dom> ServoDangerousStyleElement<'dom> {
+    /// Whether the element is a text control that can be edited or an element whose content is
+    /// editable.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#selector-read-write>
+    fn is_read_write(&self) -> bool {
+        if self
+            .element
+            .get_state_for_layout()
+            .contains(NonTSPseudoClass::ReadWrite.state_flag())
+        {
+            return true;
+        }
+        // Text controls decide for themselves.
+        if matches!(
+            self.as_node().node.type_id_for_layout(),
+            NodeTypeId::Element(ElementTypeId::HTMLElement(
+                HTMLElementTypeId::HTMLInputElement | HTMLElementTypeId::HTMLTextAreaElement
+            ))
+        ) {
+            return false;
+        }
+        // Otherwise the nearest `contenteditable` attribute says.
+        let mut current = Some(self.clone());
+        while let Some(element) = current {
+            if let Some(value) = element
+                .element
+                .get_attr_val_for_layout(&ns!(), &LocalName::from("contenteditable"))
+            {
+                if value.eq_ignore_ascii_case("false") {
+                    return false;
+                }
+                if value.is_empty() ||
+                    value.eq_ignore_ascii_case("true") ||
+                    value.eq_ignore_ascii_case("plaintext-only")
+                {
+                    return true;
+                }
+            }
+            current = element.parent_element();
+        }
+        false
     }
 }

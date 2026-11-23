@@ -23,6 +23,7 @@ use script_bindings::codegen::GenericBindings::SelectionBinding::SelectionMethod
 use script_bindings::domstring::{TracedDOMString, parse_floating_point_number};
 use servo_base::generic_channel::GenericSender;
 use servo_base::text::{RangeAny, Utf16CodeUnits, Utf32CodeUnits};
+use style::invalidation::element::restyle_hints::RestyleHint;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 use style::str::split_commas;
 use stylo_atoms::Atom;
@@ -2453,6 +2454,7 @@ impl VirtualMethods for HTMLInputElement {
 
                         let (old_value_mode, old_idl_value) = (self.value_mode(), self.Value());
                         let previously_selectable = self.selection_api_applies();
+                        let was_hidden = matches!(*self.input_type(), InputType::Hidden(_));
 
                         *self.input_type.safe_borrow_mut(cx.no_gc()) =
                             InputType::new_from_atom(attr.value().as_atom());
@@ -2460,7 +2462,26 @@ impl VirtualMethods for HTMLInputElement {
                             .set(self.input_type().is_textual_or_password());
                         self.update_required_state(cx.no_gc());
 
-                        if self.input_type().is_textual() {
+                        // Hidden inputs are not styled, so what their states change for their siblings
+                        // is not known: restyle them all.
+                        if was_hidden != matches!(*self.input_type(), InputType::Hidden(_)) &&
+                            self.upcast::<Node>().is_connected()
+                        {
+                            let document = self.owner_document();
+                            for sibling in self.upcast::<Node>().following_siblings() {
+                                if let Some(sibling) = sibling.downcast::<Element>() {
+                                    sibling.upcast::<Node>().dirty(cx.no_gc(), NodeDamage::Style);
+                                    document
+                                        .ensure_pending_restyle(sibling)
+                                        .hint
+                                        .insert(RestyleHint::restyle_subtree());
+                                }
+                            }
+                        }
+
+                        if self.input_type().is_textual() &&
+                            !matches!(*self.input_type(), InputType::Hidden(_))
+                        {
                             let read_write = !(self.ReadOnly() || element.disabled_state());
                             element.set_read_write_state(cx.no_gc(), read_write);
                         } else {
