@@ -567,6 +567,7 @@ impl HTMLSelectElement {
             }
 
             self.update_shadow_tree(cx);
+            self.update_a_selects_descendant_selectedcontent_elements(cx);
         }
     }
 
@@ -984,6 +985,7 @@ impl VirtualMethods for HTMLSelectElement {
                 // The display size decides whether a selected option is required.
                 self.selectedness_setting_algorithm(cx.no_gc());
                 self.update_shadow_tree(cx);
+                self.update_a_selects_descendant_selectedcontent_elements(cx);
             },
             local_name!("required") => {
                 self.upcast::<Element>()

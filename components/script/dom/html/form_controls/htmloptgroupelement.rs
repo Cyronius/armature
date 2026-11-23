@@ -133,6 +133,7 @@ impl VirtualMethods for HTMLOptGroupElement {
                 .and_then(DomRoot::downcast::<HTMLSelectElement>)
             {
                 select.selectedness_setting_algorithm(cx.no_gc());
+                select.update_a_selects_descendant_selectedcontent_elements(cx);
             }
         }
     }
