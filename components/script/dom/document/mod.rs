@@ -15,6 +15,7 @@ pub(crate) mod domimplementation;
 pub(crate) mod domparser;
 pub(crate) mod editing;
 pub(crate) mod focus;
+pub(crate) mod focusgroup;
 mod iframe_collection;
 mod interactive_element_command;
 mod tree_ordered_index_map;

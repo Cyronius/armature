@@ -2313,6 +2313,31 @@ impl DocumentEventHandler {
             return input_event_result | InputEventResult::Consumed;
         }
 
+        // Directional keys move the focus inside focusgroups.
+        let focused_element = document
+            .focus_handler()
+            .focused_area()
+            .element()
+            .map(DomRoot::from_ref);
+        if event.modifiers.is_empty() &&
+            matches!(
+                &event.key,
+                Key::Named(
+                    NamedKey::ArrowDown |
+                        NamedKey::ArrowLeft |
+                        NamedKey::ArrowRight |
+                        NamedKey::ArrowUp |
+                        NamedKey::Home |
+                        NamedKey::End
+                )
+            ) &&
+            let Key::Named(named_key) = &event.key &&
+            let Some(focused) = focused_element.as_deref() &&
+            super::focusgroup::handle_directional_key(cx, &self.window, focused, named_key)
+        {
+            return input_event_result | InputEventResult::Consumed;
+        }
+
         let mut is_space = false;
         let scroll = match &event.key {
             Key::Named(NamedKey::ArrowDown) => KeyboardScroll::Down,
