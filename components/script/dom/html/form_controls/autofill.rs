@@ -152,8 +152,8 @@ fn compute_idl_exposed_autofill_value(value: Option<&str>, is_anchor: bool) -> O
         return Some("on".to_owned());
     }
 
-    // Step 11. Let IDL value have the same value as field.
-    let mut idl_value = field.to_owned();
+    // Step 11. Let IDL value have the same value as field, converted to ASCII lowercase.
+    let mut idl_value = field.to_ascii_lowercase();
 
     'done: {
         // Step 12. If category is Credential and the indexth token is webauthn:
@@ -166,7 +166,7 @@ fn compute_idl_exposed_autofill_value(value: Option<&str>, is_anchor: bool) -> O
             if !matches!(category, FieldCategory::Normal | FieldCategory::Contact) {
                 return None;
             }
-            idl_value = format!("{} {idl_value}", tokens[index]);
+            idl_value = format!("{} {idl_value}", tokens[index].to_ascii_lowercase());
         }
 
         // Step 13. If the indexth token in tokens is the first entry, then skip to done.
