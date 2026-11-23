@@ -9,6 +9,8 @@ interface SVGElement : Element {
   [SameObject] readonly attribute SVGAnimatedString className;
 
   [SameObject] readonly attribute DOMStringMap dataset;
+  [SameObject, PutForwards=value] readonly attribute DOMTokenList focusGroup;
+  [CEReactions] attribute boolean focusGroupStart;
 
   readonly attribute SVGSVGElement? ownerSVGElement;
   readonly attribute SVGElement? viewportElement;

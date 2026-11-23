@@ -12,6 +12,7 @@ use script_bindings::codegen::GenericBindings::WindowBinding::ScrollBehavior;
 use script_bindings::reflector::DomObject;
 use script_bindings::str::DOMString;
 use style::attr::AttrValue;
+use stylo_atoms::Atom;
 use style::context::QuirksMode;
 use style::parser::ParserContext;
 use style::properties::{PropertyDeclaration, PropertyId, SourcePropertyDeclaration, longhands};
@@ -33,6 +34,7 @@ use crate::dom::css::stylepropertymap::StylePropertyMap;
 use crate::dom::document::Document;
 use crate::dom::document::focus::FocusableArea;
 use crate::dom::domstringmap::DOMStringMap;
+use crate::dom::domtokenlist::DOMTokenList;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::iterators::ShadowIncluding;
@@ -168,6 +170,7 @@ pub(crate) struct SVGElement {
     style_decl: MutNullableDom<CSSStyleDeclaration>,
     attribute_style_map: MutNullableDom<StylePropertyMap>,
     dataset: MutNullableDom<DOMStringMap>,
+    focus_group: MutNullableDom<DOMTokenList>,
     /// The objects of the SVG DOM that reflect the attributes of this element.
     animated_properties: DomRefCell<Vec<SVGAnimatedPropertyEntry>>,
 }
@@ -239,6 +242,7 @@ impl SVGElement {
             style_decl: Default::default(),
             attribute_style_map: Default::default(),
             dataset: Default::default(),
+            focus_group: Default::default(),
             animated_properties: Default::default(),
         }
     }
@@ -665,6 +669,15 @@ impl VirtualMethods for SVGElement {
         Some(self.as_element() as &dyn VirtualMethods)
     }
 
+    fn parse_plain_attribute(&self, name: &LocalName, value: DOMString) -> AttrValue {
+        if name == &LocalName::from("focusgroup") {
+            return AttrValue::from_serialized_tokenlist(value.into());
+        }
+        self.super_type()
+            .unwrap()
+            .parse_plain_attribute(name, value)
+    }
+
     fn attribute_mutated(
         &self,
         cx: &mut js::context::JSContext,
@@ -732,6 +745,40 @@ impl SVGElementMethods<crate::DomTypeHolder> for SVGElement {
     fn Dataset(&self, cx: &mut JSContext) -> DomRoot<DOMStringMap> {
         self.dataset
             .or_init(|| DOMStringMap::new(cx, self.upcast()))
+    }
+
+    /// <https://open-ui.org/components/scoped-focusgroup.explainer/>
+    fn FocusGroup(&self, cx: &mut JSContext) -> DomRoot<DOMTokenList> {
+        self.focus_group.or_init(|| {
+            DOMTokenList::new(
+                cx,
+                self.upcast::<Element>(),
+                &LocalName::from("focusgroup"),
+                Some(
+                    [
+                        "toolbar", "tablist", "radiogroup", "listbox", "menu", "menubar", "wrap",
+                        "nowrap", "inline", "block", "nomemory", "none", "feed", "grid",
+                        "itemcontrols", "noitemcontrols", "manual", "rowwrap", "colwrap", "flow",
+                        "rowflow", "colflow",
+                    ]
+                    .into_iter()
+                    .map(Atom::from)
+                    .collect(),
+                ),
+            )
+        })
+    }
+
+    /// <https://open-ui.org/components/scoped-focusgroup.explainer/>
+    fn FocusGroupStart(&self) -> bool {
+        self.upcast::<Element>()
+            .has_attribute(&LocalName::from("focusgroupstart"))
+    }
+
+    /// <https://open-ui.org/components/scoped-focusgroup.explainer/>
+    fn SetFocusGroupStart(&self, cx: &mut JSContext, value: bool) {
+        self.upcast::<Element>()
+            .set_bool_attribute(cx, &LocalName::from("focusgroupstart"), value)
     }
 
     /// <https://svgwg.org/svg2-draft/types.html#__svg__SVGElement__className>
