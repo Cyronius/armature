@@ -119,6 +119,10 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
 - **Canvas fonts in workers**: `FontFace` and `FontFaceSet` (`self.fonts`) are exposed to workers, and an
   `OffscreenCanvas` in a worker resolves its `font` with a style system of its own, against the default font.
 - **Conic gradients** and `BarProp.visible` for popups.
+- **Navigating other windows**: `location.href` and `replace()` work on windows of other origins (through a new
+  constellation message), a sandboxed document can only navigate itself, its descendants, the windows it opened and,
+  with `allow-top-navigation`, the top-level window, nested frames are unloaded (rather than their parent again), and
+  `pageshow` bubbles and is cancelable.
 - **Focusgroups**: directional keys move the focus between the items of a `focusgroup` (behavior tokens with their
   default axes and wrapping, `inline`, `block`, `wrap`, `nowrap`, `nomemory`, `focusgroupstart`, opt-out with `none`,
   and grids made of tables with the wrap and flow tokens). The Tab key stops once per segment of a group, and
