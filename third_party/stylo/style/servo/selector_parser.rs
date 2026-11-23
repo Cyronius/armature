@@ -409,6 +409,8 @@ pub enum NonTSPseudoClass {
     MozMeterOptimum,
     MozMeterSubOptimum,
     MozMeterSubSubOptimum,
+    // Armature (AS-539): The media element pseudo-class `:muted`, as Gecko has it.
+    Muted,
     Open,
     Optional,
     OutOfRange,
@@ -492,6 +494,8 @@ impl ToCss for NonTSPseudoClass {
             Self::MozMeterOptimum => ":-moz-meter-optimum",
             Self::MozMeterSubOptimum => ":-moz-meter-sub-optimum",
             Self::MozMeterSubSubOptimum => ":-moz-meter-sub-sub-optimum",
+            // Armature (AS-539): Serialize `:muted`.
+            Self::Muted => ":muted",
             Self::Open => ":open",
             Self::Optional => ":optional",
             Self::OutOfRange => ":out-of-range",
@@ -543,6 +547,8 @@ impl NonTSPseudoClass {
             Self::MozMeterOptimum => ElementState::OPTIMUM,
             Self::MozMeterSubOptimum => ElementState::SUB_OPTIMUM,
             Self::MozMeterSubSubOptimum => ElementState::SUB_SUB_OPTIMUM,
+            // Armature (AS-539): Muted media elements are in the muted state.
+            Self::Muted => ElementState::MUTED,
             Self::Open => ElementState::OPEN,
             Self::Optional => ElementState::OPTIONAL_,
             Self::OutOfRange => ElementState::OUTOFRANGE,
@@ -663,6 +669,8 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "invalid" => NonTSPseudoClass::Invalid,
             "link" => NonTSPseudoClass::Link,
             "modal" => NonTSPseudoClass::Modal,
+            // Armature (AS-539): Parse `:muted`.
+            "muted" => NonTSPseudoClass::Muted,
             "open" => NonTSPseudoClass::Open,
             "optional" => NonTSPseudoClass::Optional,
             "out-of-range" => NonTSPseudoClass::OutOfRange,

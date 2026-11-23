@@ -569,3 +569,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Servo parsed `:out-of-range` but not `:in-range`, although it has the state of both, so selectors
   with `:in-range` were invalid.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-539: Parse the :muted pseudo-class
+- Files: `style/servo/selector_parser.rs`
+- Why: Parse the media element pseudo-class `:muted` for Servo, as Gecko does, matching the muted
+  element state that the DOM sets on muted media elements.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
