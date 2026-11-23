@@ -102,6 +102,7 @@ use crate::dom::bindings::callback::{ExceptionHandling, TracedCallback};
 use crate::dom::bindings::codegen::Bindings::AnimationFrameProviderBinding::FrameRequestCallback;
 use crate::dom::bindings::codegen::Bindings::BeforeUnloadEventBinding::BeforeUnloadEvent_Binding::BeforeUnloadEventMethods;
 use crate::dom::bindings::codegen::Bindings::IntersectionObserverBinding::IntersectionObserverMethods;
+use crate::dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::{
     DocumentMethods, DocumentReadyState, DocumentVisibilityState, ElementCreationOptions,
     NamedPropertyValue,
@@ -182,6 +183,7 @@ use crate::dom::html::htmlareaelement::HTMLAreaElement;
 use crate::dom::html::htmlbaseelement::HTMLBaseElement;
 use crate::dom::html::htmlcollection::{CollectionFilter, HTMLCollection};
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::htmllinkelement::HTMLLinkElement;
 use crate::dom::html::htmlembedelement::HTMLEmbedElement;
 use crate::dom::html::htmlformelement::{FormControl, FormControlElementHelpers, HTMLFormElement};
 use crate::dom::html::htmlheadelement::HTMLHeadElement;
@@ -515,6 +517,10 @@ pub(crate) struct Document {
     /// Number of elements that block the rendering of the page.
     /// <https://html.spec.whatwg.org/multipage/#implicitly-potentially-render-blocking>
     render_blocking_element_count: Cell<u32>,
+    /// The `link rel=expect` elements that block rendering until the element they expect is parsed.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#link-type-expect>
+    render_blocking_expect_links: DomRefCell<Vec<Dom<HTMLLinkElement>>>,
     /// <https://html.spec.whatwg.org/multipage/#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing>
     deferred_scripts: PendingInOrderScriptVec,
     /// <https://html.spec.whatwg.org/multipage/#list-of-scripts-that-will-execute-in-order-as-soon-as-possible>
@@ -2026,6 +2032,78 @@ impl Document {
         let count_cell = &self.render_blocking_element_count;
         assert!(count_cell.get() > 0);
         count_cell.set(count_cell.get() - 1);
+    }
+
+    /// Blocks rendering until `link`, a `link rel=expect` element, has seen the element that it expects.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#link-type-expect>
+    pub(crate) fn block_rendering_on_expect_link(&self, link: &HTMLLinkElement) {
+        if self
+            .render_blocking_expect_links
+            .borrow()
+            .iter()
+            .any(|existing| &**existing == link)
+        {
+            return;
+        }
+        if !self.allows_adding_render_blocking_elements() {
+            return;
+        }
+        self.increment_render_blocking_element_count();
+        self.render_blocking_expect_links
+            .borrow_mut()
+            .push(Dom::from_ref(link));
+    }
+
+    /// Stops `link` from blocking rendering, if it did.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#link-type-expect>
+    pub(crate) fn unblock_rendering_on_expect_link(&self, link: &HTMLLinkElement) {
+        let mut links = self.render_blocking_expect_links.borrow_mut();
+        let Some(index) = links.iter().position(|existing| &**existing == link) else {
+            return;
+        };
+        links.remove(index);
+        drop(links);
+        self.decrement_render_blocking_element_count();
+    }
+
+    /// Called when the parser has finished the element `element`, which unblocks the `link
+    /// rel=expect` elements that were waiting for it.
+    pub(crate) fn element_was_parsed(&self, element: &Element) {
+        if self.render_blocking_expect_links.borrow().is_empty() {
+            return;
+        }
+        let id = element.Id();
+        if id.is_empty() {
+            return;
+        }
+        let ready: Vec<DomRoot<HTMLLinkElement>> = self
+            .render_blocking_expect_links
+            .borrow()
+            .iter()
+            .filter(|link| link.expected_element_id().is_some_and(|expected| *id.str() == *expected))
+            .map(|link| link.as_rooted())
+            .collect();
+        for link in ready {
+            link.mark_expected_element_parsed();
+            self.unblock_rendering_on_expect_link(&link);
+        }
+    }
+
+    /// Called when the parser has finished: nothing more can be parsed that the `link rel=expect`
+    /// elements wait for.
+    pub(crate) fn parsing_finished_for_expect_links(&self) {
+        let links: Vec<DomRoot<HTMLLinkElement>> = self
+            .render_blocking_expect_links
+            .borrow()
+            .iter()
+            .map(|link| link.as_rooted())
+            .collect();
+        for link in links {
+            link.mark_expected_element_parsed();
+            self.unblock_rendering_on_expect_link(&link);
+        }
     }
 
     /// <https://html.spec.whatwg.org/multipage/#allows-adding-render-blocking-elements>
@@ -4319,6 +4397,7 @@ impl Document {
             pending_parsing_blocking_script: Default::default(),
             script_blocking_stylesheet_set: Default::default(),
             render_blocking_element_count: Default::default(),
+            render_blocking_expect_links: Default::default(),
             deferred_scripts: Default::default(),
             asap_in_order_scripts_list: Default::default(),
             asap_scripts_set: Default::default(),

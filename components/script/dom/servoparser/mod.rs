@@ -802,6 +802,7 @@ impl ServoParser {
         // Step 4. Pop all the nodes off the stack of open elements.
         self.document
             .set_current_parser(None, SetParserReason::FinishingParser);
+        self.document.parsing_finished_for_expect_links();
         // Step 5. While the list of scripts that will execute when the document has finished parsing is not empty:
         self.document.start_the_end_loading_phase();
         let url = self.tokenizer.url().clone();
@@ -2159,6 +2160,9 @@ impl TreeSink for Sink {
         let cx = &mut cx;
 
         let node = DomRoot::from_ref(&**node);
+        if let Some(element) = node.downcast::<Element>() {
+            node.owner_doc().element_was_parsed(element);
+        }
         vtable_for(&node).pop(cx);
     }
 

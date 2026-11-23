@@ -95,6 +95,10 @@ pub(crate) struct HTMLLinkElement {
     /// (Like `rev="made"` implying an author relationship that is not represented in rel_list)
     #[no_trace]
     relations: Cell<LinkRelations>,
+    /// Whether the element that this `link rel=expect` waits for has been parsed.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#link-type-expect>
+    expected_element_parsed: Cell<bool>,
 
     #[conditional_malloc_size_of]
     #[no_trace]
@@ -136,6 +140,7 @@ impl HTMLLinkElement {
             htmlelement: HTMLElement::new_inherited(local_name, prefix, document),
             rel_list: Default::default(),
             relations: Cell::new(LinkRelations::empty()),
+            expected_element_parsed: Cell::new(false),
             parser_inserted: Cell::new(creator.is_parser_created()),
             stylesheet: DomRefCell::new(None),
             cssom_stylesheet: MutNullableDom::new(None),
@@ -282,6 +287,13 @@ impl VirtualMethods for HTMLLinkElement {
                 }
             },
             _ => {},
+        }
+
+        if matches!(
+            &**local_name,
+            "rel" | "href" | "blocking"
+        ) {
+            self.update_expect_link_blocking();
         }
 
         let node = self.upcast::<Node>();
@@ -474,6 +486,10 @@ impl VirtualMethods for HTMLLinkElement {
         let element = self.upcast::<Element>();
         let href = element.get_attribute_string_value(&local_name!("href"));
 
+        if context.tree_connected {
+            self.update_expect_link_blocking();
+        }
+
         if context.tree_connected &&
             (href.as_ref().is_some_and(|x| !x.is_empty()) ||
                 element.has_attribute(&local_name!("imagesrcset")))
@@ -517,10 +533,67 @@ impl VirtualMethods for HTMLLinkElement {
         }
 
         self.remove_stylesheet(cx.no_gc());
+        self.owner_document()
+            .unblock_rendering_on_expect_link(self);
     }
 }
 
 impl HTMLLinkElement {
+    /// The id of the element that this `link rel=expect` waits for, if it waits for one: the
+    /// fragment of its `href` when that is a URL of the document itself.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#link-type-expect>
+    pub(crate) fn expected_element_id(&self) -> Option<String> {
+        let href = self
+            .upcast::<Element>()
+            .get_attribute_string_value(&local_name!("href"))?;
+        let document = self.owner_document();
+        let url = document.encoding_parse_a_url(&href).ok()?;
+        let mut document_url = document.url().into_url();
+        let mut url_without_fragment = url.clone().into_url();
+        document_url.set_fragment(None);
+        url_without_fragment.set_fragment(None);
+        if document_url != url_without_fragment {
+            return None;
+        }
+        let fragment = url.fragment()?;
+        Some(
+            percent_encoding::percent_decode_str(fragment)
+                .decode_utf8_lossy()
+                .into_owned(),
+        )
+    }
+
+    pub(crate) fn mark_expected_element_parsed(&self) {
+        self.expected_element_parsed.set(true);
+    }
+
+    /// Blocks rendering while this is a `link rel=expect` that waits for an element, and stops
+    /// blocking it when it is not one any more.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#link-type-expect>
+    fn update_expect_link_blocking(&self) {
+        let element = self.upcast::<Element>();
+        let blocks_render = element
+            .get_attribute_string_value(&local_name!("blocking"))
+            .is_some_and(|tokens| {
+                tokens
+                    .split_ascii_whitespace()
+                    .any(|token| token.eq_ignore_ascii_case("render"))
+            });
+        let document = self.owner_document();
+        if self.relations.get().contains(LinkRelations::EXPECT) &&
+            blocks_render &&
+            self.upcast::<Node>().is_connected() &&
+            !self.expected_element_parsed.get() &&
+            self.expected_element_id().is_some()
+        {
+            document.block_rendering_on_expect_link(self);
+        } else {
+            document.unblock_rendering_on_expect_link(self);
+        }
+    }
+
     fn compute_destination_for_attribute(&self) -> Option<Destination> {
         // Let destination be the result of translating the keyword
         // representing the state of el's as attribute.
