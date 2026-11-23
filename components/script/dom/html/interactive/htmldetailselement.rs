@@ -101,6 +101,8 @@ impl UAShadowRoot<ShadowTree> for HTMLDetailsElement {
 pub(crate) struct HTMLDetailsElement {
     htmlelement: HTMLElement,
     toggle_counter: Cell<u32>,
+    /// The state that the element had when its pending details notification task was queued.
+    pending_toggle_old_state: Cell<Option<&'static str>>,
 
     /// Represents the UA widget for the details element
     shadow_tree: DomRefCell<Option<ShadowTree>>,
@@ -180,6 +182,7 @@ impl HTMLDetailsElement {
         HTMLDetailsElement {
             htmlelement: HTMLElement::new_inherited(local_name, prefix, document),
             toggle_counter: Cell::new(0),
+            pending_toggle_old_state: Cell::new(None),
             shadow_tree: Default::default(),
         }
     }
@@ -414,13 +417,15 @@ impl VirtualMethods for HTMLDetailsElement {
         else if attr.local_name() == &local_name!("open") {
             self.update_shadow_tree_styles(cx);
 
+            // Step 3.1. If the element has a pending details notification task, remove it and keep
+            // the state the element had when it was queued as the old state of the new event.
+            let old_state = self
+                .pending_toggle_old_state
+                .get()
+                .unwrap_or(if self.Open() { "closed" } else { "open" });
+            self.pending_toggle_old_state.set(Some(old_state));
             let counter = self.toggle_counter.get().wrapping_add(1);
             self.toggle_counter.set(counter);
-            let (old_state, new_state) = if self.Open() {
-                ("closed", "open")
-            } else {
-                ("open", "closed")
-            };
 
             let this = Trusted::new(self);
             self.owner_global()
@@ -428,20 +433,25 @@ impl VirtualMethods for HTMLDetailsElement {
                 .dom_manipulation_task_source()
                 .queue(task!(details_notification_task_steps: move |cx| {
                     let this = this.root();
-                    if counter == this.toggle_counter.get() {
-                        let event = ToggleEvent::new(
-                            cx,
-                            this.global().as_window(),
-                            atom!("toggle"),
-                            EventBubbles::DoesNotBubble,
-                            EventCancelable::NotCancelable,
-                            DOMString::from(old_state),
-                            DOMString::from(new_state),
-                            None,
-                        );
-                        let event = event.upcast::<Event>();
-                        event.fire(cx, this.upcast::<EventTarget>());
+                    if counter != this.toggle_counter.get() {
+                        return;
                     }
+                    let Some(old_state) = this.pending_toggle_old_state.take() else {
+                        return;
+                    };
+                    let new_state = if this.Open() { "open" } else { "closed" };
+                    let event = ToggleEvent::new(
+                        cx,
+                        this.global().as_window(),
+                        atom!("toggle"),
+                        EventBubbles::DoesNotBubble,
+                        EventCancelable::NotCancelable,
+                        DOMString::from(old_state),
+                        DOMString::from(new_state),
+                        None,
+                    );
+                    let event = event.upcast::<Event>();
+                    event.fire(cx, this.upcast::<EventTarget>());
                 }));
             self.upcast::<Node>().dirty(cx.no_gc(), NodeDamage::Other);
 
