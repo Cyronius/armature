@@ -16,6 +16,7 @@
     readonly attribute Location location;
   readonly attribute History history;
   readonly attribute CustomElementRegistry customElements;
+  undefined print();
   readonly attribute boolean originAgentCluster;
   readonly attribute DOMString crossOriginEmbedderPolicy;
   readonly attribute boolean crossOriginIsolated;

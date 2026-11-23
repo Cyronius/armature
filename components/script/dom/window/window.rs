@@ -1561,6 +1561,11 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
         if result { Ok(()) } else { Err(Error::JSFailed) }
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-print>
+    fn Print(&self) {
+        // There is no printing, which the specification allows.
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-window-closed>
     fn Closed(&self) -> bool {
         // A popup that lost its opener looks closed to it.
