@@ -1081,7 +1081,8 @@ impl SequentialFocusNavigationSearch {
             return Continue::Yes;
         };
         if !element.is_sequentially_focusable(no_gc) ||
-            super::focusgroup::is_skipped_by_sequential_navigation(no_gc, element)
+            super::focusgroup::is_skipped_by_sequential_navigation(no_gc, element) ||
+            crate::dom::html::form_controls::input_type::radio_input_type::is_skipped_by_sequential_navigation(no_gc, element)
         {
             return Continue::Yes;
         }

@@ -267,6 +267,33 @@ pub(crate) fn radio_group_iter<'a>(
         .filter(move |r| &**r == elem || in_same_group(r, form, group, Some(root)))
 }
 
+/// A radio button group is one stop of sequential focus navigation: the checked radio button of the
+/// group that can be focused, or the first one that can be if none of them is checked.
+pub(crate) fn is_skipped_by_sequential_navigation(no_gc: &js::context::NoGC, element: &Element) -> bool {
+    let Some(input) = element.downcast::<HTMLInputElement>() else {
+        return false;
+    };
+    if !matches!(*input.input_type(), InputType::Radio(_)) {
+        return false;
+    }
+    let Some(group) = input.radio_group_name() else {
+        return false;
+    };
+    let root = input
+        .upcast::<Node>()
+        .GetRootNode(&GetRootNodeOptions::empty());
+    let form = input.form_owner();
+    let focusable: Vec<DomRoot<HTMLInputElement>> =
+        radio_group_iter(input, Some(&group), form.as_deref(), &root)
+            .filter(|radio| radio.upcast::<Element>().is_sequentially_focusable(no_gc))
+            .collect();
+    let stop = focusable
+        .iter()
+        .find(|radio| radio.Checked())
+        .or_else(|| focusable.first());
+    stop.is_some_and(|stop| &**stop != input)
+}
+
 pub(crate) fn broadcast_radio_checked(
     cx: &mut JSContext,
     broadcaster: &HTMLInputElement,
