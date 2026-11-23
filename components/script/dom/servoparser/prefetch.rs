@@ -79,6 +79,7 @@ impl Tokenizer {
             templates: RefCell::new(Vec::new()),
             svg_depth: Cell::new(0),
             math_depth: Cell::new(0),
+            picture_source: RefCell::new(None),
             images_blocked: Cell::new(false),
             request_client: global.request_client(None),
         };
@@ -117,6 +118,9 @@ struct PrefetchSink {
     /// How many `svg` and `math` elements the scanner is in.
     svg_depth: Cell<u32>,
     math_depth: Cell<u32>,
+    /// The image that the first suitable `source` of the `picture` that the scanner is in asks for.
+    #[no_trace]
+    picture_source: RefCell<Option<Option<ServoUrl>>>,
     /// Whether a content security policy of the page forbids fetching images.
     images_blocked: Cell<bool>,
     #[no_trace]
@@ -152,6 +156,31 @@ impl TokenSink for PrefetchSink {
                 if self.templates.borrow_mut().pop() == Some(true) {
                     self.template_depth
                         .set(self.template_depth.get().saturating_sub(1));
+                }
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::StartTag, &local_name!("picture")) => {
+                *self.picture_source.borrow_mut() = Some(None);
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::EndTag, &local_name!("picture")) => {
+                *self.picture_source.borrow_mut() = None;
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::StartTag, &local_name!("source")) => {
+                // The first source of a picture without conditions that fail is the one that its image uses.
+                let mut picture_source = self.picture_source.borrow_mut();
+                if let Some(None) = *picture_source &&
+                    self.get_attr(tag, local_name!("media")).is_none() &&
+                    self.get_attr(tag, local_name!("type")).is_none_or(|attr| {
+                        attr.value.trim().is_empty() ||
+                            attr.value.trim().to_ascii_lowercase().starts_with("image/")
+                    })
+                {
+                    *picture_source =
+                        Some(self.get_attr(tag, local_name!("srcset")).and_then(|attr| {
+                            self.parse_srcset(&attr.value)
+                        }));
                 }
                 return TokenSinkResult::Continue;
             },
@@ -267,7 +296,19 @@ impl TokenSink for PrefetchSink {
                         None
                     }
                 } else {
+                    // The image of an `img` is the one of its `src`, of a source of its picture,
+                    // or of its `srcset`.
                     self.get_url(tag, local_name!("src"))
+                        .or_else(|| {
+                            self.picture_source
+                                .borrow()
+                                .clone()
+                                .flatten()
+                        })
+                        .or_else(|| {
+                            self.get_attr(tag, local_name!("srcset"))
+                                .and_then(|attr| self.parse_srcset(&attr.value))
+                        })
                 };
                 if let Some(url) = url {
                     debug!("Prefetch {} {}", tag.name, url);
@@ -453,6 +494,26 @@ fn is_javascript_mime_type(value: &str) -> bool {
 impl PrefetchSink {
     fn get_attr<'a>(&'a self, tag: &'a Tag, name: LocalName) -> Option<&'a Attribute> {
         tag.attrs.iter().find(|attr| attr.name.local == name)
+    }
+
+    /// The URL that the scanner expects a `srcset` to select: that of the candidate for the
+    /// density 1, or else of its first candidate.
+    fn parse_srcset(&self, srcset: &str) -> Option<ServoUrl> {
+        let candidates: Vec<(&str, &str)> = srcset
+            .split(',')
+            .filter_map(|candidate| {
+                let mut parts = candidate.split_ascii_whitespace();
+                let url = parts.next()?;
+                Some((url, parts.next().unwrap_or("1x")))
+            })
+            .collect();
+        let (url, _) = candidates
+            .iter()
+            .find(|(_, descriptor)| *descriptor == "1x")
+            .or_else(|| candidates.first())?;
+        let base_url = self.base_url.borrow();
+        let base = base_url.as_ref().unwrap_or(&self.document_url);
+        ServoUrl::parse_with_base(Some(base), url).ok()
     }
 
     fn get_url(&self, tag: &Tag, name: LocalName) -> Option<ServoUrl> {
