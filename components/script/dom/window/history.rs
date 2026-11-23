@@ -213,7 +213,7 @@ impl History {
         // Step 5. Let newURL be document's URL.
         let new_url: ServoUrl = match url {
             // Step 6. If url is not null or the empty string, then:
-            Some(urlstring) => {
+            Some(urlstring) if !urlstring.0.is_empty() => {
                 let document_url = document.url();
 
                 // Step 6.1 Set newURL to the result of encoding-parsing a URL given url,
@@ -233,7 +233,8 @@ impl History {
 
                 url
             },
-            None => document.url(),
+            // The empty string and null mean the URL of the document.
+            _ => document.url(),
         };
 
         // Step 8

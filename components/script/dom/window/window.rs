@@ -196,6 +196,7 @@ use crate::dom::visualviewport::{VisualViewport, VisualViewportChanges};
 #[cfg(feature = "webgpu")]
 use crate::dom::webgpu::identityhub::IdentityHub;
 use crate::dom::window::layout_image::fetch_image_for_layout;
+use crate::dom::window::barprop::BarProp;
 use crate::dom::window::screen::Screen;
 use crate::dom::window::scrolling_box::{ScrollingBox, ScrollingBoxSource};
 use crate::dom::window::useractivation::UserActivationTimestamp;
@@ -315,6 +316,9 @@ pub(crate) struct Window {
     #[no_trace]
     navigation_start: Cell<CrossProcessInstant>,
     screen: MutNullableDom<Screen>,
+    /// The objects of the bar properties, in the order locationbar, menubar, personalbar, scrollbars,
+    /// statusbar and toolbar.
+    bar_props: [MutNullableDom<BarProp>; 6],
     session_storage: MutNullableDom<Storage>,
     local_storage: MutNullableDom<Storage>,
     /// <https://cookiestore.spec.whatwg.org/#globals>
@@ -1910,6 +1914,36 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
 
     // https://html.spec.whatwg.org/multipage/#windoweventhandlers
     window_event_handlers!();
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-locationbar>
+    fn Locationbar(&self, cx: &mut JSContext) -> DomRoot<BarProp> {
+        self.bar_props[0].or_init(|| BarProp::new(cx, self))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-menubar>
+    fn Menubar(&self, cx: &mut JSContext) -> DomRoot<BarProp> {
+        self.bar_props[1].or_init(|| BarProp::new(cx, self))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-personalbar>
+    fn Personalbar(&self, cx: &mut JSContext) -> DomRoot<BarProp> {
+        self.bar_props[2].or_init(|| BarProp::new(cx, self))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-scrollbars>
+    fn Scrollbars(&self, cx: &mut JSContext) -> DomRoot<BarProp> {
+        self.bar_props[3].or_init(|| BarProp::new(cx, self))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-statusbar>
+    fn Statusbar(&self, cx: &mut JSContext) -> DomRoot<BarProp> {
+        self.bar_props[4].or_init(|| BarProp::new(cx, self))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-window-toolbar>
+    fn Toolbar(&self, cx: &mut JSContext) -> DomRoot<BarProp> {
+        self.bar_props[5].or_init(|| BarProp::new(cx, self))
+    }
 
     /// <https://developer.mozilla.org/en-US/docs/Web/API/Window/screen>
     fn Screen(&self, cx: &mut JSContext) -> DomRoot<Screen> {
@@ -4271,6 +4305,7 @@ impl Window {
             performance: Default::default(),
             navigation_start: Cell::new(navigation_start),
             screen: Default::default(),
+            bar_props: Default::default(),
             session_storage: Default::default(),
             local_storage: Default::default(),
             cookie_store: Default::default(),
