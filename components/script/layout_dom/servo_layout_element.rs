@@ -13,6 +13,7 @@ use layout_api::{
     LayoutDataTrait, LayoutElement, LayoutNode, LayoutNodeType, PseudoElementChain, StyleData,
 };
 use servo_arc::Arc;
+use stylo_dom::ElementState;
 use style::attr::AttrValue;
 use style::context::SharedStyleContext;
 use style::data::{ElementDataMut, ElementDataRef};
@@ -127,6 +128,17 @@ impl<'dom> LayoutElement<'dom> for ServoLayoutElement<'dom> {
                 .pseudos
                 .get(&pseudo_element)
                 .is_none()
+        {
+            return None;
+        }
+
+        // Only elements in the top layer have a `::backdrop`.
+        // <https://drafts.csswg.org/css-position-4/#backdrop>
+        if pseudo_element == PseudoElement::Backdrop &&
+            (!self.pseudo_element_chain.is_empty() ||
+                !self.element.get_state_for_layout().intersects(
+                    ElementState::MODAL | ElementState::FULLSCREEN | ElementState::POPOVER_OPEN,
+                ))
         {
             return None;
         }

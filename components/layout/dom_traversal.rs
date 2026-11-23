@@ -196,6 +196,11 @@ fn traverse_element<'dom>(
     let style = element.style(&context.style_context);
     let info = NodeAndStyleInfo::new(element, style);
 
+    // An element in the top layer has a `::backdrop` box just before its own box.
+    if !matches!(Display::from(info.style.get_box().display), Display::None) {
+        traverse_backdrop(&info, context, handler);
+    }
+
     match Display::from(info.style.get_box().display) {
         Display::None => {},
         Display::Contents => {
@@ -214,6 +219,23 @@ fn traverse_element<'dom>(
             let box_slot = element.box_slot();
             handler.handle_element(&info, display, contents, box_slot);
         },
+    }
+}
+
+/// <https://drafts.csswg.org/css-position-4/#backdrop>
+fn traverse_backdrop<'dom>(
+    node_info: &NodeAndStyleInfo<'dom>,
+    context: &LayoutContext,
+    handler: &mut impl TraversalHandler<'dom>,
+) {
+    let Some(backdrop_info) = node_info.with_pseudo_element(context, PseudoElement::Backdrop)
+    else {
+        return;
+    };
+    if let Display::GeneratingBox(display) = Display::from(backdrop_info.style.get_box().display) {
+        let box_slot = backdrop_info.node.box_slot();
+        let contents = Contents::for_pseudo_element(Vec::new());
+        handler.handle_element(&backdrop_info, display, contents, box_slot);
     }
 }
 
