@@ -154,7 +154,14 @@ impl TokenSink for PrefetchSink {
                 }
                 TokenSinkResult::RawData(RawKind::ScriptData)
             },
-            (TagKind::StartTag, &local_name!("img")) if self.prefetching.get() => {
+            // `image` is parsed as `img`, and lazy images are not fetched until they get near the
+            // viewport.
+            (TagKind::StartTag, &local_name!("img")) | (TagKind::StartTag, &local_name!("image"))
+                if self.prefetching.get() &&
+                    !self
+                        .get_attr(tag, local_name!("loading"))
+                        .is_some_and(|attr| attr.value.eq_ignore_ascii_case("lazy")) =>
+            {
                 if let Some(url) = self.get_url(tag, local_name!("src")) {
                     debug!("Prefetch {} {}", tag.name, url);
                     let request = create_a_potential_cors_request(

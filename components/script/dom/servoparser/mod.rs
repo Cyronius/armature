@@ -441,7 +441,9 @@ impl ServoParser {
             // There is already a pending parsing blocking script so the
             // parser is suspended, we just append everything to the
             // script input and abort these steps.
-            self.script_input.push_back(String::from(text).into());
+            let text = String::from(text);
+            self.speculatively_parse_written_input(std::iter::once(text.clone().into()));
+            self.script_input.push_back(text.into());
             return;
         }
 
@@ -472,13 +474,31 @@ impl ServoParser {
             // Parser got suspended, insert remaining input at end of
             // script input, following anything written by scripts executed
             // reentrantly during this call.
+            let mut chunks = Vec::new();
             while let Some(chunk) = input.pop_front() {
+                chunks.push(chunk);
+            }
+            self.speculatively_parse_written_input(chunks.iter().cloned());
+            for chunk in chunks {
                 self.script_input.push_back(chunk);
             }
             return;
         }
 
         assert!(input.is_empty());
+    }
+
+    /// Scans input written by `document.write()` that the parser can't process until a script has
+    /// run, to start fetching the resources it refers to.
+    fn speculatively_parse_written_input(&self, chunks: impl Iterator<Item = StrTendril>) {
+        if !self.should_prefetch() {
+            return;
+        }
+        let input = BufferQueue::default();
+        for chunk in chunks {
+            input.push_back(chunk);
+        }
+        prefetch::Tokenizer::new(&self.document).feed(&input);
     }
 
     /// Steps 4-6 of <https://html.spec.whatwg.org/multipage/#dom-document-close>
