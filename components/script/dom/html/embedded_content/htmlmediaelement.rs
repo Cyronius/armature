@@ -110,6 +110,7 @@ use crate::event_loop::document_loader::{LoadBlocker, LoadType};
 use crate::event_loop::script_thread::ScriptThread;
 use crate::fetch::fetch::{RequestWithGlobalScope, create_a_potential_cors_request};
 use crate::fetch::network_listener::{self, FetchResponseListener, ResourceTimingListener};
+use crate::dom::htmlbuttonelement::{CommandState, HTMLButtonElement};
 use crate::realms::enter_auto_realm;
 use crate::runtime::job_queue::MicrotaskRunnable;
 
@@ -3813,6 +3814,51 @@ impl HTMLMediaElementMethods<crate::DomTypeHolder> for HTMLMediaElement {
 impl VirtualMethods for HTMLMediaElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<HTMLElement>() as &dyn VirtualMethods)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#the-media-element:is-valid-command-steps>
+    fn is_valid_command_steps(&self, command: CommandState) -> bool {
+        matches!(
+            command,
+            CommandState::PlayPause |
+                CommandState::Play |
+                CommandState::Pause |
+                CommandState::ToggleMuted
+        )
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#the-media-element:command-steps>
+    fn command_steps(
+        &self,
+        cx: &mut JSContext,
+        source: DomRoot<HTMLButtonElement>,
+        command: CommandState,
+    ) -> bool {
+        if self
+            .super_type()
+            .unwrap()
+            .command_steps(cx, source, command)
+        {
+            return true;
+        }
+
+        match command {
+            // The element is played if it is paused (and paused otherwise), or just played.
+            CommandState::PlayPause | CommandState::Play if self.paused.get() => {
+                let mut realm = js::realm::CurrentRealm::assert(cx);
+                let _ = self.Play(&mut realm);
+                true
+            },
+            CommandState::PlayPause | CommandState::Pause if !self.paused.get() => {
+                self.Pause(cx);
+                true
+            },
+            CommandState::ToggleMuted => {
+                self.SetMuted(cx, !self.Muted());
+                true
+            },
+            _ => false,
+        }
     }
 
     fn attribute_mutated(

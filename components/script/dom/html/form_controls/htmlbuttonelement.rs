@@ -143,6 +143,10 @@ impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
             CommandState::ShowModal => DOMString::from_static("show-modal"),
             CommandState::Toggle => DOMString::from_static("toggle"),
             CommandState::Open => DOMString::from_static("open"),
+            CommandState::PlayPause => DOMString::from_static("play-pause"),
+            CommandState::Play => DOMString::from_static("play"),
+            CommandState::Pause => DOMString::from_static("pause"),
+            CommandState::ToggleMuted => DOMString::from_static("toggle-muted"),
             CommandState::RequestClose => DOMString::from_static("request-close"),
             CommandState::TogglePopover => DOMString::from_static("toggle-popover"),
             CommandState::ShowPopover => DOMString::from_static("show-popover"),
@@ -392,6 +396,18 @@ impl HTMLButtonElement {
         }
         if command.eq_ignore_ascii_case("toggle") {
             return CommandState::Toggle;
+        }
+        if command.eq_ignore_ascii_case("play-pause") {
+            return CommandState::PlayPause;
+        }
+        if command.eq_ignore_ascii_case("play") {
+            return CommandState::Play;
+        }
+        if command.eq_ignore_ascii_case("pause") {
+            return CommandState::Pause;
+        }
+        if command.eq_ignore_ascii_case("toggle-muted") {
+            return CommandState::ToggleMuted;
         }
         if command.eq_ignore_ascii_case("open") {
             return CommandState::Open;
@@ -715,6 +731,10 @@ pub(crate) enum CommandState {
     ShowModal,
     Toggle,
     Open,
+    PlayPause,
+    Play,
+    Pause,
+    ToggleMuted,
     RequestClose,
     Close,
     TogglePopover,
