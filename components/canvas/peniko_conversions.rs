@@ -104,7 +104,7 @@ impl Convert<peniko::Mix> for BlendingStyle {
     }
 }
 
-impl Convert<kurbo::Stroke> for LineOptions {
+impl Convert<kurbo::Stroke> for &LineOptions {
     fn convert(self) -> kurbo::Stroke {
         let LineOptions {
             width,
@@ -115,13 +115,13 @@ impl Convert<kurbo::Stroke> for LineOptions {
             dash_offset,
         } = self;
         kurbo::Stroke {
-            width,
-            join: join_style.convert(),
-            miter_limit,
-            start_cap: cap_style.convert(),
-            end_cap: cap_style.convert(),
+            width: *width,
+            join: (*join_style).convert(),
+            miter_limit: *miter_limit,
+            start_cap: (*cap_style).convert(),
+            end_cap: (*cap_style).convert(),
             dash_pattern: dash.iter().map(|x| *x as f64).collect(),
-            dash_offset,
+            dash_offset: *dash_offset,
         }
     }
 }

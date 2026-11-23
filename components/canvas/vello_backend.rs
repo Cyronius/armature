@@ -25,7 +25,7 @@ use pixels::{Snapshot, SnapshotAlphaMode, SnapshotPixelFormat};
 use servo_base::generic_channel::GenericSharedMemory;
 use servo_canvas_traits::canvas::{
     CompositionOptions, CompositionOrBlending, CompositionStyle, FillOrStrokeStyle, FillRule,
-    LineOptions, Path, ShadowOptions, TextRun,
+    LineOptions, Path, TextRun,
 };
 use vello::wgpu::{
     BackendOptions, Backends, Buffer, BufferDescriptor, BufferUsages, COPY_BYTES_PER_ROW_ALIGNMENT,
@@ -372,22 +372,6 @@ impl GenericDrawTarget for VelloDrawTarget {
         })
     }
 
-    fn draw_surface_with_shadow(
-        &self,
-        _surface: Vec<u8>,
-        _dest: &Point2D<f32>,
-        _shadow_options: ShadowOptions,
-        _composition_options: CompositionOptions,
-    ) {
-        log::warn!("no support for drawing shadows");
-        /*
-        We will need to do some changes to support drawing shadows with vello, as current abstraction is made for azure.
-        In vello we do not need new draw target (we will use layers) and we need to pass whole rect.
-        offsets will be applied to rect directly. shadow blur will be passed directly to let backend do transforms.
-        */
-        // self_.scene.draw_blurred_rounded_rect(self_.transform, rect, color, 0.0, sigma);
-    }
-
     fn fill(
         &mut self,
         path: &Path,
@@ -410,7 +394,7 @@ impl GenericDrawTarget for VelloDrawTarget {
 
     fn fill_text(
         &mut self,
-        text_runs: Vec<TextRun>,
+        text_runs: &[TextRun],
         style: FillOrStrokeStyle,
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
@@ -509,7 +493,7 @@ impl GenericDrawTarget for VelloDrawTarget {
         &mut self,
         path: &Path,
         style: FillOrStrokeStyle,
-        line_options: LineOptions,
+        line_options: &LineOptions,
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
     ) {
@@ -527,9 +511,9 @@ impl GenericDrawTarget for VelloDrawTarget {
 
     fn stroke_text(
         &mut self,
-        text_runs: Vec<TextRun>,
+        text_runs: &[TextRun],
         style: FillOrStrokeStyle,
-        line_options: LineOptions,
+        line_options: &LineOptions,
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
     ) {
@@ -580,7 +564,7 @@ impl GenericDrawTarget for VelloDrawTarget {
         &mut self,
         rect: &Rect<f32>,
         style: FillOrStrokeStyle,
-        line_options: LineOptions,
+        line_options: &LineOptions,
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
     ) {
@@ -644,10 +628,6 @@ impl GenericDrawTarget for VelloDrawTarget {
                 data,
             )
         })
-    }
-
-    fn surface(&mut self) -> Vec<u8> {
-        self.snapshot().as_raw_bytes().to_vec()
     }
 
     fn create_source_surface_from_data(&self, mut data: Snapshot) -> Option<Vec<u8>> {

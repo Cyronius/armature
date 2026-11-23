@@ -9,6 +9,7 @@ mod backend;
 pub mod canvas_data;
 pub mod canvas_paint_thread;
 mod peniko_conversions;
+mod shadow;
 #[cfg(feature = "vello")]
 mod vello_backend;
 mod vello_cpu_backend;

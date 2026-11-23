@@ -7,7 +7,7 @@ use paint_api::SerializableImageData;
 use pixels::Snapshot;
 use profile_traits::mem::ReportKind;
 use servo_canvas_traits::canvas::{
-    CompositionOptions, FillOrStrokeStyle, FillRule, LineOptions, Path, ShadowOptions, TextRun,
+    CompositionOptions, FillOrStrokeStyle, FillRule, LineOptions, Path, TextRun,
 };
 use webrender_api::ImageDescriptor;
 
@@ -48,13 +48,6 @@ pub(crate) trait GenericDrawTarget {
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
     );
-    fn draw_surface_with_shadow(
-        &self,
-        surface: Self::SourceSurface,
-        dest: &Point2D<f32>,
-        shadow_options: ShadowOptions,
-        composition_options: CompositionOptions,
-    );
     fn fill(
         &mut self,
         path: &Path,
@@ -65,7 +58,7 @@ pub(crate) trait GenericDrawTarget {
     );
     fn fill_text(
         &mut self,
-        text_runs: Vec<TextRun>,
+        text_runs: &[TextRun],
         style: FillOrStrokeStyle,
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
@@ -85,15 +78,15 @@ pub(crate) trait GenericDrawTarget {
         &mut self,
         path: &Path,
         style: FillOrStrokeStyle,
-        line_options: LineOptions,
+        line_options: &LineOptions,
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
     );
     fn stroke_text(
         &mut self,
-        text_runs: Vec<TextRun>,
+        text_runs: &[TextRun],
         style: FillOrStrokeStyle,
-        line_options: LineOptions,
+        line_options: &LineOptions,
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
     );
@@ -101,11 +94,10 @@ pub(crate) trait GenericDrawTarget {
         &mut self,
         rect: &Rect<f32>,
         style: FillOrStrokeStyle,
-        line_options: LineOptions,
+        line_options: &LineOptions,
         composition_options: CompositionOptions,
         transform: Transform2D<f64>,
     );
-    fn surface(&mut self) -> Self::SourceSurface;
     fn image_descriptor_and_serializable_data(
         &mut self,
     ) -> (ImageDescriptor, SerializableImageData);
