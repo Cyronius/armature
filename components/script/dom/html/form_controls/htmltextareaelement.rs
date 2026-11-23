@@ -114,7 +114,7 @@ impl HTMLTextAreaElement {
             .clone();
         HTMLTextAreaElement {
             htmlelement: HTMLElement::new_inherited_with_state(
-                ElementState::ENABLED | ElementState::READWRITE,
+                ElementState::ENABLED | ElementState::READWRITE | ElementState::OPTIONAL_,
                 local_name,
                 prefix,
                 document,
@@ -719,6 +719,10 @@ impl VirtualMethods for HTMLTextAreaElement {
                     }
                 }
                 self.handle_text_content_changed(cx);
+            },
+            local_name!("required") => {
+                self.upcast::<Element>()
+                    .update_required_state(cx.no_gc(), true);
             },
             local_name!("readonly") => {
                 let el = self.upcast::<Element>();

@@ -178,7 +178,7 @@ impl HTMLInputElement {
             .clone();
         HTMLInputElement {
             htmlelement: HTMLElement::new_inherited_with_state(
-                ElementState::ENABLED | ElementState::READWRITE,
+                ElementState::ENABLED | ElementState::READWRITE | ElementState::OPTIONAL_,
                 local_name,
                 prefix,
                 document,
@@ -2298,6 +2298,31 @@ impl HTMLInputElement {
 
     /// Remembers the value that the control had before the user edited it, to know whether a `change`
     /// event is due when the control loses focus.
+    /// Updates the states that `:required` and `:optional` match on.
+    fn update_required_state(&self, no_gc: &NoGC) {
+        // <https://html.spec.whatwg.org/multipage/#attr-input-required>
+        let applies = matches!(
+            self.input_type().as_str(),
+            "text" |
+                "search" |
+                "url" |
+                "tel" |
+                "email" |
+                "password" |
+                "date" |
+                "month" |
+                "week" |
+                "time" |
+                "datetime-local" |
+                "number" |
+                "checkbox" |
+                "radio" |
+                "file"
+        );
+        self.upcast::<Element>()
+            .update_required_state(no_gc, applies);
+    }
+
     fn note_user_edit(&self) {
         if let Some((_, edited)) = self.value_when_focused.borrow_mut().as_mut() {
             *edited = true;
@@ -2409,6 +2434,9 @@ impl VirtualMethods for HTMLInputElement {
                 let size = mutation.new_value(attr).map(|value| value.as_uint());
                 self.size.set(size.unwrap_or(DEFAULT_INPUT_SIZE));
             },
+            local_name!("required") => {
+                self.update_required_state(cx.no_gc());
+            },
             local_name!("type") => {
                 let element = self.upcast::<Element>();
 
@@ -2430,6 +2458,7 @@ impl VirtualMethods for HTMLInputElement {
                             InputType::new_from_atom(attr.value().as_atom());
                         self.is_textual_or_password
                             .set(self.input_type().is_textual_or_password());
+                        self.update_required_state(cx.no_gc());
 
                         if self.input_type().is_textual() {
                             let read_write = !(self.ReadOnly() || element.disabled_state());

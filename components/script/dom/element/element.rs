@@ -5834,6 +5834,16 @@ impl Element {
         false
     }
 
+    /// Updates the states that `:required` and `:optional` match on, for a form control that the
+    /// `required` attribute applies to if `applies`.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#selector-required>
+    pub(crate) fn update_required_state(&self, no_gc: &NoGC, applies: bool) {
+        let required = applies && self.has_attribute(&local_name!("required"));
+        self.set_state(no_gc, ElementState::REQUIRED, required);
+        self.set_state(no_gc, ElementState::OPTIONAL_, !required);
+    }
+
     pub(crate) fn init_state_for_internals(&self, no_gc: &NoGC) {
         self.set_enabled_state(no_gc, true);
         self.set_state(no_gc, ElementState::VALID, true);

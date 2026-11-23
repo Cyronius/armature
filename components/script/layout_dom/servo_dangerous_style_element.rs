@@ -899,8 +899,7 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
             NodeTypeId::Element(ElementTypeId::HTMLElement(
                 HTMLElementTypeId::HTMLAnchorElement,
             )) |
-            NodeTypeId::Element(ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLAreaElement)) |
-            NodeTypeId::Element(ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLLinkElement)) => {
+            NodeTypeId::Element(ElementTypeId::HTMLElement(HTMLElementTypeId::HTMLAreaElement)) => {
                 self.element
                     .get_attr_val_for_layout(&ns!(), &local_name!("href"))
                     .is_some()

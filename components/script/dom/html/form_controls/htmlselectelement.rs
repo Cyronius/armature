@@ -195,7 +195,7 @@ impl HTMLSelectElement {
     ) -> HTMLSelectElement {
         HTMLSelectElement {
             htmlelement: HTMLElement::new_inherited_with_state(
-                ElementState::ENABLED | ElementState::VALID,
+                ElementState::ENABLED | ElementState::VALID | ElementState::OPTIONAL_,
                 local_name,
                 prefix,
                 document,
@@ -949,6 +949,8 @@ impl VirtualMethods for HTMLSelectElement {
                 self.multiple_attribute_mutated(cx, mutation);
             },
             local_name!("required") => {
+                self.upcast::<Element>()
+                    .update_required_state(cx.no_gc(), true);
                 self.validity_state(cx)
                     .perform_validation_and_update(cx, ValidationFlags::VALUE_MISSING);
             },
