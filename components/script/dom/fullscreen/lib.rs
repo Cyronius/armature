@@ -216,10 +216,14 @@ impl Document {
                 if window.is_top_level() {
                     true
                 } else {
-                    // Step 3
-                    window
-                        .GetFrameElement()
-                        .is_some_and(|el| el.has_attribute(&local_name!("allowfullscreen")))
+                    // Step 3. The container, and so the parent, has to allow it, and the
+                    // container either allows it or is of the same origin as the document.
+                    window.GetFrameElement().is_some_and(|el| {
+                        let parent = el.owner_document();
+                        parent.get_allow_fullscreen() &&
+                            (el.has_attribute(&local_name!("allowfullscreen")) ||
+                                parent.origin().same_origin(&*self.origin()))
+                    })
                 }
             },
         }
