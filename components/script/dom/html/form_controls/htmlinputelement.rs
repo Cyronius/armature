@@ -622,9 +622,9 @@ impl HTMLInputElement {
         // Step 5. If applying the algorithm to convert a string to a number to the string given
         // by the element's value does not result in an error, then let value be the result of
         // that algorithm. Otherwise, let value be zero.
-        let mut value: f64 = self
-            .convert_string_to_number(&self.Value().str())
-            .unwrap_or(0.0);
+        let converted_value = self.convert_string_to_number(&self.Value().str());
+        let value_was_valid = converted_value.is_some();
+        let mut value: f64 = converted_value.unwrap_or(0.0);
 
         // Step 6. Let valueBeforeStepping be value.
         let valueBeforeStepping = value;
@@ -688,14 +688,17 @@ impl HTMLInputElement {
         // Step 10. If either the method invoked was the stepDown() method and value is greater than
         // valueBeforeStepping, or the method invoked was the stepUp() method and value is less than
         // valueBeforeStepping, then return.
+        //
+        // An empty or invalid value starts from the minimum or the maximum instead, so that stepping
+        // is not stopped by the zero that stands for it.
         match dir {
             StepDirection::Down => {
-                if value > valueBeforeStepping {
+                if value_was_valid && value > valueBeforeStepping {
                     return Ok(());
                 }
             },
             StepDirection::Up => {
-                if value < valueBeforeStepping {
+                if value_was_valid && value < valueBeforeStepping {
                     return Ok(());
                 }
             },
