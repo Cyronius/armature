@@ -127,6 +127,13 @@ impl VirtualMethods for HTMLOptGroupElement {
             for option in options {
                 option.update_disabled_state(cx.no_gc());
             }
+            if let Some(select) = element
+                .upcast::<Node>()
+                .GetParentNode()
+                .and_then(DomRoot::downcast::<HTMLSelectElement>)
+            {
+                select.selectedness_setting_algorithm(cx.no_gc());
+            }
         }
     }
 

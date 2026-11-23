@@ -548,6 +548,8 @@ impl VirtualMethods for HTMLOptionElement {
         match *attr.local_name() {
             local_name!("disabled") => {
                 self.update_disabled_state(cx.no_gc());
+                // Which option is the first enabled one may have changed.
+                self.ask_for_a_reset(cx);
                 self.update_select_validity(cx);
             },
             local_name!("selected") => {

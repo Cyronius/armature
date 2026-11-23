@@ -980,6 +980,11 @@ impl VirtualMethods for HTMLSelectElement {
             local_name!("multiple") => {
                 self.multiple_attribute_mutated(cx, mutation);
             },
+            local_name!("size") => {
+                // The display size decides whether a selected option is required.
+                self.selectedness_setting_algorithm(cx.no_gc());
+                self.update_shadow_tree(cx);
+            },
             local_name!("required") => {
                 self.upcast::<Element>()
                     .update_required_state(cx.no_gc(), true);
