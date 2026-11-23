@@ -19,7 +19,6 @@ use stylo_dom::ElementState;
 
 use crate::dom::bindings::codegen::Bindings::HTMLFormElementBinding::SelectionMode;
 use crate::dom::bindings::codegen::Bindings::HTMLTextAreaElementBinding::HTMLTextAreaElementMethods;
-use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::error::ErrorResult;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::refcounted::Trusted;
@@ -517,7 +516,7 @@ impl HTMLTextAreaElementMethods<crate::DomTypeHolder> for HTMLTextAreaElement {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-textarea-defaultvalue>
     fn DefaultValue(&self) -> DOMString {
-        self.upcast::<Node>().GetTextContent().unwrap()
+        self.upcast::<Node>().child_text_content()
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-textarea-defaultvalue>
