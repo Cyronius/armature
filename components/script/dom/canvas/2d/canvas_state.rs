@@ -35,7 +35,6 @@ use servo_canvas_traits::canvas::{
 };
 use servo_constellation_traits::ScriptToConstellationMessage;
 use servo_url::{ImmutableOrigin, ServoUrl};
-use style::Zero;
 use style::color::{AbsoluteColor, ColorFlags, ColorSpace};
 use style::computed_values::font_variant_position::T as FontVariantPosition;
 use style::properties::longhands::font_variant_caps::computed_value::T as FontVariantCaps;
@@ -58,7 +57,8 @@ use crate::conversions::Convert;
 use crate::css::css::{ANONYMOUS_CONTENT_URL_DATA, parser_context_for_anonymous_content};
 use crate::dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::{
     CanvasDirection, CanvasFillRule, CanvasImageSource, CanvasLineCap, CanvasLineJoin,
-    CanvasTextAlign, CanvasTextBaseline, ImageDataMethods,
+    CanvasFontKerning, CanvasFontStretch, CanvasFontVariantCaps, CanvasTextAlign,
+    CanvasTextBaseline, CanvasTextRendering, ImageDataMethods,
 };
 use crate::dom::bindings::codegen::Bindings::DOMMatrixBinding::DOMMatrix2DInit;
 use crate::dom::bindings::codegen::UnionTypes::{
@@ -106,6 +106,63 @@ impl CanvasFillOrStrokeStyle {
     }
 }
 
+/// The value of `letterSpacing` or `wordSpacing`: a length that is the sum of pixels and a multiple
+/// of the size of the font.
+#[derive(Clone, JSTraceable, MallocSizeOf)]
+struct TextSpacing {
+    /// The length as it serializes.
+    serialized: String,
+    pixels: f64,
+    font_size_factor: f64,
+}
+
+impl Default for TextSpacing {
+    fn default() -> Self {
+        Self {
+            serialized: String::from("0px"),
+            pixels: 0.0,
+            font_size_factor: 0.0,
+        }
+    }
+}
+
+impl TextSpacing {
+    /// Parses a `<length>`.
+    fn parse(string: &str) -> Option<Self> {
+        let mut parser = Parser::new(string);
+        let (value, unit) = match parser.next().ok()?.clone() {
+            cssparser::Token::Number { value: 0.0, .. } => (0.0, "px".to_owned()),
+            cssparser::Token::Dimension { value, unit, .. } => {
+                (value as f64, unit.to_ascii_lowercase())
+            },
+            _ => return None,
+        };
+        parser.expect_exhausted().ok()?;
+        let (pixels, font_size_factor) = match unit.as_str() {
+            "px" => (value, 0.0),
+            "in" => (value * 96.0, 0.0),
+            "cm" => (value * 96.0 / 2.54, 0.0),
+            "mm" => (value * 96.0 / 25.4, 0.0),
+            "q" => (value * 96.0 / 101.6, 0.0),
+            "pt" => (value * 96.0 / 72.0, 0.0),
+            "pc" => (value * 16.0, 0.0),
+            "rem" => (value * 16.0, 0.0),
+            "em" | "ic" | "lh" => (0.0, value),
+            "ex" | "ch" | "cap" => (0.0, value * 0.5),
+            _ => return None,
+        };
+        Some(Self {
+            serialized: format!("{}{}", value as f32, unit),
+            pixels,
+            font_size_factor,
+        })
+    }
+
+    fn to_px(&self, font_size: f64) -> f64 {
+        self.pixels + self.font_size_factor * font_size
+    }
+}
+
 #[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 #[derive(Clone, JSTraceable, MallocSizeOf)]
 pub(super) struct CanvasContextState {
@@ -141,6 +198,14 @@ pub(super) struct CanvasContextState {
     text_align: CanvasTextAlign,
     text_baseline: CanvasTextBaseline,
     direction: CanvasDirection,
+    font_kerning: CanvasFontKerning,
+    font_stretch: CanvasFontStretch,
+    font_variant_caps: CanvasFontVariantCaps,
+    text_rendering: CanvasTextRendering,
+    letter_spacing: TextSpacing,
+    word_spacing: TextSpacing,
+    /// The value of the `lang` attribute.
+    lang: String,
     /// The number of clips pushed onto the context while in this state.
     /// When restoring old state, same number of clips will be popped to restore state.
     clips_pushed: usize,
@@ -171,6 +236,13 @@ impl CanvasContextState {
             text_align: CanvasTextAlign::Start,
             text_baseline: CanvasTextBaseline::Alphabetic,
             direction: CanvasDirection::Inherit,
+            font_kerning: CanvasFontKerning::Auto,
+            font_stretch: CanvasFontStretch::Normal,
+            font_variant_caps: CanvasFontVariantCaps::Normal,
+            text_rendering: CanvasTextRendering::Auto,
+            letter_spacing: TextSpacing::default(),
+            word_spacing: TextSpacing::default(),
+            lang: String::from("inherit"),
             line_dash: Vec::new(),
             line_dash_offset: 0.0,
             clips_pushed: 0,
@@ -1833,6 +1905,80 @@ impl CanvasState {
         )
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontkerning>
+    pub(super) fn font_kerning(&self) -> CanvasFontKerning {
+        self.state.borrow().font_kerning
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontkerning>
+    pub(super) fn set_font_kerning(&self, value: CanvasFontKerning) {
+        self.state.borrow_mut().font_kerning = value;
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontstretch>
+    pub(super) fn font_stretch(&self) -> CanvasFontStretch {
+        self.state.borrow().font_stretch
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontstretch>
+    pub(super) fn set_font_stretch(&self, value: CanvasFontStretch) {
+        self.state.borrow_mut().font_stretch = value;
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontvariantcaps>
+    pub(super) fn font_variant_caps(&self) -> CanvasFontVariantCaps {
+        self.state.borrow().font_variant_caps
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontvariantcaps>
+    pub(super) fn set_font_variant_caps(&self, value: CanvasFontVariantCaps) {
+        self.state.borrow_mut().font_variant_caps = value;
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-textrendering>
+    pub(super) fn text_rendering(&self) -> CanvasTextRendering {
+        self.state.borrow().text_rendering
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-textrendering>
+    pub(super) fn set_text_rendering(&self, value: CanvasTextRendering) {
+        self.state.borrow_mut().text_rendering = value;
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-letterspacing>
+    pub(super) fn letter_spacing(&self) -> DOMString {
+        DOMString::from(self.state.borrow().letter_spacing.serialized.clone())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-letterspacing>
+    pub(super) fn set_letter_spacing(&self, value: DOMString) {
+        if let Some(spacing) = TextSpacing::parse(&value.str()) {
+            self.state.borrow_mut().letter_spacing = spacing;
+        }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-wordspacing>
+    pub(super) fn word_spacing(&self) -> DOMString {
+        DOMString::from(self.state.borrow().word_spacing.serialized.clone())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-wordspacing>
+    pub(super) fn set_word_spacing(&self, value: DOMString) {
+        if let Some(spacing) = TextSpacing::parse(&value.str()) {
+            self.state.borrow_mut().word_spacing = spacing;
+        }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-lang>
+    pub(super) fn lang(&self) -> DOMString {
+        DOMString::from(self.state.borrow().lang.clone())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-lang>
+    pub(super) fn set_lang(&self, value: DOMString) {
+        self.state.borrow_mut().lang = value.str().to_string();
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-font>
     pub(super) fn set_font(
         &self,
@@ -2656,9 +2802,23 @@ impl CanvasState {
         let mut runs = Vec::new();
         // TODO: canvas also has experimental `lang` attribute (https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/lang),
         // which Servo doesn't support yet. When this attribute is supported, some changes may be needed here.
-        let x_language = self.font_style()._x_lang.clone();
-        let language = x_language.0.parse().unwrap_or(Language::UNKNOWN);
-        let mut current_text_run = UnshapedTextRun::new(language);
+        let font_style = self.font_style();
+        let state = self.state.borrow();
+        let language = if state.lang != "inherit" && !state.lang.is_empty() {
+            state.lang.parse().unwrap_or(Language::UNKNOWN)
+        } else {
+            font_style._x_lang.0.parse().unwrap_or(Language::UNKNOWN)
+        };
+        let font_size = font_style.font_size.computed_size().px() as f64;
+        let letter_spacing = Au::from_f64_px(state.letter_spacing.to_px(font_size));
+        let word_spacing = Au::from_f64_px(state.word_spacing.to_px(font_size));
+        let flags = if state.font_kerning == CanvasFontKerning::None {
+            ShapingFlags::DISABLE_KERNING_SHAPING_FLAG
+        } else {
+            ShapingFlags::empty()
+        };
+        drop(state);
+        let mut current_text_run = UnshapedTextRun::new(language, letter_spacing, word_spacing, flags);
         let mut current_text_run_start_index = 0;
 
         // Variation Selectors (U+FE00–U+FE0F) and Variation Selectors Supplement (U+E0100–U+E01EF)
@@ -2687,6 +2847,9 @@ impl CanvasState {
                         script,
                         string: Default::default(),
                         language,
+                        letter_spacing,
+                        word_spacing,
+                        flags,
                     },
                 );
                 current_text_run_start_index = index;
@@ -2763,15 +2926,21 @@ struct UnshapedTextRun<'a> {
     script: Script,
     string: &'a str,
     language: Language,
+    letter_spacing: Au,
+    word_spacing: Au,
+    flags: ShapingFlags,
 }
 
 impl UnshapedTextRun<'_> {
-    fn new(language: Language) -> Self {
+    fn new(language: Language, letter_spacing: Au, word_spacing: Au, flags: ShapingFlags) -> Self {
         Self {
             font: Default::default(),
             script: Default::default(),
             string: Default::default(),
             language,
+            letter_spacing,
+            word_spacing,
+            flags,
         }
     }
 
@@ -2792,11 +2961,11 @@ impl UnshapedTextRun<'_> {
         let font = self.font?;
 
         let options = ShapingOptions {
-            letter_spacing: Au::zero(),
-            word_spacing: Au::zero(),
+            letter_spacing: self.letter_spacing,
+            word_spacing: self.word_spacing,
             script: self.script,
             language: self.language,
-            flags: ShapingFlags::empty(),
+            flags: self.flags,
             ligatures: FontVariantLigatures::NORMAL,
             numeric: FontVariantNumeric::NORMAL,
             east_asian: FontVariantEastAsian::NORMAL,

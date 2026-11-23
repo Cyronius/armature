@@ -11,9 +11,10 @@ use servo_canvas_traits::canvas::CanvasCommand;
 
 use crate::canvas_context::{CanvasContext, HTMLCanvasElementOrOffscreenCanvas};
 use crate::dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::{
-    CanvasDirection, CanvasFillRule, CanvasImageSource, CanvasLayerAttributes, CanvasLineCap,
-    CanvasLineJoin, CanvasRenderingContext2DMethods, CanvasRenderingContext2DSettings,
-    CanvasTextAlign, CanvasTextBaseline,
+    CanvasDirection, CanvasFillRule, CanvasFontKerning, CanvasFontStretch, CanvasFontVariantCaps,
+    CanvasImageSource, CanvasLayerAttributes, CanvasLineCap, CanvasLineJoin,
+    CanvasRenderingContext2DMethods, CanvasRenderingContext2DSettings,
+    CanvasTextAlign, CanvasTextBaseline, CanvasTextRendering,
 };
 use crate::dom::bindings::codegen::Bindings::DOMMatrixBinding::DOMMatrix2DInit;
 use crate::dom::bindings::codegen::Bindings::OffscreenCanvasRenderingContext2DBinding::OffscreenCanvasRenderingContext2DMethods;
@@ -679,5 +680,75 @@ impl OffscreenCanvasRenderingContext2DMethods<crate::DomTypeHolder>
     ) -> ErrorResult {
         self.context
             .Ellipse(x, y, rx, ry, rotation, start, end, ccw)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontkerning>
+    fn FontKerning(&self) -> CanvasFontKerning {
+        self.context.FontKerning()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontkerning>
+    fn SetFontKerning(&self, value: CanvasFontKerning) {
+        self.context.SetFontKerning(value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontstretch>
+    fn FontStretch(&self) -> CanvasFontStretch {
+        self.context.FontStretch()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontstretch>
+    fn SetFontStretch(&self, value: CanvasFontStretch) {
+        self.context.SetFontStretch(value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontvariantcaps>
+    fn FontVariantCaps(&self) -> CanvasFontVariantCaps {
+        self.context.FontVariantCaps()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontvariantcaps>
+    fn SetFontVariantCaps(&self, value: CanvasFontVariantCaps) {
+        self.context.SetFontVariantCaps(value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-textrendering>
+    fn TextRendering(&self) -> CanvasTextRendering {
+        self.context.TextRendering()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-textrendering>
+    fn SetTextRendering(&self, value: CanvasTextRendering) {
+        self.context.SetTextRendering(value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-letterspacing>
+    fn LetterSpacing(&self) -> DOMString {
+        self.context.LetterSpacing()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-letterspacing>
+    fn SetLetterSpacing(&self, value: DOMString) {
+        self.context.SetLetterSpacing(value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-wordspacing>
+    fn WordSpacing(&self) -> DOMString {
+        self.context.WordSpacing()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-wordspacing>
+    fn SetWordSpacing(&self, value: DOMString) {
+        self.context.SetWordSpacing(value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-lang>
+    fn Lang(&self) -> DOMString {
+        self.context.Lang()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-lang>
+    fn SetLang(&self, value: DOMString) {
+        self.context.SetLang(value)
     }
 }
