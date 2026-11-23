@@ -464,11 +464,17 @@ fn webvtt_cue_text_tokenizer(position: &mut Peekable<Chars<'_>>) -> CueTokenizer
                 // > Attempt to consume an HTML character reference, with no additional allowed character.
                 // > If nothing is returned, append a U+0026 AMPERSAND character (&) to result.
                 // > Otherwise, append the data of the character tokens that were returned to result.
-                // TODO: The character reference case
-                result.push('\u{0026}');
                 // > Then, in any case, set tokenizer state to the WebVTT data state,
                 // > and jump to the step labeled next.
                 tokenizer_state = TokenizerState::WebVTTData;
+                match consume_a_character_reference(position, None) {
+                    Some(characters) => result.push_str(&characters),
+                    None => {
+                        result.push('\u{0026}');
+                        // Nothing was consumed, so `c` is still to be processed.
+                        continue;
+                    },
+                }
             },
             // https://w3c.github.io/webvtt/#webvtt-tag-state
             TokenizerState::WebVTTTag => {
@@ -692,11 +698,16 @@ fn webvtt_cue_text_tokenizer(position: &mut Peekable<Chars<'_>>) -> CueTokenizer
                 // > with the additional allowed character being U+003E GREATER-THAN SIGN (>).
                 // > If nothing is returned, append a U+0026 AMPERSAND character (&) to buffer.
                 // > Otherwise, append the data of the character tokens that were returned to buffer.
-                // TODO: The character reference case
-                buffer.push('\u{0026}');
                 // > Then, in any case, set tokenizer state to the WebVTT start tag annotation state,
                 // > and jump to the step labeled next.
                 tokenizer_state = TokenizerState::WebVTTStartTagAnnotation;
+                match consume_a_character_reference(position, Some('\u{003E}')) {
+                    Some(characters) => buffer.push_str(&characters),
+                    None => {
+                        buffer.push('\u{0026}');
+                        continue;
+                    },
+                }
             },
             // https://w3c.github.io/webvtt/#webvtt-end-tag-state
             TokenizerState::WebVTTEndTag => {
@@ -788,5 +799,93 @@ mod tests {
         let timestamp = WebVTTTimestamp(compute_result_in_seconds(1., 1., 0., 0.));
 
         assert_eq!(format!("{timestamp}"), "01:01:00.000");
+    }
+}
+
+/// <https://html.spec.whatwg.org/multipage/#consume-a-character-reference> (as referenced by
+/// WebVTT), for the characters after a U+0026 AMPERSAND. On success, all but the last character
+/// of the reference are consumed, as the tokenizer's "next" step consumes that one; on failure,
+/// nothing is.
+fn consume_a_character_reference(
+    position: &mut Peekable<Chars<'_>>,
+    additional_allowed_character: Option<char>,
+) -> Option<String> {
+    let first = *position.peek()?;
+    if matches!(first, '\t' | '\n' | '\u{000C}' | ' ' | '<' | '&') ||
+        Some(first) == additional_allowed_character
+    {
+        return None;
+    }
+
+    let mut lookahead = position.clone();
+    let (characters, length) = if first == '#' {
+        lookahead.next();
+        let mut length = 1;
+        let hexadecimal = matches!(lookahead.peek(), Some('x' | 'X'));
+        if hexadecimal {
+            lookahead.next();
+            length += 1;
+        }
+        let radix = if hexadecimal { 16 } else { 10 };
+        let mut digits = String::new();
+        while let Some(digit) = lookahead.peek().filter(|digit| digit.is_digit(radix)) {
+            digits.push(*digit);
+            lookahead.next();
+        }
+        if digits.is_empty() {
+            return None;
+        }
+        length += digits.chars().count();
+        if lookahead.peek() == Some(&';') {
+            length += 1;
+        }
+        let number = u32::from_str_radix(&digits, radix).unwrap_or(u32::MAX);
+        (numeric_character_reference(number).to_string(), length)
+    } else {
+        // The longest prefix of the following characters that names a character reference.
+        let mut name = String::new();
+        let mut longest = None;
+        for character in lookahead {
+            if !character.is_ascii_alphanumeric() && character != ';' {
+                break;
+            }
+            name.push(character);
+            match markup5ever::data::NAMED_ENTITIES.get(name.as_str()) {
+                None => break,
+                Some(&(0, _)) => {},
+                Some(&(first, second)) => {
+                    let mut characters = String::new();
+                    characters.extend(char::from_u32(first));
+                    if second != 0 {
+                        characters.extend(char::from_u32(second));
+                    }
+                    longest = Some((characters, name.chars().count()));
+                },
+            }
+            if character == ';' {
+                break;
+            }
+        }
+        longest?
+    };
+    for _ in 1..length {
+        position.next();
+    }
+    Some(characters)
+}
+
+/// <https://html.spec.whatwg.org/multipage/#numeric-character-reference-end-state>
+fn numeric_character_reference(number: u32) -> char {
+    const C1_REPLACEMENTS: [char; 32] = [
+        '\u{20AC}', '\u{0081}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}',
+        '\u{2021}', '\u{02C6}', '\u{2030}', '\u{0160}', '\u{2039}', '\u{0152}', '\u{008D}',
+        '\u{017D}', '\u{008F}', '\u{0090}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}',
+        '\u{2022}', '\u{2013}', '\u{2014}', '\u{02DC}', '\u{2122}', '\u{0161}', '\u{203A}',
+        '\u{0153}', '\u{009D}', '\u{017E}', '\u{0178}',
+    ];
+    match number {
+        0 => '\u{FFFD}',
+        0x80..=0x9F => C1_REPLACEMENTS[(number - 0x80) as usize],
+        _ => char::from_u32(number).unwrap_or('\u{FFFD}'),
     }
 }
