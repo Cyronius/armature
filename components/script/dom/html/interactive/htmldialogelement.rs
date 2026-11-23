@@ -31,7 +31,6 @@ use crate::dom::eventtarget::EventTarget;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::popover::topmost_popover_ancestor;
 use crate::dom::htmlbuttonelement::{CommandState, HTMLButtonElement};
-use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::focus::FocusTrigger;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{BindContext, Node, NodeTraits, UnbindContext};
@@ -296,13 +295,9 @@ impl HTMLDialogElement {
             // focusing steps for element; the viewport should not be scrolled by doing this step.
             let subject_node = subject.upcast::<Node>();
             let document = subject.owner_document();
-            if document
-                .focus_handler()
-                .focused_area()
-                .dom_anchor(&document)
-                .traverse_preorder(ShadowIncluding::Yes)
-                .any(|node| &*node == subject_node) ||
-                was_modal
+            if subject_node.is_shadow_including_inclusive_ancestor_of(
+                &document.focus_handler().focused_area().dom_anchor(&document),
+            ) || was_modal
             {
                 element
                     .upcast::<Node>()
