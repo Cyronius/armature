@@ -57,6 +57,10 @@ pub(crate) struct HTMLTextAreaElement {
     placeholder: RefCell<TracedDOMString>,
     // https://html.spec.whatwg.org/multipage/#concept-textarea-dirty
     value_dirty: Cell<bool>,
+    /// The value that the control had when it got focus, and whether the user has edited it since.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#common-input-element-events>
+    value_when_focused: DomRefCell<Option<(String, bool)>>,
     form_owner: MutNullableDom<HTMLFormElement>,
     labels_node_list: MutNullableDom<NodeList>,
     validity_state: MutNullableDom<ValidityState>,
@@ -125,6 +129,7 @@ impl HTMLTextAreaElement {
                 },
             )),
             value_dirty: Cell::new(false),
+            value_when_focused: DomRefCell::new(None),
             form_owner: Default::default(),
             labels_node_list: Default::default(),
             validity_state: Default::default(),
@@ -166,10 +171,19 @@ impl HTMLTextAreaElement {
         let event_type = event.upcast::<Event>().type_();
         let document = self.owner_document();
         if *event_type == *"blur" {
+            // Fire `change` if the user changed the value since the control got focus.
+            let previous = self.value_when_focused.borrow_mut().take();
+            if let Some((previous_value, true)) = previous &&
+                previous_value != String::from(self.Value())
+            {
+                self.upcast::<EventTarget>()
+                    .fire_bubbling_event(cx, atom!("change"));
+            }
             document
                 .embedder_controls()
                 .hide_embedder_control(self.upcast());
         } else if *event_type == *"focus" {
+            *self.value_when_focused.borrow_mut() = Some((String::from(self.Value()), false));
             // If there is a Document selection collapse it. This isn't really specified
             // and there are quite a few open specification issues about the interaction
             // of input and Document selection:
@@ -336,6 +350,9 @@ impl TextControlElement for HTMLTextAreaElement {
         match action {
             KeyReaction::TriggerDefaultAction => (),
             KeyReaction::DispatchInput(text, input_type) => {
+                if let Some((_, edited)) = self.value_when_focused.borrow_mut().as_mut() {
+                    *edited = true;
+                }
                 self.queue_input_event(text, input_type);
                 self.value_dirty.set(true);
                 self.handle_text_content_changed(cx);

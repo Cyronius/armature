@@ -136,6 +136,10 @@ pub(crate) struct HTMLInputElement {
     pending_webdriver_response: RefCell<Option<Box<PendingWebDriverResponse>>>,
     /// <https://html.spec.whatwg.org/multipage/#concept-input-value-dirty-flag>
     value_dirty: Cell<bool>,
+    /// The value that the control had when it got focus, and whether the user has edited it since.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#common-input-element-events>
+    value_when_focused: DomRefCell<Option<(String, bool)>>,
 
     /// <https://w3c.github.io/selection-api/#dfn-has-scheduled-selectionchange-event>
     has_scheduled_selectionchange_event: Cell<bool>,
@@ -197,6 +201,7 @@ impl HTMLInputElement {
                 },
             )),
             value_dirty: Cell::new(false),
+            value_when_focused: DomRefCell::new(None),
             form_owner: Default::default(),
             labels_node_list: MutNullableDom::new(None),
             validity_state: Default::default(),
@@ -1106,6 +1111,7 @@ impl TextControlElement for HTMLInputElement {
                 self.implicit_submission(cx);
             },
             KeyReaction::DispatchInput(text, input_type) => {
+                self.note_user_edit();
                 self.queue_input_event(text, input_type);
                 self.value_dirty.set(true);
                 self.update_placeholder_shown_state(cx.no_gc());
@@ -2290,6 +2296,26 @@ impl HTMLInputElement {
         }
     }
 
+    /// Remembers the value that the control had before the user edited it, to know whether a `change`
+    /// event is due when the control loses focus.
+    fn note_user_edit(&self) {
+        if let Some((_, edited)) = self.value_when_focused.borrow_mut().as_mut() {
+            *edited = true;
+        }
+    }
+
+    /// Fires `change` if the user changed the value since the control got focus.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#common-input-element-events>
+    fn fire_change_event_if_user_edited(&self, cx: &mut JSContext) {
+        let Some((previous_value, edited)) = self.value_when_focused.borrow_mut().take() else {
+            return;
+        };
+        if edited && previous_value != String::from(self.Value()) {
+            self.fire_value_change_events(cx, ValueChangeEvents::Change);
+        }
+    }
+
     fn handle_focus_event(&self, cx: &mut JSContext, event: &FocusEvent) {
         let event_type = event.upcast::<Event>().type_();
         let document = self.owner_document();
@@ -2297,11 +2323,16 @@ impl HTMLInputElement {
         // This hides the control if the input element has lost focus, but doesn't do this for
         // file selection dialogs, which are often modal dialogs that may be represented as
         // separate windows.
+        if *event_type == *"blur" {
+            self.fire_change_event_if_user_edited(cx);
+        }
+
         if *event_type == *"blur" && !matches!(&*self.input_type(), InputType::File(..)) {
             document
                 .embedder_controls()
                 .hide_embedder_control(self.upcast());
         } else if *event_type == *"focus" {
+            *self.value_when_focused.borrow_mut() = Some((String::from(self.Value()), false));
             let input_type = &*self.input_type();
             let Ok(input_method_type) = input_type.try_into() else {
                 return;
