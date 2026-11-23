@@ -1908,6 +1908,13 @@ impl HTMLInputElement {
 
                 match self.GetFiles() {
                     // Step 5.8.1: If there are no selected files, then create an entry with name and a new File object with an empty name, application/octet-stream as type, and an empty body, and append it to entry list.
+                    Some(ref fl) if fl.Length() == 0 => {
+                        datums.push(FormDatum {
+                            ty,
+                            name,
+                            value: FormDatumValue::String(DOMString::new()),
+                        })
+                    },
                     None => {
                         datums.push(FormDatum {
                             // XXX(izgzhen): Spec says 'application/octet-stream' as the type,

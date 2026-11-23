@@ -59,6 +59,7 @@ use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::event::{Event, EventBubbles, EventCancelable};
 use crate::dom::eventtarget::EventTarget;
 use crate::dom::file::File;
+use servo_constellation_traits::BlobImpl;
 use crate::dom::formdata::FormData;
 use crate::dom::formdataevent::FormDataEvent;
 use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
@@ -1259,6 +1260,24 @@ impl HTMLFormElement {
                         let input = child.downcast::<HTMLInputElement>().unwrap();
                         let (ref mut form_datums, should_continue) =
                             input.form_datums(submitter, encoding);
+                        // A file control without files is a File with no name, content and a
+                        // generic type.
+                        if input.input_type().as_str() == "file" {
+                            for datum in form_datums.iter_mut() {
+                                if matches!(&datum.value, FormDatumValue::String(value) if value.is_empty()) {
+                                    datum.value = FormDatumValue::File(File::new(
+                                        cx,
+                                        &self.global(),
+                                        BlobImpl::new_from_bytes(
+                                            Vec::new(),
+                                            "application/octet-stream".to_owned(),
+                                        ),
+                                        DOMString::new(),
+                                        None,
+                                    ));
+                                }
+                            }
+                        }
                         data_set.append(form_datums);
                         if should_continue {
                             continue;
