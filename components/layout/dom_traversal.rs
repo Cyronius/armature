@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::ops::Deref;
 
 use atomic_refcell::AtomicRef;
+use web_atoms::{LocalName, local_name};
 use layout_api::{
     LayoutElement, LayoutElementType, LayoutNode, LayoutNodeType, PseudoElementChain,
 };
@@ -13,6 +14,7 @@ use script::layout_dom::ServoLayoutNode;
 use servo_arc::Arc as ServoArc;
 use style::dom::NodeInfo;
 use style::properties::ComputedValues;
+use style::computed_values::float::T as Float;
 use style::properties::longhands::content_visibility::computed_value::T as ContentVisibility;
 use style::selector_parser::PseudoElement;
 use style::values::generics::counters::{Content, ContentItem};
@@ -174,12 +176,31 @@ fn traverse_children_of<'dom>(
         traverse_eager_pseudo_element(PseudoElement::Before, parent_element_info, context, handler);
     }
 
+    // <https://html.spec.whatwg.org/multipage/#rendered-legend>
+    // The first `legend` child of a `fieldset`, as long as it is in flow, is its rendered legend.
+    let mut legend_candidate = is_element &&
+        parent_element_info
+            .node
+            .as_element()
+            .is_some_and(|element| is_html_element_named(&element, &local_name!("fieldset")));
+
     for child in parent_element_info.node.flat_tree_children() {
         if child.is_text_node() {
             let info = NodeAndStyleInfo::new(child, child.style(&context.style_context));
             handler.handle_text(&info, child.text_content().into());
         } else if child.is_element() {
-            traverse_element(child, context, handler);
+            let mut is_rendered_legend = false;
+            if legend_candidate &&
+                child
+                    .as_element()
+                    .is_some_and(|element| is_html_element_named(&element, &local_name!("legend")))
+            {
+                legend_candidate = false;
+                let style = child.style(&context.style_context);
+                is_rendered_legend = style.get_box().float == Float::None &&
+                    !style.get_box().position.is_absolutely_positioned();
+            }
+            traverse_element(child, is_rendered_legend, context, handler);
         }
     }
 
@@ -188,8 +209,61 @@ fn traverse_children_of<'dom>(
     }
 }
 
+fn is_html_element_named<'dom>(
+    element: &impl LayoutElement<'dom>,
+    name: &LocalName,
+) -> bool {
+    element.is_html_element_in_html_document() && element.local_name() == name
+}
+
+/// The used value of `display` for a `fieldset`: it only ever lays out as a block-level or
+/// inline-level block container.
+/// <https://html.spec.whatwg.org/multipage/#the-fieldset-and-legend-elements>
+fn fieldset_used_display(display: DisplayGeneratingBox) -> DisplayGeneratingBox {
+    match display {
+        DisplayGeneratingBox::LayoutInternal(_) => DisplayGeneratingBox::OutsideInside {
+            outside: DisplayOutside::Block,
+            inside: DisplayInside::Flow {
+                is_list_item: false,
+            },
+        },
+        DisplayGeneratingBox::OutsideInside {
+            outside,
+            inside: DisplayInside::Table,
+        } => DisplayGeneratingBox::OutsideInside {
+            outside,
+            inside: DisplayInside::FlowRoot {
+                is_list_item: false,
+            },
+        },
+        display => display,
+    }
+}
+
+/// The used value of `display` for a rendered legend, which is always block-level.
+/// <https://html.spec.whatwg.org/multipage/#rendered-legend>
+fn rendered_legend_used_display(display: DisplayGeneratingBox) -> DisplayGeneratingBox {
+    let inside = match display.display_inside() {
+        DisplayInside::Table => DisplayInside::FlowRoot {
+            is_list_item: false,
+        },
+        inside => inside,
+    };
+    let inside = match display {
+        DisplayGeneratingBox::LayoutInternal(_) => DisplayInside::Flow {
+            is_list_item: false,
+        },
+        _ => inside,
+    };
+    DisplayGeneratingBox::OutsideInside {
+        outside: DisplayOutside::Block,
+        inside,
+    }
+}
+
 fn traverse_element<'dom>(
     element: ServoLayoutNode<'dom>,
+    is_rendered_legend: bool,
     context: &LayoutContext,
     handler: &mut impl TraversalHandler<'dom>,
 ) {
@@ -215,7 +289,15 @@ fn traverse_element<'dom>(
         },
         Display::GeneratingBox(display) => {
             let contents = Contents::for_element(element, context);
-            let display = display.used_value_for_contents(&contents, &info);
+            let mut display = display.used_value_for_contents(&contents, &info);
+            if is_rendered_legend {
+                display = rendered_legend_used_display(display);
+            } else if element
+                .as_element()
+                .is_some_and(|element| is_html_element_named(&element, &local_name!("fieldset")))
+            {
+                display = fieldset_used_display(display);
+            }
             let box_slot = element.box_slot();
             handler.handle_element(&info, display, contents, box_slot);
         },
