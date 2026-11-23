@@ -126,6 +126,15 @@ impl HTMLOptionElement {
     /// > must set the selectedness of all the other option elements in its list of options to
     /// > false.
     fn pick_if_selected_in_select(&self, cx: &mut JSContext, select: &HTMLSelectElement) {
+        self.pick_if_selected_in_select_with(cx, select, false);
+    }
+
+    fn pick_if_selected_in_select_with(
+        &self,
+        cx: &mut JSContext,
+        select: &HTMLSelectElement,
+        inserting: bool,
+    ) {
         if !self.Selected() {
             return;
         }
@@ -135,7 +144,11 @@ impl HTMLOptionElement {
                 .list_of_options(cx.no_gc())
                 .any(|option| *option == self)
         );
-        select.pick_option(cx.no_gc(), self);
+        if inserting {
+            select.pick_inserted_option(cx.no_gc(), self);
+        } else {
+            select.pick_option(cx.no_gc(), self);
+        }
 
         // This is not specified, but Servo needs to update the cached validity state and shadow
         // tree of select elements when their descendants change.
@@ -585,7 +598,7 @@ impl VirtualMethods for HTMLOptionElement {
         // This should ensure that all selected `<option>` elements outside of the inserted subtree
         // are unselected.
         if let Some(select) = self.nearest_ancestor_select() {
-            self.pick_if_selected_in_select(cx, &select);
+            self.pick_if_selected_in_select_with(cx, &select, true);
         }
 
         self.update_nearest_ancestor_selection(cx);

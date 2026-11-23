@@ -387,6 +387,18 @@ impl HTMLSelectElement {
         }
     }
 
+    /// Like [`Self::pick_option`], for an option that is being inserted along with others: the options
+    /// that have not been inserted yet are left alone, so the last of the selected ones wins.
+    pub(crate) fn pick_inserted_option(&self, no_gc: &NoGC, picked: &HTMLOptionElement) {
+        if !self.Multiple() {
+            for opt in self.list_of_options(no_gc) {
+                if **opt != *picked && opt.cached_nearest_ancestor_select().is_some() {
+                    opt.set_selectedness(no_gc, false);
+                }
+            }
+        }
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#concept-select-size>
     fn display_size(&self) -> u32 {
         if self.Size() == 0 {
