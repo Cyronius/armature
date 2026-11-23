@@ -5334,6 +5334,10 @@ impl VirtualMethods for Element {
                     }
                 });
                 *self.id_attribute.safe_borrow_mut(cx.no_gc()) = id;
+                if node.is_connected() {
+                    // A `link rel=expect` may be waiting for an element with this id.
+                    node.owner_document().element_was_parsed(self);
+                }
 
                 let containing_shadow_root = self.containing_shadow_root();
                 if node.is_in_a_document_tree() || node.is_in_a_shadow_tree() {
@@ -5526,6 +5530,9 @@ impl VirtualMethods for Element {
         }
 
         self.register_current_id_and_name_attribute(cx);
+
+        // A `link rel=expect` may be waiting for this element.
+        self.owner_document().element_was_parsed(self);
 
         // Armature: elements with an `autofocus` attribute become autofocus candidates when they
         // are inserted into a document.

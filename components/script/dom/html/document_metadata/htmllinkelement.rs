@@ -1316,6 +1316,7 @@ impl HTMLLinkElementMethods<crate::DomTypeHolder> for HTMLLinkElement {
                     Atom::from("apple-touch-icon-precomposed"),
                     Atom::from("canonical"),
                     Atom::from("dns-prefetch"),
+                    Atom::from("expect"),
                     Atom::from("icon"),
                     Atom::from("import"),
                     Atom::from("manifest"),

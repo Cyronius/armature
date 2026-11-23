@@ -2075,14 +2075,25 @@ impl Document {
             return;
         }
         let id = element.Id();
-        if id.is_empty() {
+        // An anchor with a name is a target of fragments too.
+        let name = if element.local_name() == &local_name!("a") {
+            element.get_string_attribute(&local_name!("name"))
+        } else {
+            DOMString::new()
+        };
+        if id.is_empty() && name.is_empty() {
             return;
         }
         let ready: Vec<DomRoot<HTMLLinkElement>> = self
             .render_blocking_expect_links
             .borrow()
             .iter()
-            .filter(|link| link.expected_element_id().is_some_and(|expected| *id.str() == *expected))
+            .filter(|link| {
+                link.expected_element_id().is_some_and(|expected| {
+                    (!id.is_empty() && *id.str() == *expected) ||
+                        (!name.is_empty() && *name.str() == *expected)
+                })
+            })
             .map(|link| link.as_rooted())
             .collect();
         for link in ready {
