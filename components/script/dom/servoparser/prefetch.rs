@@ -336,8 +336,15 @@ impl TokenSink for PrefetchSink {
                     .map(|attr| attr.value.to_ascii_lowercase())
                     .unwrap_or_default();
                 let has_rel = |token: &str| rel.split_ascii_whitespace().any(|rel| rel == token);
+                // Only the media queries that can never match are recognized, as the scanner does not know
+                // the environment.
+                let media_never_matches = self.get_attr(tag, local_name!("media")).is_some_and(|attr| {
+                    let media = attr.value.trim().to_ascii_lowercase();
+                    media == "not all" || media == "not screen"
+                });
                 let destination = if has_rel("stylesheet") &&
                     !has_rel("alternate") &&
+                    !media_never_matches &&
                     self.get_attr(tag, local_name!("disabled")).is_none() &&
                     self.get_attr(tag, local_name!("type")).is_none_or(|attr| {
                         let value = attr.value.trim();
