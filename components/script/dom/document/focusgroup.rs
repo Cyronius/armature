@@ -147,6 +147,18 @@ pub(crate) fn is_skipped_by_sequential_navigation(no_gc: &NoGC, element: &Elemen
         .map(|(item, _)| item)
         .collect();
 
+    // The arrow keys cannot leave an item that uses them itself, so it and the items next to it
+    // can be reached with the Tab key too.
+    if let Some(position) = in_segment.iter().position(|item| ***item == *element) {
+        let uses = |index: usize| in_segment.get(index).is_some_and(|item| uses_arrow_keys(item));
+        if uses(position) ||
+            position.checked_sub(1).is_some_and(uses) ||
+            uses(position + 1)
+        {
+            return false;
+        }
+    }
+
     let has_memory = !tokens(&owner).is_some_and(|tokens| tokens.iter().any(|token| token == "nomemory"));
     let document = owner.owner_document();
     let remembered = has_memory
