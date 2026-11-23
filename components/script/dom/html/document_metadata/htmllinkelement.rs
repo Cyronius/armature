@@ -792,6 +792,14 @@ impl HTMLLinkElement {
             return;
         }
 
+        // https://html.spec.whatwg.org/multipage/#link-type-stylesheet
+        // > An alternative style sheet needs a title that names it.
+        if self.relations.get().contains(LinkRelations::ALTERNATE) &&
+            element.get_string_attribute(&local_name!("title")).is_empty()
+        {
+            return;
+        }
+
         // https://html.spec.whatwg.org/multipage/#processing-the-type-attribute
         // > If the UA does not support the given MIME type for the given link relationship,
         // > then the UA should not fetch and process the linked resource
