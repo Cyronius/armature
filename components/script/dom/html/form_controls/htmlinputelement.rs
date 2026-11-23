@@ -231,11 +231,16 @@ impl HTMLInputElement {
 
     pub(crate) fn auto_directionality(&self) -> Option<String> {
         match *self.input_type() {
+            InputType::Hidden(_) |
             InputType::Text(_) |
             InputType::Search(_) |
             InputType::Tel(_) |
             InputType::Url(_) |
-            InputType::Email(_) => {
+            InputType::Email(_) |
+            InputType::Password(_) |
+            InputType::Submit(_) |
+            InputType::Reset(_) |
+            InputType::Button(_) => {
                 let value: String = String::from(self.Value());
                 Some(HTMLInputElement::directionality_from_value(&value))
             },
@@ -2235,6 +2240,8 @@ impl HTMLInputElement {
     }
 
     fn value_changed(&self, cx: &mut JSContext) {
+        // The direction of an element with `dir=auto` is the one of its value.
+        self.upcast::<Element>().update_directionality(cx.no_gc());
         self.maybe_update_shared_selection();
         self.update_related_validity_states(cx);
         if self.upcast::<Node>().is_connected() {
@@ -2611,6 +2618,7 @@ impl VirtualMethods for HTMLInputElement {
                     .safe_borrow_mut(cx.no_gc())
                     .set_content(value);
                 self.update_placeholder_shown_state(cx.no_gc());
+                self.upcast::<Element>().update_directionality(cx.no_gc());
             },
             local_name!("maxlength") if self.does_minmaxlength_apply() => match *attr.value() {
                 AttrValue::Int(_, value) => {
