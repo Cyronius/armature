@@ -1756,9 +1756,17 @@ fn insert_an_element_at_the_adjusted_insertion_location(
     // Note: This is handled as part of the input.
 
     // What a template that replaces a range of the document contains is inserted in the range.
-    if let Some((container, end)) =
+    if let Some((container, end, sanitize)) =
         Document::template_patch_destination(adjusted_insertion_location_parent)
     {
+        // Sanitized content has no scripts.
+        if sanitize &&
+            node_to_insert
+                .downcast::<Element>()
+                .is_some_and(|element| element.local_name() == &local_name!("script"))
+        {
+            return;
+        }
         insert_an_element_at_the_adjusted_insertion_location(
             cx,
             node_to_insert,
@@ -1848,7 +1856,7 @@ fn insert(
                 return;
             }
             // Text in a template that replaces a range goes in the range.
-            if let Some((container, end)) = Document::template_patch_destination(parent) {
+            if let Some((container, end, _)) = Document::template_patch_destination(parent) {
                 insert(
                     cx,
                     &container,

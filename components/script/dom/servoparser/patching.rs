@@ -37,6 +37,8 @@ pub(crate) struct TemplatePatch {
     markers: Vec<Dom<Node>>,
     /// Whether the content is only put in the range when the template ends.
     buffered: bool,
+    /// Whether the content is sanitized, so that the scripts in it are dropped.
+    sanitize: bool,
 }
 
 /// The name that a marker processing instruction gives to its range.
@@ -83,6 +85,17 @@ impl Document {
             return;
         };
 
+        let buffered = element.has_attribute(&html5ever::LocalName::from("buffer"));
+        // A `sanitize` attribute that is empty or the keyword "sanitize" drops the scripts.
+        let sanitize = element
+            .get_attribute_string_value(&html5ever::LocalName::from("sanitize"))
+            .is_some_and(|value| value.is_empty() || value.eq_ignore_ascii_case("sanitize"));
+
+        // A template with an empty name is an ordinary template.
+        if name.is_empty() {
+            return;
+        }
+
         // Find the start of the range, or the marker that stands for an empty one.
         let root = parent.GetRootNode(&GetRootNodeOptions::empty());
         let Some(start) = root.traverse_preorder(ShadowIncluding::Yes).find(|node| {
@@ -124,13 +137,13 @@ impl Document {
             end.as_deref().map(Dom::from_ref)
         };
 
-        let buffered = element.has_attribute(&html5ever::LocalName::from("buffer"));
         let patch = TemplatePatch {
             template: Dom::from_ref(template),
             container: Dom::from_ref(&container),
             before,
             markers,
             buffered,
+            sanitize,
         };
         if !buffered {
             Self::clear_patch_range(cx, &patch);
@@ -171,7 +184,7 @@ impl Document {
     /// parent and the child to insert them before, if `parent` is that content and it is not buffered.
     pub(crate) fn template_patch_destination(
         parent: &Node,
-    ) -> Option<(DomRoot<Node>, Option<DomRoot<Node>>)> {
+    ) -> Option<(DomRoot<Node>, Option<DomRoot<Node>>, bool)> {
         let host = parent.downcast::<DocumentFragment>()?.host()?;
         let template = host.downcast::<HTMLTemplateElement>()?;
         let document = template.upcast::<Node>().owner_doc();
@@ -183,6 +196,7 @@ impl Document {
                 (
                     patch.container.as_rooted(),
                     patch.before.as_ref().map(|before| before.as_rooted()),
+                    patch.sanitize,
                 )
             })
     }
@@ -218,6 +232,25 @@ impl Document {
                 }
             }
             for child in children {
+                if patch.sanitize {
+                    // Sanitized content has no scripts.
+                    if child
+                        .downcast::<Element>()
+                        .is_some_and(|element| element.local_name() == &local_name!("script"))
+                    {
+                        continue;
+                    }
+                    let scripts: Vec<DomRoot<Node>> = child
+                        .traverse_preorder(ShadowIncluding::No)
+                        .filter(|node| {
+                            node.downcast::<Element>()
+                                .is_some_and(|element| element.local_name() == &local_name!("script"))
+                        })
+                        .collect();
+                    for script in scripts {
+                        script.remove_self(cx);
+                    }
+                }
                 let _ = patch
                     .container
                     .InsertBefore(cx, &child, patch.before.as_deref());
