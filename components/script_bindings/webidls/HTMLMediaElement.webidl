@@ -45,6 +45,7 @@ interface HTMLMediaElement : HTMLElement {
   readonly attribute boolean paused;
   [Throws] attribute double defaultPlaybackRate;
   [Throws] attribute double playbackRate;
+  attribute boolean preservesPitch;
   readonly attribute TimeRanges played;
   readonly attribute TimeRanges seekable;
   readonly attribute boolean ended;

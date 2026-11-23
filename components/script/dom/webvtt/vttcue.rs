@@ -37,6 +37,7 @@ use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::documentfragment::DocumentFragment;
 use crate::dom::node::Node;
+use crate::dom::text::Text;
 use crate::dom::texttrack::TextTrack;
 use crate::dom::texttrackcue::TextTrackCue;
 use crate::dom::vttregion::VTTRegion;
@@ -452,10 +453,20 @@ impl VTTCueMethods<crate::DomTypeHolder> for VTTCue {
         // > for the responsible document specified by the entry settings object
         // > by applying the WebVTT cue text DOM construction rules to the result
         // > of applying the WebVTT cue text parsing rules to the cue text.
-        self.webvtt_cue_text_dom_construction_rules(
+        let fragment = self.webvtt_cue_text_dom_construction_rules(
             cx,
             webvtt_cue_text_parsing_rules(&self.text.borrow().str(), None),
-        )
+        );
+        // An empty cue text gives a fragment holding one empty Text node, as in Gecko (whose
+        // parser emits a text token at the end of the input) and other engines.
+        if fragment.upcast::<Node>().children_count() == 0 {
+            let document = self.global().as_window().Document();
+            let text = Text::new(cx, DOMString::new(), &document);
+            let _ = fragment
+                .upcast::<Node>()
+                .AppendChild(cx, text.upcast::<Node>());
+        }
+        fragment
     }
 }
 

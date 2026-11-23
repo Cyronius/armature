@@ -257,6 +257,8 @@ pub(crate) struct HTMLMediaElement {
     /// > or "default"; it is initially "default".
     /// We model "default" as None
     muted_state: Cell<Option<bool>>,
+    /// <https://html.spec.whatwg.org/multipage/#dom-media-preservespitch>
+    preserves_pitch: Cell<bool>,
     /// Loading state from source, if any.
     load_state: Cell<LoadState>,
     source_children_pointer: DomRefCell<Option<SourceChildrenPointer>>,
@@ -430,6 +432,7 @@ impl HTMLMediaElement {
             default_playback_rate: Cell::new(1.0),
             playback_rate: Cell::new(1.0),
             muted_state: Default::default(),
+            preserves_pitch: Cell::new(true),
             load_state: Cell::new(LoadState::NotLoaded),
             source_children_pointer: DomRefCell::new(None),
             current_source_child: Default::default(),
@@ -1367,13 +1370,25 @@ impl HTMLMediaElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#concept-media-load-algorithm>
-    fn load_from_src_attribute(&self, cx: &JSContext, base_url: ServoUrl, src: &str) {
+    fn load_from_src_attribute(&self, cx: &mut JSContext, base_url: ServoUrl, src: &str) {
         self.load_state.set(LoadState::LoadingFromSrcAttribute);
+
+        // Browsers set the error attribute right away when the failure is found in the
+        // synchronous section, before the queued error event
+        // (https://github.com/whatwg/html/issues/11155); Gecko does so too.
+        let fail_synchronously = |cx: &mut JSContext| {
+            self.error.set(Some(&*MediaError::new(
+                cx,
+                &self.owner_window(),
+                MEDIA_ERR_SRC_NOT_SUPPORTED,
+            )));
+            self.queue_dedicated_media_source_failure_steps();
+        };
 
         // Step 9.attribute.1. If the src attribute's value is the empty string, then end
         // the synchronous section, and jump down to the failed with attribute step below.
         if src.is_empty() {
-            self.queue_dedicated_media_source_failure_steps();
+            fail_synchronously(cx);
             return;
         }
 
@@ -1381,7 +1396,7 @@ impl HTMLMediaElement {
         // the src attribute's value, relative to the media element's node document when the
         // src attribute was last changed.
         let Ok(url_record) = base_url.join(src) else {
-            self.queue_dedicated_media_source_failure_steps();
+            fail_synchronously(cx);
             return;
         };
 
@@ -1816,11 +1831,13 @@ impl HTMLMediaElement {
 
                 this.fulfill_in_flight_play_promises(cx, |cx| {
                     // Step 1. Set the error attribute to the result of creating a MediaError with
-                    // MEDIA_ERR_SRC_NOT_SUPPORTED.
-                    this.error.set(Some(&*MediaError::new(
-                        cx,
-                        &this.owner_window(),
-                        MEDIA_ERR_SRC_NOT_SUPPORTED)));
+                    // MEDIA_ERR_SRC_NOT_SUPPORTED (unless that was already done synchronously).
+                    if this.error.get().is_none() {
+                        this.error.set(Some(&*MediaError::new(
+                            cx,
+                            &this.owner_window(),
+                            MEDIA_ERR_SRC_NOT_SUPPORTED)));
+                    }
 
                     // Step 2. Forget the media element's media-resource-specific tracks.
                     this.AudioTracks(cx).clear();
@@ -1985,6 +2002,16 @@ impl HTMLMediaElement {
                 self.queue_media_element_task_to_fire_event(atom!("timeupdate"));
             }
             self.official_playback_position.set(0.);
+
+            // No cue is active once the media resource is gone, as in Gecko, which resets its
+            // text track manager when the element is emptied.
+            if let Some(text_tracks_list) = self.text_tracks_list.get() {
+                for track in text_tracks_list.iter(cx.no_gc()) {
+                    for cue in track.cues(cx.no_gc()) {
+                        cue.set_active(false);
+                    }
+                }
+            }
 
             // TODO Step 7.9. Set the timeline offset to Not-a-Number (NaN).
 
@@ -3278,7 +3305,24 @@ impl HTMLMediaElement {
         // text tracks whose text track kind is chapters or metadata that correspond to
         // track elements with a default attribute set whose text track mode is set to disabled,
         // then set the text track mode of all such tracks to hidden.
-        // TODO
+        if let Some(text_tracks_list) = self.text_tracks_list.get() {
+            let default_tracks: Vec<DomRoot<TextTrack>> = text_tracks_list
+                .iter(cx.no_gc())
+                .filter(|track| {
+                    matches!(track.Kind(), TextTrackKind::Chapters | TextTrackKind::Metadata) &&
+                        track.Mode() == TextTrackMode::Disabled &&
+                        track.associated_track().is_some_and(|track| {
+                            track
+                                .upcast::<Element>()
+                                .has_attribute(&local_name!("default"))
+                        })
+                })
+                .map(|track| track.as_rooted())
+                .collect();
+            for track in default_tracks {
+                track.set_text_track_mode(cx, TextTrackMode::Hidden);
+            }
+        }
         // Step 4. Set the element's did-perform-automatic-track-selection flag to true.
         self.did_perform_automatic_track_selection.set(true);
     }
@@ -3602,6 +3646,16 @@ impl HTMLMediaElementMethods<crate::DomTypeHolder> for HTMLMediaElement {
     /// <https://html.spec.whatwg.org/multipage/#dom-media-playbackrate>
     fn GetPlaybackRate(&self) -> Fallible<Finite<f64>> {
         Ok(Finite::wrap(self.playback_rate.get()))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-media-preservespitch>
+    fn PreservesPitch(&self) -> bool {
+        self.preserves_pitch.get()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-media-preservespitch>
+    fn SetPreservesPitch(&self, _cx: &mut JSContext, value: bool) {
+        self.preserves_pitch.set(value);
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-media-playbackrate>
