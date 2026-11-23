@@ -231,6 +231,8 @@ impl Document {
                     children.push(child);
                 }
             }
+            // The content goes in the range at once, so that its scripts see all of it.
+            let fragment = DocumentFragment::new(cx, self);
             for child in children {
                 if patch.sanitize {
                     // Sanitized content has no scripts.
@@ -251,10 +253,11 @@ impl Document {
                         script.remove_self(cx);
                     }
                 }
-                let _ = patch
-                    .container
-                    .InsertBefore(cx, &child, patch.before.as_deref());
+                let _ = fragment.upcast::<Node>().AppendChild(cx, &child);
             }
+            let _ = patch
+                .container
+                .InsertBefore(cx, fragment.upcast(), patch.before.as_deref());
         }
 
         // The markers of the range and the template are only there until the template ends.
