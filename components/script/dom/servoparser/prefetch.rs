@@ -69,12 +69,17 @@ impl Tokenizer {
             base_url: RefCell::new(None),
             document_url: document.url(),
             referrer: global.get_referrer(),
-            referrer_policy: document.get_referrer_policy(),
+            referrer_policy: Cell::new(document.get_referrer_policy()),
             resource_threads: document.loader().resource_threads().clone(),
             // Initially we set prefetching to false, and only set it
             // true after the first script tag, since that is what will
             // block the main parser.
             prefetching: Cell::new(false),
+            template_depth: Cell::new(0),
+            templates: RefCell::new(Vec::new()),
+            svg_depth: Cell::new(0),
+            math_depth: Cell::new(0),
+            images_blocked: Cell::new(false),
             request_client: global.request_client(None),
         };
         let options = Default::default();
@@ -100,10 +105,20 @@ struct PrefetchSink {
     #[no_trace]
     referrer: Referrer,
     #[no_trace]
-    referrer_policy: ReferrerPolicy,
+    referrer_policy: Cell<ReferrerPolicy>,
     #[no_trace]
     resource_threads: ResourceThreads,
     prefetching: Cell<bool>,
+    /// How many `template` elements the scanner is in. Their contents are inert.
+    template_depth: Cell<u32>,
+    /// Whether each `template` element the scanner is in is inert. Declarative shadow roots are not,
+    /// unless they are in an inert template.
+    templates: RefCell<Vec<bool>>,
+    /// How many `svg` and `math` elements the scanner is in.
+    svg_depth: Cell<u32>,
+    math_depth: Cell<u32>,
+    /// Whether a content security policy of the page forbids fetching images.
+    images_blocked: Cell<bool>,
     #[no_trace]
     request_client: RequestClient,
 }
@@ -119,9 +134,87 @@ impl TokenSink for PrefetchSink {
             Token::TagToken(ref tag) => tag,
             _ => return TokenSinkResult::Continue,
         };
+
+        // Track the elements whose contents are not fetched, or are fetched differently.
         match (tag.kind, &tag.name) {
-            (TagKind::StartTag, &local_name!("script")) if self.prefetching.get() => {
-                if let Some(url) = self.get_url(tag, local_name!("src")) {
+            (TagKind::StartTag, &local_name!("template")) => {
+                let is_declarative_shadow_root = self
+                    .get_attr(tag, local_name!("shadowrootmode"))
+                    .is_some();
+                let is_inert = self.template_depth.get() > 0 || !is_declarative_shadow_root;
+                self.templates.borrow_mut().push(is_inert);
+                if is_inert {
+                    self.template_depth.set(self.template_depth.get() + 1);
+                }
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::EndTag, &local_name!("template")) => {
+                if self.templates.borrow_mut().pop() == Some(true) {
+                    self.template_depth
+                        .set(self.template_depth.get().saturating_sub(1));
+                }
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::StartTag, &local_name!("svg")) if !tag.self_closing => {
+                self.svg_depth.set(self.svg_depth.get() + 1);
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::EndTag, &local_name!("svg")) => {
+                self.svg_depth.set(self.svg_depth.get().saturating_sub(1));
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::StartTag, &local_name!("math")) if !tag.self_closing => {
+                self.math_depth.set(self.math_depth.get() + 1);
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::EndTag, &local_name!("math")) => {
+                self.math_depth.set(self.math_depth.get().saturating_sub(1));
+                return TokenSinkResult::Continue;
+            },
+            (TagKind::StartTag, &local_name!("xmp")) |
+            (TagKind::StartTag, &local_name!("style")) |
+            (TagKind::StartTag, &local_name!("iframe")) |
+            (TagKind::StartTag, &local_name!("noembed")) |
+            (TagKind::StartTag, &local_name!("noframes"))
+                if self.svg_depth.get() == 0 && self.math_depth.get() == 0 =>
+            {
+                return TokenSinkResult::RawData(RawKind::Rawtext);
+            },
+            (TagKind::StartTag, &local_name!("textarea")) |
+            (TagKind::StartTag, &local_name!("title"))
+                if self.svg_depth.get() == 0 && self.math_depth.get() == 0 =>
+            {
+                return TokenSinkResult::RawData(RawKind::Rcdata);
+            },
+            _ => {},
+        }
+
+        let fetching = self.prefetching.get() && self.template_depth.get() == 0;
+        let in_svg = self.svg_depth.get() > 0;
+        let in_math = self.math_depth.get() > 0;
+
+        match (tag.kind, &tag.name) {
+            (TagKind::StartTag, &local_name!("script")) if fetching => {
+                // Scripts that won't run are not fetched: module-capable browsers skip `nomodule`
+                // scripts, and only JavaScript and module scripts are fetched.
+                let is_fetchable = !in_math &&
+                    self.get_attr(tag, local_name!("nomodule")).is_none() &&
+                    self.get_attr(tag, local_name!("type")).is_none_or(|attr| {
+                        let value = attr.value.trim();
+                        value.is_empty() ||
+                            value.eq_ignore_ascii_case("module") ||
+                            is_javascript_mime_type(value)
+                    });
+                let url = if in_svg {
+                    // SVG scripts take their URL from `href`, or the legacy `xlink:href`.
+                    self.get_url(tag, local_name!("href"))
+                        .or_else(|| self.get_url(tag, LocalName::from("xlink:href")))
+                } else {
+                    self.get_url(tag, local_name!("src"))
+                };
+                if let Some(url) = url &&
+                    is_fetchable
+                {
                     debug!("Prefetch script {}", url);
                     let cors_setting = self.get_cors_settings(tag, local_name!("crossorigin"));
                     let integrity_metadata = self
@@ -137,7 +230,8 @@ impl TokenSink for PrefetchSink {
                         UrlWithBlobClaim::from_url_without_having_claimed_blob(url),
                         cors_setting,
                         ScriptFetchOptions {
-                            referrer_policy: self.referrer_policy,
+                            referrer_policy: self
+                                .get_referrer_policy(tag, local_name!("referrerpolicy")),
                             integrity_metadata,
                             cryptographic_nonce,
                             credentials_mode: CredentialsMode::CredentialsSameOrigin,
@@ -157,12 +251,25 @@ impl TokenSink for PrefetchSink {
             // `image` is parsed as `img`, and lazy images are not fetched until they get near the
             // viewport.
             (TagKind::StartTag, &local_name!("img")) | (TagKind::StartTag, &local_name!("image"))
-                if self.prefetching.get() &&
+                if fetching &&
+                    !in_math &&
+                    !self.images_blocked.get() &&
                     !self
                         .get_attr(tag, local_name!("loading"))
                         .is_some_and(|attr| attr.value.eq_ignore_ascii_case("lazy")) =>
             {
-                if let Some(url) = self.get_url(tag, local_name!("src")) {
+                let url = if in_svg {
+                    // SVG images take their URL from `href`, or the legacy `xlink:href`.
+                    if tag.name == local_name!("image") {
+                        self.get_url(tag, local_name!("href"))
+                            .or_else(|| self.get_url(tag, LocalName::from("xlink:href")))
+                    } else {
+                        None
+                    }
+                } else {
+                    self.get_url(tag, local_name!("src"))
+                };
+                if let Some(url) = url {
                     debug!("Prefetch {} {}", tag.name, url);
                     let request = create_a_potential_cors_request(
                         Some(self.webview_id),
@@ -182,13 +289,41 @@ impl TokenSink for PrefetchSink {
                 }
                 TokenSinkResult::Continue
             },
-            (TagKind::StartTag, &local_name!("link")) if self.prefetching.get() => {
-                if let Some(rel) = self.get_attr(tag, local_name!("rel")) &&
-                    rel.value.eq_ignore_ascii_case("stylesheet") &&
+            (TagKind::StartTag, &local_name!("link")) if fetching && !in_math => {
+                let rel = self
+                    .get_attr(tag, local_name!("rel"))
+                    .map(|attr| attr.value.to_ascii_lowercase())
+                    .unwrap_or_default();
+                let has_rel = |token: &str| rel.split_ascii_whitespace().any(|rel| rel == token);
+                let destination = if has_rel("stylesheet") &&
+                    !has_rel("alternate") &&
+                    self.get_attr(tag, local_name!("disabled")).is_none() &&
+                    self.get_attr(tag, local_name!("type")).is_none_or(|attr| {
+                        let value = attr.value.trim();
+                        value.is_empty() || value.eq_ignore_ascii_case("text/css")
+                    }) {
+                    Some(Destination::Style)
+                } else if has_rel("preload") {
+                    self.get_attr(tag, local_name!("as"))
+                        .and_then(|attr| match &*attr.value.to_ascii_lowercase() {
+                            "image" => Some(Destination::Image),
+                            "script" => Some(Destination::Script),
+                            "style" => Some(Destination::Style),
+                            "font" => Some(Destination::Font),
+                            _ => None,
+                        })
+                } else {
+                    None
+                };
+                if let Some(destination) = destination &&
                     let Some(url) = self.get_url(tag, local_name!("href"))
                 {
                     debug!("Prefetch {} {}", tag.name, url);
-                    let cors_setting = self.get_cors_settings(tag, local_name!("crossorigin"));
+                    let mut cors_setting = self.get_cors_settings(tag, local_name!("crossorigin"));
+                    // Fonts are always fetched with CORS.
+                    if destination == Destination::Font && cors_setting.is_none() {
+                        cors_setting = Some(CorsSettings::Anonymous);
+                    }
                     let referrer_policy =
                         self.get_referrer_policy(tag, local_name!("referrerpolicy"));
                     let integrity_metadata = self
@@ -200,7 +335,7 @@ impl TokenSink for PrefetchSink {
                     let request = create_a_potential_cors_request(
                         Some(self.webview_id),
                         url,
-                        Destination::Style,
+                        destination,
                         cors_setting,
                         None,
                         self.referrer.clone(),
@@ -213,6 +348,52 @@ impl TokenSink for PrefetchSink {
                     let _ = self
                         .resource_threads
                         .send(CoreResourceMsg::Fetch(request, FetchChannels::Prefetch));
+                }
+                TokenSinkResult::Continue
+            },
+            (TagKind::StartTag, &local_name!("video")) if fetching && !in_svg && !in_math => {
+                if let Some(url) = self.get_url(tag, local_name!("poster")) {
+                    debug!("Prefetch {} poster {}", tag.name, url);
+                    let request = create_a_potential_cors_request(
+                        Some(self.webview_id),
+                        url,
+                        Destination::Image,
+                        None,
+                        None,
+                        self.referrer.clone(),
+                    )
+                    .client(self.request_client.clone())
+                    .pipeline_id(Some(self.pipeline_id))
+                    .referrer_policy(self.referrer_policy.get());
+
+                    let _ = self
+                        .resource_threads
+                        .send(CoreResourceMsg::Fetch(request, FetchChannels::Prefetch));
+                }
+                TokenSinkResult::Continue
+            },
+            (TagKind::StartTag, &local_name!("meta")) => {
+                // A content security policy that forbids images stops the images from being fetched.
+                if self
+                    .get_attr(tag, local_name!("http-equiv"))
+                    .is_some_and(|attr| attr.value.eq_ignore_ascii_case("content-security-policy")) &&
+                    let Some(content) = self.get_attr(tag, local_name!("content"))
+                {
+                    let content = content.value.to_ascii_lowercase();
+                    if content.contains("img-src 'none'") {
+                        self.images_blocked.set(true);
+                    }
+                }
+                // <https://html.spec.whatwg.org/multipage/#meta-referrer>
+                if self
+                    .get_attr(tag, local_name!("name"))
+                    .is_some_and(|attr| attr.value.eq_ignore_ascii_case("referrer")) &&
+                    let Some(content) = self.get_attr(tag, local_name!("content"))
+                {
+                    let policy = ReferrerPolicy::from(&*content.value);
+                    if policy != ReferrerPolicy::EmptyString {
+                        self.referrer_policy.set(policy);
+                    }
                 }
                 TokenSinkResult::Continue
             },
@@ -238,6 +419,37 @@ impl TokenSink for PrefetchSink {
     }
 }
 
+/// Whether `value` is the MIME type of a JavaScript script.
+///
+/// <https://mimesniff.spec.whatwg.org/#javascript-mime-type>
+fn is_javascript_mime_type(value: &str) -> bool {
+    let essence = value
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        essence.as_str(),
+        "application/ecmascript" |
+            "application/javascript" |
+            "application/x-ecmascript" |
+            "application/x-javascript" |
+            "text/ecmascript" |
+            "text/javascript" |
+            "text/javascript1.0" |
+            "text/javascript1.1" |
+            "text/javascript1.2" |
+            "text/javascript1.3" |
+            "text/javascript1.4" |
+            "text/javascript1.5" |
+            "text/jscript" |
+            "text/livescript" |
+            "text/x-ecmascript" |
+            "text/x-javascript"
+    )
+}
+
 impl PrefetchSink {
     fn get_attr<'a>(&'a self, tag: &'a Tag, name: LocalName) -> Option<&'a Attribute> {
         tag.attrs.iter().find(|attr| attr.name.local == name)
@@ -253,7 +465,7 @@ impl PrefetchSink {
     fn get_referrer_policy(&self, tag: &Tag, name: LocalName) -> ReferrerPolicy {
         self.get_attr(tag, name)
             .map(|attr| ReferrerPolicy::from(&*attr.value))
-            .unwrap_or(self.referrer_policy)
+            .unwrap_or(self.referrer_policy.get())
     }
 
     fn get_cors_settings(&self, tag: &Tag, name: LocalName) -> Option<CorsSettings> {
