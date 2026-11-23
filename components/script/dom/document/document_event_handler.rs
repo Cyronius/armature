@@ -51,7 +51,6 @@ use webrender_api::ExternalScrollId;
 
 #[cfg(feature = "gamepad")]
 use crate::dom::bindings::codegen::Bindings::PermissionStatusBinding::PermissionName;
-use crate::dom::bindings::inheritance::{ElementTypeId, HTMLElementTypeId, NodeTypeId};
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::root::MutNullableDom;
 use crate::dom::bindings::trace::NoTrace;
@@ -229,6 +228,11 @@ pub(crate) struct DocumentEventHandler {
     /// The element that was most recently activated during a mouse button press or touch
     /// event.
     current_active_element: MutNullableDom<Element>,
+    /// The labeled control of `current_active_element`, when that is a label: it matches
+    /// :active along with the label.
+    current_active_control: MutNullableDom<Element>,
+    /// Whether `current_active_element` was activated by holding the space key down.
+    active_from_keyboard: Cell<bool>,
     /// The element that was most recently clicked.
     most_recently_clicked_element: MutNullableDom<Element>,
     /// The most recent mouse movement point, used for processing `mouseleave` events.
@@ -279,6 +283,8 @@ impl DocumentEventHandler {
             mouse_button_state: Cell::new(MouseButtons::empty()),
             current_hover_target: Default::default(),
             current_active_element: Default::default(),
+            current_active_control: Default::default(),
+            active_from_keyboard: Default::default(),
             most_recently_clicked_element: Default::default(),
             most_recent_mousemove_point: Default::default(),
             current_cursor: Default::default(),
@@ -944,29 +950,19 @@ impl DocumentEventHandler {
     }
 
     fn set_active_element(&self, no_gc: &NoGC, original_target: &Element) {
-        let find_element_for_activation = |element: &Element| {
-            let node: &Node = element.upcast();
-            if node.is_in_ua_widget() &&
-                let Some(containing_shadow_root) = node.containing_shadow_root()
-            {
-                return containing_shadow_root.Host();
-            }
-
-            // If the element is a label, the activable element is the control element.
-            if node.type_id() ==
-                NodeTypeId::Element(ElementTypeId::HTMLElement(
-                    HTMLElementTypeId::HTMLLabelElement,
-                ))
-            {
-                let label = element.downcast::<HTMLLabelElement>().unwrap();
-                if let Some(control) = label.GetControl(no_gc) {
-                    return DomRoot::from_ref(control.upcast::<Element>());
-                }
-            }
-
-            DomRoot::from_ref(element)
+        let node: &Node = original_target.upcast();
+        let element_for_activation = match node.containing_shadow_root() {
+            Some(containing_shadow_root) if node.is_in_ua_widget() => containing_shadow_root.Host(),
+            _ => DomRoot::from_ref(original_target),
         };
-        let element_for_activation = find_element_for_activation(original_target);
+
+        // https://html.spec.whatwg.org/multipage/#selector-active
+        // > Additionally, any element that is the labeled control of a label element that is
+        // > currently matching :active, also matches :active.
+        let control = element_for_activation
+            .downcast::<HTMLLabelElement>()
+            .and_then(|label| label.GetControl(no_gc))
+            .map(DomRoot::upcast::<Element>);
 
         // This might happen if the user is alternating between different pointing devices
         // such as two mice or a mouse and touch events. Only keep the latest activated.
@@ -978,14 +974,62 @@ impl DocumentEventHandler {
         }
 
         element_for_activation.set_active_state(no_gc, true);
+        if let Some(control) = control.as_deref() {
+            control.set_active_state(no_gc, true);
+        }
         self.current_active_element
             .set(Some(&*element_for_activation));
+        self.current_active_control.set(control.as_deref());
     }
 
     fn unset_active_element(&self, no_gc: &NoGC) {
+        self.active_from_keyboard.set(false);
         if let Some(active_element) = self.current_active_element.take() {
             active_element.set_active_state(no_gc, false);
         }
+        if let Some(control) = self.current_active_control.take() {
+            control.set_active_state(no_gc, false);
+        }
+    }
+
+    /// While the space key is held down on a focused control that it activates, the control
+    /// matches :active, until the key is released or another key (such as Tab) is pressed, as
+    /// in Gecko and other engines.
+    fn update_active_element_for_key(
+        &self,
+        no_gc: &NoGC,
+        target: &EventTarget,
+        event: &EmbedderKeyboardEvent,
+        canceled: bool,
+    ) {
+        let is_space = event.event.code == Code::Space;
+        if event.event.state == KeyState::Up {
+            if is_space && self.active_from_keyboard.get() {
+                self.unset_active_element(no_gc);
+            }
+            return;
+        }
+        if !is_space {
+            if self.active_from_keyboard.get() {
+                self.unset_active_element(no_gc);
+            }
+            return;
+        }
+        if canceled || event.event.repeat {
+            return;
+        }
+        let Some(element) = target.downcast::<Element>() else {
+            return;
+        };
+        if element.as_maybe_activatable().is_none() ||
+            element
+                .downcast::<HTMLInputElement>()
+                .is_some_and(|input| input.is_textual_or_password())
+        {
+            return;
+        }
+        self.set_active_element(no_gc, element);
+        self.active_from_keyboard.set(true);
     }
 
     /// <https://w3c.github.io/uievents/#mouseevent-algorithms>
@@ -1890,6 +1934,12 @@ impl DocumentEventHandler {
         let event = keyevent.upcast::<Event>();
         event.set_composed(true);
         event.fire(cx, target);
+        self.update_active_element_for_key(
+            cx.no_gc(),
+            target,
+            &keyboard_event,
+            event.flags().contains(EventFlags::Canceled),
+        );
 
         // From https://w3c.github.io/uievents/#keys-cancelable-keys:
         // > Canceling the default action of a keydown event MUST NOT affect its
