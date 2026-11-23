@@ -2530,7 +2530,17 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
             }
         }
 
-        let mut elements = iframe_iter.chain(name_iter).chain(id_iter);
+        // An element that matches by its name and by its id is a single element.
+        let mut unique_elements: Vec<&Element> = Vec::new();
+        for element in iframe_iter.chain(name_iter).chain(id_iter) {
+            if !unique_elements
+                .iter()
+                .any(|existing| std::ptr::eq(*existing, element))
+            {
+                unique_elements.push(element);
+            }
+        }
+        let mut elements = unique_elements.into_iter();
 
         let first = elements.next()?;
 
@@ -2547,13 +2557,13 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
         }
         impl CollectionFilter for WindowNamedGetter {
             fn filter(&self, elem: &Element, _root: &Node) -> bool {
+                if elem.get_id().as_ref() == Some(&self.name) {
+                    return true;
+                }
                 let type_ = match elem.upcast::<Node>().type_id() {
                     NodeTypeId::Element(ElementTypeId::HTMLElement(type_)) => type_,
                     _ => return false,
                 };
-                if elem.get_id().as_ref() == Some(&self.name) {
-                    return true;
-                }
                 match type_ {
                     HTMLElementTypeId::HTMLEmbedElement |
                     HTMLElementTypeId::HTMLFormElement |
@@ -4665,8 +4675,9 @@ fn is_named_element_with_name_attribute(elem: &Element) -> bool {
     )
 }
 
-fn is_named_element_with_id_attribute(elem: &Element) -> bool {
-    elem.is_html_element() || elem.is_svg_element()
+fn is_named_element_with_id_attribute(_elem: &Element) -> bool {
+    // An element in any namespace is exposed by its id.
+    true
 }
 
 #[expect(unsafe_code)]
