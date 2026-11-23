@@ -1786,6 +1786,28 @@ where
                     target_snapshot_params,
                 );
             },
+            ScriptToConstellationMessage::LoadUrlInBrowsingContext(
+                browsing_context_id,
+                load_data,
+                history_handling,
+                target_snapshot_params,
+            ) => {
+                // Navigate the browsing context through the pipeline that is active in it.
+                let Some(target_pipeline_id) = self
+                    .browsing_contexts
+                    .get(&browsing_context_id)
+                    .map(|browsing_context| browsing_context.pipeline_id)
+                else {
+                    return warn!("{browsing_context_id}: Tried to navigate a closed browsing context");
+                };
+                self.schedule_navigation(
+                    webview_id,
+                    target_pipeline_id,
+                    load_data,
+                    history_handling,
+                    target_snapshot_params,
+                );
+            },
             ScriptToConstellationMessage::AbortLoadUrl => {
                 self.handle_abort_load_url_msg(webview_id, source_pipeline_id);
             },

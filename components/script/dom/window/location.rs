@@ -16,6 +16,8 @@ use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::str::USVString;
+use servo_constellation_traits::ScriptToConstellationMessage;
+
 use crate::dom::dissimilaroriginwindow::DissimilarOriginWindow;
 use crate::dom::document::Document;
 use crate::dom::domstringlist::DOMStringList;
@@ -102,6 +104,36 @@ impl Location {
         )
     }
 
+    /// Navigates a window of another origin, which is not in this script thread, which the
+    /// constellation does for us.
+    fn navigate_cross_origin(
+        &self,
+        window: &DissimilarOriginWindow,
+        url: ServoUrl,
+        history_handling: NavigationHistoryBehavior,
+    ) -> ErrorResult {
+        let incumbent_global = GlobalScope::incumbent().expect("no incumbent global object");
+        let incumbent_window = incumbent_global.as_window();
+        let target = window.window_proxy();
+        if !crate::navigation::is_allowed_by_sandboxing_to_navigate(incumbent_window, &target) {
+            return Err(Error::Security(Some(
+                "The sandboxed document is not allowed to navigate the window".into(),
+            )));
+        }
+        let load_data =
+            incumbent_window.load_data_for_document(url, incumbent_global.pipeline_id());
+        let target_snapshot_params = crate::navigation::snapshot_target_snapshot_params(&target);
+        incumbent_window.send_to_constellation(
+            ScriptToConstellationMessage::LoadUrlInBrowsingContext(
+                target.browsing_context_id(),
+                load_data,
+                history_handling,
+                target_snapshot_params,
+            ),
+        );
+        Ok(())
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#location-object-navigate>
     fn navigate_a_location(
         &self,
@@ -109,7 +141,7 @@ impl Location {
         navigable: &Window,
         url: ServoUrl,
         history_handling: NavigationHistoryBehavior,
-    ) {
+    ) -> ErrorResult {
         // Step 1. Let navigable be location's relevant global object's navigable.
         let navigable_document = navigable.Document();
         // Step 2. Let sourceDocument be the incumbent global object's associated Document.
@@ -128,7 +160,16 @@ impl Location {
             history_handling
         };
         // Step 4. Navigate navigable to url using sourceDocument, with exceptionsEnabled set to true and historyHandling set to historyHandling.
+        if !crate::navigation::is_allowed_by_sandboxing_to_navigate(
+            incumbent_global.as_window(),
+            &navigable.window_proxy(),
+        ) {
+            return Err(Error::Security(Some(
+                "The sandboxed document is not allowed to navigate the window".into(),
+            )));
+        }
         navigate(cx, navigable, history_handling, false, load_data);
+        Ok(())
     }
 
     /// Navigate the relevant `Document`'s browsing context.
@@ -368,7 +409,13 @@ impl LocationMethods<crate::DomTypeHolder> for Location {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-location-replace>
     fn Replace(&self, cx: &mut JSContext, url: USVString) -> ErrorResult {
-        // TODO: This should eventually support cross-origin operation.
+        if let LocationWindow::DissimilarOrigin(window) = &self.window {
+            let url = match self.entry_settings_object().encoding_parse_a_url(&url.0) {
+                Ok(url) => url,
+                Err(e) => return Err(Error::Syntax(Some(format!("Couldn't parse URL: {}", e)))),
+            };
+            return self.navigate_cross_origin(window, url, NavigationHistoryBehavior::Replace);
+        }
         let window = self.window.same_origin_window()?;
 
         // Step 1: If this Location object's relevant Document is null, then return.
@@ -380,7 +427,7 @@ impl LocationMethods<crate::DomTypeHolder> for Location {
                 Err(e) => return Err(Error::Syntax(Some(format!("Couldn't parse URL: {}", e)))),
             };
             // Step 4. Location-object navigate this to urlRecord given "replace".
-            self.navigate_a_location(cx, window, url, NavigationHistoryBehavior::Replace);
+            self.navigate_a_location(cx, window, url, NavigationHistoryBehavior::Replace)?;
         }
         Ok(())
     }
@@ -417,7 +464,7 @@ impl LocationMethods<crate::DomTypeHolder> for Location {
             // Step 8. If copyURL's fragment is thisURLFragment, then return.
             if copy_url.fragment() != Some(&this_url_fragment) {
                 // Step 9. Location-object navigate this to copyURL.
-                self.navigate_a_location(cx, window, copy_url, NavigationHistoryBehavior::Auto);
+                self.navigate_a_location(cx, window, copy_url, NavigationHistoryBehavior::Auto)?;
             }
         }
         Ok(())
@@ -477,6 +524,13 @@ impl LocationMethods<crate::DomTypeHolder> for Location {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-location-href>
     fn SetHref(&self, cx: &mut JSContext, value: USVString) -> ErrorResult {
+        if let LocationWindow::DissimilarOrigin(window) = &self.window {
+            let url = match self.entry_settings_object().encoding_parse_a_url(&value.0) {
+                Ok(url) => url,
+                Err(e) => return Err(Error::Syntax(Some(format!("Couldn't parse URL: {}", e)))),
+            };
+            return self.navigate_cross_origin(window, url, NavigationHistoryBehavior::Auto);
+        }
         let window = self.window.same_origin_window()?;
 
         // Step 1. If this's relevant Document is null, then return.
@@ -489,7 +543,7 @@ impl LocationMethods<crate::DomTypeHolder> for Location {
                 Err(e) => return Err(Error::Syntax(Some(format!("Couldn't parse URL: {}", e)))),
             };
             // Step 4: Location-object navigate this to url.
-            self.navigate_a_location(cx, window, url, NavigationHistoryBehavior::Auto);
+            self.navigate_a_location(cx, window, url, NavigationHistoryBehavior::Auto)?;
         }
         Ok(())
     }

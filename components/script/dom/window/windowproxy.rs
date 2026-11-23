@@ -871,6 +871,10 @@ impl WindowProxy {
         })
     }
 
+    pub(crate) fn opener_browsing_context_id(&self) -> Option<BrowsingContextId> {
+        self.opener
+    }
+
     pub(crate) fn is_auxiliary(&self) -> bool {
         self.opener.is_some()
     }

@@ -171,6 +171,7 @@ mod from_script {
                 Self::GetChildBrowsingContextId(..) => target!("GetChildBrowsingContextId"),
                 Self::LoadComplete => target!("LoadComplete"),
                 Self::LoadUrl(..) => target!("LoadUrl"),
+                Self::LoadUrlInBrowsingContext(..) => target!("LoadUrlInBrowsingContext"),
                 Self::AbortLoadUrl => target!("AbortLoadUrl"),
                 Self::PostMessage { .. } => target!("PostMessage"),
                 Self::NavigatedToFragment(..) => target!("NavigatedToFragment"),

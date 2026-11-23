@@ -368,6 +368,51 @@ fn navigate_to_fragment(
     // TODO
 }
 
+/// Whether the sandboxing flags of the active document of `source` allow it to navigate `target`.
+/// <https://html.spec.whatwg.org/multipage/#allowed-to-navigate>
+pub(crate) fn is_allowed_by_sandboxing_to_navigate(source: &Window, target: &WindowProxy) -> bool {
+    let source_proxy = source.window_proxy();
+    // A browsing context can always navigate itself.
+    if source_proxy.browsing_context_id() == target.browsing_context_id() {
+        return true;
+    }
+    // The browsing contexts that it opened are its to navigate.
+    if target.opener_browsing_context_id() == Some(source_proxy.browsing_context_id()) {
+        return true;
+    }
+    // And its descendants.
+    let mut ancestor = target.parent();
+    while let Some(candidate) = ancestor {
+        if candidate.browsing_context_id() == source_proxy.browsing_context_id() {
+            return true;
+        }
+        ancestor = candidate.parent();
+    }
+    let flags = source.Document().active_sandboxing_flag_set();
+    // Its ancestors, which are only restricted when it is the top-level browsing context.
+    let mut ancestor = source_proxy.parent();
+    while let Some(candidate) = ancestor {
+        if candidate.browsing_context_id() == target.browsing_context_id() {
+            // Ancestors that are not top-level are treated like any other browsing context.
+            if target.parent().is_some() {
+                break;
+            }
+            if !flags.contains(
+                SandboxingFlagSet::SANDBOXED_TOP_LEVEL_NAVIGATION_WITHOUT_USER_ACTIVATION_BROWSING_CONTEXT_FLAG,
+            ) {
+                return true;
+            }
+            // Only navigations that a user activation lets through are left.
+            return !flags.contains(
+                SandboxingFlagSet::SANDBOXED_TOP_LEVEL_NAVIGATION_WITH_USER_ACTIVATION_BROWSING_CONTEXT_FLAG,
+            ) && source.has_transient_activation();
+        }
+        ancestor = candidate.parent();
+    }
+    // Anything else is only left alone by documents that may navigate.
+    !flags.contains(SandboxingFlagSet::SANDBOXED_NAVIGATION_BROWSING_CONTEXT_FLAG)
+}
+
 /// <https://html.spec.whatwg.org/multipage/#navigate>
 pub(crate) fn navigate(
     cx: &mut JSContext,
@@ -389,6 +434,13 @@ pub(crate) fn navigate(
 
     // TODO: Important re security. See https://github.com/servo/servo/issues/23373
     // Step 5. check that the source browsing-context is "allowed to navigate" this window.
+    if !force_reload &&
+        let Some(source_pipeline_id) = load_data.creator_pipeline_id &&
+        let Some(source_window) = ScriptThread::find_window(source_pipeline_id) &&
+        !is_allowed_by_sandboxing_to_navigate(&source_window, &window.window_proxy())
+    {
+        return;
+    }
 
     // Step 4 and 5
     let pipeline_id = window.pipeline_id();

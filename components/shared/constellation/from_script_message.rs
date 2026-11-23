@@ -782,6 +782,14 @@ pub enum ScriptToConstellationMessage {
     /// A new load has been requested, with an option to replace the current entry once loaded
     /// instead of adding a new entry.
     LoadUrl(LoadData, NavigationHistoryBehavior, TargetSnapshotParams),
+    /// A new load has been requested in another browsing context than the one of the sender, which
+    /// the script thread that has the sender does not have the window of.
+    LoadUrlInBrowsingContext(
+        BrowsingContextId,
+        LoadData,
+        NavigationHistoryBehavior,
+        TargetSnapshotParams,
+    ),
     /// Abort loading after sending a LoadUrl message.
     AbortLoadUrl,
     /// Post a message to the currently active window of a given browsing context.
