@@ -586,7 +586,11 @@ impl WindowProxy {
         // active browsing context given tokenizedFeatures.
         // Only whether it is a popup is supported.
         // <https://html.spec.whatwg.org/multipage/#set-up-browsing-context-features>
-        let is_popup = new && check_if_a_popup_window_is_requested(&tokenized_features);
+        // Step 10. Remove tokenizedFeatures["noopener"] and tokenizedFeatures["noreferrer"].
+        let mut popup_features = tokenized_features.clone();
+        popup_features.shift_remove("noopener");
+        popup_features.shift_remove("noreferrer");
+        let is_popup = new && check_if_a_popup_window_is_requested(&popup_features);
         let target_document = match chosen.document() {
             Some(target_document) => target_document,
             None => return Ok(None),
