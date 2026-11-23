@@ -21,7 +21,7 @@ use servo_constellation_traits::{
 };
 use servo_url::ServoUrl;
 
-use crate::dom::bindings::codegen::Bindings::HistoryBinding::HistoryMethods;
+use crate::dom::bindings::codegen::Bindings::HistoryBinding::{HistoryMethods, ScrollRestoration};
 use crate::dom::bindings::codegen::Bindings::LocationBinding::Location_Binding::LocationMethods;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
@@ -50,6 +50,7 @@ pub(crate) struct History {
     state: Heap<JSVal>,
     #[no_trace]
     state_id: Cell<Option<HistoryStateId>>,
+    scroll_restoration: Cell<ScrollRestoration>,
 }
 
 impl History {
@@ -59,6 +60,7 @@ impl History {
             window: Dom::from_ref(window),
             state: Heap::default(),
             state_id: Cell::new(None),
+            scroll_restoration: Cell::new(ScrollRestoration::Auto),
         }
     }
 
@@ -349,6 +351,23 @@ impl HistoryMethods<crate::DomTypeHolder> for History {
         Ok(())
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-history-scroll-restoration>
+    fn GetScrollRestoration(&self) -> Fallible<ScrollRestoration> {
+        if !self.window.Document().is_fully_active() {
+            return Err(Error::Security(Some("Document is not fully active".into())));
+        }
+        Ok(self.scroll_restoration.get())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-history-scroll-restoration>
+    fn SetScrollRestoration(&self, value: ScrollRestoration) -> ErrorResult {
+        if !self.window.Document().is_fully_active() {
+            return Err(Error::Security(Some("Document is not fully active".into())));
+        }
+        self.scroll_restoration.set(value);
+        Ok(())
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-history-length>
     fn GetLength(&self) -> Fallible<u32> {
         if !self.window.Document().is_fully_active() {
@@ -380,6 +399,9 @@ impl HistoryMethods<crate::DomTypeHolder> for History {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-history-go>
     fn Go(&self, cx: &mut JSContext, delta: i32) -> ErrorResult {
+        if !self.window.Document().is_fully_active() {
+            return Err(Error::Security(Some("Document is not fully active".into())));
+        }
         let direction = match delta.cmp(&0) {
             Ordering::Greater => TraversalDirection::Forward(delta as usize),
             Ordering::Less => TraversalDirection::Back(-delta as usize),
