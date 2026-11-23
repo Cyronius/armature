@@ -89,6 +89,7 @@ use crate::dom::bindings::codegen::Bindings::ElementBinding::{
 };
 use crate::dom::bindings::codegen::Bindings::EventHandlerBinding::EventHandlerNonNull;
 use crate::dom::bindings::codegen::Bindings::FunctionBinding::Function;
+use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::HTMLElementMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLTemplateElementBinding::HTMLTemplateElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::codegen::Bindings::SanitizerBinding::{
@@ -873,6 +874,84 @@ impl Element {
                 let node = self.upcast::<Node>();
                 node.parent_directionality()
             })
+    }
+
+    /// Sets the state that `:dir()` matches on, which is that of the elements with a right to left
+    /// direction, for this element and the elements below it whose direction changed with it.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#the-directionality>
+    pub(crate) fn update_directionality(&self, no_gc: &NoGC) {
+        let is_rtl = match self
+            .downcast::<HTMLElement>()
+            .and_then(|html_element| html_element.directionality())
+        {
+            Some(direction) => direction == "rtl",
+            None => self.parent_has_rtl_directionality(),
+        };
+        if self.state.get().contains(ElementState::RTL) == is_rtl {
+            return;
+        }
+        self.set_state(no_gc, ElementState::RTL, is_rtl);
+
+        // The elements without a direction of their own take this one.
+        for child in self.upcast::<Node>().children_unrooted(no_gc) {
+            if let Some(child) = child.downcast::<Element>() {
+                child.update_directionality(no_gc);
+            }
+        }
+        if let Some(shadow_root) = self.shadow_root() {
+            for child in shadow_root.upcast::<Node>().children_unrooted(no_gc) {
+                if let Some(child) = child.downcast::<Element>() {
+                    child.update_directionality(no_gc);
+                }
+            }
+        }
+    }
+
+    fn parent_has_rtl_directionality(&self) -> bool {
+        let Some(parent) = self.upcast::<Node>().GetParentNode() else {
+            return false;
+        };
+        if let Some(parent) = parent.downcast::<Element>() {
+            return parent.state.get().contains(ElementState::RTL);
+        }
+        if let Some(shadow_root) = parent.downcast::<ShadowRoot>() {
+            return shadow_root.Host().state.get().contains(ElementState::RTL);
+        }
+        false
+    }
+
+    /// Updates the directions that depend on what is in or below this element, which are those of the
+    /// closest element whose direction is the one of its text.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#auto-directionality>
+    pub(crate) fn update_directionality_of_content(&self, no_gc: &NoGC) {
+        let mut current = DomRoot::from_ref(self);
+        loop {
+            if let Some(html_element) = current.downcast::<HTMLElement>() {
+                let dir = html_element.Dir();
+                let is_bdi = current.local_name() == &local_name!("bdi");
+                if dir == "auto" || (is_bdi && dir.is_empty()) {
+                    current.update_directionality(no_gc);
+                    return;
+                }
+                // Neither the elements above nor the ones below look at the text of this element.
+                if dir == "ltr" || dir == "rtl" {
+                    return;
+                }
+            }
+            let parent = current.upcast::<Node>().GetParentNode();
+            let Some(parent) = parent else {
+                return;
+            };
+            current = match DomRoot::downcast::<Element>(parent.clone()) {
+                Some(parent) => parent,
+                None => match DomRoot::downcast::<ShadowRoot>(parent) {
+                    Some(shadow_root) => shadow_root.Host(),
+                    None => return,
+                },
+            };
+        }
     }
 
     pub(crate) fn is_root(&self) -> bool {
@@ -5424,6 +5503,9 @@ impl VirtualMethods for Element {
             shadow_root.bind_to_tree(cx, context);
         }
 
+        // The element takes the direction of its new parent unless it has its own.
+        self.update_directionality(cx.no_gc());
+
         if !context.is_in_tree() {
             return;
         }
@@ -5464,6 +5546,9 @@ impl VirtualMethods for Element {
         if let Some(s) = self.super_type() {
             s.children_changed(cx, mutation);
         }
+
+        // The direction of an element can be the one of its text.
+        self.update_directionality_of_content(cx.no_gc());
 
         let flags = self.get_selector_flags();
 

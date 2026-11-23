@@ -1272,45 +1272,87 @@ impl HTMLElement {
             .count() as u32
     }
 
-    // https://html.spec.whatwg.org/multipage/#the-directionality.
-    // returns Some if can infer direction by itself or from child nodes
-    // returns None if requires to go up to parent
+    /// <https://html.spec.whatwg.org/multipage/#the-directionality>
+    ///
+    /// Returns `Some` if the direction of the element can be determined from the element itself or
+    /// its descendants, and `None` if it is the one of its parent.
     pub(crate) fn directionality(&self) -> Option<String> {
         let element_direction = &self.Dir();
 
+        // Step 1. If element's dir attribute is in the ltr state, then return 'ltr'.
         if element_direction == "ltr" {
             return Some("ltr".to_owned());
         }
 
+        // Step 2. If element's dir attribute is in the rtl state, then return 'rtl'.
         if element_direction == "rtl" {
             return Some("rtl".to_owned());
         }
 
+        // Step 3. If element is a bdi element and the dir attribute is not in a defined state
+        // (i.e. it is not present or has an invalid value), or if element's dir attribute is in
+        // the auto state, then:
+        let is_bdi = self.as_element().local_name() == &local_name!("bdi");
+        if element_direction == "auto" || (is_bdi && element_direction.is_empty()) {
+            // Step 3.1. If element is a form control whose value is rendered as text, use that
+            // value, otherwise the auto directionality of the element's descendants.
+            let direction = self
+                .downcast::<HTMLInputElement>()
+                .and_then(|input| input.auto_directionality())
+                .or_else(|| {
+                    self.downcast::<HTMLTextAreaElement>()
+                        .map(|area| area.auto_directionality())
+                })
+                .or_else(|| {
+                    Self::auto_directionality_of_descendants(self.upcast::<Node>())
+                        .map(|is_rtl| if is_rtl { "rtl" } else { "ltr" }.to_owned())
+                });
+            // Step 3.2. If result is null, then return 'ltr'.
+            return Some(direction.unwrap_or_else(|| "ltr".to_owned()));
+        }
+
+        // Step 4. If element is an input element whose type attribute is in the Telephone state,
+        // and the dir attribute is not in a defined state, then return 'ltr'.
         if let Some(input) = self.downcast::<HTMLInputElement>() &&
             matches!(*input.input_type(), InputType::Tel(_))
         {
             return Some("ltr".to_owned());
         }
 
-        if element_direction == "auto" {
-            if let Some(directionality) = self
-                .downcast::<HTMLInputElement>()
-                .and_then(|input| input.auto_directionality())
-            {
-                return Some(directionality);
-            }
+        None
+    }
 
-            if let Some(area) = self.downcast::<HTMLTextAreaElement>() {
-                return Some(area.auto_directionality());
+    /// The auto directionality of the descendants of `node`, `Some(true)` if it is right to left.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#auto-directionality>
+    fn auto_directionality_of_descendants(node: &Node) -> Option<bool> {
+        for child in node.children() {
+            if let Some(text) = child.downcast::<Text>() {
+                let data = text.upcast::<CharacterData>().data();
+                if let Some(is_rtl) = HTMLInputElement::first_strong_direction(&data) {
+                    return Some(is_rtl);
+                }
+            } else if let Some(element) = child.downcast::<Element>() {
+                // Elements that take their own direction, and what they contain, do not count.
+                let is_excluded = element.is_html_element() &&
+                    matches!(
+                        *element.local_name(),
+                        local_name!("bdi") |
+                            local_name!("script") |
+                            local_name!("style") |
+                            local_name!("textarea")
+                    );
+                let has_dir = child
+                    .downcast::<HTMLElement>()
+                    .is_some_and(|html_element| !html_element.Dir().is_empty());
+                if is_excluded || has_dir {
+                    continue;
+                }
+                if let Some(is_rtl) = Self::auto_directionality_of_descendants(child.upcast::<Node>()) {
+                    return Some(is_rtl);
+                }
             }
         }
-
-        // TODO(NeverHappened): Implement condition
-        // If the element's dir attribute is in the auto state OR
-        // If the element is a bdi element and the dir attribute is not in a defined state
-        // (i.e. it is not present or has an invalid value)
-        // Requires bdi element implementation (https://html.spec.whatwg.org/multipage/#the-bdi-element)
-
         None
     }
 
@@ -1555,6 +1597,15 @@ impl VirtualMethods for HTMLElement {
                     ElementState::INERT,
                     !matches!(mutation, AttributeMutation::Removed),
                 );
+            },
+            // <https://html.spec.whatwg.org/multipage/#the-dir-attribute>
+            (&local_name!("dir"), _) => {
+                // The element and the elements below it may change direction, and the elements
+                // that look at the text of this one see it (or not) with its new `dir`.
+                element.update_directionality(cx.no_gc());
+                if let Some(parent) = self.upcast::<Node>().GetParentElement() {
+                    parent.update_directionality_of_content(cx.no_gc());
+                }
             },
             (&local_name!("form"), mutation) if self.is_form_associated_custom_element() => {
                 self.form_attribute_mutated(cx, mutation);

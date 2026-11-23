@@ -30,6 +30,7 @@ use style::context::SharedStyleContext;
 use style::data::{ElementDataMut, ElementDataRef};
 use style::dom::{LayoutIterator, TDocument, TElement, TNode, TShadowRoot};
 use style::properties::{ComputedValues, PropertyDeclarationBlock};
+use style::servo::selector_parser::Direction;
 use style::selector_parser::{
     AttrValue as SelectorAttrValue, Lang, NonTSPseudoClass, PseudoElement, RestyleDamage,
     SelectorImpl, extended_filtering,
@@ -823,6 +824,19 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
             NonTSPseudoClass::CustomState(ref state) => self.has_custom_state(&state.0),
             NonTSPseudoClass::Lang(ref lang) => self.match_element_lang(None, lang),
 
+            // The state of an element is set if its direction is right to left, see `Element::update_directionality`.
+            NonTSPseudoClass::Dir(direction) => {
+                let is_rtl = self
+                    .element
+                    .get_state_for_layout()
+                    .contains(pseudo_class.state_flag());
+                match direction {
+                    Direction::Ltr => !is_rtl,
+                    Direction::Rtl => is_rtl,
+                    Direction::Other => false,
+                }
+            },
+
             NonTSPseudoClass::ServoNonZeroBorder => !matches!(
                 self.element
                     .get_attr_for_layout(&ns!(), &local_name!("border")),
@@ -867,10 +881,6 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
                 .element
                 .get_state_for_layout()
                 .contains(pseudo_class.state_flag()),
-
-            // Pseudo-classes that Stylo grows later and that this does not match yet.
-            #[allow(unreachable_patterns)]
-            _ => false,
         }
     }
 

@@ -225,7 +225,11 @@ impl HTMLInputElement {
 
     pub(crate) fn auto_directionality(&self) -> Option<String> {
         match *self.input_type() {
-            InputType::Text(_) | InputType::Search(_) | InputType::Url(_) | InputType::Email(_) => {
+            InputType::Text(_) |
+            InputType::Search(_) |
+            InputType::Tel(_) |
+            InputType::Url(_) |
+            InputType::Email(_) => {
                 let value: String = String::from(self.Value());
                 Some(HTMLInputElement::directionality_from_value(&value))
             },
@@ -242,15 +246,17 @@ impl HTMLInputElement {
     }
 
     fn is_first_strong_character_rtl(value: &str) -> bool {
-        for ch in value.chars() {
-            return match bidi_class(ch) {
-                BidiClass::L => false,
-                BidiClass::AL => true,
-                BidiClass::R => true,
-                _ => continue,
-            };
-        }
-        false
+        Self::first_strong_direction(value).unwrap_or(false)
+    }
+
+    /// The direction of the first character of `value` that has one, `Some(true)` if it is right to
+    /// left, or `None` if there is no such character.
+    pub(crate) fn first_strong_direction(value: &str) -> Option<bool> {
+        value.chars().find_map(|ch| match bidi_class(ch) {
+            BidiClass::L => Some(false),
+            BidiClass::AL | BidiClass::R => Some(true),
+            _ => None,
+        })
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-input-value>
