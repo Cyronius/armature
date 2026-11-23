@@ -689,9 +689,9 @@ impl NavigatorMethods<crate::DomTypeHolder> for Navigator {
     }
 }
 
-struct BeaconFetchListener {
+pub(crate) struct BeaconFetchListener {
     /// URL of this request.
-    url: ServoUrl,
+    pub(crate) url: ServoUrl,
 }
 
 impl FetchResponseListener for BeaconFetchListener {

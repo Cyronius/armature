@@ -9,7 +9,9 @@ use js::context::JSContext;
 use malloc_size_of::malloc_size_of_is_0;
 use net_traits::request::Referrer;
 use servo_constellation_traits::{LoadData, LoadOrigin, NavigationHistoryBehavior};
+use servo_url::ServoUrl;
 use style::str::HTML_SPACE_CHARACTERS;
+use crate::fetch::fetch::RequestWithGlobalScope;
 
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::refcounted::Trusted;
@@ -389,6 +391,72 @@ pub(crate) fn get_element_target(
     target
 }
 
+/// <https://html.spec.whatwg.org/multipage/#ping>
+///
+/// Sends a ping to each of the URLs in the `ping` attribute of an `a` or `area` element that is being
+/// followed.
+fn send_pings(
+    subject: &Element,
+    document: &crate::dom::document::Document,
+    destination: &ServoUrl,
+    referrer_policy: net_traits::ReferrerPolicy,
+) {
+    if !(subject.is::<HTMLAreaElement>() || subject.is::<HTMLAnchorElement>()) {
+        return;
+    }
+    let Some(ping) = subject.get_attribute_string_value(&local_name!("ping")) else {
+        return;
+    };
+    let global = document.owner_global();
+    for ping_url in ping.split(HTML_SPACE_CHARACTERS) {
+        if ping_url.is_empty() {
+            continue;
+        }
+        // Parse relative to the node document; only `http` and `https` URLs get a ping.
+        let Ok(ping_url) = document.encoding_parse_a_url(ping_url) else {
+            continue;
+        };
+        if !matches!(ping_url.scheme(), "http" | "https") {
+            continue;
+        }
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/ping"),
+        );
+        if let Ok(value) = http::HeaderValue::from_str(destination.as_str()) {
+            headers.insert("ping-to", value);
+        }
+        if let Ok(value) = http::HeaderValue::from_str(document.url().as_str()) {
+            headers.insert("ping-from", value);
+        }
+        let request = net_traits::request::RequestBuilder::new(
+            None,
+            net_traits::blob_url_store::UrlWithBlobClaim::from_url_without_having_claimed_blob(
+                ping_url.clone(),
+            ),
+            // A ping never has a `Referer` header: `Ping-From` carries the address of the page.
+            Referrer::NoReferrer,
+        )
+        .mode(net_traits::request::RequestMode::NoCors)
+        .destination(net_traits::request::Destination::None)
+        .with_global_scope(&global)
+        .method(http::Method::POST)
+        .body(Some(net_traits::request::create_request_body_with_content(
+            "PING".to_owned(),
+        )))
+        .keep_alive(true)
+        .referrer_policy(referrer_policy)
+        .credentials_mode(net_traits::request::CredentialsMode::Include)
+        .headers(headers);
+        global.fetch(
+            request,
+            crate::dom::navigator::BeaconFetchListener { url: ping_url },
+            global.task_manager().networking_task_source().into(),
+        );
+    }
+}
+
 /// <https://html.spec.whatwg.org/multipage/#following-hyperlinks-2>
 pub(crate) fn follow_hyperlink(
     cx: &mut JSContext,
@@ -501,6 +569,9 @@ pub(crate) fn follow_hyperlink(
         } else {
             target_window.as_global_scope().get_referrer()
         };
+
+        // The ping steps of hyperlink auditing.
+        send_pings(subject, &document, &url, referrer_policy);
 
         // Step 13: Navigate targetNavigable to urlString using subject's node document,
         //          with referrerPolicy set to referrerPolicy, userInvolvement set to
