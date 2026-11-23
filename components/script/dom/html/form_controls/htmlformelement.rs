@@ -1284,7 +1284,7 @@ impl HTMLFormElement {
                             data_set.push(FormDatum {
                                 ty: textarea.Type(),
                                 name,
-                                value: FormDatumValue::String(textarea.Value()),
+                                value: FormDatumValue::String(textarea.value_for_submission()),
                             });
                         }
                     },

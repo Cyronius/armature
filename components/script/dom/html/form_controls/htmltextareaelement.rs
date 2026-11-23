@@ -366,6 +366,43 @@ impl TextControlElement for HTMLTextAreaElement {
     }
 }
 
+impl HTMLTextAreaElement {
+    /// The value of the control as it is submitted, which is wrapped to the width of the control
+    /// when its `wrap` attribute is `hard`.
+    /// <https://html.spec.whatwg.org/multipage/#textarea-wrapping-transformation>
+    pub(crate) fn value_for_submission(&self) -> DOMString {
+        let value = self.Value();
+        let is_hard = self
+            .upcast::<Element>()
+            .get_attribute_string_value(&local_name!("wrap"))
+            .is_some_and(|wrap| wrap.eq_ignore_ascii_case("hard"));
+        if !is_hard {
+            return value;
+        }
+        let columns = self.Cols().max(1) as usize;
+        let mut wrapped = String::new();
+        for (index, line) in value.str().split('\n').enumerate() {
+            if index > 0 {
+                wrapped.push('\n');
+            }
+            let mut rest: Vec<char> = line.chars().collect();
+            while rest.len() > columns {
+                // Break after the last space that fits, or in the middle of a word.
+                let split = rest[..=columns]
+                    .iter()
+                    .rposition(|character| *character == ' ')
+                    .map(|position| position + 1)
+                    .filter(|position| *position > 0)
+                    .unwrap_or(columns);
+                wrapped.extend(rest.drain(..split));
+                wrapped.push('\n');
+            }
+            wrapped.extend(rest);
+        }
+        DOMString::from(wrapped)
+    }
+}
+
 impl HTMLTextAreaElementMethods<crate::DomTypeHolder> for HTMLTextAreaElement {
     /// <https://html.spec.whatwg.org/multipage/#dom-fe-autocomplete>
     fn Autocomplete(&self) -> DOMString {

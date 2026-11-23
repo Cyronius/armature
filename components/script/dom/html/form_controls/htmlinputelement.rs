@@ -2512,6 +2512,18 @@ impl VirtualMethods for HTMLInputElement {
                                 self.value_dirty.set(false);
                             },
 
+                            // Step 4. Otherwise, if both value modes are value and the dirty value
+                            // flag is false, the value is the value of the value attribute again.
+                            (&ValueMode::Value, _, ValueMode::Value) if !self.value_dirty.get() => {
+                                let value = self
+                                    .upcast::<Element>()
+                                    .get_attribute_string_value(&local_name!("value"))
+                                    .unwrap_or_default();
+                                self.text_input
+                                    .safe_borrow_mut(cx.no_gc())
+                                    .set_content(DOMString::from(value));
+                            },
+
                             // Step 3
                             (_, _, ValueMode::Filename)
                                 if old_value_mode != ValueMode::Filename =>
