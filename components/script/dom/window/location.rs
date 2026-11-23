@@ -154,7 +154,9 @@ impl Location {
         // and the incumbent global object does not have transient activation, then set historyHandling to "replace".
         //
         // TODO: check for transient activation
-        let history_handling = if !navigable_document.completely_loaded() {
+        let history_handling = if !navigable_document.completely_loaded() &&
+            !incumbent_global.as_window().has_transient_activation()
+        {
             NavigationHistoryBehavior::Replace
         } else {
             history_handling
@@ -346,11 +348,21 @@ impl Location {
             if let Some(copy_url) = f(document.url())? {
                 // Step 5: Terminate these steps if copyURL is null.
                 // Step 6: Location-object navigate to copyURL.
+                // Location-object navigate: a document that is not yet completely loaded is
+                // replaced, unless the incumbent global object has transient activation.
+                let incumbent_has_activation = GlobalScope::incumbent()
+                    .is_some_and(|global| global.as_window().has_transient_activation());
+                let history_handling = if !document.completely_loaded() && !incumbent_has_activation
+                {
+                    NavigationHistoryBehavior::Replace
+                } else {
+                    NavigationHistoryBehavior::Push
+                };
                 self.navigate(
                     cx,
                     document.window(),
                     copy_url,
-                    NavigationHistoryBehavior::Push,
+                    history_handling,
                     NavigationType::Normal,
                 );
             }
