@@ -119,6 +119,11 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
 - **Canvas fonts in workers**: `FontFace` and `FontFaceSet` (`self.fonts`) are exposed to workers, and an
   `OffscreenCanvas` in a worker resolves its `font` with a style system of its own, against the default font.
 - **Conic gradients** and `BarProp.visible` for popups.
+- **Focusgroups**: directional keys move the focus between the items of a `focusgroup` (behavior tokens with their
+  default axes and wrapping, `inline`, `block`, `wrap`, `nowrap`, `nomemory`, `focusgroupstart`, opt-out with `none`,
+  and grids made of tables with the wrap and flow tokens). The Tab key stops once per segment of a group, and
+  `focusGroup` and `focusGroupStart` reflect the attributes. Reading flow, shadow trees, feeds and the accessibility
+  roles are missing.
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
   `wordSpacing` and `lang`. Kerning, the spacings and the language affect shaping; the other styles are stored.
 
