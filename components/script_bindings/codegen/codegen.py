@@ -6842,7 +6842,15 @@ class CGDOMJSProxyHandler_getOwnPropertyDescriptor(CGAbstractExternMethod):
             # Once we start supporting OverrideBuiltins we need to make
             # ResolveOwnProperty or EnumerateOwnProperties filter out named
             # properties that shadow prototype properties.
-            namedGet = f"""
+            if self.descriptor.interface.getExtendedAttribute("LegacyOverrideBuiltIns"):
+                # Named properties shadow the properties of the prototype chain.
+                namedGet = f"""
+if {condition} {{
+    {CGIndenter(CGProxyNamedGetter(self.descriptor, templateValues), 4).define()}
+}}
+"""
+            else:
+                namedGet = f"""
 if {condition} {{
     let mut has_on_proto = false;
     if !has_property_on_prototype(cx, proxy, id, &mut has_on_proto) {{
@@ -7110,7 +7118,19 @@ class CGDOMJSProxyHandler_hasOwn(CGAbstractExternMethod):
         if indexedGetter:
             condition = f"index.is_none() && ({condition})"
         if self.descriptor.supportsNamedProperties():
-            named = f"""
+            if self.descriptor.interface.getExtendedAttribute("LegacyOverrideBuiltIns"):
+                named = f"""
+if {condition} {{
+    {CGIndenter(CGProxyNamedGetter(self.descriptor), 4).define()}
+    if result.is_some() {{
+        *bp = true;
+        return true;
+    }}
+}}
+
+"""
+            else:
+                named = f"""
 if {condition} {{
     let mut has_on_proto = false;
     if !has_property_on_prototype(cx, proxy, id, &mut has_on_proto) {{
@@ -7217,6 +7237,10 @@ if !expando.is_null() {
         else:
             getNamed = ""
 
+        overrideBuiltIns = (self.descriptor.supportsNamedProperties() and
+                            self.descriptor.interface.getExtendedAttribute("LegacyOverrideBuiltIns"))
+        namedBeforeProto = getNamed if overrideBuiltIns else ""
+        namedAfterProto = "" if overrideBuiltIns else getNamed
         return f"""
 //MOZ_ASSERT(!xpc::WrapperFactory::IsXrayWrapper(proxy),
 //"Should not have a XrayWrapper here");
@@ -7232,6 +7256,7 @@ let mut vp = MutableHandle::from_raw(vp);
 {maybeCrossOriginGet}
 
 {getIndexedOrExpando}
+{namedBeforeProto}
 let mut found = false;
 if !get_property_on_prototype(cx, proxy, receiver, id, &mut found, vp.reborrow()) {{
     return false;
@@ -7240,7 +7265,7 @@ if !get_property_on_prototype(cx, proxy, receiver, id, &mut found, vp.reborrow()
 if found {{
     return true;
 }}
-{getNamed}
+{namedAfterProto}
 vp.set(UndefinedValue());
 true"""
 
