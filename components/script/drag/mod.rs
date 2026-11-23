@@ -5,3 +5,4 @@
 pub(crate) mod document_selection_drag;
 pub(crate) mod drag_data_store;
 pub(crate) mod drag_gesture;
+pub(crate) mod element_drag;

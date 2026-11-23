@@ -88,6 +88,36 @@ impl DataTransfer {
         Self::new_with_proto(cx, window, None, data_store)
     }
 
+    /// Create the data transfer object of a drag-and-drop operation started by the user agent.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#create-a-drag-data-store>
+    pub(crate) fn new_for_drag(cx: &mut JSContext, window: &Window) -> DomRoot<DataTransfer> {
+        let mut drag_data_store = DragDataStore::new();
+        drag_data_store.set_mode(Mode::ReadWrite);
+        let data_transfer = Self::new(cx, window, Rc::new(RefCell::new(Some(drag_data_store))));
+        *data_transfer.effect_allowed.borrow_mut() = DOMString::from_static("uninitialized").traced();
+        data_transfer
+    }
+
+    pub(crate) fn set_store_mode(&self, mode: Mode) {
+        if let Some(data_store) = self.data_store.borrow_mut().as_mut() {
+            data_store.set_mode(mode);
+        }
+    }
+
+    pub(crate) fn effect_allowed_value(&self) -> String {
+        self.effect_allowed.borrow().clone().root().to_string()
+    }
+
+    pub(crate) fn drop_effect_value(&self) -> String {
+        self.drop_effect.borrow().clone().root().to_string()
+    }
+
+    /// Set `dropEffect` on behalf of the user agent, which is not restricted by the data store mode.
+    pub(crate) fn set_drop_effect_value(&self, value: &'static str) {
+        *self.drop_effect.borrow_mut() = DOMString::from_static(value).traced();
+    }
+
     pub(crate) fn data_store(&self) -> Option<Ref<'_, DragDataStore>> {
         Ref::filter_map(self.data_store.borrow(), |data_store| data_store.as_ref()).ok()
     }
@@ -134,7 +164,7 @@ impl DataTransferMethods<crate::DomTypeHolder> for DataTransfer {
             .is_some_and(|data_store| data_store.mode() == Mode::ReadWrite) &&
             VALID_EFFECTS_ALLOWED.contains(&&*value.str())
         {
-            *self.drop_effect.borrow_mut() = value.traced();
+            *self.effect_allowed.borrow_mut() = value.traced();
         }
     }
 

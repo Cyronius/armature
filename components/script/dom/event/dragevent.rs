@@ -7,7 +7,9 @@ use euclid::Point2D;
 use js::context::JSContext;
 use js::rust::HandleObject;
 use script_bindings::reflector::reflect_dom_object_with_proto;
-use script_traits::MouseButtons;
+use embedder_traits::MouseButton;
+use script_traits::{ConstellationInputEvent, MouseButtons};
+use style::Atom;
 
 use crate::dom::bindings::codegen::Bindings::DragEventBinding::{DragEventInit, DragEventMethods};
 use crate::dom::bindings::codegen::Bindings::MouseEventBinding::MouseEventMethods;
@@ -16,6 +18,8 @@ use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::datatransfer::DataTransfer;
 use crate::dom::event::{Event, EventBubbles, EventCancelable};
+use crate::dom::eventtarget::EventTarget;
+use crate::dom::inputevent::HitTestResult;
 use crate::dom::mouseevent::MouseEvent;
 use crate::dom::window::Window;
 
@@ -32,6 +36,49 @@ impl DragEvent {
             mouseevent: MouseEvent::new_inherited(),
             data_transfer: MutNullableDom::new(None),
         }
+    }
+
+    /// Create an event of the drag-and-drop processing model, for a pointer at the given place.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#fire-a-dnd-event>
+    pub(crate) fn new_for_drag_and_drop(
+        cx: &mut JSContext,
+        window: &Window,
+        event_type: &'static str,
+        hit_test_result: &HitTestResult,
+        input_event: &ConstellationInputEvent,
+        data_transfer: &DataTransfer,
+        related_target: Option<&EventTarget>,
+    ) -> DomRoot<DragEvent> {
+        let event = Self::new_uninitialized(cx, window);
+        let client_point = hit_test_result.point_in_frame.to_f64();
+        let cancelable = if matches!(event_type, "dragleave" | "dragend") {
+            EventCancelable::NotCancelable
+        } else {
+            EventCancelable::Cancelable
+        };
+        event.mouseevent.initialize_mouse_event(
+            Atom::from(event_type),
+            EventBubbles::Bubbles,
+            cancelable,
+            Some(window),
+            0,
+            client_point,
+            client_point,
+            hit_test_result
+                .point_relative_to_initial_containing_block
+                .to_f64(),
+            input_event.active_keyboard_modifiers,
+            MouseButton::Primary,
+            input_event.pressed_mouse_buttons,
+            related_target,
+            None,
+        );
+        let base_event = event.upcast::<Event>();
+        base_event.set_composed(true);
+        base_event.set_trusted(true);
+        event.data_transfer.set(Some(data_transfer));
+        event
     }
 
     pub(crate) fn new_uninitialized(cx: &mut JSContext, window: &Window) -> DomRoot<DragEvent> {

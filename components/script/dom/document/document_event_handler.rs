@@ -81,6 +81,7 @@ use crate::dom::types::{
 };
 use crate::dom::window::scrolling_box::{ScrollAxisState, ScrollRequirement, ScrollingBoxAxis};
 use crate::drag::drag_gesture::DragGesture;
+use crate::drag::element_drag::{self, ElementDrag};
 use crate::navigation::navigate;
 use crate::realms::enter_auto_realm;
 
@@ -259,6 +260,8 @@ pub(crate) struct DocumentEventHandler {
     /// The current drag gesture, if one exists. Events that affect this drag
     /// gesture will be forwarded to it.
     drag_gesture: DomRefCell<Option<DragGesture>>,
+    /// The drag-and-drop operation of a draggable element, if one is in progress.
+    element_drag: DomRefCell<Option<ElementDrag>>,
 }
 
 impl DocumentEventHandler {
@@ -287,6 +290,7 @@ impl DocumentEventHandler {
             pending_pointer_capture: Default::default(),
             pointer_capture_target: Default::default(),
             drag_gesture: Default::default(),
+            element_drag: Default::default(),
         }
     }
 
@@ -690,6 +694,19 @@ impl DocumentEventHandler {
             }
         }
 
+        // A drag of a draggable element takes over the mouse until it is over.
+        if !is_compatibility_event_for_touch &&
+            element_drag::handle_move(
+                cx,
+                &self.window,
+                &self.element_drag,
+                &hit_test_result,
+                input_event,
+            )
+        {
+            return;
+        }
+
         let old_mouse_move_point = self
             .most_recent_mousemove_point
             .replace(Some(hit_test_result.point_in_frame));
@@ -1010,6 +1027,26 @@ impl DocumentEventHandler {
             mouse_button_event.action, hit_test_result.point_in_frame
         );
 
+        if !is_compatibility_event_for_touch &&
+            mouse_button_event.button == MouseButton::Primary &&
+            mouse_button_event.action == MouseButtonAction::Up
+        {
+            let ended_a_drag = element_drag::handle_release(
+                cx,
+                &self.window,
+                &self.element_drag,
+                &hit_test_result,
+                input_event,
+            );
+            if ended_a_drag {
+                self.mouse_button_state
+                    .set(input_event.pressed_mouse_buttons);
+                self.unset_active_element(cx.no_gc());
+                return;
+            }
+            *self.element_drag.borrow_mut() = None;
+        }
+
         // Set the sequential focus navigation starting point for any mouse button down event, no
         // matter if the target is not a node.
         let document = self.window.Document();
@@ -1170,6 +1207,19 @@ impl DocumentEventHandler {
                 {
                     let editing_context = document.editing_context(cx, &node);
                     editing_context.handle_mousedown_event(cx, &mouse_event, &hit_test_result);
+
+                    // A draggable element starts to be dragged once the pointer moves.
+                    if mouse_button == MouseButton::Primary &&
+                        !is_compatibility_event_for_touch &&
+                        let Some(source) = element_drag::draggable_element_for(&node)
+                    {
+                        *self.drag_gesture.borrow_mut() = None;
+                        element_drag::start_pending(
+                            &self.element_drag,
+                            &source,
+                            hit_test_result.point_in_frame,
+                        );
+                    }
                 }
 
                 // Step 8. If result is true and target is a focusable area
