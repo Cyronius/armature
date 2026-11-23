@@ -203,6 +203,16 @@ use crate::realms::enter_auto_realm;
 // and when the element enters or leaves a browsing context container.
 // https://html.spec.whatwg.org/multipage/#selector-focus
 
+/// Where the nodes of `appendHTMLUnsafe()` and the similar methods go.
+#[derive(Clone, Copy)]
+enum HtmlInsertion {
+    Append,
+    Prepend,
+    Before,
+    After,
+    ReplaceWith,
+}
+
 /// <https://dom.spec.whatwg.org/#element>
 #[dom_struct]
 pub struct Element {
@@ -582,6 +592,79 @@ impl Element {
 
             reactions.clear();
         }
+    }
+
+    /// The algorithms of `appendHTMLUnsafe()`, `prependHTMLUnsafe()`, `beforeHTMLUnsafe()`,
+    /// `afterHTMLUnsafe()` and `replaceWithHTMLUnsafe()`: parse the HTML in the context of the element
+    /// it ends up in and insert the result without sanitizing it.
+    fn insert_html_unsafe(
+        &self,
+        cx: &mut JSContext,
+        html: TrustedHTMLOrString,
+        options: &SetHTMLUnsafeOptions,
+        sink: &str,
+        insertion: HtmlInsertion,
+    ) -> ErrorResult {
+        let compliant_html =
+            TrustedHTML::get_trusted_type_compliant_string(cx, &self.owner_global(), html, sink)?;
+        let node = self.upcast::<Node>();
+
+        let (context, target): (DomRoot<Element>, DomRoot<Node>) = match insertion {
+            HtmlInsertion::Append | HtmlInsertion::Prepend => {
+                let target = match self.downcast::<HTMLTemplateElement>() {
+                    Some(template) => DomRoot::upcast(template.Content(cx)),
+                    None => DomRoot::from_ref(node),
+                };
+                (DomRoot::from_ref(self), target)
+            },
+            HtmlInsertion::Before | HtmlInsertion::After | HtmlInsertion::ReplaceWith => {
+                // If this has no parent, then return.
+                let Some(parent) = node.GetParentNode() else {
+                    return Ok(());
+                };
+                // A document cannot get nodes around its root element.
+                if parent.is::<Document>() {
+                    return Err(Error::NoModificationAllowed(Some(
+                        "Parent is a Document".into(),
+                    )));
+                }
+                let context = match parent.downcast::<Element>() {
+                    Some(parent) => DomRoot::from_ref(parent),
+                    None => match parent.downcast::<ShadowRoot>() {
+                        Some(shadow_root) => shadow_root.Host(),
+                        None => Element::fragment_parsing_context(cx, &parent.owner_doc(), None),
+                    },
+                };
+                (context, parent)
+            },
+        };
+
+        let Some(fragment) =
+            Sanitizer::parse_and_filter_html(cx, &context, compliant_html, options, false)?
+        else {
+            return Ok(());
+        };
+
+        match insertion {
+            HtmlInsertion::Append => {
+                target.AppendChild(cx, &fragment)?;
+            },
+            HtmlInsertion::Prepend => {
+                let first_child = target.GetFirstChild();
+                target.InsertBefore(cx, &fragment, first_child.as_deref())?;
+            },
+            HtmlInsertion::Before => {
+                target.InsertBefore(cx, &fragment, Some(node))?;
+            },
+            HtmlInsertion::After => {
+                let next_sibling = node.GetNextSibling();
+                target.InsertBefore(cx, &fragment, next_sibling.as_deref())?;
+            },
+            HtmlInsertion::ReplaceWith => {
+                target.ReplaceChild(cx, &fragment, node)?;
+            },
+        }
+        Ok(())
     }
 
     // https://drafts.csswg.org/cssom-view/#css-layout-box
@@ -4110,6 +4193,86 @@ impl ElementMethods<crate::DomTypeHolder> for Element {
         Sanitizer::set_and_filter_html(cx, &target, self, compliant_html, options, false)?;
 
         Ok(())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-element-appendhtmlunsafe>
+    fn AppendHTMLUnsafe(
+        &self,
+        cx: &mut JSContext,
+        html: TrustedHTMLOrString,
+        options: &SetHTMLUnsafeOptions,
+    ) -> ErrorResult {
+        self.insert_html_unsafe(
+            cx,
+            html,
+            options,
+            "Element appendHTMLUnsafe",
+            HtmlInsertion::Append,
+        )
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-element-prependhtmlunsafe>
+    fn PrependHTMLUnsafe(
+        &self,
+        cx: &mut JSContext,
+        html: TrustedHTMLOrString,
+        options: &SetHTMLUnsafeOptions,
+    ) -> ErrorResult {
+        self.insert_html_unsafe(
+            cx,
+            html,
+            options,
+            "Element prependHTMLUnsafe",
+            HtmlInsertion::Prepend,
+        )
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-childnode-beforehtmlunsafe>
+    fn BeforeHTMLUnsafe(
+        &self,
+        cx: &mut JSContext,
+        html: TrustedHTMLOrString,
+        options: &SetHTMLUnsafeOptions,
+    ) -> ErrorResult {
+        self.insert_html_unsafe(
+            cx,
+            html,
+            options,
+            "Element beforeHTMLUnsafe",
+            HtmlInsertion::Before,
+        )
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-childnode-afterhtmlunsafe>
+    fn AfterHTMLUnsafe(
+        &self,
+        cx: &mut JSContext,
+        html: TrustedHTMLOrString,
+        options: &SetHTMLUnsafeOptions,
+    ) -> ErrorResult {
+        self.insert_html_unsafe(
+            cx,
+            html,
+            options,
+            "Element afterHTMLUnsafe",
+            HtmlInsertion::After,
+        )
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-childnode-replacewithhtmlunsafe>
+    fn ReplaceWithHTMLUnsafe(
+        &self,
+        cx: &mut JSContext,
+        html: TrustedHTMLOrString,
+        options: &SetHTMLUnsafeOptions,
+    ) -> ErrorResult {
+        self.insert_html_unsafe(
+            cx,
+            html,
+            options,
+            "Element replaceWithHTMLUnsafe",
+            HtmlInsertion::ReplaceWith,
+        )
     }
 
     /// <https://wicg.github.io/sanitizer-api/#dom-element-sethtml>

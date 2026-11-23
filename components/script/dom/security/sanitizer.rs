@@ -164,6 +164,24 @@ impl Sanitizer {
         options: &impl SanitizerMember,
         safe: bool,
     ) -> ErrorResult {
+        if let Some(fragment) =
+            Self::parse_and_filter_html(cx, context_element, html, options, safe)?
+        {
+            // Step 7. Replace all with fragment within target.
+            Node::replace_all(cx, Some(&fragment), target);
+        }
+        Ok(())
+    }
+
+    /// Steps 1 to 6 of [`Self::set_and_filter_html`]: parse `html` in the context of `context_element` and
+    /// sanitize the result. Returns `None` if there is nothing to insert.
+    pub(crate) fn parse_and_filter_html(
+        cx: &mut JSContext,
+        context_element: &Element,
+        html: DOMString,
+        options: &impl SanitizerMember,
+        safe: bool,
+    ) -> Fallible<Option<DomRoot<Node>>> {
         // Step 1. If safe and contextElement’s local name is "script" and contextElement’s
         // namespace is the HTML namespace or the SVG namespace, then return.
         if safe &&
@@ -171,14 +189,14 @@ impl Sanitizer {
             (context_element.namespace() == &ns!(html) ||
                 context_element.namespace() == &ns!(svg))
         {
-            return Ok(());
+            return Ok(None);
         }
 
         // Step 2. Let sanitizer be the result of calling get a sanitizer instance from options with
         // options and safe.
         let sanitizer = Sanitizer::get_sanitizer_instance_from_options(
             cx,
-            &target.owner_window(),
+            &context_element.owner_window(),
             options,
             safe,
         )?;
@@ -202,10 +220,7 @@ impl Sanitizer {
         // Step 6. Run sanitize on fragment using sanitizer and safe.
         sanitizer.sanitize(cx, &fragment, safe)?;
 
-        // Step 7. Replace all with fragment within target.
-        Node::replace_all(cx, Some(&fragment), target);
-
-        Ok(())
+        Ok(Some(fragment))
     }
 
     /// <https://html.spec.whatwg.org/multipage/#sanitize>

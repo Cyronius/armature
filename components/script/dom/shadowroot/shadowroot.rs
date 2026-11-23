@@ -26,6 +26,7 @@ use stylo_atoms::Atom;
 
 use crate::conversions::Convert;
 use crate::css::stylesheet_set::StylesheetSetRef;
+use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::codegen::Bindings::ElementBinding::GetHTMLOptions;
 use crate::dom::bindings::codegen::Bindings::HTMLSlotElementBinding::HTMLSlotElement_Binding::HTMLSlotElementMethods;
 use crate::dom::bindings::codegen::Bindings::SanitizerBinding::{
@@ -595,6 +596,58 @@ impl ShadowRootMethods<crate::DomTypeHolder> for ShadowRoot {
             false,
         )?;
 
+        Ok(())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-shadowroot-appendhtmlunsafe>
+    fn AppendHTMLUnsafe(
+        &self,
+        cx: &mut JSContext,
+        value: TrustedHTMLOrString,
+        options: &SetHTMLUnsafeOptions,
+    ) -> ErrorResult {
+        let compliant_html = TrustedHTML::get_trusted_type_compliant_string(
+            cx,
+            &self.owner_global(),
+            value,
+            "ShadowRoot appendHTMLUnsafe",
+        )?;
+        if let Some(fragment) = Sanitizer::parse_and_filter_html(
+            cx,
+            &self.Host(),
+            compliant_html,
+            options,
+            false,
+        )? {
+            self.upcast::<Node>().AppendChild(cx, &fragment)?;
+        }
+        Ok(())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-shadowroot-prependhtmlunsafe>
+    fn PrependHTMLUnsafe(
+        &self,
+        cx: &mut JSContext,
+        value: TrustedHTMLOrString,
+        options: &SetHTMLUnsafeOptions,
+    ) -> ErrorResult {
+        let compliant_html = TrustedHTML::get_trusted_type_compliant_string(
+            cx,
+            &self.owner_global(),
+            value,
+            "ShadowRoot prependHTMLUnsafe",
+        )?;
+        if let Some(fragment) = Sanitizer::parse_and_filter_html(
+            cx,
+            &self.Host(),
+            compliant_html,
+            options,
+            false,
+        )? {
+            let node = self.upcast::<Node>();
+            let first_child = node.GetFirstChild();
+            node.InsertBefore(cx, &fragment, first_child.as_deref())?;
+        }
         Ok(())
     }
 
