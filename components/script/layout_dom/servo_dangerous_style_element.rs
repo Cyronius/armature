@@ -867,6 +867,10 @@ impl<'dom> ::selectors::Element for ServoDangerousStyleElement<'dom> {
                 .element
                 .get_state_for_layout()
                 .contains(pseudo_class.state_flag()),
+
+            // Pseudo-classes that Stylo grows later and that this does not match yet.
+            #[allow(unreachable_patterns)]
+            _ => false,
         }
     }
 
