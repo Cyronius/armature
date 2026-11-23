@@ -143,6 +143,30 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
   `wordSpacing` and `lang`. Kerning, the spacings and the language affect shaping; the other styles are stored.
 
+### Drag and drop of draggable elements
+
+`components/script/drag/element_drag.rs` implements the drag-and-drop processing model for draggable elements
+inside one document. Pressing the primary button on an element whose `draggable` state is true (an `img` or an `a`
+with `href` is draggable by default) arms a drag; once the pointer has moved 3 pixels with the button down the
+`dragstart` event fires at the element, and when the default is not prevented the drag starts and takes over the
+mouse until it ends:
+
+- Each move fires `drag` at the source, `dragenter` at a new target (followed by `dragleave` at the old one) and
+  `dragover` at the target. The `dropEffect` of the shared `DataTransfer` starts from the default for the
+  `effectAllowed` (copy for `uninitialized` and `all`, the only effect for `copy`, `link` and `move`, copy for
+  `copyLink` and `copyMove`, move for `linkMove`) and the current drag operation is its value after a cancelled
+  event, if the `effectAllowed` permits it, or `none`.
+- Releasing the button fires `drop` at the target when it accepted the drag with an operation other than `none`,
+  and `dragleave` otherwise, then `dragend` at the source with `dropEffect` set to the operation.
+- While the drag lasts the mouse events (`mousemove` and `mouseup`) are not sent to the page. The data store is
+  read/write in `dragstart`, read-only in `drop` and protected otherwise.
+- A press on a text input, `textarea`, `select` or editable element (or inside one) never starts a drag of the
+  element around it.
+
+Drags of the selection, of text and of links that start a drag without a `draggable` element, and drags to and from
+other documents or the operating system, are not implemented. `DataTransfer.effectAllowed` used to write to
+`dropEffect`; the setter now sets the right value.
+
 ## What has not been done
 
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
