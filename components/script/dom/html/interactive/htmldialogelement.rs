@@ -49,6 +49,12 @@ pub(crate) struct HTMLDialogElement {
     request_close_source_element: MutNullableDom<Element>,
     /// <https://html.spec.whatwg.org/multipage/#enable-close-watcher-for-requestclose()>
     enable_close_watcher_for_request_close: Cell<bool>,
+    /// <https://html.spec.whatwg.org/multipage/#dialog-toggle-task-tracker>
+    ///
+    /// The old state of the pending toggle event, and a counter that tells the pending task apart
+    /// from the ones that it replaced.
+    toggle_task_old_state: Cell<Option<&'static str>>,
+    toggle_task_counter: Cell<u32>,
 }
 
 impl HTMLDialogElement {
@@ -63,6 +69,8 @@ impl HTMLDialogElement {
             close_watcher: Default::default(),
             request_close_return_value: Default::default(),
             request_close_source_element: Default::default(),
+            toggle_task_old_state: Cell::new(None),
+            toggle_task_counter: Cell::new(0),
             enable_close_watcher_for_request_close: Default::default(),
         }
     }
@@ -366,10 +374,13 @@ impl HTMLDialogElement {
         new_state: &'static str,
         source: Option<DomRoot<Element>>,
     ) {
-        // TODO: Step 1. If element's dialog toggle task tracker is not null, then:
-        // TODO: Step 1.1. Set oldState to element's dialog toggle task tracker's old state.
-        // TODO: Step 1.2. Remove element's dialog toggle task tracker's task from its task queue.
-        // TODO: Step 1.3. Set element's dialog toggle task tracker to null.
+        // Step 1. If element's dialog toggle task tracker is not null, then set oldState to the
+        // tracker's old state, and remove the tracker's task from its task queue.
+        let old_state = self.toggle_task_old_state.get().unwrap_or(old_state);
+        self.toggle_task_old_state.set(Some(old_state));
+        let counter = self.toggle_task_counter.get().wrapping_add(1);
+        self.toggle_task_counter.set(counter);
+
         // Step 2. Queue an element task given the DOM manipulation task source and element to run the following steps:
         let this = Trusted::new(self);
         let trusted_source = source.map(|el| Trusted::new(&*el));
@@ -379,6 +390,11 @@ impl HTMLDialogElement {
             .dom_manipulation_task_source()
             .queue(task!(fire_toggle_event: move |cx| {
                 let this = this.root();
+                if counter != this.toggle_task_counter.get() {
+                    return;
+                }
+                // Step 2.2. Set element's dialog toggle task tracker to null.
+                this.toggle_task_old_state.set(None);
 
                 let source = trusted_source.map(|s| s.root());
 
@@ -395,10 +411,7 @@ impl HTMLDialogElement {
                 );
                 let event = event.upcast::<Event>();
                 event.fire(cx, this.upcast::<EventTarget>());
-
-                // TODO: Step 2.2. Set element's dialog toggle task tracker to null.
             }));
-        // TODO: Step 3. Set element's dialog toggle task tracker to a struct with task set to the just-queued task and old state set to oldState.
     }
 
     /// The steps of `show()` and "show a modal dialog" that hide the popovers that are not
