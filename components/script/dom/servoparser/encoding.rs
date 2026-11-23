@@ -3,11 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::mem;
 use std::time::{Duration, Instant};
 
 use chardetng::{Iso2022JpDetection, Utf8Detection};
 use encoding_rs::{Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED};
+use html5ever::buffer_queue::BufferQueue;
+use html5ever::ns;
+use html5ever::tokenizer::states::RawKind;
+use html5ever::tokenizer::{TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts};
+use markup5ever::TokenizerResult;
 use tendril::fmt::UTF8;
 use tendril::stream::LossyDecoder;
 use tendril::{ByteTendril, StrTendril, TendrilSink};
@@ -55,6 +61,9 @@ impl DetectingState {
     /// The time threshold after which we will attempt to determine the encoding and start decoding,
     /// even if there are less than [BUFFER_THRESHOLD] bytes in the buffer.
     const MAX_TIME_TO_BUFFER: Duration = Duration::from_secs(1);
+
+    /// How many bytes to buffer at most while looking for a `meta` element in a long head.
+    const HEAD_SCAN_LIMIT: usize = 32 * 1024;
 
     /// Appends some data to the internal buffer and attempts to [determine the character encoding].
     ///
@@ -119,11 +128,13 @@ impl DetectingState {
         // to prescan the byte stream
         let bytes_to_prescan =
             &self.buffered_bytes[..Self::BUFFER_THRESHOLD.min(self.buffered_bytes.len())];
+        // The XML declaration is looked for up to its end, even past the first kilobyte, as
+        // Gecko does.
         let sniffed_encoding = if document.is_html_document() {
             prescan_the_byte_stream_to_determine_the_encoding(bytes_to_prescan)
-                .or_else(|| get_xml_encoding(bytes_to_prescan))
+                .or_else(|| get_xml_encoding(&self.buffered_bytes))
         } else {
-            get_xml_encoding(bytes_to_prescan)
+            get_xml_encoding(&self.buffered_bytes)
         };
         if let Some(encoding) = sniffed_encoding {
             log::debug!(
@@ -131,6 +142,30 @@ impl DetectingState {
                 encoding.name()
             );
             return Some(encoding);
+        }
+
+        // A `meta` element that the prescan did not see, but that the tokenizer finds in the
+        // head (or in the first kilobyte), still declares the encoding, as in Gecko, which
+        // reparses when the tree builder meets such a late `meta`. Rather than reparse, keep
+        // buffering until the head has been scanned.
+        if document.is_html_document() {
+            let at_end_of_file = is_at_end_of_file == AtEndOfFile::Yes;
+            match scan_for_meta_charset(&self.buffered_bytes, at_end_of_file) {
+                MetaScan::Found(encoding) => {
+                    log::debug!(
+                        "Scanning the head determined that the encoding is {}",
+                        encoding.name()
+                    );
+                    return Some(encoding);
+                },
+                MetaScan::NeedMoreData
+                    if potentially_wait_for_more_data &&
+                        self.buffered_bytes.len() < Self::HEAD_SCAN_LIMIT =>
+                {
+                    return None;
+                },
+                _ => {},
+            }
         }
 
         if document.is_html_document() {
@@ -833,6 +868,186 @@ pub fn get_xml_encoding(input: &[u8]) -> Option<&'static Encoding> {
         Some(UTF_8)
     } else {
         Some(encoding)
+    }
+}
+
+/// The result of [`scan_for_meta_charset`].
+pub(crate) enum MetaScan {
+    Found(&'static Encoding),
+    NotFound,
+    /// The bytes so far end inside the head without a `meta` that declares an encoding.
+    NeedMoreData,
+}
+
+/// The state of the tokenizer-driven scan for a `meta` element declaring the encoding.
+#[derive(Default)]
+struct MetaScanState {
+    /// Whether the tokens seen so far could all be in the head.
+    left_head: bool,
+    /// Whether the tokenizer has been given the bytes after the first kilobyte.
+    past_first_kilobyte: bool,
+    /// Whether the first kilobyte ends inside a tag, whose token then started in it.
+    tag_straddles_first_kilobyte: bool,
+    template_depth: usize,
+    /// The element whose raw text contents are being tokenized, if any.
+    raw_text_element: Option<String>,
+    found: Option<&'static Encoding>,
+}
+
+struct MetaScanSink(RefCell<MetaScanState>);
+
+/// The elements that may appear in the head; any other start tag ends it.
+fn is_head_element(name: &str) -> bool {
+    matches!(
+        name,
+        "html" |
+            "head" |
+            "base" |
+            "basefont" |
+            "bgsound" |
+            "link" |
+            "meta" |
+            "noframes" |
+            "noscript" |
+            "script" |
+            "style" |
+            "template" |
+            "title"
+    )
+}
+
+/// The encoding a `meta` element declares, as the tree builder's "in head" rules extract it.
+fn meta_element_encoding(attrs: &[html5ever::Attribute]) -> Option<&'static Encoding> {
+    let attribute = |name: &str| {
+        attrs
+            .iter()
+            .find(|attribute| attribute.name.ns == ns!() && &*attribute.name.local == name)
+            .map(|attribute| attribute.value.to_string())
+    };
+    let encoding = if let Some(charset) = attribute("charset") {
+        Encoding::for_label(charset.as_bytes())
+    } else if attribute("http-equiv")
+        .is_some_and(|value| value.eq_ignore_ascii_case("content-type"))
+    {
+        extract_a_character_encoding_from_a_meta_element(
+            attribute("content")?.to_ascii_lowercase().as_bytes(),
+        )
+    } else {
+        None
+    }?;
+    Some(if encoding == UTF_16BE || encoding == UTF_16LE {
+        UTF_8
+    } else if encoding == X_USER_DEFINED {
+        WINDOWS_1252
+    } else {
+        encoding
+    })
+}
+
+impl TokenSink for MetaScanSink {
+    type Handle = ();
+
+    fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+        let mut state = self.0.borrow_mut();
+        if state.found.is_some() {
+            return TokenSinkResult::Continue;
+        }
+        match token {
+            Token::TagToken(tag) => {
+                let name = &*tag.name;
+                if tag.kind == TagKind::EndTag {
+                    if state.raw_text_element.as_deref() == Some(name) {
+                        state.raw_text_element = None;
+                    } else if name == "template" {
+                        state.template_depth = state.template_depth.saturating_sub(1);
+                    } else if matches!(name, "head" | "body" | "html" | "br") {
+                        state.left_head = true;
+                    }
+                    return TokenSinkResult::Continue;
+                }
+                if state.raw_text_element.is_some() {
+                    return TokenSinkResult::Continue;
+                }
+                let started_in_first_kilobyte = !state.past_first_kilobyte ||
+                    mem::take(&mut state.tag_straddles_first_kilobyte);
+                if name == "meta" &&
+                    state.template_depth == 0 &&
+                    (!state.left_head || started_in_first_kilobyte)
+                {
+                    state.found = meta_element_encoding(&tag.attrs);
+                }
+                if !is_head_element(name) {
+                    state.left_head = true;
+                }
+                if name == "template" {
+                    state.template_depth += 1;
+                }
+                if tag.self_closing {
+                    return TokenSinkResult::Continue;
+                }
+                let raw_kind = match name {
+                    "title" | "textarea" => RawKind::Rcdata,
+                    "style" | "xmp" | "iframe" | "noembed" | "noframes" | "noscript" => {
+                        RawKind::Rawtext
+                    },
+                    "script" => RawKind::ScriptData,
+                    "plaintext" => return TokenSinkResult::Plaintext,
+                    _ => return TokenSinkResult::Continue,
+                };
+                state.raw_text_element = Some(name.to_owned());
+                TokenSinkResult::RawData(raw_kind)
+            },
+            Token::CharacterTokens(text) => {
+                if state.raw_text_element.is_none() &&
+                    state.template_depth == 0 &&
+                    text.chars().any(|character| !character.is_ascii_whitespace())
+                {
+                    state.left_head = true;
+                }
+                TokenSinkResult::Continue
+            },
+            _ => TokenSinkResult::Continue,
+        }
+    }
+}
+
+/// Look for a `meta` element that declares the encoding with the HTML tokenizer, so that
+/// character references in its attributes are decoded and the contents of elements that hold
+/// raw text are skipped. A `meta` counts if it starts in the first kilobyte or is in the head,
+/// outside templates, matching Gecko's handling of `meta` elements the prescan misses.
+pub(crate) fn scan_for_meta_charset(bytes: &[u8], at_end_of_file: bool) -> MetaScan {
+    // Only ASCII matters for the markup that declares an encoding, and windows-1252 maps every
+    // byte to one character, so character offsets are byte offsets.
+    let first_kilobyte = 1024.min(bytes.len());
+    let sink = MetaScanSink(RefCell::new(MetaScanState::default()));
+    let tokenizer = Tokenizer::new(sink, TokenizerOpts::default());
+    let input = BufferQueue::default();
+    for (index, part) in [&bytes[..first_kilobyte], &bytes[first_kilobyte..]]
+        .into_iter()
+        .enumerate()
+    {
+        if index == 1 {
+            let first = &bytes[..first_kilobyte];
+            let mut state = tokenizer.sink.0.borrow_mut();
+            state.past_first_kilobyte = true;
+            state.tag_straddles_first_kilobyte = first.iter().rposition(|byte| *byte == b'<') >
+                first.iter().rposition(|byte| *byte == b'>');
+        }
+        let (decoded, _) = WINDOWS_1252.decode_without_bom_handling(part);
+        input.push_back(StrTendril::from(&*decoded));
+        while !matches!(tokenizer.feed(&input), TokenizerResult::Done) {}
+        if tokenizer.sink.0.borrow().found.is_some() {
+            break;
+        }
+    }
+    if at_end_of_file {
+        tokenizer.end();
+    }
+    let state = tokenizer.sink.0.borrow();
+    match state.found {
+        Some(encoding) => MetaScan::Found(encoding),
+        None if !state.left_head && !at_end_of_file => MetaScan::NeedMoreData,
+        None => MetaScan::NotFound,
     }
 }
 

@@ -1468,14 +1468,18 @@ impl XMLHttpRequest {
             // Step 5.1: Let charset be the result of get a final encoding for xhr.
             // Step 5.2: If charset is null, prescan the first 1024 bytes of xhr’s received bytes
             // and if that does not terminate unsuccessfully then let charset be the return value.
-            // TODO: This isn't happening right now.
+            // As in Gecko, a `meta` element in the head that the prescan misses also counts.
             // Step 5.3. If charset is null, then set charset to UTF-8.
-            charset = Some(self.final_charset().unwrap_or(UTF_8));
+            let html_charset = self
+                .final_charset()
+                .or_else(|| html_response_meta_charset(&self.response.borrow()))
+                .unwrap_or(UTF_8);
+            charset = Some(html_charset);
 
             // Step 5.4: Let document be a document that represents the result parsing xhr’s
             // received bytes following the rules set forth in the HTML Standard for an HTML parser
             // with scripting disabled and a known definite encoding charset. [HTML]
-            temp_doc = self.document_text_html(cx);
+            temp_doc = self.document_text_html(cx, html_charset);
         } else {
             assert!(is_xml_mime_type);
 
@@ -1551,8 +1555,11 @@ impl XMLHttpRequest {
         self.response_json.set(rval.get());
     }
 
-    fn document_text_html(&self, cx: &mut JSContext) -> DomRoot<Document> {
-        let charset = self.final_charset().unwrap_or(UTF_8);
+    fn document_text_html(
+        &self,
+        cx: &mut JSContext,
+        charset: &'static Encoding,
+    ) -> DomRoot<Document> {
         let wr = self.global();
         let response = self.response.borrow();
         let (decoded, _, _) = charset.decode(&response);
@@ -1780,4 +1787,21 @@ pub(crate) fn is_field_value(slice: &[u8]) -> bool {
     // <https://fetch.spec.whatwg.org/#header-value>
     // Armature: the value has already been normalized, so only NUL, CR and LF are disallowed.
     !slice.iter().any(|&byte| matches!(byte, 0 | b'\r' | b'\n'))
+}
+
+/// The encoding that a `meta` element in an HTML response declares: the prescan of the first
+/// kilobyte, then the tokenizer-driven scan of the head.
+fn html_response_meta_charset(bytes: &[u8]) -> Option<&'static Encoding> {
+    use crate::dom::servoparser::encoding::{
+        MetaScan, prescan_the_byte_stream_to_determine_the_encoding, scan_for_meta_charset,
+    };
+    if let Some((encoding, _)) = Encoding::for_bom(bytes) {
+        return Some(encoding);
+    }
+    prescan_the_byte_stream_to_determine_the_encoding(&bytes[..bytes.len().min(1024)]).or_else(
+        || match scan_for_meta_charset(bytes, true) {
+            MetaScan::Found(encoding) => Some(encoding),
+            _ => None,
+        },
+    )
 }
