@@ -945,6 +945,12 @@ impl HTMLIFrameElement {
         // Step 4. Inform the navigation API about child navigable destruction given navigable.
         // TODO
 
+        // The document is unloaded when its container is removed, which fires `pagehide` and
+        // `unload` in it and its descendants.
+        if let Some(document) = pipeline_id.and_then(ScriptThread::find_document) {
+            document.unload(cx, false);
+        }
+
         // Step 5. Destroy a document and its descendants given navigable's active document.
         let (sender, receiver) = channel(self.global().time_profiler_chan().clone()).unwrap();
         let msg = ScriptToConstellationMessage::RemoveIFrame(browsing_context_id, sender);

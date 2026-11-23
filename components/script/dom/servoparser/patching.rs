@@ -70,7 +70,13 @@ impl Document {
         parent: &Node,
     ) {
         let element = template.upcast::<Element>();
-        if element.has_attribute(&local_name!("shadowrootmode")) {
+        // A valid `shadowrootmode` makes the template declare a shadow root instead.
+        if element
+            .get_attribute_string_value(&local_name!("shadowrootmode"))
+            .is_some_and(|mode| {
+                mode.eq_ignore_ascii_case("open") || mode.eq_ignore_ascii_case("closed")
+            })
+        {
             return;
         }
         let Some(name) = element.get_attribute_string_value(&local_name!("for")) else {
@@ -139,12 +145,25 @@ impl Document {
         }) {
             return;
         }
+        // Only what is in the range now is removed: removing a node can run script, which can add
+        // other nodes to the range.
         let start = &patch.markers[0];
-        while let Some(node) = start.GetNextSibling() {
+        let mut in_range = Vec::new();
+        let mut sibling = start.GetNextSibling();
+        while let Some(node) = sibling {
             if patch.before.as_ref().is_some_and(|end| **end == *node) {
                 break;
             }
-            node.remove_self(cx);
+            sibling = node.GetNextSibling();
+            in_range.push(node);
+        }
+        for node in in_range {
+            if node
+                .GetParentNode()
+                .is_some_and(|parent| *parent == *patch.container)
+            {
+                node.remove_self(cx);
+            }
         }
     }
 
