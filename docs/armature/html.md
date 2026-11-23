@@ -90,6 +90,10 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
   fetched until they come within 1250px of the viewport or of a scroller, using an intersection observer that
   the document keeps for them; they no longer delay the window `load` event. About 20 `the-img-element` tests newly
   pass. Images in nested documents and iframes with a `src` are still loaded right away.
+- **`link rel=expect`**: a `link rel=expect blocking=render` that points into its own document blocks rendering until
+  the parser has finished the element with that id (or an element with that id or an anchor with that name is
+  inserted), or until parsing finishes. About 35 render-blocking subtests newly pass; unblocking by removing the
+  element or the `blocking` attribute of scripts and styles is still missing.
 - **Offscreen canvas fonts**: an `OffscreenCanvas` in a window now resolves the `font` it is given, against the
   default font; in workers there is no layout to do it with, so the font cannot be changed.
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
