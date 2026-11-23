@@ -119,6 +119,10 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
 - **Canvas fonts in workers**: `FontFace` and `FontFaceSet` (`self.fonts`) are exposed to workers, and an
   `OffscreenCanvas` in a worker resolves its `font` with a style system of its own, against the default font.
 - **Conic gradients** and `BarProp.visible` for popups.
+- **hidden=until-found**: `content-visibility: hidden` skips its contents, navigating to a fragment inside it fires
+  `beforematch` and reveals it (and closed `details` ancestors), and nothing in it can be focused.
+- **Smaller fixes**: empty file controls in form data, lazy iframes keep the URL they were deferred with, and
+  `autocapitalize` and `autocorrect` come from the form owner.
 - **Navigating other windows**: `location.href` and `replace()` work on windows of other origins (through a new
   constellation message), a sandboxed document can only navigate itself, its descendants, the windows it opened and,
   with `allow-top-navigation`, the top-level window, nested frames are unloaded (rather than their parent again), and
