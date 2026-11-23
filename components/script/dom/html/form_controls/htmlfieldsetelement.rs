@@ -10,7 +10,6 @@ use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
 use stylo_dom::ElementState;
 
-use crate::dom::activation::Activatable;
 use crate::dom::bindings::codegen::Bindings::HTMLFieldSetElementBinding::HTMLFieldSetElementMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
@@ -21,10 +20,9 @@ use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::html::htmlcollection::HTMLCollection;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::htmlformelement::{FormControl, HTMLFormElement};
-use crate::dom::html::htmllegendelement::HTMLLegendElement;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::virtualmethods::VirtualMethods;
-use crate::dom::node::{Node, NodeTraits};
+use crate::dom::node::{ChildrenMutation, Node, NodeTraits};
 use crate::dom::validation::Validatable;
 use crate::dom::validitystate::ValidityState;
 
@@ -147,6 +145,23 @@ impl HTMLFieldSetElementMethods<crate::DomTypeHolder> for HTMLFieldSetElement {
     }
 }
 
+impl HTMLFieldSetElement {
+    /// Recompute the disabled state of every disableable form control (fieldsets included)
+    /// below this fieldset, after its disabled attribute or its first legend changed.
+    fn update_descendants_disabled_state(&self, cx: &mut js::context::JSContext) {
+        let fields: Vec<DomRoot<HTMLElement>> = self
+            .upcast::<Node>()
+            .traverse_preorder(ShadowIncluding::No)
+            .skip(1)
+            .filter_map(DomRoot::downcast::<HTMLElement>)
+            .filter(|field| field.is_disableable_form_control())
+            .collect();
+        for field in fields {
+            field.maybe_update_form_control_disabled(cx);
+        }
+    }
+}
+
 impl VirtualMethods for HTMLFieldSetElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<HTMLElement>() as &dyn VirtualMethods)
@@ -163,49 +178,30 @@ impl VirtualMethods for HTMLFieldSetElement {
             .attribute_mutated(cx, attr, mutation);
         match *attr.local_name() {
             local_name!("disabled") => {
-                let disabled_state = match mutation {
-                    AttributeMutation::Set(None) => true,
-                    AttributeMutation::Set(Some(_)) => {
-                        // Fieldset was already disabled before.
-                        return;
-                    },
-                    AttributeMutation::Removed => false,
-                };
-                let node = self.upcast::<Node>();
-                let element = self.upcast::<Element>();
-                element.set_disabled_state(cx.no_gc(), disabled_state);
-                element.set_enabled_state(cx.no_gc(), !disabled_state);
-                let mut found_legend = false;
-                let children = node.children().filter(|node| {
-                    if found_legend {
-                        true
-                    } else if node.is::<HTMLLegendElement>() {
-                        found_legend = true;
-                        false
-                    } else {
-                        true
-                    }
-                });
-                let fields = children.flat_map(|child| {
-                    child
-                        .traverse_preorder(ShadowIncluding::No)
-                        .filter_map(DomRoot::downcast::<HTMLElement>)
-                });
-                for field in fields {
-                    if !field.is_disableable_form_control() {
-                        continue;
-                    }
-                    if disabled_state {
-                        field.set_disabled_state_and_notify(cx, disabled_state);
-                    } else if field.as_element().disabled_state() {
-                        field.maybe_update_form_control_disabled(cx);
-                    }
+                if let AttributeMutation::Set(Some(_)) = mutation {
+                    // Fieldset was already disabled before.
+                    return;
                 }
+                self.update_descendants_disabled_state(cx);
             },
             local_name!("form") => {
                 self.form_attribute_mutated(cx, mutation);
             },
             _ => {},
+        }
+    }
+
+    fn children_changed(&self, cx: &mut js::context::JSContext, mutation: &ChildrenMutation) {
+        if let Some(s) = self.super_type() {
+            s.children_changed(cx, mutation);
+        }
+        // Which legend comes first decides which controls this fieldset's disabled attribute
+        // reaches.
+        if self
+            .upcast::<Element>()
+            .has_attribute(&local_name!("disabled"))
+        {
+            self.update_descendants_disabled_state(cx);
         }
     }
 }

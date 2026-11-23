@@ -324,6 +324,14 @@ impl<T: ClipboardProvider> TextInput<T> {
         self.rope.index_to_utf16_offset(self.selection_end())
     }
 
+    /// The selected part of the content, as displayed (before any value sanitization).
+    pub(crate) fn selected_text(&self) -> String {
+        let start = self.selection_start_offset().0 as usize;
+        let end = self.rope.index_to_utf8_offset(self.selection_end()).0 as usize;
+        let content = self.rope.contents();
+        content.get(start..end).unwrap_or_default().to_owned()
+    }
+
     /// Whether or not there is an active uncollapsed selection. This means that the
     /// selection origin is set and it differs from the edit point.
     #[inline]

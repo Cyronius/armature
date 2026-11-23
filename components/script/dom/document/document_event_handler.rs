@@ -67,6 +67,7 @@ use crate::dom::gamepad::gamepad::{Gamepad, contains_user_gesture};
 #[cfg(feature = "gamepad")]
 use crate::dom::gamepad::gamepadevent::GamepadEventType;
 use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
+use crate::dom::html::form_controls::htmlselectelement::HTMLSelectElement;
 use crate::dom::html::popover::light_dismiss_open_popovers;
 use crate::dom::inputevent::HitTestResult;
 use crate::dom::iterators::ShadowIncluding;
@@ -2383,7 +2384,13 @@ impl DocumentEventHandler {
             ) &&
             let Key::Named(named_key) = &event.key &&
             let Some(focused) = focused_element.as_deref() &&
-            super::focusgroup::handle_directional_key(cx, &self.window, focused, named_key)
+            (focused.downcast::<HTMLSelectElement>().is_some_and(|select| {
+                select.handle_keyboard_selection(cx, named_key)
+            }) || focused.downcast::<HTMLInputElement>().is_some_and(|input| {
+                crate::dom::html::form_controls::input_type::radio_input_type::handle_radio_group_navigation(
+                    cx, input, named_key,
+                )
+            }) || super::focusgroup::handle_directional_key(cx, &self.window, focused, named_key))
         {
             return input_event_result | InputEventResult::Consumed;
         }

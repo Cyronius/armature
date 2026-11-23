@@ -41,7 +41,7 @@ use crate::dom::range::Range;
 use crate::dom::selection_range::{RootedSelectionBoundary, SelectionBoundary, SelectionRange};
 use crate::dom::staticrange::StaticRange;
 use crate::dom::traversal::FlatTreeForSelectionNoGcTraversal;
-use crate::dom::types::ShadowRoot;
+use crate::dom::types::{HTMLInputElement, HTMLTextAreaElement, ShadowRoot};
 use crate::dom::{CharacterData, FlatTreeParent, NodeDamage, NodeFlags, StartOrEnd};
 
 /// Used value of [`user-select`](https://drafts.csswg.org/css-ui-4/#propdef-user-select):
@@ -1425,6 +1425,24 @@ impl SelectionMethods<crate::DomTypeHolder> for Selection {
         // >
         // > If the selection is within a textarea or input element, it must return the
         // > selected substring in its value.
+        //
+        // As in Gecko, this is the text control's own selection while it is focused, taken from
+        // the text as displayed.
+        if let Some(focused) = self.document.focus_handler().focused_area().element() {
+            let text = if let Some(input) = focused.downcast::<HTMLInputElement>() {
+                input
+                    .is_textual_or_password()
+                    .then(|| input.selected_text())
+                    .flatten()
+            } else {
+                focused
+                    .downcast::<HTMLTextAreaElement>()
+                    .and_then(HTMLTextAreaElement::selected_text)
+            };
+            if let Some(text) = text {
+                return DOMString::from(text);
+            }
+        }
         let Some(visible_selection) =
             FlatTreeSelection::from_selection_if_renderable(cx.no_gc(), self)
         else {

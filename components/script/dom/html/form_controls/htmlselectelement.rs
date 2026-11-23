@@ -542,6 +542,46 @@ impl HTMLSelectElement {
         }
     }
 
+    /// Up and down arrows (and Home and End) on a focused drop-down select change its
+    /// selection without opening the picker, firing input and change events, as Gecko's
+    /// `HTMLSelectEventListener` does for a closed combobox. Returns whether the key was used.
+    pub(crate) fn handle_keyboard_selection(
+        &self,
+        cx: &mut JSContext,
+        key: &keyboard_types::NamedKey,
+    ) -> bool {
+        use keyboard_types::NamedKey;
+
+        // While the picker is open, the keys move through the picker instead.
+        if self.Multiple() ||
+            self.display_size() != 1 ||
+            self.upcast::<Element>().state().contains(ElementState::OPEN)
+        {
+            return false;
+        }
+        let enabled: Vec<(usize, bool)> = self
+            .list_of_options(cx.no_gc())
+            .enumerate()
+            .filter(|(_, option)| !option.upcast::<Element>().disabled_state())
+            .map(|(index, option)| (index, option.Selected()))
+            .collect();
+        if enabled.is_empty() {
+            return false;
+        }
+        let current = enabled.iter().position(|(_, selected)| *selected);
+        let target = match (key, current) {
+            (NamedKey::ArrowDown, Some(position)) => (position + 1).min(enabled.len() - 1),
+            (NamedKey::ArrowDown, None) | (NamedKey::Home, _) => 0,
+            (NamedKey::ArrowUp, Some(position)) => position.saturating_sub(1),
+            (NamedKey::ArrowUp, None) | (NamedKey::End, _) => enabled.len() - 1,
+            _ => return false,
+        };
+        if Some(target) != current {
+            self.handle_embedder_response(cx, vec![enabled[target].0]);
+        }
+        true
+    }
+
     fn multiple_attribute_mutated(&self, cx: &mut JSContext, mutation: AttributeMutation) {
         if mutation.is_removal() {
             let mut first_enabled: Option<DomRoot<HTMLOptionElement>> = None;

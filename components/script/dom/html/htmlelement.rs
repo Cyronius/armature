@@ -31,6 +31,7 @@ use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::{
 };
 use crate::dom::bindings::codegen::Bindings::HTMLLabelElementBinding::HTMLLabelElementMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLOrSVGOrMathMLElementBinding::FocusOptions;
+use crate::dom::bindings::codegen::Bindings::NodeBinding::GetRootNodeOptions;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::Node_Binding::NodeMethods;
 use crate::dom::bindings::codegen::Bindings::ShadowRootBinding::ShadowRoot_Binding::ShadowRootMethods;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
@@ -315,6 +316,7 @@ impl HTMLElement {
         match self.upcast::<Node>().type_id() {
             NodeTypeId::Element(ElementTypeId::HTMLElement(
                 HTMLElementTypeId::HTMLButtonElement |
+                HTMLElementTypeId::HTMLFieldSetElement |
                 HTMLElementTypeId::HTMLInputElement |
                 HTMLElementTypeId::HTMLSelectElement |
                 HTMLElementTypeId::HTMLTextAreaElement,
@@ -1452,8 +1454,11 @@ impl HTMLElement {
         // around; this may be hard since labels need to keep working
         // even as they get detached into a subtree and reattached to
         // a document.)
-        let root_element = element.root_element();
-        let root_node = root_element.upcast::<Node>();
+        // The labels live in the same tree as the control, whose root may be a shadow root
+        // with several element children.
+        let root_node = element
+            .upcast::<Node>()
+            .GetRootNode(&GetRootNodeOptions::empty());
         root_node
             .traverse_preorder_unrooted(no_gc, ShadowIncluding::No)
             .filter_map(UnrootedDom::downcast::<HTMLLabelElement>)
@@ -1470,8 +1475,9 @@ impl HTMLElement {
     pub(crate) fn labels_count(&self, no_gc: &NoGC) -> u32 {
         // see label_at comments about performance
         let element = self.as_element();
-        let root_element = element.root_element();
-        let root_node = root_element.upcast::<Node>();
+        let root_node = element
+            .upcast::<Node>()
+            .GetRootNode(&GetRootNodeOptions::empty());
         root_node
             .traverse_preorder_unrooted(no_gc, ShadowIncluding::No)
             .filter_map(UnrootedDom::downcast::<HTMLLabelElement>)

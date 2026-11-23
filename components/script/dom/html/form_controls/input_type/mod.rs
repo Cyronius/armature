@@ -379,6 +379,10 @@ bitflags! {
 pub(crate) trait SpecificInputType {
     fn sanitize_value(&self, _input: &HTMLInputElement, _value: &mut DOMString) {}
 
+    /// Types whose user-entered text is kept as typed, but whose `value` getter returns the
+    /// sanitized value, following Gecko's `HTMLInputElement::SanitizesOnValueGetter`.
+    fn sanitize_value_for_getter(&self, _input: &HTMLInputElement, _value: &mut DOMString) {}
+
     fn text_input_widget(&self) -> Option<&DomRefCell<TextInputWidget>>;
 
     fn convert_string_to_number(&self, _value: &str) -> Option<f64> {

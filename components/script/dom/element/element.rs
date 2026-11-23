@@ -6176,7 +6176,14 @@ impl Element {
             let Some(ancestor_element) = ancestor.downcast::<HTMLFieldSetElement>() else {
                 continue;
             };
-            if !ancestor_element.upcast::<Element>().disabled_state() {
+            // https://html.spec.whatwg.org/multipage/#concept-fe-disabled
+            // Only a fieldset whose disabled attribute is specified disables its descendants;
+            // a fieldset that is itself disabled by an ancestor does not shield the controls
+            // in its own first legend from that ancestor.
+            if !ancestor_element
+                .upcast::<Element>()
+                .has_attribute(&local_name!("disabled"))
+            {
                 continue;
             }
             if !ancestor.is_parent_of(node) &&

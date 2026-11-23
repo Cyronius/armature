@@ -108,6 +108,13 @@ pub(crate) struct HTMLFormElement {
     /// The current generation of past names, i.e., the number of name changes to the name.
     current_name_generation: Cell<usize>,
 
+    /// Live `RadioNodeList`s handed out by the named getter, keyed by name and by whether the
+    /// list holds image inputs, so that `form.name` returns the same object each time, as
+    /// Gecko's form controls collection does.
+    #[expect(clippy::type_complexity)]
+    radio_node_lists:
+        DomRefCell<HashMapTracedValues<(Atom, bool), Dom<RadioNodeList>, FxBuildHasher>>,
+
     firing_submission_events: Cell<bool>,
     rel_list: MutNullableDom<DOMTokenList>,
 
@@ -120,6 +127,28 @@ pub(crate) struct HTMLFormElement {
 }
 
 impl HTMLFormElement {
+    fn cached_radio_node_list(
+        &self,
+        cx: &mut JSContext,
+        window: &Window,
+        name: &Atom,
+        images: bool,
+    ) -> DomRoot<RadioNodeList> {
+        let key = (name.clone(), images);
+        if let Some(list) = self.radio_node_lists.borrow().get(&key) {
+            return DomRoot::from_ref(&**list);
+        }
+        let list = if images {
+            RadioNodeList::new_images(cx, window, self, name)
+        } else {
+            RadioNodeList::new_controls_except_image_inputs(cx, window, self, name)
+        };
+        self.radio_node_lists
+            .safe_borrow_mut(cx.no_gc())
+            .insert(key, Dom::from_ref(&*list));
+        list
+    }
+
     fn new_inherited(
         local_name: LocalName,
         prefix: Option<Prefix>,
@@ -137,6 +166,7 @@ impl HTMLFormElement {
             elements: Default::default(),
             controls: DomRefCell::new(Vec::new()),
             past_names_map: DomRefCell::new(HashMapTracedValues::new_fx()),
+            radio_node_lists: DomRefCell::new(HashMapTracedValues::new_fx()),
             current_name_generation: Cell::new(0),
             firing_submission_events: Cell::new(false),
             rel_list: Default::default(),
@@ -461,13 +491,12 @@ impl HTMLFormElementMethods<crate::DomTypeHolder> for HTMLFormElement {
         let name = Atom::from(name);
 
         // Step 1
-        let mut candidates =
-            RadioNodeList::new_controls_except_image_inputs(cx, &window, self, &name);
+        let mut candidates = self.cached_radio_node_list(cx, &window, &name, false);
         let mut candidates_length = candidates.Length(cx);
 
         // Step 2
         if candidates_length == 0 {
-            candidates = RadioNodeList::new_images(cx, &window, self, &name);
+            candidates = self.cached_radio_node_list(cx, &window, &name, true);
             candidates_length = candidates.Length(cx);
         }
 
@@ -1753,6 +1782,8 @@ pub(crate) trait FormControl: DomObject<ReflectorType = ()> + NodeTraits {
     fn reset_form_owner(&self, cx: &mut JSContext) {
         let elem = self.to_element();
         let node = elem.upcast::<Node>();
+        // Step 1. Unset element's parser inserted flag.
+        node.set_flag(NodeFlags::PARSER_ASSOCIATED_FORM_OWNER, false);
         let old_owner = self.form_owner();
         let has_form_id = elem.has_attribute(&local_name!("form"));
         let nearest_form_ancestor = node
@@ -1856,8 +1887,10 @@ pub(crate) trait FormControl: DomObject<ReflectorType = ()> + NodeTraits {
         // Part of step 12.
         // '..suppress the running of the reset the form owner algorithm
         // when the parser subsequently attempts to insert the element..'
+        // The parser inserted flag stays set until the form owner is next reset, so that
+        // moving the element together with its form owner (e.g. moving a whole table holding
+        // a form and its controls) keeps the association.
         let must_skip_reset = node.get_flag(NodeFlags::PARSER_ASSOCIATED_FORM_OWNER);
-        node.set_flag(NodeFlags::PARSER_ASSOCIATED_FORM_OWNER, false);
 
         if !must_skip_reset {
             self.form_attribute_mutated(cx, AttributeMutation::Set(None));

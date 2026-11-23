@@ -170,6 +170,15 @@ static DEFAULT_MIN_LENGTH: i32 = -1;
 
 #[expect(non_snake_case)]
 impl HTMLInputElement {
+    /// The text selected in this control, if it is a text control, for the stringification of
+    /// the document's selection while the control is focused.
+    pub(crate) fn selected_text(&self) -> Option<String> {
+        if !self.upcast::<Element>().focus_state() {
+            return None;
+        }
+        Some(self.text_input.borrow().selected_text())
+    }
+
     fn new_inherited(
         local_name: LocalName,
         prefix: Option<Prefix>,
@@ -864,10 +873,16 @@ impl HTMLInputElement {
         // https://html.spec.whatwg.org/multipage/#the-step-attribute%3Asuffering-from-a-step-mismatch
         if let Some(step) = self.allowed_value_step() {
             // TODO: Spec has some issues here, see https://github.com/whatwg/html/issues/5207.
-            // Chrome and Firefox parse values as decimals to get exact results,
-            // we probably should too.
-            let diff = (self.step_base() - value_as_number) % step / value_as_number;
-            if diff.abs() > 1e-12 {
+            // Chrome and Firefox parse values as decimals to get exact results; do the same when
+            // the numbers' shortest decimal forms fit, as Gecko's `Decimal` arithmetic does.
+            let mismatch = match decimal_step_mismatch(self.step_base(), value_as_number, step) {
+                Some(mismatch) => mismatch,
+                None => {
+                    let diff = (self.step_base() - value_as_number) % step / value_as_number;
+                    diff.abs() > 1e-12
+                },
+            };
+            if mismatch {
                 failed_flags.insert(ValidationFlags::STEP_MISMATCH);
             }
         }
@@ -1325,7 +1340,13 @@ impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
     /// <https://html.spec.whatwg.org/multipage/#dom-input-value>
     fn Value(&self) -> DOMString {
         match self.value_mode() {
-            ValueMode::Value => self.text_input.borrow().get_content(),
+            ValueMode::Value => {
+                let mut value = self.text_input.borrow().get_content();
+                self.input_type()
+                    .as_specific()
+                    .sanitize_value_for_getter(self, &mut value);
+                value
+            },
             ValueMode::Default => self
                 .upcast::<Element>()
                 .get_attribute_string_value(&local_name!("value"))
@@ -1763,9 +1784,12 @@ impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
         }
 
         // Step 2. If this's relevant settings object's origin is not same origin with this's
-        // relevant settings object's top-level origin, then throw a "SecurityError" DOMException.
+        // relevant settings object's top-level origin, and this's type attribute is not in the
+        // File Upload state or Color state, then throw a "SecurityError" DOMException.
         let window = self.owner_window();
-        if window.is_cross_origin_with_top_level() {
+        if window.is_cross_origin_with_top_level() &&
+            !matches!(self.input_type().as_str(), "file" | "color")
+        {
             return Err(Error::Security(None));
         }
 
@@ -2931,8 +2955,13 @@ impl Validatable for HTMLInputElement {
             failed_flags.insert(ValidationFlags::PATTERN_MISMATCH);
         }
 
+        // Bad input is judged on the text as typed, before the getter sanitizes it.
+        let raw_value = match self.value_mode() {
+            ValueMode::Value => self.text_input.borrow().get_content(),
+            _ => value.clone(),
+        };
         if validate_flags.contains(ValidationFlags::BAD_INPUT) &&
-            self.suffers_from_bad_input(&value)
+            self.suffers_from_bad_input(&raw_value)
         {
             failed_flags.insert(ValidationFlags::BAD_INPUT);
         }
@@ -3164,4 +3193,42 @@ impl PendingWebDriverResponse {
             let _ = self.response_sender.send(Err(ErrorStatus::InvalidArgument));
         }
     }
+}
+
+/// Splits a finite number into an integer mantissa and a power-of-ten exponent, using the
+/// shortest decimal representation that round-trips (so 0.1 is 1e-1, not its binary value).
+fn decimal_parts(number: f64) -> Option<(i128, i32)> {
+    if !number.is_finite() {
+        return None;
+    }
+    let formatted = format!("{number:e}");
+    let (mantissa, exponent) = formatted.split_once('e')?;
+    let exponent: i32 = exponent.parse().ok()?;
+    let (integer, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits: i128 = format!("{integer}{fraction}").parse().ok()?;
+    Some((digits, exponent - fraction.len() as i32))
+}
+
+/// Whether `value` is not `base` plus an integral multiple of `step`, computed exactly on the
+/// numbers' decimal forms. Returns `None` when the numbers are too far apart to compare exactly.
+fn decimal_step_mismatch(base: f64, value: f64, step: f64) -> Option<bool> {
+    let parts = [
+        decimal_parts(base)?,
+        decimal_parts(value)?,
+        decimal_parts(step)?,
+    ];
+    let exponent = parts.iter().map(|(_, exponent)| *exponent).min()?;
+    let scaled: Vec<i128> = parts
+        .iter()
+        .map(|(digits, own_exponent)| {
+            10i128
+                .checked_pow(u32::try_from(own_exponent - exponent).ok()?)
+                .and_then(|scale| digits.checked_mul(scale))
+        })
+        .collect::<Option<_>>()?;
+    let step = scaled[2];
+    if step == 0 {
+        return None;
+    }
+    Some(scaled[1].checked_sub(scaled[0])? % step != 0)
 }

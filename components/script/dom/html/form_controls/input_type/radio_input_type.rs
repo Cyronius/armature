@@ -157,7 +157,25 @@ impl SpecificInputType for RadioInputType {
         cx: &mut JSContext,
         input: &HTMLInputElement,
     ) {
-        radio_group_updated(cx, input, input.radio_group_name().as_ref());
+        let group = input.radio_group_name();
+        if input.upcast::<Node>().is_connected() {
+            radio_group_updated(cx, input, group.as_ref());
+            return;
+        }
+        // Only becoming connected unchecks the other buttons of the group; inserting into a
+        // disconnected tree just updates the group's states.
+        let root = input
+            .upcast::<Node>()
+            .GetRootNode(&GetRootNodeOptions::empty());
+        let form = input.form_owner();
+        let members: Vec<DomRoot<HTMLInputElement>> =
+            radio_group_iter(input, group.as_ref(), form.as_deref(), &root).collect();
+        for member in members {
+            member.update_indeterminate_state(cx.no_gc());
+            member
+                .validity_state(cx)
+                .perform_validation_and_update(cx, ValidationFlags::all());
+        }
     }
 
     fn unbind_from_tree(
@@ -352,4 +370,66 @@ pub(crate) fn in_same_group(
             true
         },
     }
+}
+
+/// Arrow keys move the focus to the next or previous radio button of the focused radio
+/// button's group and check it, skipping disabled and unrendered buttons and wrapping around,
+/// as Gecko's `HTMLInputElement::MaybeHandleRadioButtonNavigation` and
+/// `RadioGroupContainer::GetNextRadioButton` do. Returns whether the key was used.
+pub(crate) fn handle_radio_group_navigation(
+    cx: &mut JSContext,
+    input: &HTMLInputElement,
+    key: &keyboard_types::NamedKey,
+) -> bool {
+    use keyboard_types::NamedKey;
+
+    if !matches!(*input.input_type(), InputType::Radio(_)) {
+        return false;
+    }
+    let forward = match key {
+        NamedKey::ArrowDown => true,
+        NamedKey::ArrowUp => false,
+        NamedKey::ArrowLeft | NamedKey::ArrowRight => {
+            let rtl = input.upcast::<Element>().directionality() == "rtl";
+            rtl == (*key == NamedKey::ArrowLeft)
+        },
+        _ => return false,
+    };
+    let Some(group) = input.radio_group_name() else {
+        return false;
+    };
+    let root = input
+        .upcast::<Node>()
+        .GetRootNode(&GetRootNodeOptions::empty());
+    let form = input.form_owner();
+    let members: Vec<DomRoot<HTMLInputElement>> =
+        radio_group_iter(input, Some(&group), form.as_deref(), &root).collect();
+    let Some(position) = members.iter().position(|member| &**member == input) else {
+        return false;
+    };
+    let count = members.len();
+    let next = (1..count)
+        .map(|step| {
+            if forward {
+                (position + step) % count
+            } else {
+                (position + count - step) % count
+            }
+        })
+        .map(|index| &members[index])
+        .find(|radio| {
+            !radio.upcast::<Element>().disabled_state() &&
+                radio.upcast::<Node>().is_being_rendered(None)
+        });
+    let Some(next) = next else {
+        return false;
+    };
+    next.upcast::<Node>().run_the_focusing_steps(
+        cx,
+        None,
+        crate::dom::node::focus::FocusTrigger::Keyboard,
+    );
+    next.upcast::<Node>()
+        .fire_synthetic_pointer_event_not_trusted(cx, atom!("click"));
+    true
 }

@@ -64,6 +64,10 @@ impl SpecificInputType for EmailInputType {
         }
     }
 
+    fn sanitize_value_for_getter(&self, input: &HTMLInputElement, value: &mut DOMString) {
+        self.sanitize_value(input, value);
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#email-state-(type=email):suffering-from-bad-input>
     /// <https://html.spec.whatwg.org/multipage/i#email-state-(type=email):suffering-from-bad-input-2>
     fn suffers_from_bad_input(&self, _value: &DOMString) -> bool {

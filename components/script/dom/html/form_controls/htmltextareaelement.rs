@@ -101,6 +101,15 @@ const DEFAULT_MAX_LENGTH: i32 = -1;
 const DEFAULT_MIN_LENGTH: i32 = -1;
 
 impl HTMLTextAreaElement {
+    /// The text selected in this control, if it is a text control, for the stringification of
+    /// the document's selection while the control is focused.
+    pub(crate) fn selected_text(&self) -> Option<String> {
+        if !self.upcast::<Element>().focus_state() {
+            return None;
+        }
+        Some(self.text_input.borrow().selected_text())
+    }
+
     fn new_inherited(
         local_name: LocalName,
         prefix: Option<Prefix>,
@@ -843,6 +852,14 @@ impl VirtualMethods for HTMLTextAreaElement {
             s.children_changed(cx, mutation);
         }
         if !self.value_dirty.get() {
+            // "Replace all" removes the old children before inserting the new ones, and the
+            // removal alone empties the child text content, collapsing the selection to the
+            // start, as Gecko's separate ContentRemoved/ContentAppended notifications do.
+            if matches!(mutation, ChildrenMutation::ReplaceAll) {
+                self.text_input
+                    .safe_borrow_mut(cx.no_gc())
+                    .set_content(DOMString::new());
+            }
             self.reset(cx);
         }
     }
@@ -865,7 +882,11 @@ impl VirtualMethods for HTMLTextAreaElement {
         self.super_type().unwrap().pop(cx);
 
         // https://html.spec.whatwg.org/multipage/#the-textarea-element:stack-of-open-elements
-        self.reset(cx);
+        // A value set by script while the children were being parsed is kept, along with its
+        // selection, as Gecko's `HTMLTextAreaElement::DoneAddingChildren` does.
+        if !self.value_dirty.get() {
+            self.reset(cx);
+        }
     }
 }
 

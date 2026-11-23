@@ -747,6 +747,10 @@ impl WindowProxy {
         // will create a new top-level traversable
         // TODO: Integrate `create_auxiliary_browsing_context` here and have it follow the spec.
         else {
+            // Step 8.1. Consume user activation of currentNavigable's active window.
+            if let Some(document) = self.document() {
+                document.window().consume_user_activation();
+            }
             (
                 self.create_auxiliary_browsing_context(cx, name, noopener),
                 true,
