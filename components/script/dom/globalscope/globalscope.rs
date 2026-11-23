@@ -2316,6 +2316,25 @@ impl GlobalScope {
         }
     }
 
+    /// The data needed to fetch a web font from this global.
+    pub(crate) fn web_font_context(&self, no_gc: &NoGC) -> fonts::WebFontDocumentContext {
+        if let Some(window) = self.downcast::<Window>() {
+            return window.web_font_context(no_gc);
+        }
+        let task_source = self.task_manager().font_loading_task_source().to_sendable();
+        fonts::WebFontDocumentContext {
+            policy_container: self.policy_container(),
+            request_client: self.request_client(Some(no_gc)),
+            document_url: self.api_base_url(),
+            csp_handler: Box::new(crate::dom::window::FontCspHandler {
+                task_source: task_source.clone(),
+            }),
+            network_timing_handler: Box::new(crate::dom::window::FontNetworkTimingHandler {
+                task_source,
+            }),
+        }
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#concept-settings-object-policy-container>
     pub(crate) fn policy_container(&self) -> Arc<PolicyContainer> {
         if let Some(window) = self.downcast::<Window>() {

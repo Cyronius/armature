@@ -9,3 +9,4 @@
 pub(crate) mod css;
 pub(crate) mod stylesheet_loader;
 pub(crate) mod stylesheet_set;
+pub(crate) mod worker_font;

@@ -17,3 +17,9 @@ interface WorkerGlobalScope : GlobalScope {
   attribute EventHandler onrejectionhandled;
   attribute EventHandler onunhandledrejection;
 };
+
+// https://drafts.csswg.org/css-font-loading/#font-face-source
+partial interface WorkerGlobalScope {
+  [Pref="dom_fontface_enabled"]
+  readonly attribute FontFaceSet fonts;
+};

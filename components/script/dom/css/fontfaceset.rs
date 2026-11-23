@@ -83,19 +83,41 @@ impl FontFaceSet {
                 self.switch_to_loading(cx);
             },
             FontFaceLoadStatus::Loaded => {
-                let Some(window) = DomRoot::downcast::<Window>(self.global()) else {
-                    return;
-                };
-
+                let global = self.global();
                 let (family_name, template) = font_face
                     .template()
                     .expect("A loaded web font should have a template");
-                window
+                global
                     .font_context()
                     .add_template_to_font_context(family_name, template);
-                window.Document().dirty_all_nodes(cx.no_gc());
+                match DomRoot::downcast::<Window>(global) {
+                    Some(window) => window.Document().dirty_all_nodes(cx.no_gc()),
+                    // Workers have no document that is waiting for the fonts, so the set is ready as
+                    // soon as nothing is loading.
+                    None => self.maybe_fulfill_ready_promise_in_worker(cx),
+                }
+            },
+            FontFaceLoadStatus::Error => {
+                if DomRoot::downcast::<Window>(self.global()).is_none() {
+                    self.maybe_fulfill_ready_promise_in_worker(cx);
+                }
             },
             _ => {},
+        }
+    }
+
+    /// Fulfills the ready promise of a worker's set when none of its fonts are loading.
+    fn maybe_fulfill_ready_promise_in_worker(&self, cx: &mut JSContext) {
+        if self.global().font_context().web_fonts_still_loading() != 0 {
+            return;
+        }
+        let any_loading = self
+            .set_entries
+            .borrow()
+            .iter()
+            .any(|face| face.Status() == FontFaceLoadStatus::Loading);
+        if !any_loading {
+            self.fulfill_ready_promise_if_needed(cx);
         }
     }
 
@@ -276,6 +298,10 @@ impl FontFaceSet {
 impl FontFaceSetMethods<crate::DomTypeHolder> for FontFaceSet {
     /// <https://drafts.csswg.org/css-font-loading/#dom-fontfaceset-ready>
     fn Ready(&self, cx: &mut JSContext) -> RootedPromise {
+        if DomRoot::downcast::<Window>(self.global()).is_none() {
+            // Nothing else fulfills the promise of a worker's set.
+            self.maybe_fulfill_ready_promise_in_worker(cx);
+        }
         if self.promise.borrow().is_fulfilled() {
             // There may be pending style changes that cause new web fonts to start loading,
             // re-initializing document.fonts.ready.

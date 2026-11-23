@@ -1134,8 +1134,8 @@ impl Window {
 }
 
 #[derive(Debug, MallocSizeOf)]
-struct FontCspHandler {
-    task_source: SendableTaskSource,
+pub(crate) struct FontCspHandler {
+    pub(crate) task_source: SendableTaskSource,
 }
 
 impl CspViolationHandler for FontCspHandler {
@@ -1155,8 +1155,8 @@ impl CspViolationHandler for FontCspHandler {
 }
 
 #[derive(Debug, MallocSizeOf)]
-struct FontNetworkTimingHandler {
-    task_source: SendableTaskSource,
+pub(crate) struct FontNetworkTimingHandler {
+    pub(crate) task_source: SendableTaskSource,
 }
 
 impl NetworkTimingHandler for FontNetworkTimingHandler {

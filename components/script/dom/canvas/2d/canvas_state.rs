@@ -2002,6 +2002,15 @@ impl CanvasState {
             // in workers to resolve fonts with.
             None => {
                 let Some(window) = global.downcast::<Window>() else {
+                    // A worker has no layout to resolve the font with.
+                    let font = crate::css::worker_font::resolve_font_without_layout(
+                        &global.font_context(),
+                        &value.str(),
+                        &global.api_base_url(),
+                    );
+                    if let Some(font) = font {
+                        self.state.borrow_mut().font_style = Some(font);
+                    }
                     return;
                 };
                 let element = Element::create(

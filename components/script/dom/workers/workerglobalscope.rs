@@ -86,6 +86,7 @@ use crate::dom::performance::performanceresourcetiming::InitiatorType;
 use crate::dom::promise::RootedPromise;
 use crate::dom::reporting::reportingendpoint::{ReportingEndpoint, SendReportsToEndpoints};
 use crate::dom::reporting::reportingobserver::ReportingObserver;
+use crate::dom::fontfaceset::FontFaceSet;
 use crate::dom::serviceworker::cachestorage::CacheStorage;
 use crate::dom::sharedworkerglobalscope::SharedWorkerGlobalScope;
 use crate::dom::trustedtypes::trustedscripturl::TrustedScriptURL;
@@ -383,6 +384,9 @@ pub(crate) struct WorkerGlobalScope {
     /// <https://w3c.github.io/ServiceWorker/#global-caches-attribute>
     caches: MutNullableDom<CacheStorage>,
 
+    /// <https://drafts.csswg.org/css-font-loading/#font-face-source>
+    fonts: MutNullableDom<FontFaceSet>,
+
     /// The [`TaskManager`] for this [`WorkerGlobalScope`].
     #[conditional_malloc_size_of]
     task_manager: Rc<TaskManager>,
@@ -443,6 +447,7 @@ impl WorkerGlobalScope {
                 init.unminify_js,
             ),
             caches: Default::default(),
+            fonts: Default::default(),
             worker_id: init.worker_id,
             worker_name: worker_name.traced(),
             worker_type,
@@ -785,6 +790,12 @@ impl WorkerGlobalScopeMethods<crate::DomTypeHolder> for WorkerGlobalScope {
     /// <https://html.spec.whatwg.org/multipage/#dom-workerglobalscope-self>
     fn Self_(&self) -> DomRoot<WorkerGlobalScope> {
         DomRoot::from_ref(self)
+    }
+
+    /// <https://drafts.csswg.org/css-font-loading/#font-face-source>
+    fn Fonts(&self, cx: &mut JSContext) -> DomRoot<FontFaceSet> {
+        self.fonts
+            .or_init(|| FontFaceSet::new(cx, self.upcast::<GlobalScope>(), None))
     }
 
     /// <https://w3c.github.io/IndexedDB/#factory-interface>
