@@ -329,7 +329,12 @@ impl ErrorInfo {
     pub(crate) fn from_value(cx: &mut JSContext, value: HandleValue) -> ErrorInfo {
         if value.is_object() {
             rooted!(&in(cx) let object = value.to_object());
-            if let Some(info) = ErrorInfo::from_object(cx, object.handle()) {
+            if let Some(mut info) = ErrorInfo::from_object(cx, object.handle()) {
+                // The message of an error that has none is a generic one, as the message of the
+                // event is not empty.
+                if info.message.is_empty() {
+                    info.message = "uncaught exception: error".to_owned();
+                }
                 return info;
             }
         }
