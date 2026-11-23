@@ -4227,12 +4227,11 @@ class CGDefineProxyHandler(CGAbstractMethod):
 
     def definition_body(self) -> CGThing:
         customDefineProperty = 'proxyhandler::define_property'
-        if self.descriptor.isMaybeCrossOriginObject() or self.descriptor.operations['IndexedSetter'] or \
-           self.descriptor.operations['NamedSetter']:
+        if proxyNeedsCustomDefineProperty(self.descriptor):
             customDefineProperty = 'defineProperty::<D>'
 
         customDelete = 'proxyhandler::delete'
-        if self.descriptor.isMaybeCrossOriginObject() or self.descriptor.operations['NamedDeleter']:
+        if proxyNeedsCustomDelete(self.descriptor):
             customDelete = 'delete::<D>'
 
         customGetPrototypeIfOrdinary = 'Some(proxyhandler::get_prototype_if_ordinary)'
@@ -6885,6 +6884,22 @@ true"""
         return CGGeneric(self.getBody())
 
 
+def proxyNeedsCustomDefineProperty(descriptor: Descriptor) -> bool:
+    # Armature: a proxy with indexed or named properties but no setter for them must refuse to
+    # define a property that would shadow one
+    # (https://webidl.spec.whatwg.org/#legacy-platform-object-defineownproperty).
+    return bool(descriptor.isMaybeCrossOriginObject() or descriptor.operations['IndexedSetter'] or
+                descriptor.operations['NamedSetter'] or descriptor.operations['IndexedGetter'] or
+                descriptor.supportsNamedProperties())
+
+
+def proxyNeedsCustomDelete(descriptor: Descriptor) -> bool:
+    # Armature: supported indexed properties, and visible named properties without a named
+    # deleter, cannot be deleted (https://webidl.spec.whatwg.org/#legacy-platform-object-delete).
+    return bool(descriptor.isMaybeCrossOriginObject() or descriptor.operations['NamedDeleter'] or
+                descriptor.operations['IndexedGetter'] or descriptor.supportsNamedProperties())
+
+
 class CGDOMJSProxyHandler_defineProperty(CGAbstractExternMethod):
     def __init__(self, descriptor: Descriptor) -> None:
         args = [Argument('*mut RawJSContext', 'cx'), Argument('RawHandleObject', 'proxy'),
@@ -6924,7 +6939,7 @@ class CGDOMJSProxyHandler_defineProperty(CGAbstractExternMethod):
                     "}\n")
         elif self.descriptor.operations['IndexedGetter']:
             set += ("if get_array_index_from_id(id).is_some() {\n"
-                    "    return (*opresult).failNoIndexedSetter();\n"
+                    "    return (*opresult).fail_no_indexed_setter();\n"
                     "}\n")
 
         namedSetter = self.descriptor.operations['NamedSetter']
@@ -6977,11 +6992,55 @@ class CGDOMJSProxyHandler_delete(CGAbstractExternMethod):
                 let cx = &mut cx;
                 """)
 
+        indexedGetter = self.descriptor.operations['IndexedGetter']
+        if indexedGetter:
+            set += ("let index = get_array_index_from_id(id);\n"
+                    "if let Some(index) = index {\n"
+                    "    let this = UnwrapProxy::<D>(proxy.into());\n"
+                    "    let this = &*this;\n"
+                    f"{CGIndenter(CGProxyIndexedGetter(self.descriptor)).define()}\n"
+                    "    if result.is_some() {\n"
+                    "        return (*res).fail_cant_delete();\n"
+                    "    }\n"
+                    "    return (*res).succeed();\n"
+                    "}\n")
+
         if self.descriptor.operations['NamedDeleter']:
             if self.descriptor.hasLegacyUnforgeableMembers:
                 raise TypeError("Can't handle a deleter on an interface that has "
                                 "unforgeables. Figure out how that should work!")
             set += CGProxyNamedDeleter(self.descriptor).define()
+        elif self.descriptor.supportsNamedProperties():
+            condition = "id.is_string() || id.is_int()"
+            if indexedGetter:
+                condition = f"index.is_none() && ({condition})"
+            # A named property is not visible when an expando shadows it.
+            set += dedent(
+                """
+                rooted!(&in(cx) let mut expando = ptr::null_mut::<JSObject>());
+                get_expando_object(proxy, expando.handle_mut());
+                let mut has_expando = false;
+                if !expando.is_null() && !JS_HasPropertyById(cx, expando.handle(), id, &mut has_expando) {
+                    return false;
+                }
+                """)
+            if self.descriptor.interface.getExtendedAttribute("LegacyOverrideBuiltIns"):
+                visible = "!has_expando"
+            else:
+                set += dedent(
+                    f"""
+                    let mut has_on_proto = false;
+                    if ({condition}) && !has_expando && !has_property_on_prototype(cx, proxy, id, &mut has_on_proto) {{
+                        return false;
+                    }}
+                    """)
+                visible = "!has_expando && !has_on_proto"
+            set += (f"if ({condition}) && {visible} {{\n"
+                    f"{CGIndenter(CGProxyNamedGetter(self.descriptor)).define()}\n"
+                    "    if result.is_some() {\n"
+                    "        return (*res).fail_cant_delete();\n"
+                    "    }\n"
+                    "}\n")
         set += "return proxyhandler::delete(cx.raw_cx(), proxy.into(), id.into(), res);"
         return set
 
@@ -7940,14 +7999,13 @@ class CGDescriptor(CGThing):
                 cgThings.append(CGDOMJSProxyHandler_get(descriptor))
                 cgThings.append(CGDOMJSProxyHandler_hasOwn(descriptor))
 
-                if descriptor.isMaybeCrossOriginObject() or descriptor.operations['IndexedSetter'] or \
-                   descriptor.operations['NamedSetter']:
+                if proxyNeedsCustomDefineProperty(descriptor):
                     cgThings.append(CGDOMJSProxyHandler_defineProperty(descriptor))
 
                 # We want to prevent indexed deleters from compiling at all.
                 assert not descriptor.operations['IndexedDeleter']
 
-                if descriptor.isMaybeCrossOriginObject() or descriptor.operations['NamedDeleter']:
+                if proxyNeedsCustomDelete(descriptor):
                     cgThings.append(CGDOMJSProxyHandler_delete(descriptor))
 
                 if descriptor.isMaybeCrossOriginObject():
