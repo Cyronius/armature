@@ -108,6 +108,9 @@ pub(crate) fn handle_directional_key(
         return false;
     };
     let tokens = tokens(&owner).unwrap_or_default();
+    if tokens.iter().any(|token| token == "grid") {
+        return handle_grid_key(cx, &owner, &tokens, focused, key);
+    }
     // What the behavior token implies, which the axis and wrap tokens override.
     let behavior = tokens
         .iter()
@@ -199,5 +202,207 @@ pub(crate) fn handle_directional_key(
             .run_the_focusing_steps(cx, None, FocusTrigger::Keyboard);
     }
     // Directional input is used up inside a focusgroup, whether or not the focus moved.
+    true
+}
+
+/// A cell of a grid.
+struct GridCell {
+    element: DomRoot<Element>,
+    row: usize,
+    column: usize,
+}
+
+/// Lays out the cells of a table in a grid: the cells with their positions, and which cell covers
+/// each position, taking row and column spans into account.
+fn table_grid(table: &Element) -> (Vec<GridCell>, Vec<Vec<Option<usize>>>) {
+    let span = |cell: &Element, name: &str| -> usize {
+        cell.get_attribute_string_value(&LocalName::from(name))
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(1)
+            .min(1000)
+    };
+    let is_html = |element: &Element, name: &str| {
+        element.is_html_element() && &**element.local_name() == name
+    };
+
+    // The rows: the `tr` children of the table and of its row groups.
+    let mut rows: Vec<DomRoot<Element>> = Vec::new();
+    for child in table.upcast::<Node>().children() {
+        let Some(child) = child.downcast::<Element>() else {
+            continue;
+        };
+        if is_html(child, "tr") {
+            rows.push(DomRoot::from_ref(child));
+        } else if is_html(child, "thead") || is_html(child, "tbody") || is_html(child, "tfoot") {
+            for row in child.upcast::<Node>().children() {
+                if let Some(row) = row.downcast::<Element>() &&
+                    is_html(row, "tr")
+                {
+                    rows.push(DomRoot::from_ref(row));
+                }
+            }
+        }
+    }
+
+    let mut cells: Vec<GridCell> = Vec::new();
+    let mut occupancy: Vec<Vec<Option<usize>>> = Vec::new();
+    let occupy = |occupancy: &mut Vec<Vec<Option<usize>>>, row: usize, column: usize, index| {
+        while occupancy.len() <= row {
+            occupancy.push(Vec::new());
+        }
+        let line = &mut occupancy[row];
+        while line.len() <= column {
+            line.push(None);
+        }
+        line[column] = Some(index);
+    };
+    for (row_index, row) in rows.iter().enumerate() {
+        if occupancy.len() <= row_index {
+            occupancy.push(Vec::new());
+        }
+        let mut column = 0;
+        for cell in row.upcast::<Node>().children() {
+            let Some(cell) = cell.downcast::<Element>() else {
+                continue;
+            };
+            if !is_html(cell, "td") && !is_html(cell, "th") {
+                continue;
+            }
+            // Skip the columns that are covered from rows above.
+            while occupancy[row_index].get(column).is_some_and(Option::is_some) {
+                column += 1;
+            }
+            let index = cells.len();
+            cells.push(GridCell {
+                element: DomRoot::from_ref(cell),
+                row: row_index,
+                column,
+            });
+            for row_offset in 0..span(cell, "rowspan") {
+                for column_offset in 0..span(cell, "colspan") {
+                    occupy(&mut occupancy, row_index + row_offset, column + column_offset, index);
+                }
+            }
+            column += span(cell, "colspan");
+        }
+    }
+    let width = occupancy.iter().map(Vec::len).max().unwrap_or(0);
+    for line in occupancy.iter_mut() {
+        line.resize(width, None);
+    }
+    (cells, occupancy)
+}
+
+/// Moves the focus in a grid, which is a table, with a directional key.
+fn handle_grid_key(
+    cx: &mut JSContext,
+    table: &Element,
+    tokens: &[String],
+    focused: &Element,
+    key: &NamedKey,
+) -> bool {
+    let has = |token: &str| tokens.iter().any(|candidate| candidate == token);
+    let row_wrap = has("wrap") || has("rowwrap");
+    let column_wrap = has("wrap") || has("colwrap");
+    let row_flow = has("flow") || has("rowflow");
+    let column_flow = has("flow") || has("colflow");
+
+    if !table.local_name().eq_str_ignore_ascii_case("table") {
+        return false;
+    }
+    let (cells, occupancy) = table_grid(table);
+    let rows = occupancy.len() as isize;
+    let columns = occupancy.first().map_or(0, Vec::len) as isize;
+    let Some(current) = cells.iter().position(|cell| *cell.element == *focused) else {
+        return false;
+    };
+    let (mut row, mut column) = (cells[current].row as isize, cells[current].column as isize);
+
+    let target = match key {
+        NamedKey::Home | NamedKey::End => return false,
+        _ => {
+            let (row_step, column_step) = match key {
+                NamedKey::ArrowRight => (0, 1),
+                NamedKey::ArrowLeft => (0, -1),
+                NamedKey::ArrowDown => (1, 0),
+                NamedKey::ArrowUp => (-1, 0),
+                _ => return false,
+            };
+            let mut found = None;
+            for _ in 0..(rows * columns * 2 + 4) {
+                row += row_step;
+                column += column_step;
+                // Leaving the grid wraps, flows to the next line or ends the movement.
+                if column >= columns {
+                    if row_flow {
+                        column = 0;
+                        row += 1;
+                        if row >= rows {
+                            row = 0;
+                        }
+                    } else if row_wrap {
+                        column = 0;
+                    } else {
+                        break;
+                    }
+                } else if column < 0 {
+                    if row_flow {
+                        column = columns - 1;
+                        row -= 1;
+                        if row < 0 {
+                            row = rows - 1;
+                        }
+                    } else if row_wrap {
+                        column = columns - 1;
+                    } else {
+                        break;
+                    }
+                }
+                if row >= rows {
+                    if column_flow {
+                        row = 0;
+                        column += 1;
+                        if column >= columns {
+                            column = 0;
+                        }
+                    } else if column_wrap {
+                        row = 0;
+                    } else {
+                        break;
+                    }
+                } else if row < 0 {
+                    if column_flow {
+                        row = rows - 1;
+                        column -= 1;
+                        if column < 0 {
+                            column = columns - 1;
+                        }
+                    } else if column_wrap {
+                        row = rows - 1;
+                    } else {
+                        break;
+                    }
+                }
+                let Some(index) = occupancy[row as usize][column as usize] else {
+                    continue;
+                };
+                if index == current {
+                    continue;
+                }
+                if cells[index].element.is_focusable_area(cx.no_gc()) {
+                    found = Some(index);
+                    break;
+                }
+            }
+            found
+        },
+    };
+    if let Some(index) = target {
+        cells[index]
+            .element
+            .upcast::<Node>()
+            .run_the_focusing_steps(cx, None, FocusTrigger::Keyboard);
+    }
     true
 }
