@@ -2143,10 +2143,6 @@ impl Element {
         self.namespace == ns!(html)
     }
 
-    pub(crate) fn is_svg_element(&self) -> bool {
-        self.namespace == ns!(svg)
-    }
-
     pub(crate) fn html_element_in_html_document(&self) -> bool {
         self.is_html_element() && self.upcast::<Node>().is_in_html_doc()
     }
