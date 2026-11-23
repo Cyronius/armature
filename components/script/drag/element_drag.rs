@@ -12,7 +12,10 @@ use script_bindings::cell::DomRefCell;
 use script_traits::ConstellationInputEvent;
 use style_traits::CSSPixel;
 
+use crate::dom::bindings::codegen::Bindings::DataTransferBinding::DataTransferMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::HTMLElementMethods;
+use crate::dom::bindings::str::DOMString;
+use html5ever::local_name;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::datatransfer::DataTransfer;
@@ -20,7 +23,9 @@ use crate::dom::dragevent::DragEvent;
 use crate::dom::element::Element;
 use crate::dom::event::Event;
 use crate::dom::eventtarget::EventTarget;
+use crate::dom::html::htmlanchorelement::HTMLAnchorElement;
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmlinputelement::HTMLInputElement;
 use crate::dom::html::htmlselectelement::HTMLSelectElement;
 use crate::dom::html::htmltextareaelement::HTMLTextAreaElement;
@@ -188,6 +193,20 @@ pub(crate) fn handle_move(
             // Step 1. Fire a DND event named dragstart at the source node.
             let source = DomRoot::from_ref(&*source);
             let data_transfer = DataTransfer::new_for_drag(cx, window);
+            // The default data of the drag: the address of an image or of a link.
+            let default_url = if source.is::<HTMLImageElement>() {
+                Some(source.get_url_attribute(&local_name!("src")))
+            } else if source.is::<HTMLAnchorElement>() {
+                Some(source.get_url_attribute(&local_name!("href")))
+            } else {
+                None
+            };
+            if let Some(url) = default_url.filter(|url| !url.0.is_empty()) {
+                data_transfer.SetData(
+                    DOMString::from("text/uri-list"),
+                    DOMString::from(format!("{}\r\n", url.0)),
+                );
+            }
             let not_canceled = fire(
                 cx,
                 window,
