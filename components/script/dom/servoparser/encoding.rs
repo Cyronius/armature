@@ -468,9 +468,25 @@ pub fn prescan_the_byte_stream_to_determine_the_encoding(
                 .iter()
                 .position(|byte| byte.is_ascii_whitespace() || *byte == b'>')?;
 
+            // The contents of elements that hold raw text are not markup, so the `meta` elements
+            // that look like they are in them are not looked at.
+            let name_end = remaining_byte_stream
+                .iter()
+                .position(|byte| byte.is_ascii_whitespace() || matches!(byte, b'>' | b'/'))
+                .unwrap_or(remaining_byte_stream.len());
+            let tag_name = remaining_byte_stream[1..name_end].to_ascii_lowercase();
+
             // Step 2. Repeatedly get an attribute until no further attributes can be found,
             // then jump to the step below labeled next byte.
             while get_an_attribute(byte_stream, &mut position).is_some() {}
+
+            if matches!(tag_name.as_slice(), b"script" | b"style" | b"title") {
+                let mut closing_tag = b"</".to_vec();
+                closing_tag.extend_from_slice(&tag_name);
+                position += byte_stream[position..]
+                    .windows(closing_tag.len())
+                    .position(|window| window.eq_ignore_ascii_case(&closing_tag))?;
+            }
         }
         // A sequence of bytes starting with: 0x3C 0x21 (`<!`)
         // A sequence of bytes starting with: 0x3C 0x2F (`</`)
