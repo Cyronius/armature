@@ -180,6 +180,7 @@ use crate::dom::hashchangeevent::HashChangeEvent;
 use crate::dom::pagerevealevent::PageRevealEvent;
 use crate::dom::history::History;
 use crate::dom::html::htmlanchorelement::HTMLAnchorElement;
+use crate::dom::htmldetailselement::HTMLDetailsElement;
 use crate::dom::html::htmlareaelement::HTMLAreaElement;
 use crate::dom::html::htmlbaseelement::HTMLBaseElement;
 use crate::dom::html::htmlcollection::{CollectionFilter, HTMLCollection};
@@ -1604,7 +1605,7 @@ impl Document {
         // Step 3.3. Set document's target element to target.
         self.set_target_element(cx.no_gc(), Some(target));
         // Step 3.4. Run the ancestor revealing algorithm on target.
-        // TODO
+        self.run_the_ancestor_revealing_algorithm(cx, target);
         // Step 3.5. Scroll target into view, with behavior set to "auto", block set to "start", and inline set to "nearest". [CSSOMVIEW]
         target.scroll_into_view_with_options(
             cx,
@@ -1626,6 +1627,49 @@ impl Document {
         // Step 3.7. Move the sequential focus navigation starting point to target.
         self.focus_handler()
             .set_sequential_focus_navigation_starting_point(target.upcast());
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#ancestor-revealing-algorithm>
+    pub(crate) fn run_the_ancestor_revealing_algorithm(&self, cx: &mut JSContext, target: &Element) {
+        // Step 1. Let ancestorsToReveal be an empty list.
+        // Step 2. For each shadow-including inclusive ancestor of target, in the order they are
+        // found, that is a hidden until found element or a closed details element, add it to the
+        // list.
+        let ancestors_to_reveal: Vec<DomRoot<Element>> = target
+            .upcast::<Node>()
+            .inclusive_ancestors(ShadowIncluding::Yes)
+            .filter_map(DomRoot::downcast::<Element>)
+            .filter(|ancestor| {
+                ancestor
+                    .get_attribute_string_value(&local_name!("hidden"))
+                    .is_some_and(|value| value.eq_ignore_ascii_case("until-found")) ||
+                    (ancestor.is::<HTMLDetailsElement>() &&
+                        **ancestor != *target &&
+                        !ancestor.has_attribute(&local_name!("open")))
+            })
+            .collect();
+        // Step 3. For each ancestor of ancestorsToReveal:
+        for ancestor in ancestors_to_reveal {
+            if ancestor.is::<HTMLDetailsElement>() {
+                // Set ancestor's open attribute to the empty string.
+                ancestor.set_string_attribute(cx, &local_name!("open"), DOMString::new());
+            } else if ancestor
+                .get_attribute_string_value(&local_name!("hidden"))
+                .is_some_and(|value| value.eq_ignore_ascii_case("until-found"))
+            {
+                // Fire an event named beforematch at ancestor, with bubbles set to true.
+                Event::new(
+                    cx,
+                    self.window.upcast(),
+                    Atom::from("beforematch"),
+                    EventBubbles::Bubbles,
+                    EventCancelable::NotCancelable,
+                )
+                .fire(cx, ancestor.upcast());
+                // Remove the hidden attribute from ancestor.
+                ancestor.remove_attribute(cx, &ns!(), &local_name!("hidden"));
+            }
+        }
     }
 
     fn get_anchor_by_name(&self, cx: &mut JSContext, name: &str) -> Option<DomRoot<Element>> {
