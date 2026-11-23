@@ -1701,6 +1701,47 @@ impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
             .select_files(cx, self, Some(paths));
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-input-showpicker>
+    fn ShowPicker(&self) -> ErrorResult {
+        let element = self.upcast::<Element>();
+
+        // Step 1. If this is not mutable, then throw an "InvalidStateError" DOMException.
+        //
+        // Controls that cannot be read-only are never immutable for that reason.
+        let supports_readonly = !matches!(
+            self.input_type().as_str(),
+            "button" |
+                "checkbox" |
+                "color" |
+                "file" |
+                "hidden" |
+                "image" |
+                "radio" |
+                "range" |
+                "reset" |
+                "submit"
+        );
+        if element.disabled_state() ||
+            (supports_readonly && element.has_attribute(&local_name!("readonly")))
+        {
+            return Err(Error::InvalidState(None));
+        }
+
+        // Step 4. If this's relevant global object does not have transient activation, then throw
+        // a "NotAllowedError" DOMException.
+        let window = self.owner_window();
+        if !window.has_transient_activation() {
+            return Err(Error::NotAllowed(None));
+        }
+
+        // Step 5. Consume user activation given this's relevant global object.
+        window.consume_user_activation();
+
+        // Step 6. Show the picker, if applicable, for this.
+        // TODO: Ask the embedder to show the picker of the input type.
+        Ok(())
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-input-stepup>
     fn StepUp(&self, cx: &mut JSContext, n: i32) -> ErrorResult {
         self.step_up_or_down(cx, n, StepDirection::Up)

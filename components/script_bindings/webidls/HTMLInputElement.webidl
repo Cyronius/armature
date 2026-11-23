@@ -79,6 +79,7 @@ interface HTMLInputElement : HTMLElement {
   [CEReactions]
            attribute unsigned long width;
 
+  [Throws] undefined showPicker();
   [Throws] undefined stepUp(optional long n = 1);
   [Throws] undefined stepDown(optional long n = 1);
 
