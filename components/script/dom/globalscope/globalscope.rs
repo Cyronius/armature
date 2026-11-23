@@ -480,6 +480,11 @@ impl GlobalScope {
         }
     }
 
+    /// Runs `f` as something other than a timer task, whose timers have a nesting level of 0.
+    pub(crate) fn run_outside_timer_task<R>(&self, f: impl FnOnce() -> R) -> R {
+        self.with_timers(|timers| timers.run_outside_timer_task(f))
+    }
+
     pub(crate) fn font_context(&self) -> Arc<FontContext> {
         if let Some(worker) = self.downcast::<WorkerGlobalScope>() {
             worker.font_context()

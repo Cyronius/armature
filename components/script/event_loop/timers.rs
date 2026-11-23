@@ -274,6 +274,16 @@ impl PartialEq for OneshotTimer {
 }
 
 impl OneshotTimers {
+    /// Runs `f` as something that is not a timer task, so that the timers it creates have a nesting
+    /// level of 0: a microtask does not inherit the nesting level of the timer task that it
+    /// runs after.
+    pub(crate) fn run_outside_timer_task<R>(&self, f: impl FnOnce() -> R) -> R {
+        let level = self.js_timers.nesting_level.replace(0);
+        let result = f();
+        self.js_timers.nesting_level.set(level);
+        result
+    }
+
     pub(crate) fn new(global_scope: &GlobalScope) -> OneshotTimers {
         OneshotTimers {
             global_scope: Dom::from_ref(global_scope),

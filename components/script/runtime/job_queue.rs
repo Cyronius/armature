@@ -181,9 +181,11 @@ impl MicrotaskRunnable for UserMicrotask {
     fn handler(&self, cx: &mut JSContext) {
         let mut realm = enter_auto_realm(cx, &*self.global);
         let cx = &mut realm;
-        let _ = self
-            .callback
-            .Call_(cx, &*self.global, ExceptionHandling::Report);
+        self.global.run_outside_timer_task(|| {
+            let _ = self
+                .callback
+                .Call_(cx, &*self.global, ExceptionHandling::Report);
+        });
     }
 }
 
