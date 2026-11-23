@@ -12,6 +12,7 @@ interface SVGImageElement : SVGGraphicsElement {
   [SameObject] readonly attribute SVGAnimatedPreserveAspectRatio preserveAspectRatio;
   attribute DOMString fetchPriority;
   attribute DOMString? crossOrigin;
+  Promise<undefined> decode();
 };
 
 SVGImageElement includes SVGURIReference;

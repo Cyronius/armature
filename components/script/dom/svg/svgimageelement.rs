@@ -34,6 +34,8 @@ use crate::dom::event::eventtarget::EventTarget;
 use crate::dom::node::virtualmethods::VirtualMethods;
 use crate::dom::node::{BindContext, Node, NodeTraits};
 use crate::dom::performance::performanceresourcetiming::InitiatorType;
+use crate::dom::promise::Promise;
+use crate::dom::{RootedPromise, TracedPromise};
 use crate::dom::svg::svggraphicselement::SVGGraphicsElement;
 use crate::dom::svg::svgtypes::{
     SVGLengthValue, svg_animated_length, svg_preserve_aspect_ratio, svg_uri_reference,
@@ -73,6 +75,8 @@ pub(crate) struct SVGImageElement {
     /// Incremented whenever the image resource is processed again, so that the responses of
     /// earlier requests no longer fire events at the element.
     request_generation: Cell<u32>,
+    /// The promises of `decode()` calls that wait for the current request.
+    decode_promises: DomRefCell<Vec<TracedPromise>>,
 }
 
 /// The outcome of fetching the image resource of an `image` element.
@@ -92,6 +96,7 @@ impl SVGImageElement {
             svggraphicselement: SVGGraphicsElement::new_inherited(local_name, prefix, document),
             load_blocker: DomRefCell::new(None),
             request_generation: Cell::new(0),
+            decode_promises: DomRefCell::new(Vec::new()),
         }
     }
 
@@ -340,6 +345,21 @@ impl SVGImageElement {
         image_cache.add_listener(ImageLoadListener::new(callback, window.pipeline_id(), id));
     }
 
+    /// Settles the promises of `decode()` calls once the current request has finished.
+    fn settle_decode_promises(&self, cx: &mut JSContext, outcome: ImageLoadOutcome) {
+        let promises = std::mem::take(&mut *self.decode_promises.safe_borrow_mut(cx.no_gc()));
+        for promise in promises {
+            let promise = promise.root(cx);
+            match outcome {
+                ImageLoadOutcome::Loaded => promise.resolve_native(cx, &()),
+                ImageLoadOutcome::Failed => promise.reject_error(
+                    cx,
+                    Error::Encoding(Some("Image could not be decoded".into())),
+                ),
+            }
+        }
+    }
+
     /// Queue a task to fire `load` or `error` at the element, unless the element has started
     /// another request by the time the task runs.
     fn queue_image_load_event(&self, generation: u32, outcome: ImageLoadOutcome) {
@@ -358,6 +378,7 @@ impl SVGImageElement {
                         .invalidate_ancestor_svg_cache(cx.no_gc());
                 }
                 LoadBlocker::terminate(cx, &element.load_blocker);
+                element.settle_decode_promises(cx, outcome);
                 let name = match outcome {
                     ImageLoadOutcome::Loaded => atom!("load"),
                     ImageLoadOutcome::Failed => atom!("error"),
@@ -421,6 +442,39 @@ impl VirtualMethods for SVGImageElement {
 }
 
 impl SVGImageElementMethods<crate::DomTypeHolder> for SVGImageElement {
+    /// <https://html.spec.whatwg.org/multipage/#dom-img-decode>
+    fn Decode(&self, cx: &mut JSContext) -> RootedPromise {
+        let promise = Promise::new(cx, &self.owner_global());
+        if !self.owner_document().is_fully_active() {
+            promise.reject_error(
+                cx,
+                Error::Encoding(Some("The document is not fully active".into())),
+            );
+            return promise;
+        }
+        match self.is_usable() {
+            Ok(true) => promise.resolve_native(cx, &()),
+            Err(_) => promise.reject_error(
+                cx,
+                Error::Encoding(Some("Image could not be decoded".into())),
+            ),
+            Ok(false) => {
+                // Without a URL there is nothing that could ever be decoded.
+                if self.image_href().is_none_or(|href| href.is_empty()) {
+                    promise.reject_error(
+                        cx,
+                        Error::Encoding(Some("The image has no source".into())),
+                    );
+                } else {
+                    self.decode_promises
+                        .safe_borrow_mut(cx.no_gc())
+                        .push(promise.to_traced());
+                }
+            },
+        }
+        promise
+    }
+
     svg_preserve_aspect_ratio!();
 
     svg_animated_length!(X, "x", Horizontal, SVGLengthValue::number(0.0));
