@@ -21,6 +21,9 @@ use crate::dom::element::Element;
 use crate::dom::event::Event;
 use crate::dom::eventtarget::EventTarget;
 use crate::dom::html::htmlelement::HTMLElement;
+use crate::dom::html::htmlinputelement::HTMLInputElement;
+use crate::dom::html::htmlselectelement::HTMLSelectElement;
+use crate::dom::html::htmltextareaelement::HTMLTextAreaElement;
 use crate::dom::inputevent::HitTestResult;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::Node;
@@ -57,10 +60,29 @@ pub(crate) struct ActiveDrag {
 
 /// The element that would be dragged when the pointer goes down on `node`.
 pub(crate) fn draggable_element_for(node: &Node) -> Option<DomRoot<Element>> {
-    node.inclusive_ancestors(ShadowIncluding::Yes)
-        .filter_map(DomRoot::downcast::<HTMLElement>)
-        .find(|element| element.Draggable())
-        .map(DomRoot::upcast::<Element>)
+    for ancestor in node.inclusive_ancestors(ShadowIncluding::Yes) {
+        // Pressing the pointer on a control that the user edits or picks from selects text or
+        // opens it, which is not a drag of the element around it.
+        let is_text_input = ancestor.downcast::<HTMLInputElement>().is_some_and(|input| {
+            !matches!(
+                input.input_type().as_str(),
+                "button" | "submit" | "reset" | "image" | "checkbox" | "radio" | "range" | "color"
+            )
+        });
+        if is_text_input ||
+            ancestor.is::<HTMLTextAreaElement>() ||
+            ancestor.is::<HTMLSelectElement>() ||
+            ancestor.is_editable_or_editing_host()
+        {
+            return None;
+        }
+        if let Some(element) = ancestor.downcast::<HTMLElement>() &&
+            element.Draggable()
+        {
+            return Some(DomRoot::from_ref(element.upcast::<Element>()));
+        }
+    }
+    None
 }
 
 pub(crate) fn start_pending(
