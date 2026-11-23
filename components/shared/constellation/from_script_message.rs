@@ -790,6 +790,9 @@ pub enum ScriptToConstellationMessage {
         NavigationHistoryBehavior,
         TargetSnapshotParams,
     ),
+    /// The name of the sender's browsing context changed, which the constellation keeps for the
+    /// documents that are loaded in it later.
+    SetBrowsingContextName(String),
     /// Abort loading after sending a LoadUrl message.
     AbortLoadUrl,
     /// Post a message to the currently active window of a given browsing context.

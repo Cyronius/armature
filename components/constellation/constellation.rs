@@ -481,6 +481,9 @@ pub struct Constellation<STF, SWF> {
     /// Navigation requests from script awaiting approval from the embedder.
     pending_approval_navigations: PendingApprovalNavigations,
 
+    /// The names of the browsing contexts that have one, which new documents in them are told.
+    browsing_context_names: FxHashMap<BrowsingContextId, String>,
+
     /// Bitmask which indicates which combination of mouse buttons are
     /// currently being pressed.
     pressed_mouse_buttons: MouseButtons,
@@ -746,6 +749,7 @@ where
                     webxr_registry: state.webxr_registry,
                     canvas: OnceCell::new(),
                     pending_approval_navigations: Default::default(),
+                    browsing_context_names: Default::default(),
                     pressed_mouse_buttons: MouseButtons::empty(),
                     active_keyboard_modifiers: Modifiers::empty(),
                     hard_fail,
@@ -999,6 +1003,8 @@ where
         }
 
         debug!("Creating new pipeline ({new_pipeline_id:?}) in {browsing_context_id}");
+        // A browsing context keeps its name when it loads another document.
+        let name = name.or_else(|| self.browsing_context_names.get(&browsing_context_id).cloned());
         let (webview_hidden, webview_state) = {
             let Some(webview) = self.webviews.get(&webview_id) else {
                 warn!("Tried to create Pipeline for unknown WebViewId: {webview_id:?}");
@@ -1807,6 +1813,12 @@ where
                     history_handling,
                     target_snapshot_params,
                 );
+            },
+            ScriptToConstellationMessage::SetBrowsingContextName(name) => {
+                if let Some(pipeline) = self.pipelines.get(&source_pipeline_id) {
+                    self.browsing_context_names
+                        .insert(pipeline.browsing_context_id, name);
+                }
             },
             ScriptToConstellationMessage::AbortLoadUrl => {
                 self.handle_abort_load_url_msg(webview_id, source_pipeline_id);

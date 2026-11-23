@@ -1080,6 +1080,18 @@ impl WindowProxy {
     }
 
     pub(crate) fn set_name(&self, name: DOMString) {
+        // The constellation keeps the name for the documents that are loaded in this browsing
+        // context by other script threads.
+        if let Some(window) = self
+            .currently_active
+            .get()
+            .and_then(ScriptThread::find_document)
+            .map(|document| DomRoot::from_ref(document.window()))
+        {
+            window.send_to_constellation(ScriptToConstellationMessage::SetBrowsingContextName(
+                name.to_string(),
+            ));
+        }
         *self.name.borrow_mut() = name.traced();
     }
 }

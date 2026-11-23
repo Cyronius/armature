@@ -172,6 +172,7 @@ mod from_script {
                 Self::LoadComplete => target!("LoadComplete"),
                 Self::LoadUrl(..) => target!("LoadUrl"),
                 Self::LoadUrlInBrowsingContext(..) => target!("LoadUrlInBrowsingContext"),
+                Self::SetBrowsingContextName(..) => target!("SetBrowsingContextName"),
                 Self::AbortLoadUrl => target!("AbortLoadUrl"),
                 Self::PostMessage { .. } => target!("PostMessage"),
                 Self::NavigatedToFragment(..) => target!("NavigatedToFragment"),
