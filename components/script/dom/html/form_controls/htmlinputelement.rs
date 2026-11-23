@@ -2571,6 +2571,15 @@ impl VirtualMethods for HTMLInputElement {
                     element.set_focusring_state(cx.no_gc(), self.is_textual_or_password());
                 }
             },
+            // <https://html.spec.whatwg.org/multipage/#attr-input-multiple>
+            // Changing `multiple` sanitizes the value again, for emails and files.
+            local_name!("multiple") if matches!(*self.input_type(), InputType::Email(_)) => {
+                let mut value = DOMString::from(String::from(self.Value()));
+                self.sanitize_value(&mut value);
+                self.text_input
+                    .safe_borrow_mut(cx.no_gc())
+                    .set_content(value);
+            },
             local_name!("value") if !self.value_dirty.get() => {
                 // This is only run when the `value` or `defaultValue` attribute is set. It
                 // has a different behavior than `SetValue` which is triggered by setting the
