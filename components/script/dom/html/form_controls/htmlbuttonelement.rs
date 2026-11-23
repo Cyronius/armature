@@ -616,6 +616,9 @@ impl Activatable for HTMLButtonElement {
                     .get_string_attribute(&local_name!("command")),
             );
             let event = event.upcast::<Event>();
+            // The event crosses shadow boundaries towards the document, but does not leave the shadow
+            // tree that its target is in.
+            event.set_composed(!target.upcast::<Node>().is_in_a_shadow_tree());
             if !event.fire(cx, target.upcast::<EventTarget>()) {
                 return;
             }
