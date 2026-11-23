@@ -184,7 +184,11 @@ impl TreeOrderedIndexMap {
 
         let mut map = self.map.borrow_mut();
         let Entry::Occupied(mut occupied_entry) = map.entry(key.clone()) else {
-            unreachable!("Tried to remove unknown id or name entry: {key}");
+            // Script can run in the middle of an algorithm that removes elements, such as the
+            // adoption agency algorithm of the parser, and take the element out of the tree
+            // already, which leaves nothing to remove.
+            warn!("Tried to remove unknown id or name entry: {key}");
+            return;
         };
         if !occupied_entry.get_mut().remove() {
             occupied_entry.remove();
