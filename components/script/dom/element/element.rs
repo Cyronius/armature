@@ -1675,6 +1675,36 @@ impl<'dom> LayoutDom<'dom, Element> {
             push(PropertyDeclaration::MarginBottom(value));
         });
 
+        // A frameset is laid out as a grid with the rows and columns that its attributes list.
+        //
+        // <https://html.spec.whatwg.org/multipage/#frames-and-framesets>
+        if self.is_html_element() && self.local_name() == &local_name!("frameset") {
+            let mut tracks = String::new();
+            for (attribute, property) in [
+                (local_name!("rows"), "grid-template-rows"),
+                (local_name!("cols"), "grid-template-columns"),
+            ] {
+                if let Some(value) = self.get_attr_val_for_layout(&ns!(), &attribute) {
+                    tracks.push_str(property);
+                    tracks.push(':');
+                    tracks.push_str(&frameset_tracks(value));
+                    tracks.push(';');
+                }
+            }
+            if !tracks.is_empty() {
+                let block = parse_style_attribute(
+                    &tracks,
+                    &UrlExtraData(document.url_for_layout().get_arc()),
+                    None,
+                    document.quirks_mode(),
+                    CssRuleType::Style,
+                );
+                for declaration in block.declarations() {
+                    push(declaration.clone());
+                }
+            }
+        }
+
         if let Some(svg_element) = self.downcast::<SVGElement>() {
             svg_element.synthesize_presentational_hints(document, &mut push);
         }
@@ -6194,4 +6224,39 @@ impl script_bindings::callback::OwnerWindow<crate::DomTypeHolder> for Element {
     fn owner_window(&self) -> Option<DomRoot<Window>> {
         Some(NodeTraits::owner_window(self))
     }
+}
+
+/// The `grid-template-rows` or `grid-template-columns` that the `rows` or `cols` attribute of a
+/// frameset describes.
+///
+/// <https://html.spec.whatwg.org/multipage/#rules-for-parsing-a-list-of-dimensions>
+fn frameset_tracks(value: &str) -> String {
+    let mut tracks = Vec::new();
+    for dimension in value.split(',') {
+        let dimension = dimension.trim();
+        let digits: String = dimension
+            .chars()
+            .take_while(|character| character.is_ascii_digit())
+            .collect();
+        let rest = &dimension[digits.len()..];
+        // A lone `*` is `1*`.
+        let amount: f64 = digits
+            .parse()
+            .unwrap_or(if rest.starts_with('*') { 1.0 } else { 0.0 });
+        // Large numbers are limited to what layout can deal with: a track is never bigger than the
+        // frameset.
+        tracks.push(if rest.starts_with('%') {
+            format!("{}%", amount.min(100.0))
+        } else if rest.starts_with('*') {
+            format!("minmax(0, {}fr)", amount.min(1_000_000.0))
+        } else if amount > 100_000.0 {
+            "100%".to_owned()
+        } else {
+            format!("{amount}px")
+        });
+    }
+    if tracks.is_empty() {
+        tracks.push("minmax(0, 1fr)".to_owned());
+    }
+    tracks.join(" ")
 }
