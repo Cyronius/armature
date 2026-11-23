@@ -26,10 +26,10 @@ interface HTMLElement : Element {
   [CEReactions] attribute DOMString accessKey;
   readonly attribute DOMString accessKeyLabel;
   [CEReactions] attribute boolean draggable;
-  // [CEReactions] attribute boolean spellcheck;
-  // [CEReactions, ReflectSetter] attribute DOMString writingSuggestions;
-  // [CEReactions, ReflectSetter] attribute DOMString autocapitalize;
-  // [CEReactions] attribute boolean autocorrect;
+  [CEReactions] attribute boolean spellcheck;
+  [CEReactions] attribute DOMString writingSuggestions;
+  [CEReactions] attribute DOMString autocapitalize;
+  [CEReactions] attribute boolean autocorrect;
 
   [CEReactions] attribute [LegacyNullToEmptyString] DOMString innerText;
   [CEReactions, Throws] attribute [LegacyNullToEmptyString] DOMString outerText;

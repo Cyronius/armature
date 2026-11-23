@@ -834,6 +834,105 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
         Ok(())
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-spellcheck>
+    fn Spellcheck(&self) -> bool {
+        // <https://html.spec.whatwg.org/multipage/#concept-spellcheck-default>
+        // The nearest `spellcheck` attribute with a valid value says; otherwise nothing is checked.
+        let mut current = Some(DomRoot::from_ref(self.as_element()));
+        while let Some(element) = current {
+            if let Some(value) = element.get_attribute_string_value(&local_name!("spellcheck")) {
+                if value.is_empty() || value.eq_ignore_ascii_case("true") {
+                    return true;
+                }
+                if value.eq_ignore_ascii_case("false") {
+                    return false;
+                }
+            }
+            current = element
+                .upcast::<Node>()
+                .GetParentElement();
+        }
+        false
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-spellcheck>
+    fn SetSpellcheck(&self, cx: &mut JSContext, value: bool) {
+        self.as_element().set_string_attribute(
+            cx,
+            &html5ever::local_name!("spellcheck"),
+            DOMString::from_static(if value { "true" } else { "false" }),
+        );
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-writingsuggestions>
+    fn WritingSuggestions(&self) -> DOMString {
+        let mut current = Some(DomRoot::from_ref(self.as_element()));
+        while let Some(element) = current {
+            if let Some(value) = element.get_attribute_string_value(&LocalName::from("writingsuggestions")) {
+                if value.is_empty() || value.eq_ignore_ascii_case("true") {
+                    return DOMString::from_static("true");
+                }
+                if value.eq_ignore_ascii_case("false") {
+                    return DOMString::from_static("false");
+                }
+            }
+            current = element.upcast::<Node>().GetParentElement();
+        }
+        DOMString::from_static("true")
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-writingsuggestions>
+    fn SetWritingSuggestions(&self, cx: &mut JSContext, value: DOMString) {
+        self.as_element().set_string_attribute(
+            cx,
+            &LocalName::from("writingsuggestions"),
+            value,
+        );
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-autocapitalize>
+    fn Autocapitalize(&self) -> DOMString {
+        let value = self
+            .as_element()
+            .get_attribute_string_value(&LocalName::from("autocapitalize"))
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        DOMString::from_static(match &*value {
+            "none" | "off" => "none",
+            "on" | "sentences" => "sentences",
+            "words" => "words",
+            "characters" => "characters",
+            _ => "",
+        })
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-autocapitalize>
+    fn SetAutocapitalize(&self, cx: &mut JSContext, value: DOMString) {
+        self.as_element().set_string_attribute(
+            cx,
+            &LocalName::from("autocapitalize"),
+            value,
+        );
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-autocorrect>
+    fn Autocorrect(&self) -> bool {
+        // Only `off` turns it off.
+        !self
+            .as_element()
+            .get_attribute_string_value(&LocalName::from("autocorrect"))
+            .is_some_and(|value| value.eq_ignore_ascii_case("off"))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-autocorrect>
+    fn SetAutocorrect(&self, cx: &mut JSContext, value: bool) {
+        self.as_element().set_string_attribute(
+            cx,
+            &LocalName::from("autocorrect"),
+            DOMString::from_static(if value { "on" } else { "off" }),
+        );
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-translate>
     fn Translate(&self) -> bool {
         self.as_element().is_translate_enabled()
