@@ -1062,13 +1062,37 @@ impl Handler {
     ) -> Result<Vec<ActionItem>, ErrorStatus> {
         // Step 2. Let id be the value of the id property of action sequence.
         let id = action_sequence.id;
+        // Get or create the input source before processing its actions.
+        if let Some(source) = self.input_state_table_mut().get(&id) {
+            match (source, &action_sequence.actions) {
+                (InputSourceState::Null, ActionsType::Null { .. }) |
+                (InputSourceState::Key(_), ActionsType::Key { .. }) |
+                (InputSourceState::Wheel, ActionsType::Wheel { .. }) => {},
+                (InputSourceState::Pointer(pointer), ActionsType::Pointer { parameters, .. })
+                    if pointer.subtype == parameters.pointer_type => {},
+                _ => return Err(ErrorStatus::InvalidArgument),
+            }
+        } else {
+            let source = match &action_sequence.actions {
+                ActionsType::Null { .. } => InputSourceState::Null,
+                ActionsType::Key { .. } => InputSourceState::Key(KeyInputState::new()),
+                ActionsType::Wheel { .. } => InputSourceState::Wheel,
+                ActionsType::Pointer { parameters, .. } => {
+                    InputSourceState::Pointer(PointerInputState::new(
+                        parameters.pointer_type,
+                        self.session().unwrap().pointer_ids(),
+                        0.0,
+                        0.0,
+                    ))
+                },
+            };
+            self.input_state_table_mut().insert(id, source);
+        }
+
         match action_sequence.actions {
             ActionsType::Null {
                 actions: null_actions,
             } => {
-                self.input_state_table_mut()
-                    .entry(id)
-                    .or_insert(InputSourceState::Null);
                 // <https://w3c.github.io/webdriver/#dfn-process-a-null-action>
                 null_actions
                     .into_iter()
@@ -1085,9 +1109,6 @@ impl Handler {
             ActionsType::Key {
                 actions: key_actions,
             } => {
-                self.input_state_table_mut()
-                    .entry(id)
-                    .or_insert(InputSourceState::Key(KeyInputState::new()));
                 // <https://w3c.github.io/webdriver/#dfn-process-a-key-action>
                 key_actions
                     .into_iter()
@@ -1107,20 +1128,9 @@ impl Handler {
                     .collect()
             },
             ActionsType::Pointer {
-                parameters,
                 actions: pointer_actions,
+                ..
             } => {
-                let pointer_ids = self.session().unwrap().pointer_ids();
-                // Get or create a pointer input source with subtype, and other items
-                // set to default values.
-                self.input_state_table_mut()
-                    .entry(id)
-                    .or_insert(InputSourceState::Pointer(PointerInputState::new(
-                        parameters.pointer_type,
-                        pointer_ids,
-                        0.0,
-                        0.0,
-                    )));
                 // <https://w3c.github.io/webdriver/#dfn-process-a-pointer-action>
                 pointer_actions
                     .into_iter()
@@ -1157,9 +1167,6 @@ impl Handler {
             ActionsType::Wheel {
                 actions: wheel_actions,
             } => {
-                self.input_state_table_mut()
-                    .entry(id)
-                    .or_insert(InputSourceState::Wheel);
                 // <https://w3c.github.io/webdriver/#dfn-process-a-wheel-action>
                 wheel_actions
                     .into_iter()

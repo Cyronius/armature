@@ -1601,6 +1601,12 @@ impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
     // https://html.spec.whatwg.org/multipage/#dom-input-required
     make_bool_setter!(SetRequired, "required");
 
+    // https://html.spec.whatwg.org/multipage/#dom-input-switch
+    make_bool_getter!(Switch, "switch");
+
+    // https://html.spec.whatwg.org/multipage/#dom-input-switch
+    make_bool_setter!(SetSwitch, "switch");
+
     // https://html.spec.whatwg.org/multipage/#dom-input-src
     make_url_getter!(Src, "src");
 

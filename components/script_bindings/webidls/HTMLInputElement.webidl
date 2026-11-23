@@ -60,6 +60,8 @@ interface HTMLInputElement : HTMLElement {
            attribute boolean readOnly;
   [CEReactions]
            attribute boolean required;
+  [CEReactions]
+           attribute boolean switch;
   [CEReactions, SetterThrows]
            attribute unsigned long size;
   [CEReactions]
