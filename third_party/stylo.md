@@ -556,3 +556,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Parse `scroll-target-group`, `scroll-axis-lock` and `scroll-marker-group` for Servo. An
   omitted `scroll-marker-group` mode computes to `links`.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-537: Parse the :dir() pseudo-class
+- Files: `style/servo/selector_parser.rs`
+- Why: Servo did not parse `:dir()`. Parse it for Servo, with the state of elements whose direction
+  is right to left as the state it depends on, so that the DOM can tell Stylo when directions
+  change.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.

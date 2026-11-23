@@ -360,6 +360,18 @@ impl PseudoElement {
 /// The type used for storing `:lang` arguments.
 pub type Lang = Box<str>;
 
+// Armature (AS-537): The argument of the `:dir()` pseudo-class.
+/// The type used to store the argument of the `:dir` pseudo-class.
+#[derive(Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToShmem)]
+pub enum Direction {
+    /// `ltr`.
+    Ltr,
+    /// `rtl`.
+    Rtl,
+    /// Any other identifier, which no element matches.
+    Other,
+}
+
 /// The type used to store the state argument to the `:state` pseudo-class.
 #[derive(Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToCss, ToShmem)]
 pub struct CustomState(pub AtomIdent);
@@ -377,6 +389,9 @@ pub enum NonTSPseudoClass {
     CustomState(CustomState),
     Default,
     Defined,
+    // Armature (AS-537): The `:dir()` pseudo-class.
+    /// The `:dir()` pseudo-class.
+    Dir(Direction),
     Disabled,
     Enabled,
     Focus,
@@ -440,6 +455,14 @@ impl ToCss for NonTSPseudoClass {
             serialize_identifier(lang, dest)?;
             return dest.write_char(')');
         }
+        // Armature (AS-537): Serialize `:dir()`.
+        if let Dir(direction) = *self {
+            return dest.write_str(match direction {
+                Direction::Ltr => ":dir(ltr)",
+                Direction::Rtl => ":dir(rtl)",
+                Direction::Other => ":dir(-)",
+            });
+        }
 
         dest.write_str(match *self {
             Self::Active => ":active",
@@ -484,6 +507,8 @@ impl ToCss for NonTSPseudoClass {
             Self::Valid => ":valid",
             Self::Visited => ":visited",
             Self::Lang(_) => unreachable!(),
+            // Armature (AS-537): Handled above.
+            Self::Dir(_) => unreachable!(),
         })
     }
 }
@@ -499,6 +524,9 @@ impl NonTSPseudoClass {
             Self::Checked => ElementState::CHECKED,
             Self::Default => ElementState::DEFAULT,
             Self::Defined => ElementState::DEFINED,
+            // Armature (AS-537): Elements are in the state if their direction is right to left.
+            // Both `:dir(ltr)` and `:dir(rtl)` depend on it.
+            Self::Dir(_) => ElementState::RTL,
             Self::Disabled => ElementState::DISABLED,
             Self::Enabled => ElementState::ENABLED,
             Self::Focus => ElementState::FOCUS,
@@ -684,6 +712,18 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "state" => {
                 let result = AtomIdent::from(parser.expect_ident()?.as_ref());
                 NonTSPseudoClass::CustomState(CustomState(result))
+            },
+            // Armature (AS-537): Parse `:dir()`.
+            "dir" if !after_part => {
+                let direction = {
+                    let ident = parser.expect_ident()?;
+                    match_ignore_ascii_case! { ident,
+                        "ltr" => Direction::Ltr,
+                        "rtl" => Direction::Rtl,
+                        _ => Direction::Other,
+                    }
+                };
+                NonTSPseudoClass::Dir(direction)
             },
             _ => return Err(ParseError::custom(SelectorParseErrorKind::UnexpectedIdent)),
         };
