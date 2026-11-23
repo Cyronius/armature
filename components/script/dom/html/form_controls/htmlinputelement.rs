@@ -2622,8 +2622,10 @@ impl VirtualMethods for HTMLInputElement {
 
                 self.update_checked_state(cx.no_gc());
                 self.update_indeterminate_state(cx.no_gc());
-                if element.focus_state() {
-                    element.set_focusring_state(cx.no_gc(), self.is_textual_or_password());
+                // A focused element that becomes a text control indicates focus, and one that stops
+                // being one keeps the indication that it had.
+                if element.focus_state() && self.is_textual_or_password() {
+                    element.set_focusring_state(cx.no_gc(), true);
                 }
             },
             // <https://html.spec.whatwg.org/multipage/#attr-input-multiple>
