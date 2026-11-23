@@ -116,8 +116,9 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
 - **Navigation details**: `popstate` on fragment navigation, `pagereveal`, `window.originAgentCluster` (the getter only,
   without agent cluster isolation), URLs of `base` and `history` parsed with the document's encoding, and the query
   encoding tests enabled.
-- **Offscreen canvas fonts**: an `OffscreenCanvas` in a window now resolves the `font` it is given, against the
-  default font; in workers there is no layout to do it with, so the font cannot be changed.
+- **Canvas fonts in workers**: `FontFace` and `FontFaceSet` (`self.fonts`) are exposed to workers, and an
+  `OffscreenCanvas` in a worker resolves its `font` with a style system of its own, against the default font.
+- **Conic gradients** and `BarProp.visible` for popups.
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
   `wordSpacing` and `lang`. Kerning, the spacings and the language affect shaping; the other styles are stored.
 
