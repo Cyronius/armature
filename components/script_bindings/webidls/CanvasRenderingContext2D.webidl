@@ -35,6 +35,7 @@ interface CanvasRenderingContext2D {
 };
 CanvasRenderingContext2D includes CanvasSettings;
 CanvasRenderingContext2D includes CanvasState;
+CanvasRenderingContext2D includes CanvasLayers;
 CanvasRenderingContext2D includes CanvasTransform;
 CanvasRenderingContext2D includes CanvasCompositing;
 CanvasRenderingContext2D includes CanvasImageSmoothing;
@@ -58,7 +59,7 @@ interface mixin CanvasSettings {
 interface mixin CanvasState {
   // state
   undefined save(); // push state on state stack
-  undefined restore(); // pop state stack and restore state
+  [Throws] undefined restore(); // pop state stack and restore state
   undefined reset();
 };
 
@@ -121,7 +122,28 @@ interface mixin CanvasShadowStyles {
 
 interface mixin CanvasFilters {
   // filters
-  //attribute DOMString filter; // (default "none")
+  attribute DOMString filter; // (default "none")
+};
+
+typedef (DOMString or CanvasFilterPrimitive or sequence<CanvasFilterPrimitive>) CanvasFilterInput;
+
+dictionary CanvasLayerAttributes {
+  CanvasFilterInput? filter;
+};
+
+// The filter primitives that can be given in CanvasLayerAttributes.
+dictionary CanvasFilterPrimitive {
+  DOMString name;
+  (double or sequence<double>) stdDeviation;
+  double dx = 0;
+  double dy = 0;
+  DOMString floodColor = "black";
+  double floodOpacity = 1;
+};
+
+interface mixin CanvasLayers {
+  [Throws] undefined beginLayer(optional CanvasLayerAttributes options = {});
+  [Throws] undefined endLayer();
 };
 
 interface mixin CanvasRect {

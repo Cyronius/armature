@@ -11,9 +11,9 @@ use servo_canvas_traits::canvas::CanvasCommand;
 
 use crate::canvas_context::{CanvasContext, HTMLCanvasElementOrOffscreenCanvas};
 use crate::dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::{
-    CanvasDirection, CanvasFillRule, CanvasImageSource, CanvasLineCap, CanvasLineJoin,
-    CanvasRenderingContext2DMethods, CanvasRenderingContext2DSettings, CanvasTextAlign,
-    CanvasTextBaseline,
+    CanvasDirection, CanvasFillRule, CanvasImageSource, CanvasLayerAttributes, CanvasLineCap,
+    CanvasLineJoin, CanvasRenderingContext2DMethods, CanvasRenderingContext2DSettings,
+    CanvasTextAlign, CanvasTextBaseline,
 };
 use crate::dom::bindings::codegen::Bindings::DOMMatrixBinding::DOMMatrix2DInit;
 use crate::dom::bindings::codegen::Bindings::OffscreenCanvasRenderingContext2DBinding::OffscreenCanvasRenderingContext2DMethods;
@@ -183,6 +183,16 @@ impl OffscreenCanvasRenderingContext2DMethods<crate::DomTypeHolder>
         self.context.SetShadowColor(value)
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-filter>
+    fn Filter(&self) -> DOMString {
+        self.context.Filter()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-filter>
+    fn SetFilter(&self, value: DOMString) {
+        self.context.SetFilter(value)
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-strokestyle>
     fn StrokeStyle(&self) -> StringOrCanvasGradientOrCanvasPattern {
         self.context.StrokeStyle()
@@ -246,8 +256,18 @@ impl OffscreenCanvasRenderingContext2DMethods<crate::DomTypeHolder>
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-restore>
-    fn Restore(&self) {
+    fn Restore(&self) -> ErrorResult {
         self.context.Restore()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-beginlayer>
+    fn BeginLayer(&self, options: &CanvasLayerAttributes) -> ErrorResult {
+        self.context.BeginLayer(options)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-endlayer>
+    fn EndLayer(&self) -> ErrorResult {
+        self.context.EndLayer()
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-reset>

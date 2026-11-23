@@ -127,12 +127,12 @@ impl Path {
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-beziercurveto>
     pub fn bezier_curve_to(&mut self, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) {
         // Step 1. If any of the arguments are infinite or NaN, then return.
-        if !(cp1x.is_finite() &&
-            cp1y.is_finite() &&
-            cp2x.is_finite() &&
-            cp2y.is_finite() &&
-            x.is_finite() &&
-            y.is_finite())
+        if !(cp1x.is_finite()
+            && cp1y.is_finite()
+            && cp2x.is_finite()
+            && cp2y.is_finite()
+            && x.is_finite()
+            && y.is_finite())
         {
             return;
         }
@@ -156,11 +156,11 @@ impl Path {
         radius: f64,
     ) -> Result<(), IndexSizeError> {
         // Step 1. If any of the arguments are infinite or NaN, then return.
-        if !(x1.is_finite() &&
-            y1.is_finite() &&
-            x2.is_finite() &&
-            y2.is_finite() &&
-            radius.is_finite())
+        if !(x1.is_finite()
+            && y1.is_finite()
+            && x2.is_finite()
+            && y2.is_finite()
+            && radius.is_finite())
         {
             return Ok(());
         }
@@ -278,13 +278,13 @@ impl Path {
         counterclockwise: bool,
     ) -> Result<(), IndexSizeError> {
         // Step 1. If any of the arguments are infinite or NaN, then return.
-        if !(x.is_finite() &&
-            y.is_finite() &&
-            radius_x.is_finite() &&
-            radius_y.is_finite() &&
-            rotation_angle.is_finite() &&
-            start_angle.is_finite() &&
-            end_angle.is_finite())
+        if !(x.is_finite()
+            && y.is_finite()
+            && radius_x.is_finite()
+            && radius_y.is_finite()
+            && rotation_angle.is_finite()
+            && start_angle.is_finite()
+            && end_angle.is_finite())
         {
             return Ok(());
         }
@@ -298,8 +298,8 @@ impl Path {
         let mut end = Angle::radians(end_angle);
 
         // Wrap angles mod 2 * PI if necessary
-        if !counterclockwise && start > end + Angle::two_pi() ||
-            counterclockwise && end > start + Angle::two_pi()
+        if !counterclockwise && start > end + Angle::two_pi()
+            || counterclockwise && end > start + Angle::two_pi()
         {
             start = start.positive();
             end = end.positive();
@@ -586,6 +586,45 @@ pub struct CompositionOptions {
     pub composition_operation: CompositionOrBlending,
 }
 
+/// One function of a CSS `<filter-value-list>`, as used by the `filter` attribute of canvas
+/// rendering contexts. Lengths are in canvas pixels.
+///
+/// <https://drafts.fxtf.org/filter-effects/#filter-functions>
+#[derive(Clone, Debug, Deserialize, MallocSizeOf, Serialize)]
+pub enum FilterOperation {
+    /// `blur()`, with the standard deviations of the Gaussian along each axis.
+    Blur(f64, f64),
+    Brightness(f64),
+    Contrast(f64),
+    Grayscale(f64),
+    /// `hue-rotate()`, with an angle in degrees.
+    HueRotate(f64),
+    Invert(f64),
+    Opacity(f64),
+    Saturate(f64),
+    Sepia(f64),
+    DropShadow {
+        offset_x: f64,
+        offset_y: f64,
+        /// The standard deviation of the Gaussian that blurs the shadow.
+        std_deviation: f64,
+        color: AbsoluteColor,
+    },
+}
+
+/// What is needed to composite a layer, which is the state `beginLayer()` captures.
+///
+/// <https://html.spec.whatwg.org/multipage/#dom-context-2d-beginlayer>
+#[derive(Debug, Deserialize, MallocSizeOf, Serialize)]
+pub struct LayerOptions {
+    /// Whether the layer can be drawn. A layer that was opened with a transformation that can't be
+    /// inverted can't, so that nothing in it is drawn.
+    pub rasterizable: bool,
+    pub filter: Vec<FilterOperation>,
+    pub shadow_options: ShadowOptions,
+    pub composition_options: CompositionOptions,
+}
+
 #[derive(Debug, Deserialize, MallocSizeOf, Serialize)]
 pub struct ShadowOptions {
     pub offset_x: f64,
@@ -704,6 +743,12 @@ pub enum CanvasCommand {
         CompositionOptions,
         Transform2D<f64>,
     ),
+    /// Sets the filter that is applied to the following drawing operations.
+    SetFilter(Vec<FilterOperation>),
+    /// Redirects the following drawing operations to a new layer.
+    BeginLayer(LayerOptions),
+    /// Composites the innermost layer onto what is below it.
+    EndLayer,
     UpdateImage(Option<Epoch>),
     ProcessBatchMessages(Vec<CanvasCommand>),
 }

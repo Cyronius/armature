@@ -29,9 +29,9 @@ use servo_base::generic_channel::GenericBufferedSender;
 use servo_base::{Epoch, generic_channel};
 use servo_canvas_traits::canvas::{
     CanvasCommand, CanvasFont, CanvasId, CanvasMsg, CompositionOptions, CompositionOrBlending,
-    FillOrStrokeStyle, FillRule, GlyphAndPosition, LineCapStyle, LineJoinStyle, LineOptions,
-    LinearGradientStyle, Path, RadialGradientStyle, RangeError, RepetitionStyle, RoundRectRadius,
-    ShadowOptions, TextRun,
+    FillOrStrokeStyle, FillRule, FilterOperation, GlyphAndPosition, LayerOptions, LineCapStyle,
+    LineJoinStyle, LineOptions, LinearGradientStyle, Path, RadialGradientStyle, RangeError,
+    RepetitionStyle, RoundRectRadius, ShadowOptions, TextRun,
 };
 use servo_constellation_traits::ScriptToConstellationMessage;
 use servo_url::{ImmutableOrigin, ServoUrl};
@@ -52,6 +52,7 @@ use style_traits::{CssWriter, ParsingMode};
 use unicode_script::Script;
 use webrender_api::ImageKey;
 
+use super::canvas_filter::parse_filter;
 use crate::canvas_context::{CanvasContext, OffscreenRenderingContext, RenderingContext};
 use crate::conversions::Convert;
 use crate::css::css::{ANONYMOUS_CONTENT_URL_DATA, parser_context_for_anonymous_content};
@@ -129,6 +130,11 @@ pub(super) struct CanvasContextState {
     shadow_blur: f64,
     #[no_trace]
     shadow_color: AbsoluteColor,
+    /// The value of the `filter` attribute, as it was set.
+    filter: String,
+    /// What `filter` says to do.
+    #[no_trace]
+    filter_operations: Vec<FilterOperation>,
     #[no_trace]
     #[conditional_malloc_size_of]
     font_style: Option<ServoArc<Font>>,
@@ -159,6 +165,8 @@ impl CanvasContextState {
             shadow_offset_y: 0.0,
             shadow_blur: 0.0,
             shadow_color: AbsoluteColor::TRANSPARENT_BLACK,
+            filter: String::from("none"),
+            filter_operations: Vec::new(),
             font_style: None,
             text_align: CanvasTextAlign::Start,
             text_baseline: CanvasTextBaseline::Alphabetic,
@@ -197,6 +205,15 @@ impl CanvasContextState {
     }
 }
 
+/// An entry of the drawing state stack.
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+#[derive(JSTraceable, MallocSizeOf)]
+struct SavedState {
+    state: CanvasContextState,
+    /// Whether the entry was pushed by `beginLayer()`, rather than `save()`.
+    is_layer: bool,
+}
+
 #[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 #[derive(JSTraceable, MallocSizeOf)]
 pub(super) struct CanvasState {
@@ -218,7 +235,7 @@ pub(super) struct CanvasState {
     /// Any missing image URLs.
     #[no_trace]
     missing_image_urls: DomRefCell<Vec<ServoUrl>>,
-    saved_states: DomRefCell<Vec<CanvasContextState>>,
+    saved_states: DomRefCell<Vec<SavedState>>,
     /// <https://html.spec.whatwg.org/multipage/#current-default-path>
     #[no_trace]
     current_default_path: DomRefCell<Path>,
@@ -399,7 +416,7 @@ impl CanvasState {
         // Step 2. Empty the list of subpaths in context's current default path.
         *self.current_default_path.borrow_mut() = Path::new();
 
-        // Step 3. Clear the context's drawing state stack.
+        // Step 3. Clear the context's drawing state stack, which includes the layers.
         self.saved_states.borrow_mut().clear();
 
         // Step 4. Reset everything that drawing state consists of to their initial values.
@@ -1476,21 +1493,119 @@ impl CanvasState {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-save>
     pub(super) fn save(&self) {
-        self.saved_states
-            .borrow_mut()
-            .push(self.state.borrow().clone());
+        self.saved_states.borrow_mut().push(SavedState {
+            state: self.state.borrow().clone(),
+            is_layer: false,
+        });
     }
 
     #[cfg_attr(crown, expect(crown::unrooted_must_root))]
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-restore>
-    pub(super) fn restore(&self) {
+    pub(super) fn restore(&self) -> ErrorResult {
         let mut saved_states = self.saved_states.borrow_mut();
-        if let Some(state) = saved_states.pop() {
+        // Layers are closed by `endLayer()`.
+        if saved_states.last().is_some_and(|saved| saved.is_layer) {
+            return Err(Error::InvalidState(None));
+        }
+        if let Some(saved) = saved_states.pop() {
             let clips_to_pop = self.state.borrow().clips_pushed;
             if clips_to_pop != 0 {
                 self.send_canvas_command(CanvasCommand::PopClips(clips_to_pop));
             }
-            self.state.borrow_mut().clone_from(&state);
+            self.restore_state(saved.state);
+        }
+        Ok(())
+    }
+
+    /// Makes `state` the current state, telling the canvas about its filter if that changed.
+    fn restore_state(&self, state: CanvasContextState) {
+        let mut current = self.state.borrow_mut();
+        let filter_changed =
+            !current.filter_operations.is_empty() || !state.filter_operations.is_empty();
+        let filter_operations = filter_changed.then(|| state.filter_operations.clone());
+        *current = state;
+        drop(current);
+        if let Some(filter_operations) = filter_operations {
+            self.send_canvas_command(CanvasCommand::SetFilter(filter_operations));
+        }
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-beginlayer>
+    pub(super) fn begin_layer(&self, layer_filter: Vec<FilterOperation>) {
+        let mut state = self.state.borrow_mut();
+
+        // The layer is composited with what the state says when it is created, and with its own
+        // filter before the one of the state.
+        let mut filter = layer_filter;
+        filter.extend(state.filter_operations.iter().cloned());
+        let options = LayerOptions {
+            rasterizable: state.transform.inverse().is_some(),
+            filter,
+            shadow_options: state.shadow_options(),
+            composition_options: state.composition_options(),
+        };
+
+        // Push the state, then reset what the layer takes over.
+        self.saved_states.borrow_mut().push(SavedState {
+            state: state.clone(),
+            is_layer: true,
+        });
+        state.global_alpha = 1.0;
+        state.global_composition = CompositionOrBlending::default();
+        state.shadow_offset_x = 0.0;
+        state.shadow_offset_y = 0.0;
+        state.shadow_blur = 0.0;
+        state.shadow_color = AbsoluteColor::TRANSPARENT_BLACK;
+        state.filter = String::from("none");
+        state.filter_operations = Vec::new();
+        // The layer has its own clips.
+        state.clips_pushed = 0;
+        drop(state);
+
+        self.send_canvas_command(CanvasCommand::BeginLayer(options));
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-endlayer>
+    pub(super) fn end_layer(&self) -> ErrorResult {
+        let mut saved_states = self.saved_states.borrow_mut();
+        if !saved_states.last().is_some_and(|saved| saved.is_layer) {
+            return Err(Error::InvalidState(None));
+        }
+        let saved = saved_states.pop().expect("Checked above");
+        drop(saved_states);
+
+        // The clips that were pushed in the layer go away with it.
+        self.send_canvas_command(CanvasCommand::EndLayer);
+        self.restore_state(saved.state);
+        Ok(())
+    }
+
+    /// Whether `beginLayer()` was called more often than `endLayer()`.
+    pub(super) fn has_open_layers(&self) -> bool {
+        self.saved_states
+            .borrow()
+            .iter()
+            .any(|saved| saved.is_layer)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-filter>
+    pub(super) fn filter(&self) -> DOMString {
+        DOMString::from(self.state.borrow().filter.clone())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-filter>
+    pub(super) fn set_filter(&self, canvas: Option<&HTMLCanvasElement>, value: DOMString) {
+        // Values that can't be parsed are ignored.
+        let Ok(operations) = parse_filter(canvas, &value.str()) else {
+            return;
+        };
+        let mut state = self.state.borrow_mut();
+        let changed = !state.filter_operations.is_empty() || !operations.is_empty();
+        state.filter = value.str().to_string();
+        state.filter_operations = operations.clone();
+        drop(state);
+        if changed {
+            self.send_canvas_command(CanvasCommand::SetFilter(operations));
         }
     }
 
@@ -1546,9 +1661,9 @@ impl CanvasState {
         max_width: Option<f64>,
     ) {
         // Step 1: If any of the arguments are infinite or NaN, then return.
-        if !x.is_finite() ||
-            !y.is_finite() ||
-            max_width.is_some_and(|max_width| !max_width.is_finite())
+        if !x.is_finite()
+            || !y.is_finite()
+            || max_width.is_some_and(|max_width| !max_width.is_finite())
         {
             return;
         }
@@ -1592,9 +1707,9 @@ impl CanvasState {
         max_width: Option<f64>,
     ) {
         // Step 1: If any of the arguments are infinite or NaN, then return.
-        if !x.is_finite() ||
-            !y.is_finite() ||
-            max_width.is_some_and(|max_width| !max_width.is_finite())
+        if !x.is_finite()
+            || !y.is_finite()
+            || max_width.is_some_and(|max_width| !max_width.is_finite())
         {
             return;
         }
@@ -1940,6 +2055,11 @@ impl CanvasState {
         sw: i32,
         sh: i32,
     ) -> Fallible<DomRoot<ImageData>> {
+        // The bitmap is not up to date while there are layers.
+        if self.has_open_layers() {
+            return Err(Error::InvalidState(None));
+        }
+
         // FIXME(nox): There are many arithmetic operations here that can
         // overflow or underflow, this should probably be audited.
 
@@ -2124,14 +2244,14 @@ impl CanvasState {
         dw: f64,
         dh: f64,
     ) -> ErrorResult {
-        if !(sx.is_finite() &&
-            sy.is_finite() &&
-            sw.is_finite() &&
-            sh.is_finite() &&
-            dx.is_finite() &&
-            dy.is_finite() &&
-            dw.is_finite() &&
-            dh.is_finite())
+        if !(sx.is_finite()
+            && sy.is_finite()
+            && sw.is_finite()
+            && sh.is_finite()
+            && dx.is_finite()
+            && dy.is_finite()
+            && dw.is_finite()
+            && dh.is_finite())
         {
             return Ok(());
         }
@@ -2270,12 +2390,12 @@ impl CanvasState {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-transform>
     pub(super) fn transform(&self, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) {
-        if !(a.is_finite() &&
-            b.is_finite() &&
-            c.is_finite() &&
-            d.is_finite() &&
-            e.is_finite() &&
-            f.is_finite())
+        if !(a.is_finite()
+            && b.is_finite()
+            && c.is_finite()
+            && d.is_finite()
+            && e.is_finite()
+            && f.is_finite())
         {
             return;
         }
@@ -2297,12 +2417,12 @@ impl CanvasState {
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-settransform>
     pub(super) fn set_transform(&self, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) {
         // Step 1. If any of the arguments are infinite or NaN, then return.
-        if !a.is_finite() ||
-            !b.is_finite() ||
-            !c.is_finite() ||
-            !d.is_finite() ||
-            !e.is_finite() ||
-            !f.is_finite()
+        if !a.is_finite()
+            || !b.is_finite()
+            || !c.is_finite()
+            || !d.is_finite()
+            || !e.is_finite()
+            || !f.is_finite()
         {
             return;
         }
@@ -2320,12 +2440,12 @@ impl CanvasState {
         // Step 2. If one or more of matrix's m11 element, m12 element, m21
         // element, m22 element, m41 element, or m42 element are infinite or
         // NaN, then return.
-        if !matrix.m11.is_finite() ||
-            !matrix.m12.is_finite() ||
-            !matrix.m21.is_finite() ||
-            !matrix.m22.is_finite() ||
-            !matrix.m31.is_finite() ||
-            !matrix.m32.is_finite()
+        if !matrix.m11.is_finite()
+            || !matrix.m12.is_finite()
+            || !matrix.m21.is_finite()
+            || !matrix.m22.is_finite()
+            || !matrix.m31.is_finite()
+            || !matrix.m32.is_finite()
         {
             return Ok(());
         }
@@ -2557,8 +2677,8 @@ impl CanvasState {
 
             let font = font_group.find_by_codepoint(font_context, character, next_char, language);
 
-            if !is_variation_selector(character) &&
-                !current_text_run.script_and_font_compatible(script, &font)
+            if !is_variation_selector(character)
+                && !current_text_run.script_and_font_compatible(script, &font)
             {
                 let previous_text_run = std::mem::replace(
                     &mut current_text_run,
@@ -2747,40 +2867,45 @@ pub(super) fn parse_color(
 
     // Step 1. Parse input as a <color>. If the result is failure, return failure;
     // otherwise, let color be the result.
-    Color::parse_and_compute(&context, &mut parser, None).map(|color| {
+    Color::parse_and_compute(&context, &mut parser, None)
         // Step 2. Let used color be the result of resolving color to a used color.
-        // If the value of other properties on the element a <color> is on is required to do the
-        // resolution (such as resolving a currentcolor or system color), use element if it was
-        // passed, or the initial values of the properties if not.
-        //
-        // Fast path: if the parsed color is already absolute we can return immediately.
-        if let ComputedColor::Absolute(color) = color {
-            return color;
-        }
+        .map(|color| resolve_color(canvas, color))
+}
 
-        // TODO: https://github.com/whatwg/html/issues/1099
-        // Reconsider how to calculate currentColor in a display:none canvas
+/// Resolves a computed color to an absolute one.
+///
+/// If the value of other properties on the element a <color> is on is required to do the
+/// resolution (such as resolving a currentcolor or system color), use element if it was
+/// passed, or the initial values of the properties if not.
+pub(super) fn resolve_color(
+    canvas: Option<&HTMLCanvasElement>,
+    color: ComputedColor,
+) -> AbsoluteColor {
+    // Fast path: if the parsed color is already absolute we can return immediately.
+    if let ComputedColor::Absolute(color) = color {
+        return color;
+    }
 
-        // TODO: will need to check that the context bitmap mode is fixed
-        // once we implement CanvasProxy
-        let current_color = match canvas {
-            // https://drafts.css-houdini.org/css-paint-api/#2d-rendering-context
-            // Whenever "currentColor" is used as a color in the PaintRenderingContext2D API,
-            // it is treated as opaque black.
-            None => AbsoluteColor::BLACK,
-            Some(canvas) => {
-                let canvas_element = canvas.upcast::<Element>();
-                match canvas_element.style() {
-                    Some(ref s) if canvas_element.has_css_layout_box() => {
-                        s.get_inherited_text().color
-                    },
-                    _ => AbsoluteColor::BLACK,
-                }
-            },
-        };
+    // TODO: https://github.com/whatwg/html/issues/1099
+    // Reconsider how to calculate currentColor in a display:none canvas
 
-        color.resolve_to_absolute(&current_color)
-    })
+    // TODO: will need to check that the context bitmap mode is fixed
+    // once we implement CanvasProxy
+    let current_color = match canvas {
+        // https://drafts.css-houdini.org/css-paint-api/#2d-rendering-context
+        // Whenever "currentColor" is used as a color in the PaintRenderingContext2D API,
+        // it is treated as opaque black.
+        None => AbsoluteColor::BLACK,
+        Some(canvas) => {
+            let canvas_element = canvas.upcast::<Element>();
+            match canvas_element.style() {
+                Some(ref s) if canvas_element.has_css_layout_box() => s.get_inherited_text().color,
+                _ => AbsoluteColor::BLACK,
+            }
+        },
+    };
+
+    color.resolve_to_absolute(&current_color)
 }
 
 // Used by drawImage to determine if a source or destination rectangle is valid
@@ -2865,10 +2990,11 @@ fn adjust_canvas_size(size: Size2D<u64>) -> Size2D<u64> {
     // Max width/height to 65535 in CSS pixels.
     const MAX_CANVAS_SIZE: u64 = 65535;
 
-    if !size.is_empty() &&
-        size.greater_than(Size2D::new(MAX_CANVAS_SIZE, MAX_CANVAS_SIZE))
-            .none() &&
-        size.area() < MAX_CANVAS_AREA
+    if !size.is_empty()
+        && size
+            .greater_than(Size2D::new(MAX_CANVAS_SIZE, MAX_CANVAS_SIZE))
+            .none()
+        && size.area() < MAX_CANVAS_AREA
     {
         size
     } else {

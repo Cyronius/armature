@@ -6,8 +6,10 @@
 #![expect(clippy::too_many_arguments)]
 
 mod backend;
+mod blur;
 pub mod canvas_data;
 pub mod canvas_paint_thread;
+mod filter;
 mod peniko_conversions;
 mod shadow;
 #[cfg(feature = "vello")]

@@ -11,12 +11,13 @@ use servo_base::{Epoch, generic_channel};
 use servo_canvas_traits::canvas::{CanvasCommand, CanvasId};
 use webrender_api::ImageKey;
 
+use super::canvas_filter::layer_filter;
 use super::canvas_state::CanvasState;
 use crate::canvas_context::{CanvasContext, CanvasHelpers, HTMLCanvasElementOrOffscreenCanvas};
 use crate::dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::{
-    CanvasColorType, CanvasDirection, CanvasFillRule, CanvasImageSource, CanvasLineCap,
-    CanvasLineJoin, CanvasRenderingContext2DMethods, CanvasRenderingContext2DSettings,
-    CanvasTextAlign, CanvasTextBaseline, PredefinedColorSpace,
+    CanvasColorType, CanvasDirection, CanvasFillRule, CanvasImageSource, CanvasLayerAttributes,
+    CanvasLineCap, CanvasLineJoin, CanvasRenderingContext2DMethods,
+    CanvasRenderingContext2DSettings, CanvasTextAlign, CanvasTextBaseline, PredefinedColorSpace,
 };
 use crate::dom::bindings::codegen::Bindings::DOMMatrixBinding::DOMMatrix2DInit;
 use crate::dom::bindings::codegen::UnionTypes::{
@@ -230,8 +231,23 @@ impl CanvasRenderingContext2DMethods<crate::DomTypeHolder> for CanvasRenderingCo
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-restore>
-    fn Restore(&self) {
+    fn Restore(&self) -> ErrorResult {
         self.canvas_state.restore()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-beginlayer>
+    fn BeginLayer(&self, options: &CanvasLayerAttributes) -> ErrorResult {
+        let filter = layer_filter(
+            self.canvas.canvas().as_deref(),
+            options.filter.as_ref().and_then(Option::as_ref),
+        )?;
+        self.canvas_state.begin_layer(filter);
+        Ok(())
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-endlayer>
+    fn EndLayer(&self) -> ErrorResult {
+        self.canvas_state.end_layer()
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-reset>
@@ -810,5 +826,16 @@ impl CanvasRenderingContext2DMethods<crate::DomTypeHolder> for CanvasRenderingCo
     fn SetShadowColor(&self, value: DOMString) {
         self.canvas_state
             .set_shadow_color(self.canvas.canvas().as_deref(), value)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-filter>
+    fn Filter(&self) -> DOMString {
+        self.canvas_state.filter()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-filter>
+    fn SetFilter(&self, value: DOMString) {
+        self.canvas_state
+            .set_filter(self.canvas.canvas().as_deref(), value)
     }
 }

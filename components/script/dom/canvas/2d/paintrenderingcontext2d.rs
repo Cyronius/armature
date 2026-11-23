@@ -113,7 +113,7 @@ impl PaintRenderingContext2DMethods<crate::DomTypeHolder> for PaintRenderingCont
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-restore>
-    fn Restore(&self) {
+    fn Restore(&self) -> ErrorResult {
         self.canvas_state.restore()
     }
 

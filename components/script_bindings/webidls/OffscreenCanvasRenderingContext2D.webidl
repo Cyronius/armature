@@ -10,6 +10,7 @@ interface OffscreenCanvasRenderingContext2D {
 };
 OffscreenCanvasRenderingContext2D includes CanvasSettings;
 OffscreenCanvasRenderingContext2D includes CanvasState;
+OffscreenCanvasRenderingContext2D includes CanvasLayers;
 OffscreenCanvasRenderingContext2D includes CanvasCompositing;
 OffscreenCanvasRenderingContext2D includes CanvasImageSmoothing;
 OffscreenCanvasRenderingContext2D includes CanvasFillStrokeStyles;

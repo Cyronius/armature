@@ -12,6 +12,7 @@ use servo_canvas_traits::canvas::*;
 use webrender_api::ImageKey;
 
 use crate::backend::GenericDrawTarget;
+use crate::filter;
 use crate::shadow::{blur_margin, render_shadow};
 
 // Asserts on WR texture cache update for zero sized image with raw data.
@@ -24,8 +25,21 @@ pub(crate) enum Filter {
     Nearest,
 }
 
+/// <https://html.spec.whatwg.org/multipage/#dom-context-2d-beginlayer>
+struct Layer<DrawTarget: GenericDrawTarget> {
+    /// Where the layer is drawn. It is larger than the target below it by `margin` pixels on every
+    /// side, so that its filters and shadow can bring in what is drawn outside of the canvas.
+    draw_target: DrawTarget,
+    margin: u32,
+    options: LayerOptions,
+}
+
 pub(crate) struct CanvasData<DrawTarget: GenericDrawTarget> {
     draw_target: DrawTarget,
+    /// The layers that are open, innermost last. While there are any, drawing goes to the innermost.
+    layers: Vec<Layer<DrawTarget>>,
+    /// The filter applied to every drawing operation.
+    filter: Vec<FilterOperation>,
     paint_api: CrossProcessPaintApi,
     image_key: Option<ImageKey>,
 }
@@ -37,6 +51,8 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
     ) -> CanvasData<DrawTarget> {
         CanvasData {
             draw_target: DrawTarget::new(size.max(MIN_WR_IMAGE_SIZE).cast()),
+            layers: Vec::new(),
+            filter: Vec::new(),
             paint_api,
             image_key: None,
         }
@@ -96,31 +112,21 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
             snapshot
         };
 
-        if shadow_options.need_to_draw_shadow() {
-            self.draw_shadow(
-                &shadow_options,
-                composition_options,
-                &dest_rect,
-                transform,
-                |draw_target, transform| {
-                    write_image::<DrawTarget>(
-                        draw_target,
-                        snapshot.clone(),
-                        dest_rect,
-                        smoothing_enabled,
-                        UNSHADOWED_COMPOSITION,
-                        transform,
-                    );
-                },
-            );
-        }
-        write_image::<DrawTarget>(
-            &mut self.draw_target,
-            snapshot,
-            dest_rect,
-            smoothing_enabled,
+        self.draw_with_effects(
+            &shadow_options,
             composition_options,
+            &dest_rect,
             transform,
+            |draw_target, composition_options, transform| {
+                write_image::<DrawTarget>(
+                    draw_target,
+                    snapshot.clone(),
+                    dest_rect,
+                    smoothing_enabled,
+                    composition_options,
+                    transform,
+                );
+            },
         );
     }
 
@@ -199,7 +205,8 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
     }
 
     pub(crate) fn clear_rect(&mut self, rect: &Rect<f32>, transform: Transform2D<f64>) {
-        self.draw_target.clear_rect(rect, transform);
+        let transform = self.in_target_space(transform);
+        self.target().clear_rect(rect, transform);
     }
 
     pub(crate) fn stroke_rect(
@@ -291,7 +298,8 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
         fill_rule: FillRule,
         transform: Transform2D<f64>,
     ) {
-        self.draw_target.push_clip(path, fill_rule, transform);
+        let transform = self.in_target_space(transform);
+        self.target().push_clip(path, fill_rule, transform);
     }
 
     /// <https://html.spec.whatwg.org/multipage/#reset-the-rendering-context-to-its-default-state>
@@ -301,6 +309,8 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
             .max(MIN_WR_IMAGE_SIZE);
 
         // Step 1. Clear canvas's bitmap to transparent black.
+        self.layers.clear();
+        self.filter.clear();
         self.draw_target = self
             .draw_target
             .create_similar_draw_target(&Size2D::new(size.width, size.height).cast());
@@ -338,6 +348,76 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
         );
     }
 
+    /// The draw target that drawing operations currently go to.
+    fn target(&mut self) -> &mut DrawTarget {
+        match self.layers.last_mut() {
+            Some(layer) => &mut layer.draw_target,
+            None => &mut self.draw_target,
+        }
+    }
+
+    /// Moves a transformation from canvas space to the space of [`Self::target`].
+    fn in_target_space(&self, transform: Transform2D<f64>) -> Transform2D<f64> {
+        let offset: u32 = self.layers.iter().map(|layer| layer.margin).sum();
+        transform.then_translate(Vector2D::new(offset as f64, offset as f64))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-beginlayer>
+    pub(crate) fn begin_layer(&mut self, options: LayerOptions) {
+        let size = self.target().get_size();
+        let mut margin = filter::margin(&options.filter);
+        if options.shadow_options.need_to_draw_shadow() {
+            let shadow = &options.shadow_options;
+            margin += shadow
+                .offset_x
+                .abs()
+                .max(shadow.offset_y.abs())
+                .ceil()
+                .min(2048.0) as u32
+                + blur_margin(shadow.blur);
+        }
+        // Keep the layer to a size we can allocate.
+        while margin > 0
+            && (size.width as u64 + 2 * margin as u64) * (size.height as u64 + 2 * margin as u64)
+                > MAX_LAYER_AREA
+        {
+            margin /= 2;
+        }
+        let draw_target = self.target().create_similar_draw_target(&Size2D::new(
+            size.width + 2 * margin as i32,
+            size.height + 2 * margin as i32,
+        ));
+        self.layers.push(Layer {
+            draw_target,
+            margin,
+            options,
+        });
+        self.filter.clear();
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-endlayer>
+    pub(crate) fn end_layer(&mut self) {
+        let Some(mut layer) = self.layers.pop() else {
+            return;
+        };
+        if !layer.options.rasterizable {
+            return;
+        }
+        let snapshot = layer.draw_target.snapshot();
+        let snapshot = filter::apply(&snapshot, &layer.options.filter);
+        let origin = Point2D::new(-(layer.margin as f64), -(layer.margin as f64));
+        self.composite(
+            snapshot,
+            origin,
+            &layer.options.shadow_options,
+            layer.options.composition_options,
+        );
+    }
+
+    pub(crate) fn set_filter(&mut self, filter: Vec<FilterOperation>) {
+        self.filter = filter;
+    }
+
     /// Draws a shape, preceded by its shadow if it casts one.
     ///
     /// `user_bounds` must contain everything `draw` paints, in the coordinate space `transform`
@@ -353,34 +433,74 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
     ) where
         F: Fn(&mut DrawTarget, FillOrStrokeStyle, CompositionOptions, Transform2D<f64>),
     {
+        self.draw_with_effects(
+            shadow_options,
+            composition_options,
+            user_bounds,
+            transform,
+            |draw_target, composition_options, transform| {
+                bound_shape_with_pattern(
+                    draw_target,
+                    style.clone(),
+                    composition_options,
+                    user_bounds,
+                    transform,
+                    |draw_target, style| draw(draw_target, style, composition_options, transform),
+                );
+            },
+        );
+    }
+
+    /// Draws something with the filter and the shadow that apply to it.
+    ///
+    /// `draw` draws the thing on the draw target it is given, with the composition options and the
+    /// transform it is given. It is called with the transform set up so that `user_bounds` ends up
+    /// where the thing is to be drawn. See [`Self::draw_shape`] for `user_bounds`.
+    fn draw_with_effects<F>(
+        &mut self,
+        shadow_options: &ShadowOptions,
+        composition_options: CompositionOptions,
+        user_bounds: &Rect<f64>,
+        transform: Transform2D<f64>,
+        draw: F,
+    ) where
+        F: Fn(&mut DrawTarget, CompositionOptions, Transform2D<f64>),
+    {
+        let transform = self.in_target_space(transform);
+
+        if !self.filter.is_empty() {
+            // The filter applies to the thing alone, and the shadow to what the filter makes of it.
+            let margin = filter::margin(&self.filter) as i32;
+            let size = self.target().get_size();
+            let mut source_target = self.target().create_similar_draw_target(&Size2D::new(
+                size.width + 2 * margin,
+                size.height + 2 * margin,
+            ));
+            draw(
+                &mut source_target,
+                UNSHADOWED_COMPOSITION,
+                transform.then_translate(Vector2D::new(margin as f64, margin as f64)),
+            );
+            let snapshot = filter::apply(&source_target.snapshot(), &self.filter);
+            self.composite(
+                snapshot,
+                Point2D::new(-margin as f64, -margin as f64),
+                shadow_options,
+                composition_options,
+            );
+            return;
+        }
+
         if shadow_options.need_to_draw_shadow() {
             self.draw_shadow(
                 shadow_options,
                 composition_options,
                 user_bounds,
                 transform,
-                |draw_target, transform| {
-                    bound_shape_with_pattern(
-                        draw_target,
-                        style.clone(),
-                        UNSHADOWED_COMPOSITION,
-                        user_bounds,
-                        transform,
-                        |draw_target, style| {
-                            draw(draw_target, style, UNSHADOWED_COMPOSITION, transform)
-                        },
-                    );
-                },
+                |draw_target, transform| draw(draw_target, UNSHADOWED_COMPOSITION, transform),
             );
         }
-        bound_shape_with_pattern(
-            &mut self.draw_target,
-            style,
-            composition_options,
-            user_bounds,
-            transform,
-            |draw_target, style| draw(draw_target, style, composition_options, transform),
-        );
+        draw(self.target(), composition_options, transform);
     }
 
     /// Draws the shadow of a shape on the canvas.
@@ -399,7 +519,7 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
     ) where
         F: FnOnce(&mut DrawTarget, Transform2D<f64>),
     {
-        let canvas_size = self.draw_target.get_size().to_f64();
+        let canvas_size = self.target().get_size().to_f64();
         let margin = blur_margin(shadow_options.blur) as f64;
         let offset = Vector2D::new(shadow_options.offset_x, shadow_options.offset_y);
 
@@ -425,13 +545,24 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
             (visible.max_y().ceil() - origin.y).max(1.0),
         );
 
-        let mut source_target = self.draw_target.create_similar_draw_target(&size.to_i32());
+        let mut source_target = self.target().create_similar_draw_target(&size.to_i32());
         draw_source(
             &mut source_target,
             transform.then_translate(-origin.to_vector()),
         );
         let source = source_target.snapshot();
+        self.draw_shadow_of(&source, origin, shadow_options, composition_options);
+    }
 
+    /// Draws the shadow of `source`, an image whose top left corner is at `origin` in the space of
+    /// [`Self::target`].
+    fn draw_shadow_of(
+        &mut self,
+        source: &Snapshot,
+        origin: Point2D<f64>,
+        shadow_options: &ShadowOptions,
+        composition_options: CompositionOptions,
+    ) {
         let color = shadow_options.color.into_srgb_legacy();
         let channel = |value: f32| {
             if value.is_nan() {
@@ -441,7 +572,7 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
             }
         };
         let shadow = render_shadow(
-            &source,
+            source,
             shadow_options.blur,
             [
                 channel(color.components.0),
@@ -452,14 +583,38 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
         );
 
         // Snap the shadow to the pixel grid, as it is not worth resampling.
+        let margin = blur_margin(shadow_options.blur) as f64;
         let destination = Point2D::new(
-            (origin.x + offset.x - margin).round(),
-            (origin.y + offset.y - margin).round(),
+            (origin.x + shadow_options.offset_x - margin).round(),
+            (origin.y + shadow_options.offset_y - margin).round(),
         );
         let destination = Rect::new(destination, shadow.size().to_f64());
         write_image::<DrawTarget>(
-            &mut self.draw_target,
+            self.target(),
             shadow,
+            destination,
+            false,
+            composition_options,
+            Transform2D::identity(),
+        );
+    }
+
+    /// Composites an image that has been drawn, and its shadow, onto the canvas. `origin` is where the
+    /// top left corner of the image is, in the space of [`Self::target`].
+    fn composite(
+        &mut self,
+        snapshot: Snapshot,
+        origin: Point2D<f64>,
+        shadow_options: &ShadowOptions,
+        composition_options: CompositionOptions,
+    ) {
+        if shadow_options.need_to_draw_shadow() {
+            self.draw_shadow_of(&snapshot, origin, shadow_options, composition_options);
+        }
+        let destination = Rect::new(origin, snapshot.size().to_f64());
+        write_image::<DrawTarget>(
+            self.target(),
+            snapshot,
             destination,
             false,
             composition_options,
@@ -491,7 +646,7 @@ impl<DrawTarget: GenericDrawTarget> CanvasData<DrawTarget> {
 
     pub(crate) fn pop_clips(&mut self, clips: usize) {
         for _ in 0..clips {
-            self.draw_target.pop_clip();
+            self.target().pop_clip();
         }
     }
 }
@@ -503,6 +658,9 @@ impl<D: GenericDrawTarget> Drop for CanvasData<D> {
         }
     }
 }
+
+/// The largest number of pixels a layer may have.
+const MAX_LAYER_AREA: u64 = 64 * 1024 * 1024;
 
 /// The composition options used to draw the source of a shadow: the shadow is what is composited
 /// with the canvas, so the source is drawn plainly.

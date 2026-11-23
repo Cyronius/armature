@@ -71,11 +71,40 @@ pub(crate) fn render_shadow(source: &Snapshot, blur: f64, color: [f32; 4]) -> Sn
 }
 
 /// Blurs `coverage` in place with a Gaussian of standard deviation `sigma`.
+pub(crate) fn blur_coverage(coverage: &mut [f32], width: usize, height: usize, sigma: f64) {
+    blur_coverage_xy(coverage, width, height, sigma, sigma);
+}
+
+/// Blurs `coverage` in place with a Gaussian of standard deviation `sigma_x` along the x axis and
+/// `sigma_y` along the y axis.
 ///
 /// Small deviations use the exact kernel, larger ones three box blurs, as described by
 /// <https://drafts.fxtf.org/filter-effects/#feGaussianBlurElement>.
-fn blur_coverage(coverage: &mut [f32], width: usize, height: usize, sigma: f64) {
+pub(crate) fn blur_coverage_xy(
+    coverage: &mut [f32],
+    width: usize,
+    height: usize,
+    sigma_x: f64,
+    sigma_y: f64,
+) {
     let mut scratch = vec![0.0f32; coverage.len()];
+    if sigma_x > 0.0 {
+        blur_axis(coverage, &mut scratch, width, height, sigma_x, true);
+    }
+    if sigma_y > 0.0 {
+        blur_axis(coverage, &mut scratch, width, height, sigma_y, false);
+    }
+}
+
+/// Blurs `coverage` along one axis, using `scratch` as a temporary buffer the size of `coverage`.
+fn blur_axis(
+    coverage: &mut [f32],
+    scratch: &mut [f32],
+    width: usize,
+    height: usize,
+    sigma: f64,
+    horizontal: bool,
+) {
     if sigma < 2.0 {
         let radius = (sigma * 3.0).ceil() as usize;
         let mut kernel: Vec<f32> = (0..=2 * radius)
@@ -86,8 +115,10 @@ fn blur_coverage(coverage: &mut [f32], width: usize, height: usize, sigma: f64) 
             .collect();
         let sum: f32 = kernel.iter().sum();
         kernel.iter_mut().for_each(|weight| *weight /= sum);
-        convolve(coverage, &mut scratch, width, height, &kernel, radius, true);
-        convolve(&scratch, coverage, width, height, &kernel, radius, false);
+        convolve(
+            coverage, scratch, width, height, &kernel, radius, horizontal,
+        );
+        coverage.copy_from_slice(scratch);
         return;
     }
 
@@ -102,8 +133,8 @@ fn blur_coverage(coverage: &mut [f32], width: usize, height: usize, sigma: f64) 
         [(-half, size), (-half + 1, size), (-half, size + 1)]
     };
     for (start, length) in passes {
-        box_pass(coverage, &mut scratch, width, height, start, length, true);
-        box_pass(&scratch, coverage, width, height, start, length, false);
+        box_pass(coverage, scratch, width, height, start, length, horizontal);
+        coverage.copy_from_slice(scratch);
     }
 }
 

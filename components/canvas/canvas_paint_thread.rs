@@ -314,6 +314,9 @@ impl CanvasPaintThread {
                 self.canvas(canvas_id).update_image_rendering(canvas_epoch);
             },
             CanvasCommand::PopClips(clips) => self.canvas(canvas_id).pop_clips(clips),
+            CanvasCommand::SetFilter(filter) => self.canvas(canvas_id).set_filter(filter),
+            CanvasCommand::BeginLayer(options) => self.canvas(canvas_id).begin_layer(options),
+            CanvasCommand::EndLayer => self.canvas(canvas_id).end_layer(),
             CanvasCommand::ProcessBatchMessages(messages) => {
                 for message in messages {
                     self.process_command(message, canvas_id);
@@ -369,6 +372,30 @@ impl Canvas {
             #[cfg(feature = "vello")]
             Canvas::Vello(canvas_data) => canvas_data.set_image_key(image_key),
             Canvas::VelloCPU(canvas_data) => canvas_data.set_image_key(image_key),
+        }
+    }
+
+    fn set_filter(&mut self, filter: Vec<FilterOperation>) {
+        match self {
+            #[cfg(feature = "vello")]
+            Canvas::Vello(canvas_data) => canvas_data.set_filter(filter),
+            Canvas::VelloCPU(canvas_data) => canvas_data.set_filter(filter),
+        }
+    }
+
+    fn begin_layer(&mut self, options: LayerOptions) {
+        match self {
+            #[cfg(feature = "vello")]
+            Canvas::Vello(canvas_data) => canvas_data.begin_layer(options),
+            Canvas::VelloCPU(canvas_data) => canvas_data.begin_layer(options),
+        }
+    }
+
+    fn end_layer(&mut self) {
+        match self {
+            #[cfg(feature = "vello")]
+            Canvas::Vello(canvas_data) => canvas_data.end_layer(),
+            Canvas::VelloCPU(canvas_data) => canvas_data.end_layer(),
         }
     }
 
