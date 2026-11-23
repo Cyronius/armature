@@ -11,6 +11,7 @@ use style::computed_values::visibility::T as Visibility;
 use style::values::computed::Overflow;
 use xml5ever::local_name;
 
+use script_bindings::dom::UnrootedDom;
 use crate::dom::Node;
 use crate::dom::document::focus::FocusableAreaKind;
 use crate::dom::svg::svgelement::SVGElement;
@@ -59,7 +60,17 @@ impl Element {
 
         // Do not allow unrendered, disconnected, disabled or inert nodes to be focusable areas ever.
         let node: &Node = self.upcast();
+        // The contents of a `hidden=until-found` element are skipped, so nothing in them can be focused.
+        let in_hidden_until_found_subtree = node
+            .ancestors_unrooted(no_gc)
+            .filter_map(UnrootedDom::downcast::<Element>)
+            .any(|ancestor| {
+                ancestor
+                    .get_attribute_string_value(&local_name!("hidden"))
+                    .is_some_and(|value| value.eq_ignore_ascii_case("until-found"))
+            });
         if !node.is_connected() ||
+            in_hidden_until_found_subtree ||
             !self.has_css_layout_box() ||
             self.is_actually_disabled() ||
             node.is_inert()

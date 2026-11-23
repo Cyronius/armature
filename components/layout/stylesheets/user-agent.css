@@ -14,9 +14,8 @@ noframes, param, rp, script, style, template, title {
   display: none;
 }
 
-/* TODO: This should be `content-visibility: hidden`, once Servo supports that feature */
 [hidden=until-found i]:not(embed, colgroup, col, thead, tbody, tfoot, tr) {
-  display: none;
+  content-visibility: hidden;
 }
 
 embed[hidden] { display: inline; height: 0; width: 0; }
