@@ -288,6 +288,7 @@ impl ServoParser {
         // Step 3. Otherwise, if context's node document is in limited-quirks mode, then set document's
         // mode to "limited-quirks".
         document.set_quirks_mode(context_document.quirks_mode());
+        document.set_is_fragment_parsing_document();
 
         // NOTE: The following steps happened as part of Step 1.
         // Step 4. If allowDeclarativeShadowRoots is true, then set document's

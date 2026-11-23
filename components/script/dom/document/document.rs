@@ -695,6 +695,9 @@ pub(crate) struct Document {
     status_code: Option<u16>,
     /// <https://html.spec.whatwg.org/multipage/#is-initial-about:blank>
     is_initial_about_blank: Cell<bool>,
+    /// Whether this is the document that the HTML fragment parsing algorithm creates, whose
+    /// nodes are moved to a fragment once parsed.
+    is_fragment_parsing_document: Cell<bool>,
     /// <https://dom.spec.whatwg.org/#document-allow-declarative-shadow-roots>
     allow_declarative_shadow_roots: Cell<bool>,
     /// <https://w3c.github.io/webappsec-upgrade-insecure-requests/#insecure-requests-policy>
@@ -4583,6 +4586,7 @@ impl Document {
             visibility_state: Cell::new(DocumentVisibilityState::Visible),
             status_code,
             is_initial_about_blank: Cell::new(is_initial_about_blank),
+            is_fragment_parsing_document: Cell::new(false),
             allow_declarative_shadow_roots: Cell::new(allow_declarative_shadow_roots),
             inherited_insecure_requests_policy: Cell::new(inherited_insecure_requests_policy),
             has_trustworthy_ancestor_origin: Cell::new(has_trustworthy_ancestor_origin),
@@ -6025,6 +6029,14 @@ impl Document {
     /// <https://html.spec.whatwg.org/multipage/#is-initial-about:blank>
     pub(crate) fn is_initial_about_blank(&self) -> bool {
         self.is_initial_about_blank.get()
+    }
+
+    pub(crate) fn is_fragment_parsing_document(&self) -> bool {
+        self.is_fragment_parsing_document.get()
+    }
+
+    pub(crate) fn set_is_fragment_parsing_document(&self) {
+        self.is_fragment_parsing_document.set(true);
     }
 
     /// <https://dom.spec.whatwg.org/#document-allow-declarative-shadow-roots>

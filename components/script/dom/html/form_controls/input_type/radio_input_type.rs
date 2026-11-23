@@ -158,7 +158,11 @@ impl SpecificInputType for RadioInputType {
         input: &HTMLInputElement,
     ) {
         let group = input.radio_group_name();
-        if input.upcast::<Node>().is_connected() {
+        // The fragment parser's document is connected but stands in for the fragment that the
+        // parsed nodes end up in, so it counts as disconnected, as in Gecko, which parses
+        // fragments into a DocumentFragment.
+        let node = input.upcast::<Node>();
+        if node.is_connected() && !node.owner_doc().is_fragment_parsing_document() {
             radio_group_updated(cx, input, group.as_ref());
             return;
         }
