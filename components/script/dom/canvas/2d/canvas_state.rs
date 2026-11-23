@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use app_units::Au;
 use cssparser::Parser;
+use html5ever::{QualName, local_name, ns};
 use cssparser::color::clamp_unit_f32;
 use euclid::default::{Point2D, Rect, Size2D, Transform2D};
 use euclid::{Vector2D, vec2};
@@ -61,6 +62,7 @@ use crate::dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::{
     CanvasTextBaseline, CanvasTextRendering, ImageDataMethods,
 };
 use crate::dom::bindings::codegen::Bindings::DOMMatrixBinding::DOMMatrix2DInit;
+use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::codegen::UnionTypes::{
     StringOrCanvasGradientOrCanvasPattern, UnrestrictedDoubleOrDOMPointInit,
     UnrestrictedDoubleOrDOMPointInitOrUnrestrictedDoubleOrDOMPointInitSequence,
@@ -74,7 +76,8 @@ use crate::dom::canvasgradient::{CanvasGradient, CanvasGradientStyle, ToFillOrSt
 use crate::dom::canvaspattern::CanvasPattern;
 use crate::dom::dommatrix::DOMMatrix;
 use crate::dom::dommatrixreadonly::dommatrix2dinit_to_matrix;
-use crate::dom::element::Element;
+use crate::dom::element::{CustomElementCreationMode, Element, ElementCreator};
+use crate::dom::window::Window;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::html::htmlcanvaselement::HTMLCanvasElement;
 use crate::dom::html::htmlvideoelement::HTMLVideoElement;
@@ -1741,7 +1744,7 @@ impl CanvasState {
         }
 
         if self.state.borrow().font_style.is_none() {
-            self.set_font(cx, canvas, CanvasContextState::DEFAULT_FONT_STYLE.into())
+            self.set_font(cx, canvas, global_scope, CanvasContextState::DEFAULT_FONT_STYLE.into())
         }
         // This may be `None` if if this is offscreen canvas, in which case just use
         // the initial values for the text style.
@@ -1787,7 +1790,7 @@ impl CanvasState {
         }
 
         if self.state.borrow().font_style.is_none() {
-            self.set_font(cx, canvas, CanvasContextState::DEFAULT_FONT_STYLE.into())
+            self.set_font(cx, canvas, global_scope, CanvasContextState::DEFAULT_FONT_STYLE.into())
         }
         // This may be `None` if if this is offscreen canvas, in which case just use
         // the initial values for the text style.
@@ -1832,7 +1835,7 @@ impl CanvasState {
         // > Step 3: Let font be the current font of target, as given by that object's font
         // > attribute.
         if self.state.borrow().font_style.is_none() {
-            self.set_font(cx, canvas, CanvasContextState::DEFAULT_FONT_STYLE.into());
+            self.set_font(cx, canvas, global, CanvasContextState::DEFAULT_FONT_STYLE.into());
         }
 
         let font_context = &global.font_context();
@@ -1984,22 +1987,39 @@ impl CanvasState {
         &self,
         cx: &mut JSContext,
         canvas: Option<&HTMLCanvasElement>,
+        global: &GlobalScope,
         value: DOMString,
     ) {
-        let canvas = match canvas {
-            Some(element) => element,
-            None => return, // offscreen canvas doesn't have a placeholder canvas
+        let resolved_font_style = match canvas {
+            Some(canvas) => {
+                let node = canvas.upcast::<Node>();
+                canvas
+                    .owner_window()
+                    .resolved_font_style_query(cx, node, String::from(value))
+            },
+            // An offscreen canvas has no element whose style the font would be resolved against,
+            // so resolve it against a detached one, which has the default font. There is no layout
+            // in workers to resolve fonts with.
+            None => {
+                let Some(window) = global.downcast::<Window>() else {
+                    return;
+                };
+                let element = Element::create(
+                    cx,
+                    QualName::new(None, ns!(html), local_name!("div")),
+                    None,
+                    &window.Document(),
+                    ElementCreator::ScriptCreated,
+                    CustomElementCreationMode::Asynchronous,
+                    None,
+                );
+                window.resolved_font_style_query(cx, element.upcast::<Node>(), String::from(value))
+            },
         };
-        let node = canvas.upcast::<Node>();
-        let window = canvas.owner_window();
-
-        let Some(resolved_font_style) =
-            window.resolved_font_style_query(cx, node, String::from(value))
-        else {
-            // This will happen when there is a syntax error.
-            return;
-        };
-        self.state.borrow_mut().font_style = Some(resolved_font_style);
+        // The font is not changed when there is a syntax error.
+        if let Some(resolved_font_style) = resolved_font_style {
+            self.state.borrow_mut().font_style = Some(resolved_font_style);
+        }
     }
 
     fn font_style(&self) -> ServoArc<Font> {
