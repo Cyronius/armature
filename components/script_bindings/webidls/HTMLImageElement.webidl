@@ -24,6 +24,7 @@ interface HTMLImageElement : HTMLElement {
            attribute unsigned long width;
   [CEReactions]
            attribute unsigned long height;
+  [CEReactions] attribute DOMString loading;
   readonly attribute unsigned long naturalWidth;
   readonly attribute unsigned long naturalHeight;
   readonly attribute boolean complete;

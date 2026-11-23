@@ -954,6 +954,17 @@ impl Element {
         }
     }
 
+    /// Starts the loading of this element if it was waiting to get close to the viewport.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#lazy-load-resumption-steps>
+    pub(crate) fn resume_lazy_load(&self, cx: &mut JSContext) {
+        if let Some(image) = self.downcast::<HTMLImageElement>() {
+            image.resume_lazy_load(cx);
+        } else if let Some(iframe) = self.downcast::<HTMLIFrameElement>() {
+            iframe.resume_lazy_load(cx);
+        }
+    }
+
     pub(crate) fn is_root(&self) -> bool {
         match self.node.GetParentNode() {
             None => false,

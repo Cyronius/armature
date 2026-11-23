@@ -101,6 +101,7 @@ use crate::dom::beforeunloadevent::BeforeUnloadEvent;
 use crate::dom::bindings::callback::{ExceptionHandling, TracedCallback};
 use crate::dom::bindings::codegen::Bindings::AnimationFrameProviderBinding::FrameRequestCallback;
 use crate::dom::bindings::codegen::Bindings::BeforeUnloadEventBinding::BeforeUnloadEvent_Binding::BeforeUnloadEventMethods;
+use crate::dom::bindings::codegen::Bindings::IntersectionObserverBinding::IntersectionObserverMethods;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::{
     DocumentMethods, DocumentReadyState, DocumentVisibilityState, ElementCreationOptions,
     NamedPropertyValue,
@@ -700,6 +701,10 @@ pub(crate) struct Document {
     /// The lifetime of an intersection observer is specified at
     /// <https://github.com/w3c/IntersectionObserver/issues/525>.
     intersection_observers: DomRefCell<Vec<Dom<IntersectionObserver>>>,
+    /// The observer of the lazy loading elements that have not started loading yet.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#lazy-load-intersection-observer>
+    lazy_load_intersection_observer: MutNullableDom<IntersectionObserver>,
     /// The node that is currently highlighted by the devtools
     highlighted_dom_node: MutNullableDom<Node>,
     /// Resolved LCP candidate elements, keyed by their [LCPCandidateID].
@@ -3640,6 +3645,35 @@ impl Document {
             .retain(|observer| *observer != intersection_observer)
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#start-intersection-observing-a-lazy-loading-element>
+    pub(crate) fn start_intersection_observing_a_lazy_loading_element(
+        &self,
+        cx: &mut JSContext,
+        element: &Element,
+    ) {
+        // Step 1. Let doc be element's node document.
+        // Step 2. If doc's lazy load intersection observer is null, set it to a new
+        // IntersectionObserver instance, whose callback resumes the loading of the elements that
+        // intersect it, and whose root margin is implementation-defined.
+        let observer = self.lazy_load_intersection_observer.or_init(|| {
+            IntersectionObserver::new_for_lazy_loading(cx, self.window())
+        });
+        // Step 3. Call doc's lazy load intersection observer's observe method with element as the
+        // argument.
+        observer.Observe(cx.no_gc(), element);
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#stop-intersection-observing-a-lazy-loading-element>
+    pub(crate) fn stop_intersection_observing_a_lazy_loading_element(
+        &self,
+        no_gc: &NoGC,
+        element: &Element,
+    ) {
+        if let Some(observer) = self.lazy_load_intersection_observer.get() {
+            observer.Unobserve(no_gc, element);
+        }
+    }
+
     /// <https://w3c.github.io/IntersectionObserver/#update-intersection-observations-algo>
     pub(crate) fn update_intersection_observer_steps(
         &self,
@@ -4352,6 +4386,7 @@ impl Document {
             has_trustworthy_ancestor_origin: Cell::new(has_trustworthy_ancestor_origin),
             intersection_observer_task_queued: Cell::new(false),
             intersection_observers: Default::default(),
+            lazy_load_intersection_observer: Default::default(),
             highlighted_dom_node: Default::default(),
             lcp_candidates: DomRefCell::new(Default::default()),
             paint_timing_info: Cell::new(PaintTimingInfo::now()),

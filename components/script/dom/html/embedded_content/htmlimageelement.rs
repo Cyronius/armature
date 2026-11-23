@@ -127,6 +127,12 @@ pub(crate) struct HTMLImageElement {
     dimension_attribute_source: MutNullableDom<Element>,
     /// <https://html.spec.whatwg.org/multipage/#last-selected-source>
     last_selected_source: DomRefCell<Option<USVString>>,
+    /// What to fetch when the image is no longer lazy.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#lazy-load-resumption-steps>
+    #[no_trace]
+    #[ignore_malloc_size_of = "Not worth measuring"]
+    lazy_load_resumption: DomRefCell<Option<(USVString, f64, ServoUrl)>>,
     image_decode_promises: DomRefCell<Vec<TracedPromise>>,
     /// Line number this element was created on
     line_number: u64,
@@ -869,13 +875,53 @@ impl HTMLImageElement {
             return;
         };
 
+        // If the image is lazy loading, wait for it to get close to the viewport before fetching it.
+        if self.will_lazy_load_element_steps() {
+            *self.lazy_load_resumption.borrow_mut() =
+                Some((selected_source, selected_pixel_density, image_url));
+            self.owner_document()
+                .start_intersection_observing_a_lazy_loading_element(cx, self.upcast());
+            return;
+        }
+
         self.prepare_image_request(cx, &selected_source, selected_pixel_density, &image_url);
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#will-lazy-load-element-steps>
+    fn will_lazy_load_element_steps(&self) -> bool {
+        // Step 1. If scripting is disabled for element, then return false.
+        // Step 2. If element's lazy loading attribute is in the Lazy state, then return true.
+        // Step 3. Return false.
+        //
+        // Images in nested documents are loaded right away: whether they are near the viewport can't
+        // be found out from inside a nested document that is in another process.
+        self.owner_document().scripting_enabled() &&
+            self.owner_window().is_top_level() &&
+            self.Loading() == "lazy"
+    }
+
+    /// Fetches the image of this element if it was waiting to get close to the viewport.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#lazy-load-resumption-steps>
+    pub(crate) fn resume_lazy_load(&self, cx: &mut JSContext) {
+        self.owner_document()
+            .stop_intersection_observing_a_lazy_loading_element(cx.no_gc(), self.upcast());
+        let resumption = self.lazy_load_resumption.borrow_mut().take();
+        if let Some((selected_source, selected_pixel_density, image_url)) = resumption {
+            self.prepare_image_request(cx, &selected_source, selected_pixel_density, &image_url);
+        }
     }
 
     /// <https://html.spec.whatwg.org/multipage/#update-the-image-data>
     pub(crate) fn update_the_image_data(&self, cx: &mut JSContext) {
         // Cancel any outstanding tasks that were queued before.
         self.generation.set(self.generation.get() + 1);
+
+        // An image that was waiting to be fetched is replaced by the one of this run.
+        if self.lazy_load_resumption.borrow_mut().take().is_some() {
+            self.owner_document()
+                .stop_intersection_observing_a_lazy_loading_element(cx.no_gc(), self.upcast());
+        }
 
         // Step 1. If the element's node document is not fully active, then:
         if !self.owner_document().is_fully_active() {
@@ -1325,6 +1371,7 @@ impl HTMLImageElement {
             source_set: DomRefCell::new(SourceSet::new()),
             dimension_attribute_source: Default::default(),
             last_selected_source: DomRefCell::new(None),
+            lazy_load_resumption: DomRefCell::new(None),
             image_decode_promises: DomRefCell::new(vec![]),
             line_number: creator.return_line_number(),
         }
@@ -1740,6 +1787,21 @@ impl HTMLImageElementMethods<crate::DomTypeHolder> for HTMLImageElement {
     // https://html.spec.whatwg.org/multipage/#dom-img-src
     make_usv_setter!(SetSrcset, "srcset");
 
+    // <https://html.spec.whatwg.org/multipage/#dom-img-loading>
+    // > The loading attribute is a lazy loading attribute.
+    make_enumerated_getter!(
+        Loading,
+        "loading",
+        "lazy" | "eager",
+        // <https://html.spec.whatwg.org/multipage/#lazy-loading-attribute>
+        // > The attribute's missing value default and invalid value default are both the Eager state.
+        missing => "eager",
+        invalid => "eager"
+    );
+
+    // <https://html.spec.whatwg.org/multipage/#dom-img-loading>
+    make_setter!(SetLoading, "loading");
+
     // <https://html.spec.whatwg.org/multipage/#dom-img-sizes>
     make_getter!(Sizes, "sizes");
 
@@ -1962,6 +2024,14 @@ impl VirtualMethods for HTMLImageElement {
             //   <https://github.com/whatwg/html/pull/5900>
             &local_name!("src") | &local_name!("srcset") | &local_name!("sizes") => {
                 self.update_the_image_data(cx);
+            },
+            // <https://html.spec.whatwg.org/multipage/#attr-img-loading>
+            // > When the loading attribute's state is changed to the Eager state, the user agent
+            // > must run these steps.
+            &local_name!("loading") => {
+                if !self.will_lazy_load_element_steps() {
+                    self.resume_lazy_load(cx);
+                }
             },
             &local_name!("crossorigin") => {
                 // <https://html.spec.whatwg.org/multipage/#reacting-to-dom-mutations>
