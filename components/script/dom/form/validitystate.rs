@@ -22,6 +22,7 @@ use crate::dom::bindings::root::{Dom, DomRoot};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::element::Element;
 use crate::dom::html::htmlfieldsetelement::HTMLFieldSetElement;
+use crate::dom::html::htmlinputelement::HTMLInputElement;
 use crate::dom::html::htmlformelement::FormControlElementHelpers;
 use crate::dom::node::Node;
 use crate::dom::window::Window;
@@ -163,6 +164,25 @@ impl ValidityState {
                 .set_state(cx.no_gc(), ElementState::VALID, false);
             self.element
                 .set_state(cx.no_gc(), ElementState::INVALID, false);
+        }
+
+        // <https://html.spec.whatwg.org/multipage/#selector-in-range>
+        if let Some(input) = self.element.downcast::<HTMLInputElement>() {
+            let has_range_limitations = self.element.is_instance_validatable(cx.no_gc()) &&
+                (input.minimum().is_some() || input.maximum().is_some());
+            let out_of_range = self.invalid_flags.get().intersects(
+                ValidationFlags::RANGE_UNDERFLOW | ValidationFlags::RANGE_OVERFLOW,
+            );
+            self.element.set_state(
+                cx.no_gc(),
+                ElementState::INRANGE,
+                has_range_limitations && !out_of_range,
+            );
+            self.element.set_state(
+                cx.no_gc(),
+                ElementState::OUTOFRANGE,
+                has_range_limitations && out_of_range,
+            );
         }
 
         if let Some(form_control) = self.element.as_maybe_form_control() &&
