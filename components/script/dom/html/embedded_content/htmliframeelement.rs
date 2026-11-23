@@ -107,6 +107,10 @@ pub(crate) struct HTMLIFrameElement {
     lazy_load_resumption_steps: Cell<LazyLoadResumptionSteps>,
     /// Whether the lazy load resumption steps are being invoked.
     resuming_lazy_load: Cell<bool>,
+    /// The URL that the navigation was deferred with, which is the one that is navigated to when
+    /// the lazy load resumes, whatever happened to the base URL in the meantime.
+    #[no_trace]
+    deferred_lazy_load_url: DomRefCell<Option<ServoUrl>>,
     /// Keeping track of whether the iframe will be navigated
     /// outside of the processing of it's attribute(for example: form navigation).
     /// This is necessary to prevent the iframe load event steps
@@ -500,11 +504,17 @@ impl HTMLIFrameElement {
 
         // Step 2.1. Let url be the result of running the shared attribute processing steps
         // for iframe and frame elements given element and initialInsertion.
-        let Some(url) = self.shared_attribute_processing_steps_for_iframe_and_frame_elements(mode)
+        let Some(mut url) =
+            self.shared_attribute_processing_steps_for_iframe_and_frame_elements(mode)
         else {
             // Step 2.2. If url is null, then return.
             return;
         };
+        if self.resuming_lazy_load.get() &&
+            let Some(deferred_url) = self.deferred_lazy_load_url.borrow_mut().take()
+        {
+            url = deferred_url;
+        }
 
         // Step 2.3. If url matches about:blank and initialInsertion is true, then:
         if url.matches_about_blank() && mode == ProcessingMode::FirstTime {
@@ -516,6 +526,7 @@ impl HTMLIFrameElement {
 
         // If the element is lazy loading, navigate when it gets close to the viewport.
         if self.will_lazy_load_element_steps() {
+            *self.deferred_lazy_load_url.borrow_mut() = Some(url.clone());
             self.lazy_load_resumption_steps
                 .set(LazyLoadResumptionSteps::Src {
                     mode,
@@ -735,6 +746,7 @@ impl HTMLIFrameElement {
             current_navigation_was_lazy_loaded: Default::default(),
             lazy_load_resumption_steps: Default::default(),
             resuming_lazy_load: Default::default(),
+            deferred_lazy_load_url: Default::default(),
             pending_navigation: Default::default(),
             frozen_name: Default::default(),
         }
