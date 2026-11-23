@@ -274,6 +274,15 @@ impl VirtualMethods for HTMLLinkElement {
         match *local_name {
             local_name!("disabled") => {
                 self.handle_disabled_attribute_change(cx.no_gc(), is_removal);
+                // A style sheet that is not fetched while the link is disabled is fetched when it
+                // is enabled.
+                if is_removal &&
+                    self.relations.get().contains(LinkRelations::STYLESHEET) &&
+                    self.get_stylesheet().is_none() &&
+                    self.upcast::<Node>().is_connected()
+                {
+                    self.handle_stylesheet_url(cx);
+                }
                 return;
             },
             local_name!("rel") | local_name!("rev") => {
@@ -776,6 +785,12 @@ impl HTMLLinkElement {
         }
 
         let element = self.upcast::<Element>();
+
+        // https://html.spec.whatwg.org/multipage/#link-type-stylesheet:linked-resource-fetch-setup-steps
+        // > If el's disabled attribute is set, then return false.
+        if element.has_attribute(&local_name!("disabled")) {
+            return;
+        }
 
         // https://html.spec.whatwg.org/multipage/#processing-the-type-attribute
         // > If the UA does not support the given MIME type for the given link relationship,
