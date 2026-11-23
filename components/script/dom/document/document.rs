@@ -522,6 +522,8 @@ pub(crate) struct Document {
     ///
     /// <https://html.spec.whatwg.org/multipage/#link-type-expect>
     render_blocking_expect_links: DomRefCell<Vec<Dom<HTMLLinkElement>>>,
+    /// The `<template for>` elements that the parser is in.
+    template_patches: DomRefCell<Vec<crate::dom::servoparser::patching::TemplatePatch>>,
     /// <https://html.spec.whatwg.org/multipage/#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing>
     deferred_scripts: PendingInOrderScriptVec,
     /// <https://html.spec.whatwg.org/multipage/#list-of-scripts-that-will-execute-in-order-as-soon-as-possible>
@@ -2033,6 +2035,13 @@ impl Document {
         let count_cell = &self.render_blocking_element_count;
         assert!(count_cell.get() > 0);
         count_cell.set(count_cell.get() - 1);
+    }
+
+    /// The `<template for>` elements that the parser is in.
+    pub(crate) fn template_patches(
+        &self,
+    ) -> &DomRefCell<Vec<crate::dom::servoparser::patching::TemplatePatch>> {
+        &self.template_patches
     }
 
     /// Blocks rendering until `link`, a `link rel=expect` element, has seen the element that it expects.
@@ -4410,6 +4419,7 @@ impl Document {
             script_blocking_stylesheet_set: Default::default(),
             render_blocking_element_count: Default::default(),
             render_blocking_expect_links: Default::default(),
+            template_patches: Default::default(),
             deferred_scripts: Default::default(),
             asap_in_order_scripts_list: Default::default(),
             asap_scripts_set: Default::default(),

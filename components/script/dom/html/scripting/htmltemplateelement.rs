@@ -14,6 +14,7 @@ use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::document::Document;
+use crate::dom::element::Element;
 use crate::dom::documentfragment::DocumentFragment;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::node::virtualmethods::VirtualMethods;
@@ -113,6 +114,24 @@ impl HTMLTemplateElementMethods<crate::DomTypeHolder> for HTMLTemplateElement {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-template-shadowrootserializable>
     make_bool_setter!(SetShadowRootSerializable, "shadowrootserializable");
+
+    /// <https://github.com/WICG/declarative-partial-updates>
+    make_getter!(HtmlFor, "for");
+
+    /// <https://github.com/WICG/declarative-partial-updates>
+    make_atomic_setter!(SetHtmlFor, "for");
+
+    /// <https://github.com/WICG/declarative-partial-updates>
+    fn Buffer(&self) -> bool {
+        self.upcast::<Element>()
+            .has_attribute(&LocalName::from("buffer"))
+    }
+
+    /// <https://github.com/WICG/declarative-partial-updates>
+    fn SetBuffer(&self, cx: &mut JSContext, value: bool) {
+        self.upcast::<Element>()
+            .set_bool_attribute(cx, &LocalName::from("buffer"), value)
+    }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-template-content>
     fn Content(&self, cx: &mut js::context::JSContext) -> DomRoot<DocumentFragment> {

@@ -107,6 +107,7 @@ use crate::runtime::script_runtime::IntroductionType;
 mod async_html;
 pub(crate) mod encoding;
 pub(crate) mod html;
+pub(crate) mod patching;
 mod prefetch;
 mod xml;
 
@@ -1736,6 +1737,26 @@ fn insert_an_element_at_the_adjusted_insertion_location(
     //
     // Note: This is handled as part of the input.
 
+    // What a template that replaces a range of the document contains is inserted in the range.
+    if let Some((container, end)) =
+        Document::template_patch_destination(adjusted_insertion_location_parent)
+    {
+        insert_an_element_at_the_adjusted_insertion_location(
+            cx,
+            node_to_insert,
+            &container,
+            end.as_deref(),
+            parsing_algorithm,
+            custom_element_reaction_stack,
+        );
+        return;
+    }
+    if let Some(template) = node_to_insert.downcast::<HTMLTemplateElement>() {
+        node_to_insert
+            .owner_doc()
+            .begin_template_patch(cx, template, adjusted_insertion_location_parent);
+    }
+
     // Step 2: If it is not possible to insert element at the adjusted insertion location,
     // abort these steps.
     if Node::ensure_pre_insertion_validity(
@@ -1806,6 +1827,18 @@ fn insert(
             // https://html.spec.whatwg.org/multipage/#insert-a-character
             // Step 3. If the adjusted insertion location is in a Document node, then return.
             if parent.is::<Document>() {
+                return;
+            }
+            // Text in a template that replaces a range goes in the range.
+            if let Some((container, end)) = Document::template_patch_destination(parent) {
+                insert(
+                    cx,
+                    &container,
+                    end.as_deref(),
+                    NodeOrText::AppendText(t),
+                    parsing_algorithm,
+                    custom_element_reaction_stack,
+                );
                 return;
             }
             // A CDATA section is a Text node too, but text that follows one (in an XML
@@ -2182,6 +2215,7 @@ impl TreeSink for Sink {
         let node = DomRoot::from_ref(&**node);
         if let Some(element) = node.downcast::<Element>() {
             node.owner_doc().element_was_parsed(element);
+            node.owner_doc().finish_template_patch(cx, element);
         }
         vtable_for(&node).pop(cx);
     }

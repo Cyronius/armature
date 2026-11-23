@@ -13,4 +13,6 @@ interface HTMLTemplateElement : HTMLElement {
   [CEReactions] attribute DOMString shadowRootSlotAssignment;
   [CEReactions] attribute boolean shadowRootClonable;
   [CEReactions] attribute boolean shadowRootSerializable;
+  [CEReactions] attribute DOMString htmlFor;
+  [CEReactions] attribute boolean buffer;
 };

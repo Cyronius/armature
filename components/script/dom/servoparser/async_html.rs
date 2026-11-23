@@ -605,6 +605,7 @@ impl Tokenizer {
                 let node = self.get_node(&node);
                 if let Some(element) = node.downcast::<Element>() {
                     document.element_was_parsed(element);
+                    document.finish_template_patch(cx, element);
                 }
                 vtable_for(&node).pop(cx);
             },
