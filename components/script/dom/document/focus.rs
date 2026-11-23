@@ -1080,7 +1080,9 @@ impl SequentialFocusNavigationSearch {
         let Some(element) = node.downcast::<Element>() else {
             return Continue::Yes;
         };
-        if !element.is_sequentially_focusable(no_gc) {
+        if !element.is_sequentially_focusable(no_gc) ||
+            super::focusgroup::is_skipped_by_sequential_navigation(no_gc, element)
+        {
             return Continue::Yes;
         }
 

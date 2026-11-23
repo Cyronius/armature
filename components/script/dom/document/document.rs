@@ -636,6 +636,8 @@ pub(crate) struct Document {
     completely_loaded: Cell<bool>,
     /// <https://html.spec.whatwg.org/multipage/#document-page-reveal>
     page_revealed: Cell<bool>,
+    /// The item that the focus last moved to in each focusgroup, which Tab enters it at again.
+    focusgroup_memory: DomRefCell<Vec<(Dom<Element>, Dom<Element>)>>,
     /// Set of shadow roots connected to the document tree.
     shadow_roots: DomRefCell<FxHashSet<Dom<ShadowRoot>>>,
     /// Whether any of the shadow roots need the stylesheets flushed.
@@ -2783,6 +2785,20 @@ impl Document {
         }
     }
 
+    pub(crate) fn focusgroup_memory(&self, owner: &Element) -> Option<DomRoot<Element>> {
+        self.focusgroup_memory
+            .borrow()
+            .iter()
+            .find(|(remembered_owner, _)| &**remembered_owner == owner)
+            .map(|(_, item)| item.as_rooted())
+    }
+
+    pub(crate) fn set_focusgroup_memory(&self, owner: &Element, item: &Element) {
+        let mut memory = self.focusgroup_memory.borrow_mut();
+        memory.retain(|(remembered_owner, _)| &**remembered_owner != owner);
+        memory.push((Dom::from_ref(owner), Dom::from_ref(item)));
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#reveal-the-document>
     pub(crate) fn reveal_the_document(&self, cx: &mut JSContext) {
         // Step 1. If document's page reveal state is already revealed, return.
@@ -4484,6 +4500,7 @@ impl Document {
             resource_fetch_timing: RefCell::new(None),
             completely_loaded: Cell::new(false),
             page_revealed: Cell::new(false),
+            focusgroup_memory: Default::default(),
             script_and_layout_blockers: Cell::new(0),
             delayed_tasks: Default::default(),
             shadow_roots: Default::default(),

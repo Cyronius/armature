@@ -8,6 +8,7 @@
 
 use html5ever::LocalName;
 use js::context::JSContext;
+use js::context::NoGC;
 use keyboard_types::NamedKey;
 
 use crate::dom::bindings::codegen::Bindings::CSSStyleDeclarationBinding::CSSStyleDeclarationMethods;
@@ -18,7 +19,8 @@ use crate::dom::bindings::str::DOMString;
 use crate::dom::node::focus::FocusTrigger;
 use crate::dom::element::Element;
 use crate::dom::iterators::ShadowIncluding;
-use crate::dom::node::Node;
+use crate::dom::node::{Node, NodeTraits};
+use crate::dom::bindings::codegen::Bindings::HTMLInputElementBinding::HTMLInputElementMethods;
 use crate::dom::window::Window;
 
 const BEHAVIOR_TOKENS: [&str; 7] = [
@@ -57,9 +59,11 @@ fn opts_out(element: &Element) -> bool {
 }
 
 /// The items of a focusgroup: the focusable elements in it that are not in a nested focusgroup,
-/// where a nested focusgroup is itself an item.
-fn items(cx: &mut JSContext, owner: &Element) -> Vec<DomRoot<Element>> {
+/// where a nested focusgroup is itself an item. Each comes with the segment it is in, which is
+/// a run of items that nothing that is not part of the focusgroup interrupts.
+fn items_with_segments(no_gc: &NoGC, owner: &Element) -> Vec<(DomRoot<Element>, usize)> {
     let mut items = Vec::new();
+    let mut segment = 0;
     let mut skip_below: Option<DomRoot<Node>> = None;
     for node in owner
         .upcast::<Node>()
@@ -71,6 +75,7 @@ fn items(cx: &mut JSContext, owner: &Element) -> Vec<DomRoot<Element>> {
                 continue;
             }
             skip_below = None;
+            segment += 1;
         }
         let Some(element) = node.downcast::<Element>() else {
             continue;
@@ -80,14 +85,83 @@ fn items(cx: &mut JSContext, owner: &Element) -> Vec<DomRoot<Element>> {
             continue;
         }
         let nested_owner = is_owner(element);
-        if element.is_focusable_area(cx.no_gc()) {
-            items.push(DomRoot::from_ref(element));
+        if element.is_focusable_area(no_gc) {
+            items.push((DomRoot::from_ref(element), segment));
         }
         if nested_owner {
             skip_below = Some(node.clone());
         }
     }
     items
+}
+
+fn items(no_gc: &NoGC, owner: &Element) -> Vec<DomRoot<Element>> {
+    items_with_segments(no_gc, owner)
+        .into_iter()
+        .map(|(item, _)| item)
+        .collect()
+}
+
+/// Whether the arrow keys are used by `element` itself, so that they do not move the focus
+/// between the items of a focusgroup.
+fn uses_arrow_keys(element: &Element) -> bool {
+    use crate::dom::html::htmlinputelement::HTMLInputElement;
+    if element.is::<crate::dom::html::htmltextareaelement::HTMLTextAreaElement>() ||
+        element.is::<crate::dom::html::htmlselectelement::HTMLSelectElement>()
+    {
+        return true;
+    }
+    if let Some(input) = element.downcast::<HTMLInputElement>() {
+        return !matches!(
+            input.Type().str().to_ascii_lowercase().as_str(),
+            "button" | "submit" | "reset" | "image" | "checkbox" | "file" | "color" | "hidden"
+        );
+    }
+    element
+        .get_attribute_string_value(&LocalName::from("contenteditable"))
+        .is_some_and(|value| value.is_empty() || !value.eq_ignore_ascii_case("false"))
+}
+
+/// Whether sequential focus navigation skips `element`: of the items of each segment of a
+/// focusgroup only the one that the focus enters at can be reached with the Tab key.
+pub(crate) fn is_skipped_by_sequential_navigation(no_gc: &NoGC, element: &Element) -> bool {
+    let Some(owner) = element
+        .upcast::<Node>()
+        .ancestors()
+        .filter_map(DomRoot::downcast::<Element>)
+        .find(|ancestor| is_owner(ancestor))
+    else {
+        return false;
+    };
+    let all_items = items_with_segments(no_gc, &owner);
+    let Some(segment) = all_items
+        .iter()
+        .find(|(item, _)| **item == *element)
+        .map(|(_, segment)| *segment)
+    else {
+        return false;
+    };
+    let in_segment: Vec<&DomRoot<Element>> = all_items
+        .iter()
+        .filter(|(_, item_segment)| *item_segment == segment)
+        .map(|(item, _)| item)
+        .collect();
+
+    let has_memory = !tokens(&owner).is_some_and(|tokens| tokens.iter().any(|token| token == "nomemory"));
+    let document = owner.owner_document();
+    let remembered = has_memory
+        .then(|| document.focusgroup_memory(&owner))
+        .flatten()
+        .filter(|remembered| in_segment.iter().any(|item| ***item == **remembered));
+    let entry = remembered
+        .or_else(|| {
+            in_segment
+                .iter()
+                .find(|item| item.has_attribute(&LocalName::from("focusgroupstart")))
+                .map(|item| DomRoot::clone(item))
+        })
+        .or_else(|| in_segment.first().map(|item| DomRoot::clone(item)));
+    entry.is_some_and(|entry| *entry != *element)
 }
 
 /// Moves the focus from `focused` according to a directional key, if `focused` is an item of a
@@ -137,11 +211,14 @@ pub(crate) fn handle_directional_key(
         default_wrap || tokens.iter().any(|token| token == "wrap")
     };
 
-    let items = items(cx, &owner);
+    let items = items(cx.no_gc(), &owner);
     let Some(index) = items.iter().position(|item| **item == *focused) else {
         return false;
     };
 
+    if uses_arrow_keys(focused) {
+        return false;
+    }
     let target = match key {
         NamedKey::Home => items.first(),
         NamedKey::End => items.last(),
@@ -197,6 +274,7 @@ pub(crate) fn handle_directional_key(
     if let Some(target) = target &&
         **target != *focused
     {
+        owner.owner_document().set_focusgroup_memory(&owner, target);
         target
             .upcast::<Node>()
             .run_the_focusing_steps(cx, None, FocusTrigger::Keyboard);
