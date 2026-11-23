@@ -121,6 +121,9 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
 - **Conic gradients** and `BarProp.visible` for popups.
 - **hidden=until-found**: `content-visibility: hidden` skips its contents, navigating to a fragment inside it fires
   `beforematch` and reveals it (and closed `details` ancestors), and nothing in it can be focused.
+- **Embedder policy**: the `Cross-Origin-Embedder-Policy` header is parsed for documents and workers (with
+  `credentialless`), `crossOriginEmbedderPolicy` reflects it, and `crossOriginIsolated` exists but is always false
+  because opener policies are not implemented.
 - **Smaller fixes**: empty file controls in form data, lazy iframes keep the URL they were deferred with, and
   `autocapitalize` and `autocorrect` come from the form owner.
 - **Navigating other windows**: `location.href` and `replace()` work on windows of other origins (through a new
