@@ -1123,6 +1123,11 @@ impl HTMLIFrameElementMethods<crate::DomTypeHolder> for HTMLIFrameElement {
             .and_then(|id| self.script_window_proxies.find_window_proxy(id))
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-iframe-getsvgdocument>
+    fn GetSVGDocument(&self) -> Option<DomRoot<Document>> {
+        self.GetContentDocument()
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#concept-bcc-content-document>
     fn GetContentDocument(&self) -> Option<DomRoot<Document>> {
         // Step 1. If container's content navigable is null, then return null.

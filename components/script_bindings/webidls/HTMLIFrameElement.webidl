@@ -19,7 +19,7 @@ interface HTMLIFrameElement : HTMLElement {
   [CEReactions] attribute DOMString loading;
   readonly attribute Document? contentDocument;
   readonly attribute WindowProxy? contentWindow;
-  // Document? getSVGDocument();
+  Document? getSVGDocument();
 
   // also has obsolete members
 };
