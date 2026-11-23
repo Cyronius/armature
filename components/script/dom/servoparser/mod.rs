@@ -1861,9 +1861,10 @@ fn insert(
             }
             // A CDATA section is a Text node too, but text that follows one (in an XML
             // document) starts a Text node of its own.
-            let text = reference_child
-                .and_then(Node::GetPreviousSibling)
-                .or_else(|| parent.GetLastChild())
+            let text = match reference_child {
+                Some(reference_child) => reference_child.GetPreviousSibling(),
+                None => parent.GetLastChild(),
+            }
                 .filter(|node| !node.is::<CDATASection>())
                 .and_then(DomRoot::downcast::<Text>);
 
