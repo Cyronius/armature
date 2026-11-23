@@ -147,6 +147,8 @@ impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
             CommandState::Play => DOMString::from_static("play"),
             CommandState::Pause => DOMString::from_static("pause"),
             CommandState::ToggleMuted => DOMString::from_static("toggle-muted"),
+            CommandState::StepUp => DOMString::from_static("step-up"),
+            CommandState::StepDown => DOMString::from_static("step-down"),
             CommandState::RequestClose => DOMString::from_static("request-close"),
             CommandState::TogglePopover => DOMString::from_static("toggle-popover"),
             CommandState::ShowPopover => DOMString::from_static("show-popover"),
@@ -405,6 +407,12 @@ impl HTMLButtonElement {
         }
         if command.eq_ignore_ascii_case("pause") {
             return CommandState::Pause;
+        }
+        if command.eq_ignore_ascii_case("step-up") {
+            return CommandState::StepUp;
+        }
+        if command.eq_ignore_ascii_case("step-down") {
+            return CommandState::StepDown;
         }
         if command.eq_ignore_ascii_case("toggle-muted") {
             return CommandState::ToggleMuted;
@@ -735,6 +743,8 @@ pub(crate) enum CommandState {
     Play,
     Pause,
     ToggleMuted,
+    StepUp,
+    StepDown,
     RequestClose,
     Close,
     TogglePopover,

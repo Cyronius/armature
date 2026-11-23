@@ -42,6 +42,7 @@ use crate::dom::bindings::codegen::Bindings::HTMLInputElementBinding::HTMLInputE
 use crate::dom::bindings::codegen::Bindings::NodeBinding::{GetRootNodeOptions, NodeMethods};
 use crate::dom::bindings::error::{Error, ErrorResult};
 use crate::dom::bindings::inheritance::Castable;
+use crate::dom::htmlbuttonelement::{CommandState, HTMLButtonElement};
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::root::{Dom, DomRoot, LayoutDom, MutNullableDom};
 use crate::dom::bindings::str::{DOMString, USVString};
@@ -2408,6 +2409,34 @@ impl HTMLInputElement {
 impl VirtualMethods for HTMLInputElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<HTMLElement>() as &dyn VirtualMethods)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#the-input-element:is-valid-command-steps>
+    fn is_valid_command_steps(&self, command: CommandState) -> bool {
+        // The step commands are valid for an input that has a value that can step.
+        matches!(command, CommandState::StepUp | CommandState::StepDown) &&
+            self.does_value_as_number_apply()
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#the-input-element:command-steps>
+    fn command_steps(
+        &self,
+        cx: &mut JSContext,
+        source: DomRoot<HTMLButtonElement>,
+        command: CommandState,
+    ) -> bool {
+        if self
+            .super_type()
+            .unwrap()
+            .command_steps(cx, source, command)
+        {
+            return true;
+        }
+        match command {
+            CommandState::StepUp => self.StepUp(cx, 1).is_ok(),
+            CommandState::StepDown => self.StepDown(cx, 1).is_ok(),
+            _ => false,
+        }
     }
 
     fn attribute_mutated(
