@@ -20,6 +20,8 @@ use crate::dom::bindings::codegen::Bindings::HTMLAnchorElementBinding::HTMLAncho
 use crate::dom::bindings::codegen::Bindings::MouseEventBinding::MouseEventMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use crate::dom::bindings::inheritance::Castable;
+use crate::dom::node::NodeTraits;
+use crate::fetch::fetch::RequestWithGlobalScope;
 use crate::dom::bindings::root::{DomRoot, MutNullableDom};
 use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::document::Document;
@@ -49,6 +51,43 @@ pub(crate) struct HTMLAnchorElement {
 }
 
 impl HTMLAnchorElement {
+    /// <https://html.spec.whatwg.org/multipage/#downloading-hyperlinks>
+    ///
+    /// The response is fetched but not kept, as there is no place to save it to.
+    fn download_the_hyperlink(&self, element: &Element) {
+        let document = element.upcast::<Node>().owner_doc();
+        // A sandboxed document without `allow-downloads` cannot download.
+        if document
+            .creation_sandboxing_flag_set_considering_parent_iframe()
+            .contains(content_security_policy::sandboxing_directive::SandboxingFlagSet::SANDBOXED_DOWNLOADS_BROWSING_CONTEXT_FLAG)
+        {
+            return;
+        }
+        let Some(href) = element.get_attribute_string_value(&local_name!("href")) else {
+            return;
+        };
+        let Ok(url) = document.encoding_parse_a_url(&href) else {
+            return;
+        };
+        let global = element.upcast::<Node>().owner_global();
+        let request = net_traits::request::RequestBuilder::new(
+            None,
+            net_traits::blob_url_store::UrlWithBlobClaim::from_url_without_having_claimed_blob(
+                url.clone(),
+            ),
+            global.get_referrer(),
+        )
+        .mode(net_traits::request::RequestMode::NoCors)
+        .destination(net_traits::request::Destination::None)
+        .with_global_scope(&global)
+        .credentials_mode(net_traits::request::CredentialsMode::Include);
+        global.fetch(
+            request,
+            crate::dom::navigator::BeaconFetchListener { url },
+            global.task_manager().networking_task_source().into(),
+        );
+    }
+
     fn new_inherited(
         local_name: LocalName,
         prefix: Option<Prefix>,
@@ -381,8 +420,12 @@ impl Activatable for HTMLAnchorElement {
             ))
         }
 
-        // Step 2.
-        // TODO: Download the link is `download` attribute is set.
+        // Step 2. If the element has a `download` attribute, download the hyperlink instead of
+        // navigating to it.
+        if element.has_attribute(&local_name!("download")) {
+            self.download_the_hyperlink(element);
+            return;
+        }
         follow_hyperlink(cx, element, self.relations.get(), ismap_suffix);
     }
 }
