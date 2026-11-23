@@ -1004,20 +1004,19 @@ impl<'dom> ServoDangerousStyleElement<'dom> {
     ///
     /// <https://html.spec.whatwg.org/multipage/#selector-read-write>
     fn is_read_write(&self) -> bool {
-        if self
-            .element
-            .get_state_for_layout()
-            .contains(NonTSPseudoClass::ReadWrite.state_flag())
-        {
-            return true;
-        }
-        // Text controls decide for themselves.
-        if matches!(
+        let is_text_control = matches!(
             self.as_node().node.type_id_for_layout(),
             NodeTypeId::Element(ElementTypeId::HTMLElement(
                 HTMLElementTypeId::HTMLInputElement | HTMLElementTypeId::HTMLTextAreaElement
             ))
-        ) {
+        );
+        let state = self.element.get_state_for_layout();
+        if state.contains(NonTSPseudoClass::ReadWrite.state_flag()) {
+            // A disabled control is read-only, whatever disabled it.
+            return !(is_text_control && state.contains(ElementState::DISABLED));
+        }
+        // Text controls decide for themselves.
+        if is_text_control {
             return false;
         }
         // Otherwise the nearest `contenteditable` attribute says.
