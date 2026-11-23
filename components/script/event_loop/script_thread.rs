@@ -1171,7 +1171,10 @@ impl ScriptThread {
             // trigger new reasons for updating the rendering don't get lost.
             document.clear_rendering_update_reasons();
 
-            // TODO(#31581): The steps in the "Revealing the document" section need to be implemented
+            // > 4. For each doc of docs, reveal doc.
+            document.reveal_the_document(cx);
+
+            // TODO(#31581): The remaining steps in the "Revealing the document" section need to be implemented
             // `process_pending_input_events` handles the focusing steps as well as other events
             // from `Paint`.
 

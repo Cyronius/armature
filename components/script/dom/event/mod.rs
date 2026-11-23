@@ -26,6 +26,7 @@ pub(crate) mod inputevent;
 pub(crate) mod keyboardevent;
 pub(crate) mod messageevent;
 pub(crate) mod mouseevent;
+pub(crate) mod pagerevealevent;
 pub(crate) mod pagetransitionevent;
 pub(crate) mod pointerevent;
 pub(crate) mod popstateevent;

@@ -177,6 +177,7 @@ use crate::dom::execcommand::execcommands::DocumentExecCommandSupport;
 use crate::dom::focusevent::FocusEvent;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::hashchangeevent::HashChangeEvent;
+use crate::dom::pagerevealevent::PageRevealEvent;
 use crate::dom::history::History;
 use crate::dom::html::htmlanchorelement::HTMLAnchorElement;
 use crate::dom::html::htmlareaelement::HTMLAreaElement;
@@ -633,6 +634,8 @@ pub(crate) struct Document {
     delayed_tasks: DomRefCell<Vec<Box<dyn NonSendTaskBox>>>,
     /// <https://html.spec.whatwg.org/multipage/#completely-loaded>
     completely_loaded: Cell<bool>,
+    /// <https://html.spec.whatwg.org/multipage/#document-page-reveal>
+    page_revealed: Cell<bool>,
     /// Set of shadow roots connected to the document tree.
     shadow_roots: DomRefCell<FxHashSet<Dom<ShadowRoot>>>,
     /// Whether any of the shadow roots need the stylesheets flushed.
@@ -2780,6 +2783,18 @@ impl Document {
         }
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#reveal-the-document>
+    pub(crate) fn reveal_the_document(&self, cx: &mut JSContext) {
+        // Step 1. If document's page reveal state is already revealed, return.
+        if self.page_revealed.replace(true) {
+            return;
+        }
+        // Step 2. Fire a page reveal event named pagereveal at document's relevant global object.
+        let window = self.owner_window();
+        let event = PageRevealEvent::new(cx, &window, None, Atom::from("pagereveal"), false, false);
+        event.upcast::<Event>().fire(cx, window.upcast());
+    }
+
     pub(crate) fn completely_loaded(&self) -> bool {
         self.completely_loaded.get()
     }
@@ -4468,6 +4483,7 @@ impl Document {
             navigation_timing: Default::default(),
             resource_fetch_timing: RefCell::new(None),
             completely_loaded: Cell::new(false),
+            page_revealed: Cell::new(false),
             script_and_layout_blockers: Cell::new(0),
             delayed_tasks: Default::default(),
             shadow_roots: Default::default(),
