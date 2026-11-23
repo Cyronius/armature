@@ -3680,6 +3680,15 @@ impl Document {
 
     /// <https://html.spec.whatwg.org/multipage/#encoding-parsing-a-url>
     pub(crate) fn encoding_parse_a_url(&self, url: &str) -> Result<ServoUrl, url::ParseError> {
+        self.encoding_parse_a_url_with_base(url, &self.base_url())
+    }
+
+    /// Like [`Self::encoding_parse_a_url`], but relative to `base_url`.
+    pub(crate) fn encoding_parse_a_url_with_base(
+        &self,
+        url: &str,
+        base_url: &ServoUrl,
+    ) -> Result<ServoUrl, url::ParseError> {
         // NOTE: This algorithm is defined for both Document and environment settings objects.
         // This implementation is only for documents.
 
@@ -3692,7 +3701,6 @@ impl Document {
 
         // Step 4. Let baseURL be environment's base URL, if environment is a Document object;
         // otherwise environment's API base URL.
-        let base_url = self.base_url();
 
         // Step 5. Return the result of applying the URL parser to url, with baseURL and encoding.
         url::Url::options()

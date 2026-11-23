@@ -75,7 +75,9 @@ impl HTMLBaseElement {
             .expect("Must always have a href set when setting frozen base URL");
         let href_value = href_value.as_attr_ref().value();
         let document_fallback_url = document.fallback_base_url();
-        let url_record = document_fallback_url.join(&href_value).ok();
+        let url_record = document
+            .encoding_parse_a_url_with_base(&href_value, &document_fallback_url)
+            .ok();
         // Step 3. If any of the following are true:
         if
         // urlRecord is failure;
@@ -125,7 +127,7 @@ impl HTMLBaseElementMethods<crate::DomTypeHolder> for HTMLBaseElement {
 
         // Step 3. Let urlRecord be the result of parsing url with document's fallback base URL,
         // and document's character encoding. (Thus, the base element isn't affected by other base elements or itself.)
-        let url_record = document.fallback_base_url().join(&url);
+        let url_record = document.encoding_parse_a_url_with_base(&url, &document.fallback_base_url());
 
         match url_record {
             Err(_) => {

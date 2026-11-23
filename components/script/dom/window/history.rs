@@ -220,7 +220,7 @@ impl History {
 
                 // Step 6.1 Set newURL to the result of encoding-parsing a URL given url,
                 // relative to the relevant settings object of history.
-                let Ok(url) = ServoUrl::parse_with_base(Some(&document_url), &urlstring.0) else {
+                let Ok(url) = document.encoding_parse_a_url(&urlstring.0) else {
                     // Step 6.2 If newURL is failure, then throw a "SecurityError" DOMException.
                     return Err(Error::Security(Some("Invalid target URL".into())));
                 };
