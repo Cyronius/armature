@@ -582,8 +582,11 @@ impl WindowProxy {
             (Some(chosen), new) => (chosen, new),
             (None, _) => return Ok(None),
         };
-        // TODO Step 15.2, Set up browsing context features for targetNavigable's
+        // Step 15.2, Set up browsing context features for targetNavigable's
         // active browsing context given tokenizedFeatures.
+        // Only whether it is a popup is supported.
+        // <https://html.spec.whatwg.org/multipage/#set-up-browsing-context-features>
+        let is_popup = new && check_if_a_popup_window_is_requested(&tokenized_features);
         let target_document = match chosen.document() {
             Some(target_document) => target_document,
             None => return Ok(None),
@@ -594,6 +597,9 @@ impl WindowProxy {
             false
         };
         let target_window = target_document.window();
+        if new {
+            target_window.set_is_popup(is_popup);
+        }
         // Step 15.3. If urlRecord is null, then set urlRecord to a URL record representing about:blank.
         let url_record = url_record.unwrap_or(ServoUrl::parse("about:blank").unwrap());
         // Step 15.4. If urlRecord matches about:blank, then perform the URL and history update steps given targetNavigable's active document and urlRecord.
@@ -1171,6 +1177,57 @@ fn tokenize_open_features(features: DOMString) -> IndexMap<String, String> {
     }
     // Step 4
     tokenized_features
+}
+
+/// <https://html.spec.whatwg.org/multipage/#concept-window-open-features-check>
+fn check_if_a_window_feature_is_set(
+    tokenized_features: &IndexMap<String, String>,
+    name: &str,
+    default_value: bool,
+) -> bool {
+    if tokenized_features.contains_key(name) {
+        parse_open_feature_boolean(tokenized_features, name)
+    } else {
+        default_value
+    }
+}
+
+/// <https://html.spec.whatwg.org/multipage/#check-if-a-popup-window-is-requested>
+fn check_if_a_popup_window_is_requested(tokenized_features: &IndexMap<String, String>) -> bool {
+    // Step 1. If tokenizedFeatures is empty, then return false.
+    if tokenized_features.is_empty() {
+        return false;
+    }
+    // Step 2. If tokenizedFeatures["popup"] exists, then return the result of parsing it as a
+    // boolean feature.
+    if tokenized_features.contains_key("popup") {
+        return parse_open_feature_boolean(tokenized_features, "popup");
+    }
+    // Step 3-4. Let location and toolbar be the results of checking if a window feature is set.
+    let location = check_if_a_window_feature_is_set(tokenized_features, "location", false);
+    let toolbar = check_if_a_window_feature_is_set(tokenized_features, "toolbar", false);
+    // Step 5. If location and toolbar are both false, then return true.
+    if !location && !toolbar {
+        return true;
+    }
+    // Step 6-7. menubar
+    if !check_if_a_window_feature_is_set(tokenized_features, "menubar", false) {
+        return true;
+    }
+    // Step 8-9. resizable
+    if !check_if_a_window_feature_is_set(tokenized_features, "resizable", true) {
+        return true;
+    }
+    // Step 10-11. scrollbars
+    if !check_if_a_window_feature_is_set(tokenized_features, "scrollbars", false) {
+        return true;
+    }
+    // Step 12-13. status
+    if !check_if_a_window_feature_is_set(tokenized_features, "status", false) {
+        return true;
+    }
+    // Step 14. Return false.
+    false
 }
 
 /// <https://html.spec.whatwg.org/multipage/#concept-window-open-features-parse-boolean>

@@ -319,6 +319,9 @@ pub(crate) struct Window {
     /// The objects of the bar properties, in the order locationbar, menubar, personalbar, scrollbars,
     /// statusbar and toolbar.
     bar_props: [MutNullableDom<BarProp>; 6],
+    /// Whether this window was opened as a popup, which has no location bar, toolbar and the like.
+    /// <https://html.spec.whatwg.org/multipage/#is-popup>
+    is_popup: Cell<bool>,
     session_storage: MutNullableDom<Storage>,
     local_storage: MutNullableDom<Storage>,
     /// <https://cookiestore.spec.whatwg.org/#globals>
@@ -1059,6 +1062,14 @@ impl Window {
 
     pub(crate) fn perform_a_microtask_checkpoint(&self, cx: &mut JSContext) {
         self.script_thread().perform_a_microtask_checkpoint(cx);
+    }
+
+    pub(crate) fn is_popup(&self) -> bool {
+        self.is_popup.get()
+    }
+
+    pub(crate) fn set_is_popup(&self, is_popup: bool) {
+        self.is_popup.set(is_popup);
     }
 
     pub(crate) fn web_font_context(&self, no_gc: &NoGC) -> WebFontDocumentContext {
@@ -4317,6 +4328,7 @@ impl Window {
             navigation_start: Cell::new(navigation_start),
             screen: Default::default(),
             bar_props: Default::default(),
+            is_popup: Cell::new(false),
             session_storage: Default::default(),
             local_storage: Default::default(),
             cookie_store: Default::default(),
