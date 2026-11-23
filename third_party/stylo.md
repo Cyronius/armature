@@ -563,3 +563,9 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
   is right to left as the state it depends on, so that the DOM can tell Stylo when directions
   change.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-538: Parse the :in-range pseudo-class
+- Files: `style/servo/selector_parser.rs`
+- Why: Servo parsed `:out-of-range` but not `:in-range`, although it has the state of both, so selectors
+  with `:in-range` were invalid.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
