@@ -376,6 +376,9 @@ legend {
   padding-left: 2px; padding-right: 2px;
 }
 
+frameset { display: grid; width: 100%; height: 100vh; }
+frameset > frame, frameset > frameset { min-width: 0; min-height: 0; }
+
 iframe:not([seamless]) { border: 2px inset; }
 iframe[seamless] { display: block; }
 video { object-fit: contain; }
