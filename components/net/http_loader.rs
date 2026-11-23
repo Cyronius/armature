@@ -2101,7 +2101,7 @@ fn cross_origin_resource_policy_internal_check(
         // Step 4. If policy is null, then switch on embedderPolicyValue:
         .or(match embedder_policy_value {
             // Do nothing.
-            EmbedderPolicyValue::UnsafeNone => None,
+            EmbedderPolicyValue::UnsafeNone | EmbedderPolicyValue::Credentialless => None,
             // Set policy to `same-origin`.
             EmbedderPolicyValue::RequireCorp => Some("same-origin"),
         });

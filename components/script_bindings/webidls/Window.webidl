@@ -17,6 +17,7 @@
   readonly attribute History history;
   readonly attribute CustomElementRegistry customElements;
   readonly attribute boolean originAgentCluster;
+  readonly attribute DOMString crossOriginEmbedderPolicy;
   [Replaceable] readonly attribute BarProp locationbar;
   [Replaceable] readonly attribute BarProp menubar;
   [Replaceable] readonly attribute BarProp personalbar;

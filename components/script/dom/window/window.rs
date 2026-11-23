@@ -2439,6 +2439,17 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
         }
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-crossoriginembedderpolicy>
+    fn CrossOriginEmbedderPolicy(&self) -> DOMString {
+        DOMString::from(
+            self.Document()
+                .policy_container()
+                .embedder_policy
+                .value
+                .as_str(),
+        )
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-originagentcluster>
     fn OriginAgentCluster(&self) -> bool {
         let document = self.Document();

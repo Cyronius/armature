@@ -74,6 +74,24 @@ pub struct EmbedderPolicy {
     pub value: EmbedderPolicyValue,
 }
 
+impl EmbedderPolicy {
+    /// <https://html.spec.whatwg.org/multipage/#obtaining-an-embedder-policy>
+    pub fn from_headers(headers: Option<&http::HeaderMap>) -> EmbedderPolicy {
+        // The `Cross-Origin-Embedder-Policy` header is a structured field token, with parameters.
+        let value = headers
+            .and_then(|headers| headers.get("Cross-Origin-Embedder-Policy"))
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.split(';').next().unwrap_or_default().trim())
+            .map(|token| match token {
+                "require-corp" => EmbedderPolicyValue::RequireCorp,
+                "credentialless" => EmbedderPolicyValue::Credentialless,
+                _ => EmbedderPolicyValue::UnsafeNone,
+            })
+            .unwrap_or_default();
+        EmbedderPolicy { value }
+    }
+}
+
 /// <https://html.spec.whatwg.org/multipage/#embedder-policy-value>
 #[derive(Clone, Copy, Debug, Default, Deserialize, MallocSizeOf, Serialize)]
 pub enum EmbedderPolicyValue {
@@ -82,5 +100,17 @@ pub enum EmbedderPolicyValue {
     UnsafeNone,
     /// "require-corp"
     RequireCorp,
-    // TODO "credentialless"
+    /// "credentialless"
+    Credentialless,
+}
+
+impl EmbedderPolicyValue {
+    /// The keyword of the value.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EmbedderPolicyValue::UnsafeNone => "unsafe-none",
+            EmbedderPolicyValue::RequireCorp => "require-corp",
+            EmbedderPolicyValue::Credentialless => "credentialless",
+        }
+    }
 }

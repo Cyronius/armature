@@ -28,7 +28,7 @@ use js::context::JSContext;
 use markup5ever::TokenizerResult;
 use mime::{self, Mime};
 use net_traits::mime_classifier::{ApacheBugFlag, MediaType, MimeClassifier, NoSniffFlag};
-use net_traits::policy_container::PolicyContainer;
+use net_traits::policy_container::{EmbedderPolicy, PolicyContainer};
 use net_traits::{
     FetchMetadata, LoadContext, Metadata, NetworkError, ReferrerPolicy, ResourceFetchTiming,
 };
@@ -1072,7 +1072,7 @@ impl ParserContext {
             // TODO Step 4. If environment is non-null, then set result's embedder policy to the
             // result of obtaining an embedder policy given response and environment.
             // Otherwise, set it to "unsafe-none".
-            embedder_policy: Default::default(),
+            embedder_policy: EmbedderPolicy::from_headers(metadata.headers.as_deref()),
             // Step 5. Set result's referrer policy to the result of parsing the `Referrer-Policy` header given response. [REFERRERPOLICY]
             referrer_policy: ReferrerPolicy::parse_header_for_response(&metadata.headers),
         }

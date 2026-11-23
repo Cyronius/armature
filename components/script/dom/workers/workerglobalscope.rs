@@ -27,7 +27,7 @@ use js::realm::CurrentRealm;
 use js::rust::{HandleValue, MutableHandleValue, ParentRuntime};
 use mime::Mime;
 use net_traits::blob_url_store::UrlWithBlobClaim;
-use net_traits::policy_container::PolicyContainer;
+use net_traits::policy_container::{EmbedderPolicy, PolicyContainer};
 use net_traits::request::{
     CredentialsMode, Destination, InsecureRequestsPolicy, ParserMetadata, RequestBuilder, RequestId,
 };
@@ -586,6 +586,10 @@ impl WorkerGlobalScope {
         Arc::make_mut(&mut *self.policy_container.borrow_mut()).set_csp_list(csp_list);
     }
 
+    pub(crate) fn set_embedder_policy(&self, embedder_policy: EmbedderPolicy) {
+        Arc::make_mut(&mut *self.policy_container.borrow_mut()).embedder_policy = embedder_policy;
+    }
+
     pub(crate) fn set_referrer_policy(&self, referrer_policy: ReferrerPolicy) {
         Arc::make_mut(&mut *self.policy_container.borrow_mut())
             .set_referrer_policy(referrer_policy);
@@ -666,10 +670,14 @@ impl WorkerGlobalScope {
             // blob URL entry's environment's policy container.
             self.set_csp_list(parent_policy_container.csp_list.clone());
             self.set_referrer_policy(parent_policy_container.get_referrer_policy());
+            self.set_embedder_policy(parent_policy_container.embedder_policy.clone());
             return;
         }
         // Step 3. Set result's CSP list to the result of parsing a response's Content Security Policies given response.
         self.set_csp_list(parse_csp_list_from_metadata(&metadata.headers));
+        // Step 4. Set result's embedder policy to the result of obtaining an embedder policy given
+        // response and environment.
+        self.set_embedder_policy(EmbedderPolicy::from_headers(metadata.headers.as_deref()));
         // Step 5. Set result's referrer policy to the result of parsing the `Referrer-Policy`
         // header given response. [REFERRERPOLICY]
         let referrer_policy = metadata
@@ -787,6 +795,11 @@ impl WorkerGlobalScope {
 }
 
 impl WorkerGlobalScopeMethods<crate::DomTypeHolder> for WorkerGlobalScope {
+    /// <https://html.spec.whatwg.org/multipage/#dom-crossoriginembedderpolicy>
+    fn CrossOriginEmbedderPolicy(&self) -> DOMString {
+        DOMString::from(self.policy_container().embedder_policy.value.as_str())
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-workerglobalscope-self>
     fn Self_(&self) -> DomRoot<WorkerGlobalScope> {
         DomRoot::from_ref(self)
