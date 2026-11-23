@@ -291,7 +291,7 @@ impl VirtualMethods for HTMLLinkElement {
 
         if matches!(
             &**local_name,
-            "rel" | "href" | "blocking"
+            "rel" | "href" | "blocking" | "media"
         ) {
             self.update_expect_link_blocking();
         }
@@ -584,6 +584,8 @@ impl HTMLLinkElement {
         let document = self.owner_document();
         if self.relations.get().contains(LinkRelations::EXPECT) &&
             blocks_render &&
+            self.upcast::<HTMLElement>()
+                .media_attribute_matches_media_environment() &&
             self.upcast::<Node>().is_connected() &&
             !self.expected_element_parsed.get() &&
             self.expected_element_id().is_some()
