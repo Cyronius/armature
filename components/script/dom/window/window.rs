@@ -1563,6 +1563,14 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-window-closed>
     fn Closed(&self) -> bool {
+        // A popup that lost its opener looks closed to it.
+        if let Some(proxy) = self.window_proxy.get() &&
+            crate::coop::is_severed(proxy.browsing_context_id()) &&
+            GlobalScope::incumbent()
+                .is_some_and(|incumbent| incumbent.pipeline_id() != self.as_global_scope().pipeline_id())
+        {
+            return true;
+        }
         self.window_proxy
             .get()
             .map(|ref proxy| proxy.is_browsing_context_discarded() || proxy.is_closing())

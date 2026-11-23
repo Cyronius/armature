@@ -170,8 +170,9 @@ impl DissimilarOriginWindowMethods<crate::DomTypeHolder> for DissimilarOriginWin
 
     /// <https://html.spec.whatwg.org/multipage/#dom-window-closed>
     fn Closed(&self) -> bool {
+        // A popup that lost its opener looks closed to it.
         // TODO: Implement x-origin close
-        false
+        crate::coop::is_severed(self.window_proxy.browsing_context_id())
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-window-postmessage>

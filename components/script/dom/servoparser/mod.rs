@@ -1496,6 +1496,16 @@ impl ParserContext {
         let cx = &mut realm;
         let window = document.window();
 
+        if let Some(window_proxy) = document.browsing_context() {
+            crate::coop::document_created(
+                &window_proxy,
+                crate::coop::CoopValue::from_headers(
+                    metadata.as_ref().and_then(|metadata| metadata.headers.as_deref()),
+                ),
+                document.origin().immutable().clone(),
+            );
+        }
+
         // https://html.spec.whatwg.org/multipage/#attempt-to-populate-the-history-entry%27s-document
         // Step 4. Otherwise, if any of the following are true:
         if

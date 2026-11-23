@@ -871,6 +871,10 @@ impl WindowProxy {
         })
     }
 
+    pub(crate) fn is_disowned(&self) -> bool {
+        self.disowned.get()
+    }
+
     pub(crate) fn opener_browsing_context_id(&self) -> Option<BrowsingContextId> {
         self.opener
     }
