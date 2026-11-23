@@ -337,6 +337,11 @@ impl WindowProxy {
             .and_then(ScriptThread::find_document)
             .map(|doc| DomRoot::from_ref(doc.window()))
             .unwrap();
+        // A frame of another origin than its top-level document, which has the `same-origin`
+        // opener policy, cannot give its popups an opener.
+        let coop_noopener =
+            crate::coop::forces_noopener(self, window.Document().origin().immutable());
+        let noopener = noopener || coop_noopener;
 
         let document = self
             .currently_active
@@ -416,7 +421,7 @@ impl WindowProxy {
 
         let new_window_proxy = ScriptThread::find_document(response.new_pipeline_id)
             .and_then(|doc| doc.browsing_context())?;
-        if !name.eq_ignore_ascii_case("_blank") {
+        if !name.eq_ignore_ascii_case("_blank") && !coop_noopener {
             new_window_proxy.set_name(name);
         }
         if noopener {
@@ -568,7 +573,7 @@ impl WindowProxy {
             true
         } else {
             parse_open_feature_boolean(&tokenized_features, "noopener")
-        };
+        } || crate::coop::forces_noopener(self, source_document.origin().immutable());
         // (TODO) Step 10. Remove tokenizedFeatures["noopener"] and tokenizedFeatures["noreferrer"].
 
         // (TODO) Step 11. Let referrerPolicy be the empty string.
