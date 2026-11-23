@@ -110,6 +110,12 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
   for `history.go()` and `pushState()` with an empty URL; `spellcheck`, `autocorrect`, `autocapitalize` and
   `writingSuggestions`; `hidden` as boolean, number or `until-found`; names of `embed` and `object` elements as
   properties of the document; lowercase autofill values; email values sanitized again when `multiple` changes.
+- **Declarative partial updates**: `<template for>` replaces the range between `<?start>` and `<?end>` (or at a
+  `<?marker>`) while parsing, streaming or with `buffer`, in documents and in fragments; `htmlFor` and `buffer` on
+  `HTMLTemplateElement`. The streaming `*HTMLUnsafe` methods are missing.
+- **Navigation details**: `popstate` on fragment navigation, `pagereveal`, `window.originAgentCluster` (the getter only,
+  without agent cluster isolation), URLs of `base` and `history` parsed with the document's encoding, and the query
+  encoding tests enabled.
 - **Offscreen canvas fonts**: an `OffscreenCanvas` in a window now resolves the `font` it is given, against the
   default font; in workers there is no layout to do it with, so the font cannot be changed.
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
