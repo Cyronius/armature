@@ -180,6 +180,18 @@ impl History {
         }
     }
 
+    /// The part of "update document for history step application" that restores the state of
+    /// the entry that a fragment navigation created, which has none, and fires `popstate`.
+    pub(crate) fn fragment_navigation_state_update(&self, cx: &mut JSContext) {
+        self.state.set(NullValue());
+        PopStateEvent::dispatch_jsval(
+            cx,
+            self.window.upcast::<EventTarget>(),
+            &self.window,
+            self.state.as_handle_value(),
+        );
+    }
+
     pub(crate) fn remove_states(&self, states: Vec<HistoryStateId>) {
         let _ = self
             .window

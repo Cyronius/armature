@@ -354,6 +354,8 @@ fn navigate_to_fragment(
     doc.set_url(url.clone());
     // Step 14. Update document for history step application given navigable's active document,
     // historyEntry, true, scriptHistoryIndex, scriptHistoryLength, and historyHandling.
+    // Step 14.6.3 (the popstate part of "update document for history step application").
+    window.History(cx).fragment_navigation_state_update(cx);
     doc.update_document_for_history_step_application(&old_url, url);
     // Step 15. Scroll to the fragment given navigable's active document.
     let Some(fragment) = url.fragment() else {
