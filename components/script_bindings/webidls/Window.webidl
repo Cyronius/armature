@@ -18,6 +18,7 @@
   readonly attribute CustomElementRegistry customElements;
   readonly attribute boolean originAgentCluster;
   readonly attribute DOMString crossOriginEmbedderPolicy;
+  readonly attribute boolean crossOriginIsolated;
   [Replaceable] readonly attribute BarProp locationbar;
   [Replaceable] readonly attribute BarProp menubar;
   [Replaceable] readonly attribute BarProp personalbar;

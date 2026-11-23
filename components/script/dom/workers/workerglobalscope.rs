@@ -795,6 +795,11 @@ impl WorkerGlobalScope {
 }
 
 impl WorkerGlobalScopeMethods<crate::DomTypeHolder> for WorkerGlobalScope {
+    /// <https://html.spec.whatwg.org/multipage/#dom-crossoriginisolated>
+    fn CrossOriginIsolated(&self) -> bool {
+        false
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-crossoriginembedderpolicy>
     fn CrossOriginEmbedderPolicy(&self) -> DOMString {
         DOMString::from(self.policy_container().embedder_policy.value.as_str())

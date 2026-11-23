@@ -2439,6 +2439,12 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
         }
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#dom-crossoriginisolated>
+    fn CrossOriginIsolated(&self) -> bool {
+        // Documents are never cross-origin isolated: that needs opener policies.
+        false
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#dom-crossoriginembedderpolicy>
     fn CrossOriginEmbedderPolicy(&self) -> DOMString {
         DOMString::from(

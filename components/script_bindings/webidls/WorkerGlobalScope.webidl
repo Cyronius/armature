@@ -18,6 +18,7 @@ interface WorkerGlobalScope : GlobalScope {
   attribute EventHandler onunhandledrejection;
 
   readonly attribute DOMString crossOriginEmbedderPolicy;
+  readonly attribute boolean crossOriginIsolated;
 };
 
 // https://drafts.csswg.org/css-font-loading/#font-face-source
