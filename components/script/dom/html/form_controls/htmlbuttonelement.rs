@@ -147,6 +147,14 @@ impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
             CommandState::Play => DOMString::from_static("play"),
             CommandState::Pause => DOMString::from_static("pause"),
             CommandState::ToggleMuted => DOMString::from_static("toggle-muted"),
+            CommandState::PageUp => DOMString::from_static("page-up"),
+            CommandState::PageDown => DOMString::from_static("page-down"),
+            CommandState::PageLeft => DOMString::from_static("page-left"),
+            CommandState::PageRight => DOMString::from_static("page-right"),
+            CommandState::PageBlockStart => DOMString::from_static("page-block-start"),
+            CommandState::PageBlockEnd => DOMString::from_static("page-block-end"),
+            CommandState::PageInlineStart => DOMString::from_static("page-inline-start"),
+            CommandState::PageInlineEnd => DOMString::from_static("page-inline-end"),
             CommandState::StepUp => DOMString::from_static("step-up"),
             CommandState::StepDown => DOMString::from_static("step-down"),
             CommandState::RequestClose => DOMString::from_static("request-close"),
@@ -407,6 +415,20 @@ impl HTMLButtonElement {
         }
         if command.eq_ignore_ascii_case("pause") {
             return CommandState::Pause;
+        }
+        for (name, state) in [
+            ("page-up", CommandState::PageUp),
+            ("page-down", CommandState::PageDown),
+            ("page-left", CommandState::PageLeft),
+            ("page-right", CommandState::PageRight),
+            ("page-block-start", CommandState::PageBlockStart),
+            ("page-block-end", CommandState::PageBlockEnd),
+            ("page-inline-start", CommandState::PageInlineStart),
+            ("page-inline-end", CommandState::PageInlineEnd),
+        ] {
+            if command.eq_ignore_ascii_case(name) {
+                return state;
+            }
         }
         if command.eq_ignore_ascii_case("step-up") {
             return CommandState::StepUp;
@@ -745,9 +767,46 @@ pub(crate) enum CommandState {
     ToggleMuted,
     StepUp,
     StepDown,
+    PageUp,
+    PageDown,
+    PageLeft,
+    PageRight,
+    PageBlockStart,
+    PageBlockEnd,
+    PageInlineStart,
+    PageInlineEnd,
     RequestClose,
     Close,
     TogglePopover,
     ShowPopover,
     HidePopover,
+}
+
+/// The way that a command scrolls: physically, or along the block or inline axis.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub(crate) enum ScrollKind {
+    Up,
+    Down,
+    Left,
+    Right,
+    Block,
+    Inline,
+}
+
+impl CommandState {
+    /// The way that a command that scrolls by a page scrolls, and whether it goes to the end of the
+    /// axis it names.
+    pub(crate) fn scroll_direction(self) -> Option<(ScrollKind, bool)> {
+        match self {
+            CommandState::PageUp => Some((ScrollKind::Up, false)),
+            CommandState::PageDown => Some((ScrollKind::Down, true)),
+            CommandState::PageLeft => Some((ScrollKind::Left, false)),
+            CommandState::PageRight => Some((ScrollKind::Right, true)),
+            CommandState::PageBlockStart => Some((ScrollKind::Block, false)),
+            CommandState::PageBlockEnd => Some((ScrollKind::Block, true)),
+            CommandState::PageInlineStart => Some((ScrollKind::Inline, false)),
+            CommandState::PageInlineEnd => Some((ScrollKind::Inline, true)),
+            _ => None,
+        }
+    }
 }

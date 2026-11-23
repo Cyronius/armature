@@ -39,6 +39,8 @@ use crate::dom::bindings::codegen::UnionTypes::{
 };
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::inheritance::{Castable, ElementTypeId, HTMLElementTypeId, NodeTypeId};
+use crate::dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
+use crate::dom::htmlbuttonelement::{CommandState, HTMLButtonElement, ScrollKind};
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::characterdata::CharacterData;
@@ -1780,6 +1782,54 @@ impl HTMLElement {
 }
 
 impl VirtualMethods for HTMLElement {
+    /// <https://html.spec.whatwg.org/multipage/#the-button-element:is-valid-command-steps>
+    fn is_valid_command_steps(&self, command: CommandState) -> bool {
+        command.scroll_direction().is_some()
+    }
+
+    /// The commands that scroll the element by a page.
+    fn command_steps(
+        &self,
+        cx: &mut js::context::JSContext,
+        _source: DomRoot<HTMLButtonElement>,
+        command: CommandState,
+    ) -> bool {
+        let Some((block_or_physical, forward)) = command.scroll_direction() else {
+            return false;
+        };
+        let element = self.as_element();
+        // Which way the page goes depends on the writing mode and the direction.
+        let (vertical, ltr) = element
+            .style()
+            .map(|style| (style.writing_mode.is_vertical(), style.writing_mode.is_bidi_ltr()))
+            .unwrap_or((false, true));
+        let (horizontal_axis, sign) = match block_or_physical {
+            ScrollKind::Up => (false, -1.0),
+            ScrollKind::Down => (false, 1.0),
+            ScrollKind::Left => (true, -1.0),
+            ScrollKind::Right => (true, 1.0),
+            ScrollKind::Block => {
+                // The block axis is vertical in a horizontal writing mode.
+                let rl = element
+                    .style()
+                    .is_some_and(|style| style.writing_mode.is_vertical_rl());
+                let sign = if forward { 1.0 } else { -1.0 };
+                (vertical, if vertical && rl { -sign } else { sign })
+            },
+            ScrollKind::Inline => {
+                let sign = if forward { 1.0 } else { -1.0 };
+                (!vertical, if ltr { sign } else { -sign })
+            },
+        };
+        let (dx, dy) = if horizontal_axis {
+            (sign * f64::from(element.ClientWidth(cx.no_gc())) * 0.875, 0.0)
+        } else {
+            (0.0, sign * f64::from(element.ClientHeight(cx.no_gc())) * 0.875)
+        };
+        element.ScrollBy_(cx, dx, dy);
+        true
+    }
+
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.as_element() as &dyn VirtualMethods)
     }
