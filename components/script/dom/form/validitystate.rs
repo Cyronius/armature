@@ -108,7 +108,9 @@ impl ValidityState {
 
     /// <https://html.spec.whatwg.org/multipage/#custom-validity-error-message>
     pub(crate) fn set_custom_error_message(&self, cx: &mut JSContext, error: DOMString) {
-        *self.custom_error_message.safe_borrow_mut(cx.no_gc()) = error.traced();
+        // Newlines in the message are normalized to line feeds.
+        let message = error.str().replace("\r\n", "\n").replace('\r', "\n");
+        *self.custom_error_message.safe_borrow_mut(cx.no_gc()) = DOMString::from(message).traced();
         self.perform_validation_and_update(cx, ValidationFlags::CUSTOM_ERROR);
     }
 

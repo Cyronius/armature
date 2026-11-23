@@ -646,6 +646,12 @@ impl HTMLInputElement {
             };
         }
 
+        // Decimal values like 0.9 are not exact as floating point numbers, which would otherwise show in the
+        // result, so keep only the precision that such values have.
+        if value.is_finite() && value.abs() < 1.0e9 {
+            value = (value * 1.0e9).round() / 1.0e9;
+        }
+
         // Step 8. If the element has a minimum, and value is less than that minimum, then set value to the smallest
         // value that, when subtracted from the step base, is an integral multiple of the allowed value step, and that
         // is more than or equal to that minimum.
@@ -1402,6 +1408,10 @@ impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
     /// <https://html.spec.whatwg.org/multipage/#dom-input-valueasdate>
     #[expect(unsafe_code)]
     fn GetValueAsDate(&self, cx: &mut JSContext, mut return_value: MutableHandleObject) {
+        // The attribute does not apply to every type of input.
+        if !self.does_value_as_date_apply() {
+            return;
+        }
         if let Some(date_time) = self
             .input_type()
             .as_specific()
