@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use dom_struct::dom_struct;
+use rustc_hash::FxBuildHasher;
 use js::context::JSContext;
 use js::rust::MutableHandleValue;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
@@ -14,7 +15,9 @@ use crate::dom::bindings::codegen::Bindings::DataTransferItemListBinding::DataTr
 use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::frozenarray::CachedFrozenArray;
 use crate::dom::bindings::reflector::DomGlobal;
-use crate::dom::bindings::root::DomRoot;
+use script_bindings::cell::DomRefCell;
+use crate::dom::bindings::root::{Dom, DomRoot};
+use crate::dom::bindings::trace::HashMapTracedValues;
 use crate::dom::bindings::str::DOMString;
 use crate::dom::datatransferitem::DataTransferItem;
 use crate::dom::file::File;
@@ -29,6 +32,10 @@ pub(crate) struct DataTransferItemList {
     data_store: Rc<RefCell<Option<DragDataStore>>>,
     #[ignore_malloc_size_of = "mozjs"]
     frozen_types: CachedFrozenArray,
+    /// The File objects that represent the File items, by item id, so that the same File
+    /// object is handed out for an item each time (and the one that was added is handed back),
+    /// as Gecko's DataTransfer does.
+    files: DomRefCell<HashMapTracedValues<u16, Dom<File>, FxBuildHasher>>,
 }
 
 impl DataTransferItemList {
@@ -37,6 +44,7 @@ impl DataTransferItemList {
             reflector_: Reflector::new(),
             frozen_types: CachedFrozenArray::new(),
             data_store,
+            files: DomRefCell::new(HashMapTracedValues::new_fx()),
         }
     }
 
@@ -50,6 +58,23 @@ impl DataTransferItemList {
             Box::new(DataTransferItemList::new_inherited(data_store)),
             window,
         )
+    }
+
+    /// The File object for the File item with the given id.
+    pub(crate) fn file_for_item(&self, cx: &mut JSContext, id: u16) -> Option<DomRoot<File>> {
+        if let Some(file) = self.files.borrow().get(&id) {
+            return Some(DomRoot::from_ref(&**file));
+        }
+        let file = self
+            .data_store
+            .borrow()
+            .as_ref()?
+            .get_by_id(&id)?
+            .as_file(cx, &self.global())?;
+        self.files
+            .safe_borrow_mut(cx.no_gc())
+            .insert(id, Dom::from_ref(&*file));
+        Some(file)
     }
 
     pub(crate) fn frozen_types(&self, cx: &mut js::context::JSContext, retval: MutableHandleValue) {
@@ -159,6 +184,11 @@ impl DataTransferItemListMethods<crate::DomTypeHolder> for DataTransferItemList 
             let name = data.name().clone().root();
             data_store.add(Kind::File { bytes, name, type_ })
         };
+        if let Ok(id) = index {
+            self.files
+                .safe_borrow_mut(cx.no_gc())
+                .insert(id, Dom::from_ref(data));
+        }
         index.map(|id| {
             self.frozen_types.clear();
 

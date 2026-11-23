@@ -17,10 +17,11 @@ use script_bindings::reflector::{Reflector, reflect_dom_object_with_proto};
 use crate::dom::bindings::codegen::Bindings::DataTransferBinding::DataTransferMethods;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::reflector::DomGlobal;
-use crate::dom::bindings::root::{Dom, DomRoot};
+use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
 use crate::dom::datatransferitemlist::DataTransferItemList;
 use crate::dom::element::Element;
+use crate::dom::file::File;
 use crate::dom::filelist::FileList;
 use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::window::Window;
@@ -45,6 +46,8 @@ pub(crate) struct DataTransfer {
     drop_effect: DomRefCell<TracedDOMString>,
     effect_allowed: DomRefCell<TracedDOMString>,
     items: Dom<DataTransferItemList>,
+    /// The FileList last returned by the files attribute.
+    files: MutNullableDom<FileList>,
     #[conditional_malloc_size_of]
     #[no_trace]
     data_store: Rc<RefCell<Option<DragDataStore>>>,
@@ -60,6 +63,7 @@ impl DataTransfer {
             drop_effect: DomRefCell::new(DOMString::from_static("none").traced()),
             effect_allowed: DomRefCell::new(DOMString::from_static("none").traced()),
             items: Dom::from_ref(item_list),
+            files: Default::default(),
             data_store,
         }
     }
@@ -292,14 +296,29 @@ impl DataTransferMethods<crate::DomTypeHolder> for DataTransfer {
     /// <https://html.spec.whatwg.org/multipage/#dom-datatransfer-files>
     fn Files(&self, cx: &mut js::context::JSContext) -> DomRoot<FileList> {
         // Step 1 Start with an empty list.
-        let mut files = Vec::new();
-
         // Step 2 If the DataTransfer is not associated with a data store return the empty list.
-        if let Some(data_store) = self.data_store.borrow().as_ref() {
-            data_store.files(cx, &self.global(), &mut files);
+        // Steps 3-4. Add the File items' data, as the same File object for an item each time.
+        let ids = self
+            .data_store
+            .borrow()
+            .as_ref()
+            .map(|data_store| data_store.file_item_ids())
+            .unwrap_or_default();
+        let files: Vec<DomRoot<File>> = ids
+            .into_iter()
+            .filter_map(|id| self.items.file_for_item(cx, id))
+            .collect();
+
+        // The same FileList is returned while it holds the same files.
+        if let Some(list) = self.files.get() &&
+            list.iter_files().map(|file| &**file).eq(files.iter().map(|file| &**file))
+        {
+            return list;
         }
 
         // Step 5
-        FileList::new(cx, self.global().as_window(), files)
+        let list = FileList::new(cx, self.global().as_window(), files);
+        self.files.set(Some(&list));
+        list
     }
 }

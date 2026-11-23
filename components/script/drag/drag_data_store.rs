@@ -234,22 +234,16 @@ impl DragDataStore {
         was_modified
     }
 
-    pub(crate) fn files(
-        &self,
-        cx: &mut JSContext,
-        global: &GlobalScope,
-        file_list: &mut Vec<DomRoot<File>>,
-    ) {
-        // Step 3 If the data store is in the protected mode return the empty list.
+    /// The ids of the items whose kind is File, unless the data store is in protected mode.
+    pub(crate) fn file_item_ids(&self) -> Vec<u16> {
         if self.mode == Mode::Protected {
-            return;
+            return vec![];
         }
-
-        // Step 4 For each item in the drag data store item list whose kind is File, add the item's data to the list L.
         self.item_list
-            .values()
-            .filter_map(|item| item.as_file(cx, global))
-            .for_each(|file| file_list.push(file));
+            .iter()
+            .filter(|(_, item)| matches!(item, Kind::File { .. }))
+            .map(|(id, _)| *id)
+            .collect()
     }
 
     pub(crate) fn list_len(&self) -> usize {
