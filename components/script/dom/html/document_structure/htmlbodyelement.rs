@@ -7,7 +7,7 @@ use embedder_traits::{EmbedderMsg, LoadStatus};
 use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::JSContext;
 use js::rust::HandleObject;
-use style::attr::AttrValue;
+use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 use style::color::AbsoluteColor;
 
 use crate::dom::bindings::codegen::Bindings::HTMLBodyElementBinding::HTMLBodyElementMethods;
@@ -114,6 +114,35 @@ impl LayoutDom<'_, HTMLBodyElement> {
             .and_then(AttrValue::as_color)
             .cloned()
     }
+
+    /// The left and right margins that the attributes of the body ask for.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#the-page>
+    pub(crate) fn margin_right_left(self) -> LengthOrPercentageOrAuto {
+        self.first_margin_attribute(&[local_name!("marginwidth"), LocalName::from("leftmargin")])
+    }
+
+    /// The top and bottom margins that the attributes of the body ask for.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#the-page>
+    pub(crate) fn margin_top_bottom(self) -> LengthOrPercentageOrAuto {
+        self.first_margin_attribute(&[local_name!("marginheight"), LocalName::from("topmargin")])
+    }
+
+    /// The first of `names` that is an attribute of the body gives the margin, which is the default
+    /// one if its value is not a length.
+    fn first_margin_attribute(self, names: &[LocalName]) -> LengthOrPercentageOrAuto {
+        let element = self.upcast::<Element>();
+        for name in names {
+            if element.get_attr_for_layout(&ns!(), name).is_some() {
+                return match element.dimension_attr_value(name.clone()) {
+                    length @ LengthOrPercentageOrAuto::Length(_) => length,
+                    _ => LengthOrPercentageOrAuto::Auto,
+                };
+            }
+        }
+        LengthOrPercentageOrAuto::Auto
+    }
 }
 
 impl VirtualMethods for HTMLBodyElement {
@@ -124,8 +153,12 @@ impl VirtualMethods for HTMLBodyElement {
     fn attribute_affects_presentational_hints(&self, attr: AttrRef<'_>) -> bool {
         if matches!(
             attr.local_name(),
-            &local_name!("bgcolor") | &local_name!("text")
-        ) {
+            &local_name!("bgcolor") |
+                &local_name!("text") |
+                &local_name!("marginwidth") |
+                &local_name!("marginheight")
+        ) || matches!(&**attr.local_name(), "leftmargin" | "topmargin")
+        {
             return true;
         }
 
@@ -160,6 +193,12 @@ impl VirtualMethods for HTMLBodyElement {
             local_name!("link") |
             local_name!("vlink") |
             local_name!("alink") => AttrValue::from_legacy_color(value.into()),
+            local_name!("marginwidth") | local_name!("marginheight") => {
+                AttrValue::from_dimension(value.into())
+            },
+            _ if matches!(&**name, "leftmargin" | "topmargin") => {
+                AttrValue::from_dimension(value.into())
+            },
             _ => self
                 .super_type()
                 .unwrap()

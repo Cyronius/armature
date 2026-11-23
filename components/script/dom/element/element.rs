@@ -1620,7 +1620,9 @@ impl<'dom> LayoutDom<'dom, Element> {
             ));
         });
 
-        let margin_right_left = if let Some(this) = self.downcast::<HTMLEmbedElement>() {
+        let margin_right_left = if let Some(this) = self.downcast::<HTMLBodyElement>() {
+            this.margin_right_left()
+        } else if let Some(this) = self.downcast::<HTMLEmbedElement>() {
             this.margin_right_left()
         } else if let Some(this) = self.downcast::<HTMLImageElement>() {
             this.margin_right_left()
@@ -1640,7 +1642,9 @@ impl<'dom> LayoutDom<'dom, Element> {
             push(PropertyDeclaration::MarginRight(value));
         });
 
-        let margin_top_bottom = if let Some(this) = self.downcast::<HTMLEmbedElement>() {
+        let margin_top_bottom = if let Some(this) = self.downcast::<HTMLBodyElement>() {
+            this.margin_top_bottom()
+        } else if let Some(this) = self.downcast::<HTMLEmbedElement>() {
             this.margin_top_bottom()
         } else if let Some(this) = self.downcast::<HTMLImageElement>() {
             this.margin_top_bottom()
