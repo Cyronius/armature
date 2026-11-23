@@ -74,6 +74,66 @@ pub struct EmbedderPolicy {
     pub value: EmbedderPolicyValue,
 }
 
+/// The token that the value of a header with a structured field item that has a token as its value
+/// holds, if it is one: parameters are allowed but not looked at.
+/// <https://httpwg.org/specs/rfc9651.html#parse-item>
+pub fn structured_field_token(value: &str) -> Option<&str> {
+    // Leading and trailing spaces are dropped.
+    let value = value.trim_matches(' ');
+    let token_end = value.find(';').unwrap_or(value.len());
+    let token = &value[..token_end];
+    let mut characters = token.chars();
+    let valid_start = characters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '*');
+    let valid_rest = characters.all(|character| {
+        character.is_ascii_alphanumeric() ||
+            matches!(
+                character,
+                ':' | '/' | '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' | '^' | '_' |
+                    '`' | '|' | '~'
+            )
+    });
+    if !valid_start || !valid_rest {
+        return None;
+    }
+    // Each parameter is `;`, optional spaces, a key and optionally `=` and a bare item.
+    let mut rest = &value[token_end..];
+    while let Some(after_semicolon) = rest.strip_prefix(';') {
+        let after_spaces = after_semicolon.trim_start_matches(' ');
+        let key_end = after_spaces
+            .find(|character: char| {
+                !(character.is_ascii_lowercase() ||
+                    character.is_ascii_digit() ||
+                    matches!(character, '_' | '-' | '.' | '*'))
+            })
+            .unwrap_or(after_spaces.len());
+        let key = &after_spaces[..key_end];
+        if !key
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase() || first == '*')
+        {
+            return None;
+        }
+        rest = &after_spaces[key_end..];
+        if let Some(after_equals) = rest.strip_prefix('=') {
+            // The value is a bare item that runs up to the next parameter.
+            let value_end = if after_equals.starts_with('"') {
+                let closing = after_equals[1..].find('"')? + 2;
+                closing
+            } else {
+                after_equals.find(';').unwrap_or(after_equals.len())
+            };
+            if value_end == 0 {
+                return None;
+            }
+            rest = &after_equals[value_end..];
+        }
+    }
+    rest.is_empty().then_some(token)
+}
+
 impl EmbedderPolicy {
     /// <https://html.spec.whatwg.org/multipage/#obtaining-an-embedder-policy>
     pub fn from_headers(headers: Option<&http::HeaderMap>) -> EmbedderPolicy {
@@ -81,7 +141,7 @@ impl EmbedderPolicy {
         let value = headers
             .and_then(|headers| headers.get("Cross-Origin-Embedder-Policy"))
             .and_then(|value| value.to_str().ok())
-            .map(|value| value.split(';').next().unwrap_or_default().trim())
+            .and_then(structured_field_token)
             .map(|token| match token {
                 "require-corp" => EmbedderPolicyValue::RequireCorp,
                 "credentialless" => EmbedderPolicyValue::Credentialless,

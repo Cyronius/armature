@@ -40,9 +40,9 @@ impl CoopValue {
             return CoopValue::UnsafeNone;
         };
         // The header is a structured field token with parameters.
-        match value.split(';').next().unwrap_or_default().trim() {
-            "same-origin" => CoopValue::SameOrigin,
-            "same-origin-allow-popups" => CoopValue::SameOriginAllowPopups,
+        match net_traits::policy_container::structured_field_token(value) {
+            Some("same-origin") => CoopValue::SameOrigin,
+            Some("same-origin-allow-popups") => CoopValue::SameOriginAllowPopups,
             _ => CoopValue::UnsafeNone,
         }
     }
