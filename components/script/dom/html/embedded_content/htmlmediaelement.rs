@@ -38,6 +38,7 @@ use servo_media::player::{PlaybackState, Player, PlayerError, PlayerEvent, SeekL
 use servo_media::{ClientContextId, ServoMedia, SupportsMediaType};
 use servo_url::ServoUrl;
 use stylo_atoms::Atom;
+use stylo_dom::ElementState;
 use uuid::Uuid;
 
 use crate::dom::audio::audiotrack::AudioTrack;
@@ -2021,6 +2022,7 @@ impl HTMLMediaElement {
 
         // Step 8. Set the playbackRate attribute to the value of the defaultPlaybackRate attribute.
         self.playback_rate.set(self.default_playback_rate.get());
+        self.update_muted_state(cx.no_gc());
 
         // Step 9. Set the error attribute to null and the can autoplay flag to true.
         self.error.set(None);
@@ -3382,10 +3384,21 @@ impl HTMLMediaElement {
             // > * Its muted state is "default" and it has a muted content attribute.
             self.upcast::<Element>()
                     .has_attribute(&local_name!("muted"))
-            // > * Its playbackRate is so low or so high that
-            // > * the user agent cannot play audio usefully.
-            // TODO
         })
+        // > * Its playbackRate is so low or so high that the user agent cannot play audio
+        // >   usefully.
+        // Gecko mutes audio outside playback rates of 0.25 to 4.
+        || {
+            let rate = self.playback_rate.get().abs();
+            rate != 0.0 && !(0.25..=4.0).contains(&rate)
+        }
+    }
+
+    /// Keep the element state that `:muted` matches in step with whether the element is muted.
+    /// <https://html.spec.whatwg.org/multipage/#selector-muted>
+    fn update_muted_state(&self, no_gc: &NoGC) {
+        self.upcast::<Element>()
+            .set_state(no_gc, ElementState::MUTED, self.is_muted());
     }
 }
 
@@ -3454,7 +3467,7 @@ impl HTMLMediaElementMethods<crate::DomTypeHolder> for HTMLMediaElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-media-muted>
-    fn SetMuted(&self, _cx: &mut JSContext, value: bool) {
+    fn SetMuted(&self, cx: &mut JSContext, value: bool) {
         // > The muted setter steps are to set the muted state of this to the given value.
         // https://html.spec.whatwg.org/multipage/#set-the-muted-state
         let idl_value_changed = self.Muted() != value;
@@ -3466,6 +3479,7 @@ impl HTMLMediaElementMethods<crate::DomTypeHolder> for HTMLMediaElement {
 
         // Step 2. Set element's muted state to value.
         self.muted_state.set(Some(value));
+        self.update_muted_state(cx.no_gc());
 
         if let Some(ref player) = *self.player.borrow() &&
             let Err(error) = player.lock().unwrap().set_mute(value)
@@ -3659,7 +3673,7 @@ impl HTMLMediaElementMethods<crate::DomTypeHolder> for HTMLMediaElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-media-playbackrate>
-    fn SetPlaybackRate(&self, _cx: &mut JSContext, value: Finite<f64>) -> ErrorResult {
+    fn SetPlaybackRate(&self, cx: &mut JSContext, value: Finite<f64>) -> ErrorResult {
         // The attribute is mutable: on setting, the user agent must follow these steps:
 
         // Step 1. If the given value is not supported by the user agent, then throw a
@@ -3679,6 +3693,7 @@ impl HTMLMediaElementMethods<crate::DomTypeHolder> for HTMLMediaElement {
         // Step 2. Set playbackRate to the new value, and if the element is potentially playing,
         // change the playback speed.
         self.playback_rate.set(*value);
+        self.update_muted_state(cx.no_gc());
 
         if self.is_potentially_playing() &&
             let Some(ref player) = *self.player.borrow() &&
@@ -3938,6 +3953,7 @@ impl VirtualMethods for HTMLMediaElement {
             local_name!("autoplay") | local_name!("loop") => {
                 self.update_keep_alive();
             },
+            local_name!("muted") => self.update_muted_state(cx.no_gc()),
             local_name!("loading") => {
                 // An element that is not lazy loading any more starts loading.
                 if self.Loading() != "lazy" && self.lazy_load_resumption.borrow().is_some() {
