@@ -68,6 +68,27 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
   natural dimensions for `object-fit` and `object-position`. In the 85-file CSS Images reftest run, 81 tests newly
   pass; eight related `object-position` reftests also pass. Four tentative `contain-intrinsic-size` cases still fail.
 
+- **Canvas shadows, layers and filters** (22 November 2026): shapes, text and images now cast the shadow that
+  `shadowOffsetX`, `shadowOffsetY`, `shadowBlur` and `shadowColor` describe (all 105 shadow tests that failed now
+  pass); previously shapes and text cast none, and a filled or stroked rectangle or image lost its own pixels when
+  it did. `beginLayer()`, `endLayer()` and the `filter` attribute are implemented for `CanvasRenderingContext2D` and
+  `OffscreenCanvasRenderingContext2D`: a layer is drawn on its own target, which extends beyond the canvas so that
+  blurs and shadows can bring in what is drawn outside it, and is composited with the filter, shadow, alpha and
+  composite operation set when it began. The filter functions of CSS (`blur()`, `drop-shadow()`, `brightness()`
+  and the other color functions) and the `gaussianBlur` and `dropShadow` primitives of `beginLayer()` are
+  supported; blurs use the algorithm of resvg so that canvases and SVG filters agree. About 100 more canvas layer
+  and filter tests pass.
+- **The `dir` attribute and `:dir()`**: Stylo parses `:dir()` (change AS-537); the DOM keeps the state that it
+  matches on up to date as `dir` attributes, text and the tree change; and `dir=auto`, `<bdi>` without a `dir`,
+  and text controls with `dir=auto` resolve their direction from the first strong character (`input` and
+  `textarea` from their value, other elements from their descendants' text, skipping `bdi`, `script`, `style`,
+  `textarea` and elements with their own `dir`). 97 tests of `html/dom/elements/global-attributes` and
+  `css/selectors` newly pass.
+- **Body margins**: `marginwidth`, `leftmargin`, `marginheight` and `topmargin` on `<body>` set its margins
+  (16 reftests). The margins that a `frame` or `iframe` gives to its document's body are not mapped.
+- **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
+  `wordSpacing` and `lang`. Kerning, the spacings and the language affect shaping; the other styles are stored.
+
 ## What has not been done
 
 - Four subtests (two in `XMLSerializer-serializeToString.html`, two doctype subtests in `xml-serialization.xhtml`)
@@ -79,3 +100,10 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
   drawn as `position: fixed`), some focus navigation cases remain incomplete, four inactive-document cases expect
   listeners to run despite the DOM Standard's fully active document check, and 6 other tests contradict the spec.
 - The tentative ARIA reflection test still has 30 failing subtests.
+- Canvas layers and filters: the `CanvasFilter` primitives other than `gaussianBlur` and `dropShadow`
+  (`colorMatrix`, `componentTransfer`, `convolveMatrix`, `turbulence`) are ignored, `url()` filters are not
+  supported, layers whose content is moved by more than 2,048 pixels by a filter or shadow are clipped, and
+  `drawImage()`, `createPattern()`, `putImageData()` and `toDataURL()` do not throw while a layer is open. The
+  composite-operation grids that combine filters and shadows still fail.
+- `dir=auto` does not follow changes to the value of text controls, and slots do not contribute their assigned
+  nodes to the auto direction of their ancestors.

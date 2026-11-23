@@ -16,7 +16,10 @@ Two builds ran on the same machine: upstream Servo at the commit Armature forked
 once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. The
 Total row reports 63,770 more passing subtests than upstream Servo (2,088,378 against 2,024,608) and predates the
 WebGL rerun. The CSS row records Armature's 15 November 2026 result on the current test selection; its upstream and
-subtest figures are carried forward until the next full-suite rerun.
+subtest figures are carried forward until the next full-suite rerun. On 22 November 2026 the 10,601 tests under
+`html/` scored 67.9% before the batch of canvas, `dir` and body margin work described in
+[docs/armature/html.md](docs/armature/html.md) and 72.1% after it; the HTML row has not been remeasured against
+upstream Servo yet.
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
