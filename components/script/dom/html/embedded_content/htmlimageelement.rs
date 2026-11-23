@@ -825,7 +825,8 @@ impl HTMLImageElement {
                     // TODO: Add missing `maybe omit events` flag and previousURL.
                     let has_src_attribute = this.upcast::<Element>().has_attribute(&local_name!("src"));
 
-                    if has_src_attribute || this.uses_srcset_or_picture() {
+                    // Browsers only fire the event for an element that has a `src` attribute.
+                    if has_src_attribute {
                         this.upcast::<EventTarget>().fire_event(cx, atom!("error"));
                     }
                 }));
