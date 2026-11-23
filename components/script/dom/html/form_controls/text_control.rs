@@ -62,6 +62,21 @@ pub(crate) trait TextControlElement {
     }
 
     fn perform_editing_action(&self, cx: &mut JSContext, action: EditingAction) -> bool {
+        // A control that cannot be edited does not change its value, though the caret can move.
+        let changes_value = match &action {
+            EditingAction::InsertText(..) |
+            EditingAction::InsertCompositionText(..) |
+            EditingAction::Backspace(..) |
+            EditingAction::Delete => true,
+            EditingAction::InsertNewline | EditingAction::InsertParagraph => {
+                self.text_input().mode() == Lines::Multiple
+            },
+            _ => false,
+        };
+        if changes_value && self.read_only_or_disabled() {
+            return false;
+        }
+
         let canceled = self.maybe_fire_beforeinput_event_for_editing_action(cx, &action);
         if canceled {
             return false;
