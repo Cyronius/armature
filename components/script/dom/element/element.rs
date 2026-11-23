@@ -6248,7 +6248,7 @@ fn frameset_tracks(value: &str) -> String {
         tracks.push(if rest.starts_with('%') {
             format!("{}%", amount.min(100.0))
         } else if rest.starts_with('*') {
-            format!("minmax(0, {}fr)", amount.min(1_000_000.0))
+            format!("minmax(0, {}fr)", amount.min(1_000.0))
         } else if amount > 100_000.0 {
             "100%".to_owned()
         } else {
