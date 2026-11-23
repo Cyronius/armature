@@ -948,6 +948,12 @@ impl HTMLIFrameElement {
         // The document is unloaded when its container is removed, which fires `pagehide` and
         // `unload` in it and its descendants.
         if let Some(document) = pipeline_id.and_then(ScriptThread::find_document) {
+            let element = self.upcast::<Element>();
+            if !element.has_attribute(&local_name!("src")) &&
+                !element.has_attribute(&local_name!("srcdoc"))
+            {
+                document.treat_initial_about_blank_as_showing();
+            }
             document.unload(cx, false);
         }
 

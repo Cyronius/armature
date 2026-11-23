@@ -2604,6 +2604,14 @@ impl Document {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#unload-a-document>
+    /// The initial `about:blank` document of a container never gets a `pageshow`, but other engines
+    /// treat it as showing when it is unloaded, which fires `pagehide` in it.
+    pub(crate) fn treat_initial_about_blank_as_showing(&self) {
+        if self.is_initial_about_blank() {
+            self.page_showing.set(true);
+        }
+    }
+
     pub(crate) fn unload(&self, cx: &mut JSContext, recursive_flag: bool) {
         if self.window_detached() {
             return;
@@ -2612,9 +2620,8 @@ impl Document {
         // TODO: Step 1, increase the event loop's termination nesting level by 1.
         // Step 2
         self.incr_ignore_opens_during_unload_counter();
-        // Step 3-6 If oldDocument's page showing is true (the initial `about:blank` document of a
-        // container never gets a `pageshow`, but it is treated as showing like other engines do):
-        if self.page_showing.get() || self.is_initial_about_blank() {
+        // Step 3-6 If oldDocument's page showing is true:
+        if self.page_showing.get() {
             // Set oldDocument's page showing to false.
             self.page_showing.set(false);
             // Fire a page transition event named pagehide at oldDocument's relevant global object with oldDocument's
