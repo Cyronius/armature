@@ -133,3 +133,12 @@ Each entry has this form (the check reads the `### AH-NNN` headings and the `Fil
   html/syntax/parsing/html5lib_*.html (`processing-instructions`, `tests1` and `html5test-com`),
   dom/nodes/processing-instruction-attributes.html and sanitizer-api/sanitizer-processing-instructions.html.
 - Upstream: Could go upstream as is. Adding a `Token` variant breaks code that matches tokens exhaustively.
+
+### AH-005: End a serialized processing instruction with `?>`
+- Files: `src/serialize/mod.rs`
+- Why: The HTML Standard's fragment serializing algorithm writes a processing instruction as `<?`, its target, a space,
+  its data and `?>`, so that what is written can be parsed again as the same processing instruction (with the
+  processing instruction parsing of AH-004). Upstream wrote `>` only. Affects
+  html/syntax/serializing-html-fragments/processing-instructions.html and the `innerHTML` of nodes that contain
+  processing instructions, such as the `<template for>` tests.
+- Upstream: Could go upstream as is, with the processing instruction parsing.

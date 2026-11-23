@@ -284,6 +284,7 @@ impl<Wr: Write> Serializer for HtmlSerializer<Wr> {
         self.writer.write_all(target.as_bytes())?;
         self.writer.write_all(b" ")?;
         self.writer.write_all(data.as_bytes())?;
-        self.writer.write_all(b">")
+        // Armature (AH-005): A processing instruction ends with `?>`.
+        self.writer.write_all(b"?>")
     }
 }
