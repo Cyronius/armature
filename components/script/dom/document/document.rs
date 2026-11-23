@@ -185,6 +185,7 @@ use crate::dom::html::htmlcollection::{CollectionFilter, HTMLCollection};
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::htmllinkelement::HTMLLinkElement;
 use crate::dom::html::htmlembedelement::HTMLEmbedElement;
+use crate::dom::html::htmlobjectelement::HTMLObjectElement;
 use crate::dom::html::htmlformelement::{FormControl, FormControlElementHelpers, HTMLFormElement};
 use crate::dom::html::htmlheadelement::HTMLHeadElement;
 use crate::dom::html::htmlhtmlelement::HTMLHtmlElement;
@@ -7541,9 +7542,14 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
                         name == *self.name ||
                             !name.is_empty() && elem.get_id().as_ref() == Some(&self.name)
                     }),
-                    // TODO handle <embed> and <object>; these depend on whether the element is
-                    // “exposed”, a concept that doesn’t fully make sense until embed/object
-                    // behaviour is actually implemented
+                    HTMLElementTypeId::HTMLEmbedElement => {
+                        is_exposed(elem) && elem.get_name().as_ref() == Some(&self.name)
+                    },
+                    HTMLElementTypeId::HTMLObjectElement => {
+                        is_exposed(elem) &&
+                            (elem.get_name().as_ref() == Some(&self.name) ||
+                                elem.get_id().as_ref() == Some(&self.name))
+                    },
                     _ => false,
                 }
             }
@@ -8247,18 +8253,30 @@ fn is_named_element_with_name_attribute(elem: &Element) -> bool {
         HTMLElementTypeId::HTMLFormElement |
         HTMLElementTypeId::HTMLIFrameElement |
         HTMLElementTypeId::HTMLImageElement => true,
-        // TODO handle <embed> and <object>; these depend on whether the element is
-        // “exposed”, a concept that doesn’t fully make sense until embed/object
-        // behaviour is actually implemented
+        HTMLElementTypeId::HTMLEmbedElement | HTMLElementTypeId::HTMLObjectElement => {
+            is_exposed(elem)
+        },
         _ => false,
     }
 }
 
 fn is_named_element_with_id_attribute(elem: &Element) -> bool {
-    // TODO handle <embed> and <object>; these depend on whether the element is
-    // “exposed”, a concept that doesn’t fully make sense until embed/object
-    // behaviour is actually implemented
+    if elem.is::<HTMLObjectElement>() {
+        return is_exposed(elem);
+    }
     elem.is::<HTMLImageElement>() && elem.get_name().is_some_and(|name| !name.is_empty())
+}
+
+/// Whether an `embed` or `object` element is exposed, so that its name shows up as a named property
+/// of the document. The ones in an `object` are not.
+///
+/// <https://html.spec.whatwg.org/multipage/#exposed>
+// TODO: An object that shows its fallback content, and has object or embed descendants, is not exposed.
+fn is_exposed(elem: &Element) -> bool {
+    !elem
+        .upcast::<Node>()
+        .ancestors()
+        .any(|ancestor| ancestor.is::<HTMLObjectElement>())
 }
 
 impl DocumentHelpers for Document {
