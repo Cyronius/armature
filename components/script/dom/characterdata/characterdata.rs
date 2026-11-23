@@ -24,6 +24,7 @@ use crate::dom::cdatasection::CDATASection;
 use crate::dom::comment::Comment;
 use crate::dom::document::Document;
 use crate::dom::element::Element;
+use crate::dom::html::htmlstyleelement::HTMLStyleElement;
 use crate::dom::mutationobserver::{Mutation, MutationObserver};
 use crate::dom::node::virtualmethods::vtable_for;
 use crate::dom::node::{ChildrenMutation, Node, NodeDamage};
@@ -89,8 +90,15 @@ impl CharacterData {
         // If this is a Text node, we might need to re-parse (say, if our parent
         // is a <style> element.) We don't need to if this is a Comment or
         // ProcessingInstruction.
-        if self.is::<Text>() &&
-            let Some(parent_node) = node.GetParentNode()
+        //
+        // A style element looks at the other nodes that it contains too, so it updates when the
+        // data of a comment changes.
+        if let Some(parent_node) = node.GetParentNode() &&
+            (self.is::<Text>() ||
+                (self.is::<Comment>() &&
+                    parent_node
+                        .downcast::<Element>()
+                        .is_some_and(|parent| parent.is::<HTMLStyleElement>())))
         {
             let mutation = ChildrenMutation::ChangeText;
             vtable_for(&parent_node).children_changed(cx, &mutation);
