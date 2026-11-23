@@ -55,6 +55,7 @@ interface HTMLMediaElement : HTMLElement {
 
   // controls
   [CEReactions] attribute boolean controls;
+  [SameObject, PutForwards=value] readonly attribute DOMTokenList controlsList;
   [Throws] attribute double volume;
   attribute boolean muted;
   [CEReactions] attribute boolean defaultMuted;

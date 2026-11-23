@@ -43,6 +43,7 @@ use uuid::Uuid;
 use crate::dom::audio::audiotrack::AudioTrack;
 use crate::dom::audio::audiotracklist::AudioTrackList;
 use crate::dom::bindings::cell::AtomicSafeBorrowMut;
+use crate::dom::domtokenlist::DOMTokenList;
 use crate::dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLMediaElementBinding::{
     CanPlayTypeResult, HTMLMediaElementConstants, HTMLMediaElementMethods,
@@ -192,6 +193,8 @@ pub(crate) struct HTMLMediaElement {
     current_src: AtomicRefCell<String>,
     /// Incremented whenever tasks associated with this element are cancelled.
     generation_id: Cell<u32>,
+    /// <https://html.spec.whatwg.org/multipage/#dom-media-controlslist>
+    controls_list: MutNullableDom<DOMTokenList>,
     /// The base URL of the resource selection algorithm that waits for the element to get close to
     /// the viewport, because the element is lazy loading.
     ///
@@ -418,6 +421,7 @@ impl HTMLMediaElement {
             src_object: Default::default(),
             current_src: Default::default(),
             generation_id: Cell::new(0),
+            controls_list: Default::default(),
             lazy_load_resumption: Default::default(),
             fired_loadeddata_event: Cell::new(false),
             error: Default::default(),
@@ -3458,6 +3462,23 @@ impl HTMLMediaElementMethods<crate::DomTypeHolder> for HTMLMediaElement {
     fn SetSrcObject(&self, cx: &mut JSContext, value: Option<MediaStreamOrBlob>) {
         *self.src_object.borrow_mut() = value.map(|value| value.into());
         self.media_element_load_algorithm(cx);
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-media-controlslist>
+    fn ControlsList(&self, cx: &mut JSContext) -> DomRoot<DOMTokenList> {
+        self.controls_list.or_init(|| {
+            DOMTokenList::new(
+                cx,
+                self.upcast::<Element>(),
+                &html5ever::LocalName::from("controlslist"),
+                Some(vec![
+                    Atom::from("nodownload"),
+                    Atom::from("nofullscreen"),
+                    Atom::from("noplaybackrate"),
+                    Atom::from("noremoteplayback"),
+                ]),
+            )
+        })
     }
 
     // https://html.spec.whatwg.org/multipage/#attr-media-preload
