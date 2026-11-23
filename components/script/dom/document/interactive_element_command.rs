@@ -4,7 +4,6 @@
 
 use js::context::JSContext;
 use script_bindings::codegen::GenericBindings::HTMLButtonElementBinding::HTMLButtonElementMethods;
-use script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElementMethods;
 use script_bindings::codegen::GenericBindings::HTMLInputElementBinding::HTMLInputElementMethods;
 use script_bindings::codegen::GenericBindings::HTMLOptionElementBinding::HTMLOptionElementMethods;
 use script_bindings::codegen::GenericBindings::HTMLSelectElementBinding::HTMLSelectElementMethods;
@@ -161,7 +160,7 @@ impl InteractiveElementCommand {
             InteractiveElementCommand::Option(option_element) => option_element.upcast(),
             InteractiveElementCommand::HTMLElement(html_element) => html_element,
         };
-        html_element.Hidden()
+        html_element.is_hidden()
     }
 
     pub(crate) fn perform_action(&self, cx: &mut JSContext) {

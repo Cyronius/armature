@@ -20,7 +20,7 @@ interface HTMLElement : Element {
   sequence<DOMString>? itemtypes();
 
   // user interaction
-  [CEReactions] attribute boolean hidden;
+  [CEReactions] attribute (boolean or unrestricted double or DOMString)? hidden;
   [CEReactions] attribute boolean inert;
   undefined click();
   [CEReactions] attribute DOMString accessKey;

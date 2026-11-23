@@ -31,7 +31,6 @@ use script_bindings::codegen::GenericBindings::ElementBinding::ScrollLogicalPosi
 use script_bindings::codegen::GenericBindings::EventBinding::EventMethods;
 #[cfg(feature = "gamepad")]
 use script_bindings::codegen::GenericBindings::GamepadBinding::GamepadMappingType;
-use script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElementMethods;
 use script_bindings::codegen::GenericBindings::HTMLLabelElementBinding::HTMLLabelElementMethods;
 use script_bindings::codegen::GenericBindings::ShadowRootBinding::ShadowRootMethods;
 use script_bindings::codegen::GenericBindings::TouchBinding::TouchMethods;
@@ -2604,7 +2603,7 @@ impl DocumentEventHandler {
         for node in node.inclusive_ancestors_unrooted(cx.no_gc(), ShadowIncluding::Yes) {
             if node
                 .downcast::<HTMLElement>()
-                .is_some_and(|html_element| html_element.Hidden())
+                .is_some_and(|html_element| html_element.is_hidden())
             {
                 return false;
             }

@@ -32,7 +32,9 @@ use crate::dom::bindings::codegen::Bindings::HTMLOrSVGOrMathMLElementBinding::Fo
 use crate::dom::bindings::codegen::Bindings::NodeBinding::Node_Binding::NodeMethods;
 use crate::dom::bindings::codegen::Bindings::ShadowRootBinding::ShadowRoot_Binding::ShadowRootMethods;
 use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
-use crate::dom::bindings::codegen::UnionTypes::TogglePopoverOptionsOrBoolean;
+use crate::dom::bindings::codegen::UnionTypes::{
+    BooleanOrUnrestrictedDoubleOrString, TogglePopoverOptionsOrBoolean,
+};
 use crate::dom::bindings::error::{Error, ErrorResult, Fallible};
 use crate::dom::bindings::inheritance::{Castable, ElementTypeId, HTMLElementTypeId, NodeTypeId};
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
@@ -90,6 +92,11 @@ pub(crate) struct HTMLElement {
 }
 
 impl HTMLElement {
+    /// Whether the `hidden` attribute is set.
+    pub(crate) fn is_hidden(&self) -> bool {
+        self.as_element().has_attribute(&local_name!("hidden"))
+    }
+
     pub(crate) fn new_inherited(
         tag_name: LocalName,
         prefix: Option<Prefix>,
@@ -380,10 +387,54 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
     // https://html.spec.whatwg.org/multipage/#the-dir-attribute
     make_setter!(SetDir, "dir");
 
-    // https://html.spec.whatwg.org/multipage/#dom-hidden
-    make_bool_getter!(Hidden, "hidden");
-    // https://html.spec.whatwg.org/multipage/#dom-hidden
-    make_bool_setter!(SetHidden, "hidden");
+    /// <https://html.spec.whatwg.org/multipage/#dom-hidden>
+    fn GetHidden(&self) -> Option<BooleanOrUnrestrictedDoubleOrString> {
+        let element = self.as_element();
+        // Step 1. If the hidden attribute is in the hidden until found state, then return
+        // "until-found".
+        // Step 2. If the hidden attribute is set, then return true.
+        // Step 3. Return false.
+        Some(match element.get_attribute_string_value(&local_name!("hidden")) {
+            Some(value) if value.eq_ignore_ascii_case("until-found") => {
+                BooleanOrUnrestrictedDoubleOrString::String(DOMString::from_static("until-found"))
+            },
+            Some(_) => BooleanOrUnrestrictedDoubleOrString::Boolean(true),
+            None => BooleanOrUnrestrictedDoubleOrString::Boolean(false),
+        })
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-hidden>
+    fn SetHidden(&self, cx: &mut JSContext, value: Option<BooleanOrUnrestrictedDoubleOrString>) {
+        let element = self.as_element();
+        let name = local_name!("hidden");
+        match value {
+            // Step 3. Otherwise, if the given value is a string that is an ASCII case-insensitive match
+            // for "until-found", then set the hidden attribute to "until-found".
+            Some(BooleanOrUnrestrictedDoubleOrString::String(ref string))
+                if string.str().eq_ignore_ascii_case("until-found") =>
+            {
+                element.set_string_attribute(cx, &name, DOMString::from_static("until-found"));
+            },
+            // Step 4. Otherwise, if the given value is false, null, 0, NaN or the empty string,
+            // then remove the hidden attribute.
+            None |
+            Some(BooleanOrUnrestrictedDoubleOrString::Boolean(false)) => {
+                element.remove_attribute(cx, &ns!(), &name);
+            },
+            Some(BooleanOrUnrestrictedDoubleOrString::UnrestrictedDouble(number))
+                if number == 0.0 || number.is_nan() =>
+            {
+                element.remove_attribute(cx, &ns!(), &name);
+            },
+            Some(BooleanOrUnrestrictedDoubleOrString::String(ref string)) if string.is_empty() => {
+                element.remove_attribute(cx, &ns!(), &name);
+            },
+            // Step 5. Otherwise, set the hidden attribute to the empty string.
+            Some(_) => {
+                element.set_string_attribute(cx, &name, DOMString::new());
+            },
+        }
+    }
 
     // https://html.spec.whatwg.org/multipage/#the-inert-attribute
     make_bool_getter!(Inert, "inert");
