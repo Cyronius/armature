@@ -25,6 +25,7 @@ use crate::dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterData
 use crate::dom::bindings::codegen::Bindings::EventHandlerBinding::{
     EventHandlerNonNull, OnErrorEventHandlerNonNull,
 };
+use crate::dom::bindings::codegen::Bindings::HTMLInputElementBinding::HTMLInputElementMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::{
     HTMLElementMethods, ShowPopoverOptions,
 };
@@ -95,6 +96,18 @@ pub(crate) struct HTMLElement {
 }
 
 impl HTMLElement {
+    /// The value of an `autocapitalize` or `autocorrect` attribute, which a form-associated element
+    /// without one takes from its form owner.
+    fn autocapitalize_or_autocorrect_value(&self, name: &str) -> Option<String> {
+        let name = LocalName::from(name);
+        let element = self.as_element();
+        if let Some(value) = element.get_attribute_string_value(&name) {
+            return Some(value);
+        }
+        let form = element.as_maybe_form_control()?.form_owner()?;
+        form.upcast::<Element>().get_attribute_string_value(&name)
+    }
+
     /// Whether the `hidden` attribute is set.
     pub(crate) fn is_hidden(&self) -> bool {
         self.as_element().has_attribute(&local_name!("hidden"))
@@ -981,17 +994,16 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-autocapitalize>
     fn Autocapitalize(&self) -> DOMString {
-        let value = self
-            .as_element()
-            .get_attribute_string_value(&LocalName::from("autocapitalize"))
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        DOMString::from_static(match &*value {
+        let Some(value) = self.autocapitalize_or_autocorrect_value("autocapitalize") else {
+            return DOMString::new();
+        };
+        DOMString::from_static(match &*value.to_ascii_lowercase() {
+            "" => "",
             "none" | "off" => "none",
-            "on" | "sentences" => "sentences",
             "words" => "words",
             "characters" => "characters",
-            _ => "",
+            // `on`, `sentences` and the invalid values.
+            _ => "sentences",
         })
     }
 
@@ -1006,10 +1018,18 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-autocorrect>
     fn Autocorrect(&self) -> bool {
+        // Inputs for passwords, URLs and email addresses are never corrected.
+        if let Some(input) = self.downcast::<HTMLInputElement>() &&
+            matches!(
+                input.Type().str().to_ascii_lowercase().as_str(),
+                "password" | "email" | "url"
+            )
+        {
+            return false;
+        }
         // Only `off` turns it off.
         !self
-            .as_element()
-            .get_attribute_string_value(&LocalName::from("autocorrect"))
+            .autocapitalize_or_autocorrect_value("autocorrect")
             .is_some_and(|value| value.eq_ignore_ascii_case("off"))
     }
 
