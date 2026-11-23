@@ -143,6 +143,29 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
   `wordSpacing` and `lang`. Kerning, the spacings and the language affect shaping; the other styles are stored.
 
+### Behaviour ported from Gecko
+
+Firefox passes these tests and Armature failed them; the fixes follow Gecko's implementation (MPL 2.0, like
+Armature), as comments in the code note:
+
+- **Form controls**: number and email inputs keep the typed text and sanitize it in the `value` getter (a number
+  typed as `1.` reads as `1`; only unreadable text is bad input); exact decimal step mismatch; arrow keys move
+  through radio groups and change a closed `select`; a nested fieldset is disabled by its ancestor and legend
+  changes update its controls; the parser-inserted form owner flag lasts until the owner is reset; `form.name`
+  returns the same `RadioNodeList`; labels inside shadow trees; a textarea keeps a value set while it was parsed;
+  the document selection stringifies to a focused text control's selection; `showPicker()` for colors in
+  cross-origin frames; a label forwards trusted clicks (keeping their properties), skips interactive content and
+  forwards focus; labels and space-held controls match `:active`; `DataTransfer` keeps its `File` objects.
+- **Bindings**: proxies with indexed or named properties refuse `defineProperty` and `delete` over them.
+- **Charset**: when the prescan finds nothing, a tokenizer scan of the head finds late `meta` declarations
+  (character references included, templates and raw text skipped); the XML declaration is read past the first
+  kilobyte; XMLHttpRequest HTML documents use the same detection.
+- **Media and text tracks**: WebVTT character references, `preservesPitch`, default metadata tracks become hidden,
+  cues are deactivated on reload, the error attribute is set synchronously for bad `src` values, extreme playback
+  rates mute and `:muted` matches.
+
+Firefox does not implement `<template for>` or declarative CSS modules, so those gaps have nothing to port.
+
 ### Drag and drop of draggable elements
 
 `components/script/drag/element_drag.rs` implements the drag-and-drop processing model for draggable elements
