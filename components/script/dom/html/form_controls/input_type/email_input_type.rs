@@ -19,6 +19,19 @@ pub(crate) struct EmailInputType {
     text_input_widget: DomRefCell<TextInputWidget>,
 }
 
+/// Converts the domain of an email address with a non-ASCII domain to Punycode.
+/// <https://html.spec.whatwg.org/multipage/#email-state-(type=email)>
+fn domain_to_punycode(address: &str) -> Option<String> {
+    let (local_part, domain) = address.rsplit_once('@')?;
+    if domain.is_ascii() {
+        return None;
+    }
+    match url::Host::parse(domain) {
+        Ok(url::Host::Domain(domain)) => Some(format!("{local_part}@{domain}")),
+        _ => None,
+    }
+}
+
 impl SpecificInputType for EmailInputType {
     fn text_input_widget(&self) -> Option<&DomRefCell<TextInputWidget>> {
         Some(&self.text_input_widget)
@@ -28,12 +41,21 @@ impl SpecificInputType for EmailInputType {
         if !input.Multiple() {
             value.strip_newlines();
             value.strip_leading_and_trailing_ascii_whitespace();
+            let punycode = domain_to_punycode(&value.str());
+            if let Some(ascii) = punycode {
+                value.clear();
+                value.push_str(&ascii);
+            }
         } else {
             let sanitized = split_commas(&value.str())
                 .map(|token| {
                     let mut token = DOMString::from(token.to_string());
                     token.strip_newlines();
                     token.strip_leading_and_trailing_ascii_whitespace();
+                    let punycode = domain_to_punycode(&token.str());
+                    if let Some(ascii) = punycode {
+                        token = DOMString::from(ascii);
+                    }
                     token
                 })
                 .join(",");
