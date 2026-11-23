@@ -2757,7 +2757,7 @@ impl VirtualMethods for HTMLInputElement {
         elem.text_input
             .safe_borrow_mut(cx.no_gc())
             .set_content(self.text_input.borrow().get_content());
-        self.value_changed(cx);
+        elem.value_changed(cx);
     }
 
     fn attribute_affects_presentational_hints(&self, attr: AttrRef<'_>) -> bool {
