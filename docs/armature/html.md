@@ -121,6 +121,11 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
 - **Conic gradients** and `BarProp.visible` for popups.
 - **hidden=until-found**: `content-visibility: hidden` skips its contents, navigating to a fragment inside it fires
   `beforematch` and reveals it (and closed `details` ancestors), and nothing in it can be focused.
+- **Opener policies**: a popup whose `Cross-Origin-Opener-Policy` does not match the one of its opener loses its
+  opener, starts with no name and looks closed to the window that opened it, and a frame of another origin than a
+  `same-origin` top-level document cannot give its popups an opener. The policies are kept in a table that the script
+  threads of one process share, so this does not work between processes, the popup stays in the opener's group of
+  browsing contexts for the constellation, and neither reporting nor `noopener-allow-popups` are implemented.
 - **Embedder policy**: the `Cross-Origin-Embedder-Policy` header is parsed for documents and workers (with
   `credentialless`), `crossOriginEmbedderPolicy` reflects it, and `crossOriginIsolated` exists but is always false
   because opener policies are not implemented.
