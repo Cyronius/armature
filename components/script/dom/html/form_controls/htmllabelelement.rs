@@ -3,13 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use dom_struct::dom_struct;
-use html5ever::{LocalName, Prefix, local_name};
+use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::NoGC;
 use js::rust::HandleObject;
 use style::attr::AttrValue;
 
 use crate::dom::activation::Activatable;
 use crate::dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
+use crate::dom::bindings::codegen::Bindings::EventBinding::EventMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::HTMLElementMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLLabelElementBinding::HTMLLabelElementMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::{GetRootNodeOptions, NodeMethods};
@@ -24,6 +25,7 @@ use crate::dom::eventtarget::EventTarget;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::htmlformelement::{FormControlElementHelpers, HTMLFormElement};
 use crate::dom::iterators::ShadowIncluding;
+use crate::dom::mouseevent::MouseEvent;
 use crate::dom::node::Node;
 use crate::dom::node::virtualmethods::VirtualMethods;
 
@@ -85,12 +87,41 @@ impl Activatable for HTMLLabelElement {
     fn activation_behavior(
         &self,
         cx: &mut js::context::JSContext,
-        _event: &Event,
-        _target: &EventTarget,
+        event: &Event,
+        target: &EventTarget,
     ) {
-        if let Some(e) = self.GetControl(cx.no_gc()) {
-            e.Click(cx);
+        let Some(control) = self.GetControl(cx.no_gc()) else {
+            return;
+        };
+        // Clicks on the labeled control, or on interactive content inside the label, are not
+        // forwarded (Gecko's HTMLLabelElement::PostHandleEvent and InInteractiveHTMLContent).
+        if let Some(target) = target.downcast::<Node>() {
+            let label = self.upcast::<Node>();
+            let on_interactive_content = target
+                .inclusive_ancestors(ShadowIncluding::No)
+                .take_while(|node| &**node != label)
+                .any(|node| {
+                    &*node == control.upcast::<Node>() ||
+                        node.downcast::<Element>().is_some_and(is_interactive_content)
+                });
+            if on_interactive_content {
+                return;
+            }
         }
+        // A click from the user is forwarded as a trusted click that keeps its pointer
+        // properties, as Gecko's HTMLLabelElement::PostHandleEvent does.
+        if event.IsTrusted() &&
+            let Some(mouse_event) = event.downcast::<MouseEvent>()
+        {
+            if control.upcast::<Element>().disabled_state() {
+                return;
+            }
+            mouse_event
+                .forwarded_click(cx)
+                .dispatch(cx, control.upcast::<EventTarget>(), false);
+            return;
+        }
+        control.Click(cx);
     }
 }
 
@@ -195,5 +226,29 @@ impl HTMLLabelElement {
             .traverse_preorder(ShadowIncluding::No)
             .filter_map(DomRoot::downcast::<HTMLElement>)
             .find(|elem| elem.is_labelable_element())
+    }
+}
+
+/// <https://html.spec.whatwg.org/multipage/#interactive-content-2>
+fn is_interactive_content(element: &Element) -> bool {
+    if *element.namespace() != ns!(html) {
+        return false;
+    }
+    let has = |name: &LocalName| element.has_attribute(name);
+    match element.local_name() {
+        &local_name!("a") => has(&local_name!("href")),
+        &local_name!("audio") | &local_name!("video") => has(&local_name!("controls")),
+        &local_name!("img") => has(&local_name!("usemap")),
+        &local_name!("input") => !element
+            .get_attribute_string_value(&local_name!("type"))
+            .is_some_and(|value| value.eq_ignore_ascii_case("hidden")),
+        &local_name!("button") |
+        &local_name!("details") |
+        &local_name!("embed") |
+        &local_name!("iframe") |
+        &local_name!("label") |
+        &local_name!("select") |
+        &local_name!("textarea") => true,
+        _ => false,
     }
 }

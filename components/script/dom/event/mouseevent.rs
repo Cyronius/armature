@@ -463,6 +463,36 @@ impl MouseEvent {
         self.button.get()
     }
 
+    /// A new, trusted `click` event with this event's properties, for forwarding a click (as a
+    /// label does to its control). A pointer event stays a pointer event.
+    pub(crate) fn forwarded_click(&self, cx: &mut JSContext) -> DomRoot<Event> {
+        let event = if self.is::<PointerEvent>() {
+            DomRoot::upcast::<Event>(self.to_pointer_event(cx, atom!("click")))
+        } else {
+            let window = self.global();
+            DomRoot::upcast::<Event>(MouseEvent::new(
+                cx,
+                window.as_window(),
+                atom!("click"),
+                EventBubbles::from(self.upcast::<Event>().Bubbles()),
+                EventCancelable::from(self.upcast::<Event>().Cancelable()),
+                self.uievent.GetView().as_deref(),
+                self.uievent.Detail(),
+                self.screen_point.get(),
+                self.client_point.get(),
+                self.page_point.get(),
+                self.modifiers.get(),
+                self.button.get(),
+                self.buttons.get(),
+                None,
+                self.point_in_target.get(),
+            ))
+        };
+        event.set_composed(self.upcast::<Event>().Composed());
+        event.set_trusted(true);
+        event
+    }
+
     pub(crate) fn client_point(&self) -> Point2D<f64, CSSPixel> {
         self.client_point.get()
     }

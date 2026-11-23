@@ -752,6 +752,15 @@ impl HTMLElementMethods<crate::DomTypeHolder> for HTMLElement {
         // 1. If the allow focus steps given this's node document return false, then return.
         // TODO: Implement this.
 
+        // A label that is not itself focusable forwards focus to its labeled control, as in
+        // Gecko (HTMLLabelElement::Focus) and other engines.
+        if let Some(label) = self.downcast::<HTMLLabelElement>() &&
+            !self.upcast::<Element>().is_focusable_area(cx.no_gc()) &&
+            let Some(control) = label.GetControl(cx.no_gc())
+        {
+            return control.Focus(cx, options);
+        }
+
         // 2. Run the focusing steps for this.
         if !self
             .upcast::<Node>()

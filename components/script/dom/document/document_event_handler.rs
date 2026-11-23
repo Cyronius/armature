@@ -1022,6 +1022,7 @@ impl DocumentEventHandler {
             return;
         };
         if element.as_maybe_activatable().is_none() ||
+            element.disabled_state() ||
             element
                 .downcast::<HTMLInputElement>()
                 .is_some_and(|input| input.is_textual_or_password())
