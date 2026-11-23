@@ -19,6 +19,8 @@ use stylo_dom::ElementState;
 use crate::dom::activation::Activatable;
 use crate::dom::element::attributes::storage::AttrRef;
 use crate::dom::iterators::ShadowIncluding;
+use layout_api::QueryMsg;
+use style::properties::longhands::content_visibility::computed_value::T as ContentVisibility;
 use crate::dom::bindings::codegen::Bindings::EventBinding::EventMethods;
 use crate::dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLCollectionBinding::HTMLCollectionMethods;
@@ -792,7 +794,7 @@ impl HTMLSelectElementMethods<crate::DomTypeHolder> for HTMLSelectElement {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-select-showpicker>
-    fn ShowPicker(&self) -> ErrorResult {
+    fn ShowPicker(&self, cx: &mut JSContext) -> ErrorResult {
         // Step 1. If this is not mutable, then throw an "InvalidStateError" DOMException.
         if self.upcast::<Element>().disabled_state() {
             return Err(Error::InvalidState(None));
@@ -814,7 +816,25 @@ impl HTMLSelectElementMethods<crate::DomTypeHolder> for HTMLSelectElement {
         // Step 4. Consume user activation given this's relevant global object.
         window.consume_user_activation();
 
-        // Step 5. Show the picker, if applicable, for this.
+        // Step 5. If this is not being rendered, throw a "NotSupportedError" DOMException: a
+        // `display: none` select, or one in the skipped contents of a `content-visibility: hidden`
+        // element.
+        window.layout_reflow(cx, QueryMsg::StyleQuery);
+        let element = self.upcast::<Element>();
+        let in_skipped_contents = element
+            .upcast::<Node>()
+            .ancestors()
+            .filter_map(DomRoot::downcast::<Element>)
+            .any(|ancestor| {
+                ancestor.style().is_some_and(|style| {
+                    style.get_box().content_visibility == ContentVisibility::Hidden
+                })
+            });
+        if !element.has_css_layout_box() || in_skipped_contents {
+            return Err(Error::NotSupported(None));
+        }
+
+        // Step 6. Show the picker, if applicable, for this.
         // TODO: Open the picker of the select.
         Ok(())
     }
