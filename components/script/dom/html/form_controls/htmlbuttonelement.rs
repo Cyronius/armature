@@ -141,6 +141,8 @@ impl HTMLButtonElementMethods<crate::DomTypeHolder> for HTMLButtonElement {
             // Step 4. Return the keyword corresponding to the value of command.
             CommandState::Close => DOMString::from_static("close"),
             CommandState::ShowModal => DOMString::from_static("show-modal"),
+            CommandState::Toggle => DOMString::from_static("toggle"),
+            CommandState::Open => DOMString::from_static("open"),
             CommandState::RequestClose => DOMString::from_static("request-close"),
             CommandState::TogglePopover => DOMString::from_static("toggle-popover"),
             CommandState::ShowPopover => DOMString::from_static("show-popover"),
@@ -387,6 +389,12 @@ impl HTMLButtonElement {
         }
         if command.eq_ignore_ascii_case("show-modal") {
             return CommandState::ShowModal;
+        }
+        if command.eq_ignore_ascii_case("toggle") {
+            return CommandState::Toggle;
+        }
+        if command.eq_ignore_ascii_case("open") {
+            return CommandState::Open;
         }
         if pref!(dom_popover_enabled) {
             if command.eq_ignore_ascii_case("toggle-popover") {
@@ -705,6 +713,8 @@ pub(crate) enum CommandState {
     Unknown,
     Custom,
     ShowModal,
+    Toggle,
+    Open,
     RequestClose,
     Close,
     TogglePopover,

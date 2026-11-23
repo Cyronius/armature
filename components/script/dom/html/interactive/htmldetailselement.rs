@@ -20,6 +20,7 @@ use crate::dom::bindings::codegen::Bindings::NodeBinding::GetRootNodeOptions;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::Node_Binding::NodeMethods;
 use crate::dom::bindings::codegen::UnionTypes::ElementOrText;
 use crate::dom::bindings::inheritance::Castable;
+use crate::dom::htmlbuttonelement::{CommandState, HTMLButtonElement};
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot};
@@ -363,6 +364,47 @@ impl HTMLDetailsElementMethods<crate::DomTypeHolder> for HTMLDetailsElement {
 impl VirtualMethods for HTMLDetailsElement {
     fn super_type(&self) -> Option<&dyn VirtualMethods> {
         Some(self.upcast::<HTMLElement>() as &dyn VirtualMethods)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#the-details-element:is-valid-command-steps>
+    fn is_valid_command_steps(&self, command: CommandState) -> bool {
+        matches!(
+            command,
+            CommandState::Toggle | CommandState::Open | CommandState::Close
+        )
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#the-details-element:command-steps>
+    fn command_steps(
+        &self,
+        cx: &mut js::context::JSContext,
+        source: DomRoot<HTMLButtonElement>,
+        command: CommandState,
+    ) -> bool {
+        if self
+            .super_type()
+            .unwrap()
+            .command_steps(cx, source, command)
+        {
+            return true;
+        }
+
+        let element = self.upcast::<Element>();
+        let is_open = element.has_attribute(&local_name!("open"));
+        match command {
+            // Step 1. If command is in the Toggle state, then toggle the open attribute.
+            // Step 2. If command is in the Open state and element has no open attribute, add it.
+            // Step 3. If command is in the Close state and element has an open attribute, remove it.
+            CommandState::Toggle | CommandState::Open if !is_open => {
+                element.set_bool_attribute(cx, &local_name!("open"), true);
+                true
+            },
+            CommandState::Toggle | CommandState::Close if is_open => {
+                element.remove_attribute(cx, &ns!(), &local_name!("open"));
+                true
+            },
+            _ => false,
+        }
     }
 
     /// <https://html.spec.whatwg.org/multipage/#the-details-element:concept-element-attributes-change-ext>
