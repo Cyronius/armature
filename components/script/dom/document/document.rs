@@ -1266,8 +1266,8 @@ impl Document {
                     cx,
                     window,
                     atom!("pageshow"),
-                    false, // bubbles
-                    false, // cancelable
+                    true, // bubbles
+                    true, // cancelable
                     true, // persisted
                 );
                 let event = event.upcast::<Event>();
@@ -2752,8 +2752,8 @@ impl Document {
                     cx,
                     window,
                     atom!("pageshow"),
-                    false, // bubbles
-                    false, // cancelable
+                    true, // bubbles
+                    true, // cancelable
                     false, // persisted
                 );
                 let page_show_event = page_show_event.upcast::<Event>();
