@@ -1727,9 +1727,15 @@ impl HTMLInputElementMethods<crate::DomTypeHolder> for HTMLInputElement {
             return Err(Error::InvalidState(None));
         }
 
+        // Step 2. If this's relevant settings object's origin is not same origin with this's
+        // relevant settings object's top-level origin, then throw a "SecurityError" DOMException.
+        let window = self.owner_window();
+        if window.is_cross_origin_with_top_level() {
+            return Err(Error::Security(None));
+        }
+
         // Step 4. If this's relevant global object does not have transient activation, then throw
         // a "NotAllowedError" DOMException.
-        let window = self.owner_window();
         if !window.has_transient_activation() {
             return Err(Error::NotAllowed(None));
         }

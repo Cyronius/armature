@@ -31,7 +31,7 @@ use crate::dom::bindings::codegen::GenericBindings::HTMLOptGroupElementBinding::
 use crate::dom::bindings::codegen::UnionTypes::{
     HTMLElementOrLong, HTMLOptionElementOrHTMLOptGroupElement,
 };
-use crate::dom::bindings::error::ErrorResult;
+use crate::dom::bindings::error::{Error, ErrorResult};
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
@@ -789,6 +789,34 @@ impl HTMLSelectElementMethods<crate::DomTypeHolder> for HTMLSelectElement {
         self.Options(cx)
             .NamedGetter(cx, name)
             .and_then(DomRoot::downcast::<HTMLOptionElement>)
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-select-showpicker>
+    fn ShowPicker(&self) -> ErrorResult {
+        // Step 1. If this is not mutable, then throw an "InvalidStateError" DOMException.
+        if self.upcast::<Element>().disabled_state() {
+            return Err(Error::InvalidState(None));
+        }
+
+        // Step 2. If this's relevant settings object's origin is not same origin with this's
+        // relevant settings object's top-level origin, then throw a "SecurityError" DOMException.
+        let window = self.owner_window();
+        if window.is_cross_origin_with_top_level() {
+            return Err(Error::Security(None));
+        }
+
+        // Step 3. If this's relevant global object does not have transient activation, then throw a
+        // "NotAllowedError" DOMException.
+        if !window.has_transient_activation() {
+            return Err(Error::NotAllowed(None));
+        }
+
+        // Step 4. Consume user activation given this's relevant global object.
+        window.consume_user_activation();
+
+        // Step 5. Show the picker, if applicable, for this.
+        // TODO: Open the picker of the select.
+        Ok(())
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-select-remove>

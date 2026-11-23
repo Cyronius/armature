@@ -718,6 +718,18 @@ impl Window {
     /// if it's browing context is the top-level browsing context. Returning none if the [`WindowProxy`]
     /// is discarded or the [`Document`] is in another `ScriptThread`.
     /// <https://html.spec.whatwg.org/multipage/#top-level-browsing-context>
+    /// Whether this window is in a frame whose origin is not the one of the top-level document, or
+    /// whose top-level document can't be reached from here and so can't be known to be same-origin.
+    pub(crate) fn is_cross_origin_with_top_level(&self) -> bool {
+        if self.is_top_level() {
+            return false;
+        }
+        match self.top_level_document_if_local() {
+            Some(top_level_document) => !self.origin().same_origin(&top_level_document.origin()),
+            None => true,
+        }
+    }
+
     pub(crate) fn top_level_document_if_local(&self) -> Option<DomRoot<Document>> {
         if self.is_top_level() {
             return Some(self.Document());

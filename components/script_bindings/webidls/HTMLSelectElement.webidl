@@ -29,6 +29,8 @@ interface HTMLSelectElement : HTMLElement {
   getter Element? item(unsigned long index);
   HTMLOptionElement? namedItem(DOMString name);
 
+  [Throws] undefined showPicker();
+
   [CEReactions, Throws]
   undefined add((HTMLOptionElement or HTMLOptGroupElement) element, optional (HTMLElement or long)? before = null);
   [CEReactions]
