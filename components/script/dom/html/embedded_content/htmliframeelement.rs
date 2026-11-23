@@ -61,7 +61,7 @@ enum PipelineType {
     Navigation,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, MallocSizeOf, PartialEq)]
 pub(crate) enum ProcessingMode {
     FirstTime,
     NotFirstTime,
@@ -73,6 +73,12 @@ enum LazyLoadResumptionSteps {
     #[default]
     None,
     SrcDoc,
+    /// Navigate to the `src` of the element, given the pipeline of the document that was current when
+    /// the loading was deferred.
+    Src {
+        mode: ProcessingMode,
+        pipeline_id: Option<PipelineId>,
+    },
 }
 
 #[dom_struct]
@@ -99,6 +105,8 @@ pub(crate) struct HTMLIFrameElement {
     /// <https://html.spec.whatwg.org/multipage/#lazy-load-resumption-steps>
     #[no_trace]
     lazy_load_resumption_steps: Cell<LazyLoadResumptionSteps>,
+    /// Whether the lazy load resumption steps are being invoked.
+    resuming_lazy_load: Cell<bool>,
     /// Keeping track of whether the iframe will be navigated
     /// outside of the processing of it's attribute(for example: form navigation).
     /// This is necessary to prevent the iframe load event steps
@@ -386,6 +394,22 @@ impl HTMLIFrameElement {
             LazyLoadResumptionSteps::SrcDoc => {
                 self.navigate_to_the_srcdoc_resource(cx, ProcessingMode::NotFirstTime);
             },
+            LazyLoadResumptionSteps::Src { mode, pipeline_id } => {
+                // Something else navigated the frame in the meantime, which replaces the deferred
+                // navigation.
+                let current_pipeline_id = self.pipeline_id();
+                if (current_pipeline_id != pipeline_id &&
+                    current_pipeline_id != self.about_blank_pipeline_id.get()) ||
+                    self.pending_pipeline_id
+                        .get()
+                        .is_some_and(|pending| Some(pending) != current_pipeline_id)
+                {
+                    return;
+                }
+                self.resuming_lazy_load.set(true);
+                self.process_the_iframe_attributes(cx, mode);
+                self.resuming_lazy_load.set(false);
+            },
         }
     }
 
@@ -393,6 +417,10 @@ impl HTMLIFrameElement {
     fn will_lazy_load_element_steps(&self) -> bool {
         // Step 1. If scripting is disabled for element, then return false.
         if !self.owner_document().scripting_enabled() {
+            return false;
+        }
+        // The loading of the element was resumed, so it is not lazy any more.
+        if self.resuming_lazy_load.get() {
             return false;
         }
         // Step 2. If element's lazy loading attribute is in the Lazy state, then return true.
@@ -483,6 +511,19 @@ impl HTMLIFrameElement {
             // Step 2.3.1. Run the iframe load event steps given element.
             self.run_iframe_load_event_steps(cx);
             // Step 2.3.2. Return.
+            return;
+        }
+
+        // If the element is lazy loading, navigate when it gets close to the viewport.
+        if self.will_lazy_load_element_steps() {
+            self.lazy_load_resumption_steps
+                .set(LazyLoadResumptionSteps::Src {
+                    mode,
+                    pipeline_id: self.pipeline_id(),
+                });
+            self.mark_navigation_as_lazy_loaded(cx);
+            self.owner_document()
+                .start_intersection_observing_a_lazy_loading_element(cx, element);
             return;
         }
 
@@ -693,6 +734,7 @@ impl HTMLIFrameElement {
             script_window_proxies: ScriptThread::window_proxies(),
             current_navigation_was_lazy_loaded: Default::default(),
             lazy_load_resumption_steps: Default::default(),
+            resuming_lazy_load: Default::default(),
             pending_navigation: Default::default(),
             frozen_name: Default::default(),
         }
