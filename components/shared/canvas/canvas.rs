@@ -787,6 +787,31 @@ impl LinearGradientStyle {
 }
 
 #[derive(Clone, Debug, Deserialize, MallocSizeOf, Serialize)]
+pub struct ConicGradientStyle {
+    pub x: f64,
+    pub y: f64,
+    /// The angle in radians, clockwise from the positive x axis, that the gradient starts at.
+    pub start_angle: f64,
+    pub stops: Vec<CanvasGradientStop>,
+}
+
+impl ConicGradientStyle {
+    pub fn new(
+        x: f64,
+        y: f64,
+        start_angle: f64,
+        stops: Vec<CanvasGradientStop>,
+    ) -> ConicGradientStyle {
+        ConicGradientStyle {
+            x,
+            y,
+            start_angle,
+            stops,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, MallocSizeOf, Serialize)]
 pub struct RadialGradientStyle {
     pub x0: f64,
     pub y0: f64,
@@ -851,6 +876,7 @@ pub enum FillOrStrokeStyle {
     Color(AbsoluteColor),
     LinearGradient(LinearGradientStyle),
     RadialGradient(RadialGradientStyle),
+    ConicGradient(ConicGradientStyle),
     Surface(SurfaceStyle),
 }
 
@@ -865,6 +891,7 @@ impl FillOrStrokeStyle {
             Self::LinearGradient(pattern) => {
                 (pattern.x0, pattern.y0) == (pattern.x1, pattern.y1) || pattern.stops.is_empty()
             },
+            Self::ConicGradient(pattern) => pattern.stops.is_empty(),
             Self::Color(..) | Self::Surface(..) => false,
         }
     }
@@ -878,7 +905,10 @@ impl FillOrStrokeStyle {
                     Some(pattern.surface_size.width)
                 }
             },
-            Self::Color(..) | Self::LinearGradient(..) | Self::RadialGradient(..) => None,
+            Self::Color(..) |
+            Self::LinearGradient(..) |
+            Self::RadialGradient(..) |
+            Self::ConicGradient(..) => None,
         }
     }
 
@@ -891,7 +921,10 @@ impl FillOrStrokeStyle {
                     Some(pattern.surface_size.height)
                 }
             },
-            Self::Color(..) | Self::LinearGradient(..) | Self::RadialGradient(..) => None,
+            Self::Color(..) |
+            Self::LinearGradient(..) |
+            Self::RadialGradient(..) |
+            Self::ConicGradient(..) => None,
         }
     }
 }

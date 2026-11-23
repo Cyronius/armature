@@ -31,7 +31,7 @@ use servo_base::{Epoch, generic_channel};
 use servo_canvas_traits::canvas::{
     CanvasCommand, CanvasFont, CanvasId, CanvasMsg, CompositionOptions, CompositionOrBlending,
     FillOrStrokeStyle, FillRule, FilterOperation, GlyphAndPosition, LayerOptions, LineCapStyle,
-    LineJoinStyle, LineOptions, LinearGradientStyle, Path, RadialGradientStyle, RangeError,
+    LineJoinStyle, LineOptions, ConicGradientStyle, LinearGradientStyle, Path, RadialGradientStyle, RangeError,
     RepetitionStyle, RoundRectRadius, ShadowOptions, TextRun,
 };
 use servo_constellation_traits::ScriptToConstellationMessage;
@@ -1473,6 +1473,22 @@ impl CanvasState {
                 Vec::new(),
             )),
         ))
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-createconicgradient>
+    pub(super) fn create_conic_gradient(
+        &self,
+        global: &GlobalScope,
+        cx: &mut JSContext,
+        start_angle: Finite<f64>,
+        x: Finite<f64>,
+        y: Finite<f64>,
+    ) -> DomRoot<CanvasGradient> {
+        CanvasGradient::new(
+            global,
+            cx,
+            CanvasGradientStyle::Conic(ConicGradientStyle::new(*x, *y, *start_angle, Vec::new())),
+        )
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-createpattern>
