@@ -145,6 +145,7 @@ use crate::dom::html::htmlfontelement::HTMLFontElement;
 use crate::dom::html::htmlformelement::FormControlElementHelpers;
 use crate::dom::html::htmlhrelement::{HTMLHRElement, SizePresentationalHint};
 use crate::dom::html::htmliframeelement::HTMLIFrameElement;
+use crate::dom::html::htmlmediaelement::HTMLMediaElement;
 use crate::dom::html::htmlimageelement::HTMLImageElement;
 use crate::dom::html::htmllabelelement::HTMLLabelElement;
 use crate::dom::html::htmllegendelement::HTMLLegendElement;
@@ -1045,6 +1046,8 @@ impl Element {
             image.resume_lazy_load(cx);
         } else if let Some(iframe) = self.downcast::<HTMLIFrameElement>() {
             iframe.resume_lazy_load(cx);
+        } else if let Some(media) = self.downcast::<HTMLMediaElement>() {
+            media.resume_lazy_load(cx);
         }
     }
 

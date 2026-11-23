@@ -192,6 +192,12 @@ pub(crate) struct HTMLMediaElement {
     current_src: AtomicRefCell<String>,
     /// Incremented whenever tasks associated with this element are cancelled.
     generation_id: Cell<u32>,
+    /// The base URL of the resource selection algorithm that waits for the element to get close to
+    /// the viewport, because the element is lazy loading.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#lazy-load-resumption-steps>
+    #[no_trace]
+    lazy_load_resumption: DomRefCell<Option<ServoUrl>>,
     /// <https://html.spec.whatwg.org/multipage/#fire-loadeddata>
     ///
     /// Reset to false every time the load algorithm is invoked.
@@ -412,6 +418,7 @@ impl HTMLMediaElement {
             src_object: Default::default(),
             current_src: Default::default(),
             generation_id: Cell::new(0),
+            lazy_load_resumption: Default::default(),
             fired_loadeddata_event: Cell::new(false),
             error: Default::default(),
             paused: Cell::new(true),
@@ -1211,8 +1218,62 @@ impl HTMLMediaElement {
         ScriptThread::await_stable_state(cx, Box::new(task));
     }
 
+    /// <https://html.spec.whatwg.org/multipage/#will-lazy-load-element-steps>
+    fn will_lazy_load_element_steps(&self) -> bool {
+        // Elements in nested documents load right away, as whether they are close to the viewport
+        // can't be found out from inside the nested document.
+        self.owner_document().scripting_enabled() &&
+            self.owner_window().is_top_level() &&
+            self.Loading() == "lazy"
+    }
+
+    /// Whether there is a resource that the resource selection algorithm would try to load.
+    fn has_media_resource_candidate(&self, no_gc: &NoGC) -> bool {
+        self.src_object.borrow().is_some() ||
+            self.upcast::<Element>().has_attribute(&local_name!("src")) ||
+            self.upcast::<Node>()
+                .children_unrooted(no_gc)
+                .any(|child| child.downcast::<HTMLSourceElement>().is_some())
+    }
+
+    /// Stops waiting for the element to get close to the viewport.
+    fn cancel_lazy_load(&self, no_gc: &NoGC) {
+        if self.lazy_load_resumption.borrow_mut().take().is_some() {
+            self.owner_document()
+                .stop_intersection_observing_a_lazy_loading_element(no_gc, self.upcast());
+        }
+    }
+
+    /// Runs the resource selection algorithm of an element that was waiting to get close to the
+    /// viewport.
+    ///
+    /// <https://html.spec.whatwg.org/multipage/#lazy-load-resumption-steps>
+    pub(crate) fn resume_lazy_load(&self, cx: &mut JSContext) {
+        self.owner_document()
+            .stop_intersection_observing_a_lazy_loading_element(cx.no_gc(), self.upcast());
+        let Some(base_url) = self.lazy_load_resumption.borrow_mut().take() else {
+            return;
+        };
+        self.delay_load_event(cx, true);
+        self.resource_selection_algorithm_continue(cx, base_url);
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#concept-media-load-algorithm>
     fn resource_selection_algorithm_sync(&self, cx: &mut JSContext, base_url: ServoUrl) {
+        // A lazy loading element waits to get close to the viewport, and does not delay the
+        // load event of its document meanwhile.
+        if self.has_media_resource_candidate(cx.no_gc()) && self.will_lazy_load_element_steps() {
+            self.delay_load_event(cx, false);
+            *self.lazy_load_resumption.borrow_mut() = Some(base_url);
+            self.owner_document()
+                .start_intersection_observing_a_lazy_loading_element(cx, self.upcast());
+            return;
+        }
+        self.resource_selection_algorithm_continue(cx, base_url);
+    }
+
+    /// <https://html.spec.whatwg.org/multipage/#concept-media-load-algorithm>
+    fn resource_selection_algorithm_continue(&self, cx: &mut JSContext, base_url: ServoUrl) {
         // TODO Step 5. If the media element's blocked-on-parser flag is false, then populate the
         // list of pending text tracks.
         // FIXME(ferjm): Implement blocked_on_parser logic
@@ -1836,6 +1897,7 @@ impl HTMLMediaElement {
         // Step 2. Abort any already-running instance of the resource selection algorithm for this
         // element.
         self.generation_id.set(self.generation_id.get() + 1);
+        self.cancel_lazy_load(cx.no_gc());
 
         self.load_state.set(LoadState::NotLoaded);
         *self.source_children_pointer.borrow_mut() = None;
@@ -3754,6 +3816,12 @@ impl VirtualMethods for HTMLMediaElement {
             },
             local_name!("autoplay") | local_name!("loop") => {
                 self.update_keep_alive();
+            },
+            local_name!("loading") => {
+                // An element that is not lazy loading any more starts loading.
+                if self.Loading() != "lazy" && self.lazy_load_resumption.borrow().is_some() {
+                    self.resume_lazy_load(cx);
+                }
             },
             local_name!("controls") => {
                 if mutation.new_value(attr).is_some() {
