@@ -106,6 +106,10 @@ Detail behind the HTML row of the [README](../../README.md) conformance table: w
   validity; `valueAsDate` is null for `datetime-local`; stepping decimal values no longer shows float noise.
 - **Lazy iframes with a `src`** are now deferred until near the viewport, like images and `srcdoc` iframes; framesets
   are laid out as grids (frames still don't load documents).
+- **Smaller HTML APIs**: `BarProp` and the bar properties of `Window`; `history.scrollRestoration`, fully-active checks
+  for `history.go()` and `pushState()` with an empty URL; `spellcheck`, `autocorrect`, `autocapitalize` and
+  `writingSuggestions`; `hidden` as boolean, number or `until-found`; names of `embed` and `object` elements as
+  properties of the document; lowercase autofill values; email values sanitized again when `multiple` changes.
 - **Offscreen canvas fonts**: an `OffscreenCanvas` in a window now resolves the `font` it is given, against the
   default font; in workers there is no layout to do it with, so the font cannot be changed.
 - **Canvas text drawing styles**: `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering`, `letterSpacing`,
