@@ -41,7 +41,7 @@ use style::properties::longhands::font_variant_caps::computed_value::T as FontVa
 use style::properties::style_structs::Font;
 use style::stylesheets::CssRuleType;
 use style::values::computed::color::Color as ComputedColor;
-use style::values::computed::font::{FontStyle, FontWeight};
+use style::values::computed::font::{FontStyle, FontWeight, FontWidth};
 use style::values::computed::{
     FontFeatureSettings, FontVariantEastAsian, FontVariantLigatures, FontVariantNumeric,
 };
@@ -2087,11 +2087,27 @@ impl CanvasState {
     }
 
     fn font_style(&self) -> ServoArc<Font> {
-        self.state
-            .borrow()
+        let state = self.state.borrow();
+        let mut font_style = state
             .font_style
             .clone()
-            .unwrap_or_else(|| ServoArc::new(Font::initial_values()))
+            .unwrap_or_else(|| ServoArc::new(Font::initial_values()));
+
+        // The fontStretch attribute sets the font-stretch of the font that text is drawn with.
+        // <https://html.spec.whatwg.org/multipage/#dom-context-2d-fontstretch>
+        let font_width = match state.font_stretch {
+            CanvasFontStretch::Ultra_condensed => FontWidth::ULTRA_CONDENSED,
+            CanvasFontStretch::Extra_condensed => FontWidth::EXTRA_CONDENSED,
+            CanvasFontStretch::Condensed => FontWidth::CONDENSED,
+            CanvasFontStretch::Semi_condensed => FontWidth::SEMI_CONDENSED,
+            CanvasFontStretch::Normal => return font_style,
+            CanvasFontStretch::Semi_expanded => FontWidth::SEMI_EXPANDED,
+            CanvasFontStretch::Expanded => FontWidth::EXPANDED,
+            CanvasFontStretch::Extra_expanded => FontWidth::EXTRA_EXPANDED,
+            CanvasFontStretch::Ultra_expanded => FontWidth::ULTRA_EXPANDED,
+        };
+        ServoArc::make_mut(&mut font_style).font_width = font_width;
+        font_style
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-font>
