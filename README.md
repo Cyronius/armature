@@ -19,8 +19,9 @@ WebGL rerun. The CSS row records Armature's 15 November 2026 result on the curre
 subtest figures are carried forward until the next full-suite rerun. On 22 November 2026 the 10,601 tests under
 `html/` scored 67.9% before the batch of canvas, `dir`, body margin, lazy loading and render-blocking, preload scanner, lazy loading, form
 control, pseudo-class, history, template and editing-attribute work described in [docs/armature/html.md](docs/armature/html.md) and 79.8% after it. On 23 November,
-behaviour ported from Gecko (form controls, charset detection, media and text tracks) raised it to 80.05%; the HTML row
-has not been remeasured against upstream Servo yet.
+behaviour ported from Gecko (form controls, charset detection, media and text tracks) raised it to 80.05%, and modal
+dialogs, the top layer and canvas text and pattern fixes then raised it to 81.11%; the HTML row has not been remeasured
+against upstream Servo yet.
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|

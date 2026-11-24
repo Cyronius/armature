@@ -163,6 +163,20 @@ Armature), as comments in the code note:
 - **Media and text tracks**: WebVTT character references, `preservesPitch`, default metadata tracks become hidden,
   cues are deactivated on reload, the error attribute is set synchronously for bad `src` values, extreme playback
   rates mute and `:muted` matches.
+- **Dialogs**: a modal dialog joins the top layer and makes the rest of the document inert (the root element is
+  inert and the topmost modal element matches the internal `:-moz-topmost-modal`, as in Gecko's
+  `Document::TopLayerPush`); the open dialogs list and light dismiss for `closedby=any`; `method=dialog` form
+  submission; initial focus only goes to sequentially focusable descendants and never to inert ones; focus is
+  restored when the focused element is in the dialog in the flat tree.
+- **Top layer rendering**: boxes in the top layer (modal dialogs, open popovers and their `::backdrop`) are hoisted
+  to the initial containing block and painted above everything in top-layer order, untouched by the clips,
+  transforms, opacity and filters of their ancestors.
+- **Summary**: clicks on interactive content inside a `summary` do not toggle its `details`.
+- **Modules**: a module script that uses top-level await no longer reports `uncaught exception: undefined`; its
+  rejection is reported once the evaluation promise settles.
+- **Canvas**: `measureText()` font bounding boxes and em heights, non-normal font weights in `font`, `fontStretch`,
+  rejection of CSS-wide keywords and `var()`/`if()` in `font`, and unbounded composite operations with
+  non-repeating patterns.
 
 Firefox does not implement `<template for>` or declarative CSS modules, so those gaps have nothing to port.
 
@@ -197,10 +211,13 @@ other documents or the operating system, are not implemented. `DataTransfer.effe
   contains `"` is quoted with `'`, and an attribute keeps its own prefix when the element does not declare that
   prefix itself (an open web-platform-tests change updates the tests). One more expects a redundant `xmlns=""` to be
   kept, which the spec drops.
-- 25 popover subtests still fail in the latest run: layout has no real top layer or `::backdrop` (open popovers are
-  drawn as `position: fixed`), some focus navigation cases remain incomplete, four inactive-document cases expect
+- Popover subtests still fail in the latest run: some focus navigation cases remain incomplete, four inactive-document cases expect
   listeners to run despite the DOM Standard's fully active document check, and 6 other tests contradict the spec.
 - The tentative ARIA reflection test still has 30 failing subtests.
+- Web fonts go through the OpenType sanitiser, which drops their `BASE` table, so canvas text uses estimated hanging
+  and ideographic baselines for them. Canvas `direction: inherit` is resolved as left to right and canvas text is
+  not reordered for bidi.
+- Fieldset and legend rendering (the legend drawn over the border) is not implemented.
 - Canvas layers and filters: the `CanvasFilter` primitives other than `gaussianBlur` and `dropShadow`
   (`colorMatrix`, `componentTransfer`, `convolveMatrix`, `turbulence`) are ignored, `url()` filters are not
   supported, layers whose content is moved by more than 2,048 pixels by a filter or shadow are clipped, and
