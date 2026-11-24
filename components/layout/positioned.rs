@@ -231,11 +231,14 @@ impl PositioningContext {
         debug_assert!(
             style.establishes_containing_block_for_absolute_descendants(fragment.base.flags)
         );
+        // Boxes in the top layer are always hoisted up to the initial containing block.
         if style.establishes_containing_block_for_all_descendants(fragment.base.flags) {
-            self.absolutes.clear();
-        } else {
             self.absolutes
-                .retain(|hoisted_box| hoisted_box.position() == Position::Fixed);
+                .retain(HoistedAbsolutelyPositionedBox::is_in_top_layer);
+        } else {
+            self.absolutes.retain(|hoisted_box| {
+                hoisted_box.position() == Position::Fixed || hoisted_box.is_in_top_layer()
+            });
         }
     }
 
@@ -250,16 +253,19 @@ impl PositioningContext {
             style.establishes_containing_block_for_absolute_descendants(new_fragment.base.flags)
         );
 
-        if style.establishes_containing_block_for_all_descendants(new_fragment.base.flags) {
-            boxes_to_layout_out.append(&mut self.absolutes);
-            return;
-        }
+        // Boxes in the top layer are not laid out in any containing block but the initial
+        // containing block, so they always continue to be hoisted.
+        // <https://drafts.csswg.org/css-position-4/#top-layer>
+        let establishes_containing_block_for_all_descendants =
+            style.establishes_containing_block_for_all_descendants(new_fragment.base.flags);
 
         // TODO: This could potentially use `extract_if` when that is stabilized.
-        let (mut boxes_to_layout, mut boxes_to_continue_hoisting) = self
-            .absolutes
-            .drain(..)
-            .partition(|hoisted_box| hoisted_box.position() != Position::Fixed);
+        let (mut boxes_to_layout, mut boxes_to_continue_hoisting) =
+            self.absolutes.drain(..).partition(|hoisted_box| {
+                !hoisted_box.is_in_top_layer() &&
+                    (establishes_containing_block_for_all_descendants ||
+                        hoisted_box.position() != Position::Fixed)
+            });
         boxes_to_layout_out.append(&mut boxes_to_layout);
         boxes_to_continue_hoisting_out.append(&mut boxes_to_continue_hoisting);
     }
@@ -400,6 +406,22 @@ impl Zero for PositioningContextLength {
 }
 
 impl HoistedAbsolutelyPositionedBox {
+    /// Whether this box is in the top layer, which places it in the initial containing block
+    /// whatever its ancestors are.
+    /// <https://drafts.csswg.org/css-position-4/#top-layer>
+    fn is_in_top_layer(&self) -> bool {
+        matches!(
+            *self
+                .absolutely_positioned_box
+                .borrow()
+                .context
+                .style()
+                .get_box()
+                .get__servo_top_layer(),
+            TopLayer::Auto
+        )
+    }
+
     fn position(&self) -> Position {
         let position = self
             .absolutely_positioned_box

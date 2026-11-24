@@ -27,7 +27,7 @@ use style::values::computed::basic_shape::ClipPath;
 use style::values::computed::image::Image as ComputedImageLayer;
 use style::values::computed::{
     BorderSideWidth, BorderStyle, Color, Inset, ItemPlacement, LengthPercentage, Margin,
-    SelfAlignment, TextWrapMode, WhiteSpaceCollapse,
+    SelfAlignment, TextWrapMode, TopLayer, WhiteSpaceCollapse,
 };
 use style::values::generics::box_::Perspective;
 use style::values::generics::position::{GenericAspectRatio, PreferredRatio};
@@ -897,6 +897,12 @@ impl ComputedValuesExt for ComputedValues {
             (!self.get_position().z_index.is_auto() ||
                 will_change_bits.intersects(WillChangeBits::Z_INDEX))
         {
+            return true;
+        }
+
+        // > Each box in the top layer establishes a stacking context.
+        // <https://drafts.csswg.org/css-position-4/#top-layer>
+        if matches!(*self.get_box().get__servo_top_layer(), TopLayer::Auto) {
             return true;
         }
 

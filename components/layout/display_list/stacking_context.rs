@@ -24,8 +24,10 @@ use style::computed_values::overflow_x::T as ComputedOverflow;
 use style::computed_values::position::T as ComputedPosition;
 use style::computed_values::text_decoration_style::T as TextDecorationStyle;
 use style::computed_values::text_decoration_thickness::T as TextDecorationThickness;
+use style::dom::OpaqueNode;
+use style::selector_parser::PseudoElement;
 use style::values::computed::angle::Angle;
-use style::values::computed::{ClipRectOrAuto, Length, TextDecorationLine, TransformBox};
+use style::values::computed::{ClipRectOrAuto, Length, TextDecorationLine, TopLayer, TransformBox};
 use style::values::generics::box_::{OverflowClipMarginBox, Perspective};
 use style::values::generics::transform::{
     self, GenericRotate, GenericScale, GenericTranslate, get_normalized_vector_and_angle,
@@ -220,6 +222,13 @@ pub(crate) struct StackingContextTree {
     /// for things like `overflow`. More clips may be created later during WebRender
     /// display list construction, but they are never added here.
     pub clip_store: StackingContextTreeClipStore,
+
+    /// The boxes in the top layer found while building the tree. They are not affected by
+    /// the stacking contexts, clips and transforms of their ancestors, so they are only added
+    /// to the root stacking context once the rest of the tree is built.
+    /// <https://drafts.csswg.org/css-position-4/#top-layer>
+    #[ignore_malloc_size_of = "Only used while building the tree"]
+    top_layer_fragments: Vec<Arc<BoxFragment>>,
 }
 
 impl StackingContextTree {
@@ -231,6 +240,7 @@ impl StackingContextTree {
         pipeline_id: wr::PipelineId,
         first_reflow: bool,
         debug: &DiagnosticsLogging,
+        top_layer: &[OpaqueNode],
     ) -> Self {
         let scrollable_overflow = fragment_tree.scrollable_overflow();
         let scroll_area = scrollable_overflow.union(&fragment_tree.initial_containing_block);
@@ -286,6 +296,7 @@ impl StackingContextTree {
             root_stacking_context: StackingContext::root(root_scroll_node_id),
             paint_info,
             clip_store: Default::default(),
+            top_layer_fragments: Vec::new(),
         };
 
         let mut root_stacking_context = StackingContext::root(root_scroll_node_id);
@@ -299,6 +310,11 @@ impl StackingContextTree {
         }
 
         root_stacking_context.sort();
+        stacking_context_tree.add_top_layer_stacking_contexts(
+            &mut root_stacking_context,
+            &containing_block_info,
+            top_layer,
+        );
         stacking_context_tree.root_stacking_context = root_stacking_context;
 
         if debug.is_enabled(DiagnosticsLoggingOption::StackingContextTree) {
@@ -308,6 +324,64 @@ impl StackingContextTree {
         }
 
         stacking_context_tree
+    }
+
+    /// Add the stacking contexts of the boxes in the top layer to the root stacking context,
+    /// above everything else and in the order of the document's top layer, each just above
+    /// its `::backdrop`. Their containing block is the initial containing block, and they are
+    /// not clipped or transformed by their ancestors.
+    /// <https://drafts.csswg.org/css-position-4/#top-layer>
+    fn add_top_layer_stacking_contexts(
+        &mut self,
+        root_stacking_context: &mut StackingContext,
+        containing_block_info: &ContainingBlockInfo,
+        top_layer: &[OpaqueNode],
+    ) {
+        let order = |fragment: &BoxFragment| {
+            let Some(tag) = fragment.base.tag else {
+                return (usize::MAX, 1);
+            };
+            let index = top_layer
+                .iter()
+                .position(|node| *node == tag.node)
+                .unwrap_or(usize::MAX);
+            let is_backdrop = tag.pseudo_element_chain.primary == Some(PseudoElement::Backdrop);
+            (index, if is_backdrop { 0 } else { 1 })
+        };
+
+        // Building the stacking context of a box in the top layer can find more of them, for
+        // instance a modal dialog inside another one.
+        let mut top_layer_stacking_contexts = Vec::new();
+        loop {
+            let fragments = std::mem::take(&mut self.top_layer_fragments);
+            if fragments.is_empty() {
+                break;
+            }
+            for fragment in fragments {
+                let order = order(&fragment);
+                let mut parent = StackingContext::root(root_stacking_context.scroll_tree_node_id);
+                fragment.build_stacking_context_tree(
+                    self,
+                    containing_block_info,
+                    &mut parent,
+                    &StackingContextParentInfo::default(),
+                );
+                top_layer_stacking_contexts.extend(parent.children.into_iter().map(
+                    |mut stacking_context| {
+                        // Paint the top layer above everything, whatever its z-index.
+                        stacking_context.z_index = i32::MAX;
+                        (order, stacking_context)
+                    },
+                ));
+            }
+        }
+
+        top_layer_stacking_contexts.sort_by_key(|(order, _)| *order);
+        root_stacking_context.children.extend(
+            top_layer_stacking_contexts
+                .into_iter()
+                .map(|(_, stacking_context)| stacking_context),
+        );
     }
 
     fn push_reference_frame(
@@ -629,6 +703,17 @@ impl Fragment {
                     Some(Fragment::Box(box_fragment)) => box_fragment,
                     _ => unreachable!("Found hoisted box with missing or non-BoxFragment."),
                 };
+
+                // Boxes in the top layer are added to the root stacking context at the end.
+                if matches!(
+                    *box_fragment.style().get_box().get__servo_top_layer(),
+                    TopLayer::Auto
+                ) {
+                    stacking_context_tree
+                        .top_layer_fragments
+                        .push(box_fragment.clone());
+                    return;
+                }
 
                 box_fragment.build_stacking_context_tree(
                     stacking_context_tree,

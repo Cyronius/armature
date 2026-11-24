@@ -76,6 +76,7 @@ dialog:modal {
   max-height: calc(100% - 6px - 2em);
 }
 ::backdrop {
+  -servo-top-layer: auto;
   position: fixed;
   inset: 0;
 }

@@ -214,6 +214,10 @@ pub struct LayoutThread {
     /// The [`StackingContextTree`] cached from previous layouts.
     stacking_context_tree: RefCell<Option<StackingContextTree>>,
 
+    /// The nodes of the elements in the document's top layer, from bottom to top, which
+    /// decides the order in which they are painted.
+    top_layer: RefCell<Vec<OpaqueNode>>,
+
     // A cache that maps image resources specified in CSS (e.g as the `url()` value
     // for `background-image` or `content` properties) to either the final resolved
     // image data, or an error if the image cache failed to load/decode the image.
@@ -961,6 +965,7 @@ impl LayoutThread {
             box_tree: Default::default(),
             fragment_tree: Default::default(),
             stacking_context_tree: Default::default(),
+            top_layer: Default::default(),
             paint_api: config.paint_api,
             stylist: Stylist::new(device, QuirksMode::NoQuirks),
             resolved_images_cache: Default::default(),
@@ -1170,6 +1175,17 @@ impl LayoutThread {
             debug!("layout: No root node: bailing");
             return self.maybe_clear_layout_trees_and_send_empty_display_list(&reflow_request);
         };
+
+        // The order of the top layer decides the painting order of its boxes.
+        let top_layer: Vec<OpaqueNode> = document
+            .top_layer_elements()
+            .iter()
+            .map(|element| element.as_node().opaque())
+            .collect();
+        if *self.top_layer.borrow() != top_layer {
+            *self.top_layer.borrow_mut() = top_layer;
+            self.need_new_stacking_context_tree.set(true);
+        }
 
         let image_resolver = Arc::new(ImageResolver {
             origin: reflow_request.origin.clone(),
@@ -1683,6 +1699,7 @@ impl LayoutThread {
             self.id.into(),
             !self.have_ever_generated_display_list.get(),
             &self.debug,
+            &self.top_layer.borrow(),
         );
 
         // When a new StackingContextTree is built, it contains a freshly built
