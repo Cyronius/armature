@@ -145,6 +145,16 @@ impl WorkerFontResolver {
             CssRuleType::Style,
         )
         .ok()?;
+        // CSS-wide keywords and values with arbitrary substitution functions, such as var(),
+        // are not valid canvas fonts.
+        // <https://html.spec.whatwg.org/multipage/#dom-context-2d-font>
+        if declarations
+            .declarations
+            .iter()
+            .any(|declaration| !declaration.may_serialize_as_part_of_shorthand())
+        {
+            return None;
+        }
         let mut block = PropertyDeclarationBlock::new();
         block.extend(declarations.drain(), Importance::Normal);
         Some(block)

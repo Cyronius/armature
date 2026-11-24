@@ -16,8 +16,7 @@ use cssparser::color::clamp_unit_f32;
 use euclid::default::{Point2D, Rect, Size2D, Transform2D};
 use euclid::{Vector2D, vec2};
 use fonts::{
-    FontBaseline, FontContext, FontGroup, FontIdentifier, FontMetrics, FontRef, ShapingFlags,
-    ShapingOptions,
+    FontBaseline, FontContext, FontGroup, FontIdentifier, FontRef, ShapingFlags, ShapingOptions,
 };
 use icu_locale_core::subtags::Language;
 use js::context::{JSContext, NoGC};
@@ -42,7 +41,7 @@ use style::properties::longhands::font_variant_caps::computed_value::T as FontVa
 use style::properties::style_structs::Font;
 use style::stylesheets::CssRuleType;
 use style::values::computed::color::Color as ComputedColor;
-use style::values::computed::font::FontStyle;
+use style::values::computed::font::{FontStyle, FontWeight};
 use style::values::computed::{
     FontFeatureSettings, FontVariantEastAsian, FontVariantLigatures, FontVariantNumeric,
 };
@@ -90,6 +89,63 @@ use crate::dom::textmetrics::TextMetrics;
 
 const HANGING_BASELINE_DEFAULT: f64 = 0.8;
 const IDEOGRAPHIC_BASELINE_DEFAULT: f64 = 0.5;
+
+/// The vertical metrics of a font that canvas text is laid out with, in CSS pixels above the
+/// alphabetic baseline (so the descents are negated).
+struct CanvasFontMetrics {
+    /// The font's ascent and descent, which make the font bounding box.
+    ascent: f64,
+    descent: f64,
+    /// The top and bottom of the em square: the font's ascent and descent scaled so that they
+    /// add up to the em size, as Gecko computes them.
+    em_ascent: f64,
+    em_descent: f64,
+    hanging_baseline: f64,
+    ideographic_baseline: f64,
+}
+
+impl CanvasFontMetrics {
+    fn new(font: &FontRef) -> Self {
+        let metrics = font.metrics();
+        let ascent = metrics.ascent.to_f64_px();
+        let descent = metrics.descent.to_f64_px();
+        let em_size = metrics.em_size.to_f64_px();
+        let em_ascent = if ascent + descent > 0. {
+            em_size * ascent / (ascent + descent)
+        } else {
+            em_size
+        };
+
+        // Use the baselines of the font's BASE table, if it has one.
+        let baseline = font.baseline().unwrap_or_else(|| FontBaseline {
+            hanging_baseline: (ascent * HANGING_BASELINE_DEFAULT) as f32,
+            ideographic_baseline: (-descent * IDEOGRAPHIC_BASELINE_DEFAULT) as f32,
+            alphabetic_baseline: 0.,
+        });
+        CanvasFontMetrics {
+            ascent,
+            descent,
+            em_ascent,
+            em_descent: em_size - em_ascent,
+            hanging_baseline: (baseline.hanging_baseline - baseline.alphabetic_baseline) as f64,
+            ideographic_baseline: (baseline.ideographic_baseline - baseline.alphabetic_baseline)
+                as f64,
+        }
+    }
+
+    /// The position of the anchor point given by `text_baseline` above the alphabetic baseline.
+    /// <https://html.spec.whatwg.org/multipage/#dom-context-2d-textbaseline>
+    fn baseline_offset(&self, text_baseline: CanvasTextBaseline) -> f64 {
+        match text_baseline {
+            CanvasTextBaseline::Top => self.em_ascent,
+            CanvasTextBaseline::Hanging => self.hanging_baseline,
+            CanvasTextBaseline::Middle => (self.em_ascent - self.em_descent) / 2.,
+            CanvasTextBaseline::Alphabetic => 0.,
+            CanvasTextBaseline::Ideographic => self.ideographic_baseline,
+            CanvasTextBaseline::Bottom => -self.em_descent,
+        }
+    }
+}
 
 #[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
 #[derive(Clone, JSTraceable, MallocSizeOf)]
@@ -1861,8 +1917,7 @@ impl CanvasState {
             warn!("Could not measure canvas text, because there was no first font.");
             return TextMetrics::new(global, cx, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.);
         };
-        let ascent = font.metrics().ascent.to_f64_px();
-        let descent = font.metrics().descent.to_f64_px();
+        let font_metrics = CanvasFontMetrics::new(&font);
         let runs = self.build_unshaped_text_runs(font_context, &text, &font_group);
 
         let mut total_advance = 0.0;
@@ -1881,15 +1936,6 @@ impl CanvasState {
             .reduce(|a, b| a.union(&b))
             .unwrap_or_default();
 
-        let baseline = font.baseline().unwrap_or_else(|| FontBaseline {
-            hanging_baseline: (ascent * HANGING_BASELINE_DEFAULT) as f32,
-            ideographic_baseline: (-descent * IDEOGRAPHIC_BASELINE_DEFAULT) as f32,
-            alphabetic_baseline: 0.,
-        });
-        let ideographic_baseline = baseline.ideographic_baseline as f64;
-        let alphabetic_baseline = baseline.alphabetic_baseline as f64;
-        let hanging_baseline = baseline.hanging_baseline as f64;
-
         let state = self.state.borrow();
         let anchor_x = match state.text_align {
             CanvasTextAlign::End => total_advance,
@@ -1897,14 +1943,7 @@ impl CanvasState {
             CanvasTextAlign::Right => total_advance,
             _ => 0.,
         } as f64;
-        let anchor_y = match state.text_baseline {
-            CanvasTextBaseline::Top => ascent,
-            CanvasTextBaseline::Hanging => hanging_baseline,
-            CanvasTextBaseline::Ideographic => ideographic_baseline,
-            CanvasTextBaseline::Middle => (ascent - descent) / 2.,
-            CanvasTextBaseline::Alphabetic => alphabetic_baseline,
-            CanvasTextBaseline::Bottom => -descent,
-        };
+        let anchor_y = font_metrics.baseline_offset(state.text_baseline);
 
         TextMetrics::new(
             global,
@@ -1912,15 +1951,15 @@ impl CanvasState {
             total_advance as f64,
             anchor_x - bounding_box.min_x(),
             bounding_box.max_x() - anchor_x,
+            font_metrics.ascent - anchor_y,
+            font_metrics.descent + anchor_y,
             bounding_box.max_y() - anchor_y,
             anchor_y - bounding_box.min_y(),
-            ascent - anchor_y,
-            descent + anchor_y,
-            ascent - anchor_y,
-            descent + anchor_y,
-            hanging_baseline - anchor_y,
-            alphabetic_baseline - anchor_y,
-            ideographic_baseline - anchor_y,
+            font_metrics.em_ascent - anchor_y,
+            font_metrics.em_descent + anchor_y,
+            font_metrics.hanging_baseline - anchor_y,
+            -anchor_y,
+            font_metrics.ideographic_baseline - anchor_y,
         )
     }
 
@@ -2813,8 +2852,7 @@ impl CanvasState {
         }
 
         // > Step 7: Find the anchor point for the line of text.
-        let start =
-            self.find_anchor_point_for_line_of_text(origin, first_font.metrics(), total_advance);
+        let start = self.find_anchor_point_for_line_of_text(origin, &first_font, total_advance);
 
         // > Step 8: Let result be an array constructed by iterating over each glyph in the inline box
         // > from left to right (if any), adding to the array, for each glyph, the shape of the glyph
@@ -2918,7 +2956,7 @@ impl CanvasState {
     fn find_anchor_point_for_line_of_text(
         &self,
         origin: Point2D<f64>,
-        metrics: &FontMetrics,
+        font: &FontRef,
         width: f64,
     ) -> Point2D<f64> {
         let state = self.state.borrow();
@@ -2941,16 +2979,7 @@ impl CanvasState {
             _ => 0.,
         };
 
-        let ascent = metrics.ascent.to_f64_px();
-        let descent = metrics.descent.to_f64_px();
-        let anchor_y = match self.text_baseline() {
-            CanvasTextBaseline::Top => ascent,
-            CanvasTextBaseline::Hanging => ascent * HANGING_BASELINE_DEFAULT,
-            CanvasTextBaseline::Ideographic => -descent * IDEOGRAPHIC_BASELINE_DEFAULT,
-            CanvasTextBaseline::Middle => (ascent - descent) / 2.,
-            CanvasTextBaseline::Alphabetic => 0.,
-            CanvasTextBaseline::Bottom => -descent,
-        };
+        let anchor_y = CanvasFontMetrics::new(font).baseline_offset(self.text_baseline());
 
         origin + Vector2D::new(anchor_x, anchor_y)
     }
@@ -3181,7 +3210,7 @@ where
     if style.font_style == FontStyle::ITALIC {
         write!(dest, "{} ", style.font_style.to_css_string())?;
     }
-    if style.font_weight.is_bold() {
+    if style.font_weight != FontWeight::normal() {
         write!(dest, "{} ", style.font_weight.to_css_string())?;
     }
     if style.font_variant_caps == FontVariantCaps::SmallCaps {

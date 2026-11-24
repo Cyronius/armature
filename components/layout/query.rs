@@ -1583,6 +1583,16 @@ where
             quirks_mode,
             CssRuleType::Style,
         );
+        // CSS-wide keywords and values with arbitrary substitution functions, such as var(),
+        // are not valid canvas fonts.
+        // <https://html.spec.whatwg.org/multipage/#dom-context-2d-font>
+        if declarations
+            .declarations
+            .iter()
+            .any(|declaration| !declaration.may_serialize_as_part_of_shorthand())
+        {
+            return None;
+        }
         let declarations = match result {
             Ok(()) => {
                 let mut block = PropertyDeclarationBlock::new();
@@ -1620,8 +1630,6 @@ where
     // 1. Parse the given font property value
     let quirks_mode = context.quirks_mode();
     let declarations = create_font_declaration(value, &url_data, quirks_mode)?;
-
-    // TODO: Reject 'inherit' and 'initial' values for the font property.
 
     // 2. Get resolved styles for the parent element
     let element = node.as_element().unwrap();
