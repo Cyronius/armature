@@ -70,6 +70,7 @@ dialog:modal {
   -servo-top-layer: auto;
   position: fixed;
   overflow: auto;
+  visibility: visible;
   inset-block: 0;
   max-width: calc(100% - 6px - 2em);
   max-height: calc(100% - 6px - 2em);
@@ -91,8 +92,11 @@ dialog::backdrop {
    https://searchfox.org/firefox-main/rev/efd2d1e6f77570ae6bc5294731a68101e45c81a3/layout/style/res/ua.css#379-384 */
 :-moz-inert { -moz-inert: inert; }
 select > button:first-child { -moz-inert: inert; }
-/* TODO: Uncomment once a :-moz-topmost-modal pseudo-class is supported. */
-/* :-moz-topmost-modal:not([inert]) { -moz-inert: none; } */
+:-moz-topmost-modal:not([inert]) {
+  -moz-inert: none;
+  /* Topmost modal elements need to be selectable even though ancestors are inert. */
+  user-select: text;
+}
 
 /* The UA stylesheet is not specified yet. These rules match what the WPT tests expect.
    https://drafts.csswg.org/css-ui-4/#inertness */
