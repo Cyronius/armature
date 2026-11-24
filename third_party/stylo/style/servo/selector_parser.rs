@@ -409,6 +409,8 @@ pub enum NonTSPseudoClass {
     MozMeterOptimum,
     MozMeterSubOptimum,
     MozMeterSubSubOptimum,
+    // Armature (AS-540): The internal pseudo-class `:-moz-topmost-modal`, as Gecko has it.
+    MozTopmostModal,
     // Armature (AS-539): The media element pseudo-class `:muted`, as Gecko has it.
     Muted,
     Open,
@@ -494,6 +496,8 @@ impl ToCss for NonTSPseudoClass {
             Self::MozMeterOptimum => ":-moz-meter-optimum",
             Self::MozMeterSubOptimum => ":-moz-meter-sub-optimum",
             Self::MozMeterSubSubOptimum => ":-moz-meter-sub-sub-optimum",
+            // Armature (AS-540): Serialize `:-moz-topmost-modal`.
+            Self::MozTopmostModal => ":-moz-topmost-modal",
             // Armature (AS-539): Serialize `:muted`.
             Self::Muted => ":muted",
             Self::Open => ":open",
@@ -547,6 +551,8 @@ impl NonTSPseudoClass {
             Self::MozMeterOptimum => ElementState::OPTIMUM,
             Self::MozMeterSubOptimum => ElementState::SUB_OPTIMUM,
             Self::MozMeterSubSubOptimum => ElementState::SUB_SUB_OPTIMUM,
+            // Armature (AS-540): The topmost modal element of the top layer.
+            Self::MozTopmostModal => ElementState::TOPMOST_MODAL,
             // Armature (AS-539): Muted media elements are in the muted state.
             Self::Muted => ElementState::MUTED,
             Self::Open => ElementState::OPEN,
@@ -695,6 +701,15 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "-moz-meter-optimum" => NonTSPseudoClass::MozMeterOptimum,
             "-moz-meter-sub-optimum" => NonTSPseudoClass::MozMeterSubOptimum,
             "-moz-meter-sub-sub-optimum" => NonTSPseudoClass::MozMeterSubSubOptimum,
+            // Armature (AS-540): Parse `:-moz-topmost-modal` in user agent style sheets only.
+            "-moz-topmost-modal" => {
+                if !self.in_user_agent_stylesheet() {
+                    return Err(ParseError::custom(
+                        SelectorParseErrorKind::UnexpectedIdent
+                    ))
+                }
+                NonTSPseudoClass::MozTopmostModal
+            },
             "-servo-nonzero-border" => {
                 if !self.in_user_agent_stylesheet() {
                     return Err(ParseError::custom(

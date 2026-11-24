@@ -575,3 +575,10 @@ Each entry has this form (the check reads the `### AS-NNN` headings and the `Fil
 - Why: Parse the media element pseudo-class `:muted` for Servo, as Gecko does, matching the muted
   element state that the DOM sets on muted media elements.
 - Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
+
+### AS-540: Parse the :-moz-topmost-modal pseudo-class
+- Files: `style/servo/selector_parser.rs`
+- Why: Parse the internal pseudo-class `:-moz-topmost-modal` in user agent style sheets for Servo, as
+  Gecko does, matching the topmost modal element state. The user agent style sheet uses it to keep
+  the topmost modal dialog from being inert while the rest of the document is.
+- Upstream: Could go upstream, but Servo's AI policy currently prevents sending it.
