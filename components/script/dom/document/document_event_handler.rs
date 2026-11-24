@@ -50,6 +50,7 @@ use style_traits::CSSPixel;
 use webrender_api::ExternalScrollId;
 
 #[cfg(feature = "gamepad")]
+use crate::dom::bindings::codegen::Bindings::MouseEventBinding::MouseEventMethods;
 use crate::dom::bindings::codegen::Bindings::PermissionStatusBinding::PermissionName;
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::root::MutNullableDom;
@@ -68,6 +69,7 @@ use crate::dom::gamepad::gamepadevent::GamepadEventType;
 use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
 use crate::dom::html::form_controls::htmlselectelement::HTMLSelectElement;
 use crate::dom::html::popover::light_dismiss_open_popovers;
+use crate::dom::htmldialogelement::light_dismiss_open_dialogs;
 use crate::dom::inputevent::HitTestResult;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::keyboardevent::KeyboardEvent;
@@ -1180,7 +1182,12 @@ impl DocumentEventHandler {
                 // Step 6. Dispatch pointerdown event.
                 let pointer_event_result = if is_compatibility_event_for_touch {
                     if mouse_button == MouseButton::Primary {
-                        light_dismiss_open_popovers(cx, "pointerdown", node.upcast());
+                        run_light_dismiss_activities(
+                            cx,
+                            "pointerdown",
+                            node.upcast(),
+                            &mouse_event,
+                        );
                     }
                     true
                 } else {
@@ -1218,7 +1225,12 @@ impl DocumentEventHandler {
                         .set(input_event.pressed_mouse_buttons);
 
                     if mouse_button == MouseButton::Primary {
-                        light_dismiss_open_popovers(cx, "pointerdown", &pointer_target);
+                        run_light_dismiss_activities(
+                            cx,
+                            "pointerdown",
+                            &pointer_target,
+                            &mouse_event,
+                        );
                     }
                     let pointer_event_result =
                         pointer_event.upcast::<Event>().fire(cx, &pointer_target);
@@ -1333,7 +1345,12 @@ impl DocumentEventHandler {
                         .unwrap_or_else(|| DomRoot::from_ref(node.upcast::<EventTarget>()));
 
                     if down_target_is_connected {
-                        light_dismiss_open_popovers(cx, "pointerup", &pointer_target);
+                        run_light_dismiss_activities(
+                            cx,
+                            "pointerup",
+                            &pointer_target,
+                            &mouse_event,
+                        );
                     }
                     pointer_event.upcast::<Event>().fire(cx, &pointer_target);
 
@@ -1356,7 +1373,7 @@ impl DocumentEventHandler {
                 }
 
                 if is_compatibility_event_for_touch && down_target_is_connected {
-                    light_dismiss_open_popovers(cx, "pointerup", node.upcast());
+                    run_light_dismiss_activities(cx, "pointerup", node.upcast(), &mouse_event);
                 }
 
                 if is_disabled_control {
@@ -3365,4 +3382,19 @@ pub(crate) fn character_to_code(character: char) -> Option<Code> {
         ' ' => Code::Space,
         _ => return None,
     })
+}
+
+/// <https://html.spec.whatwg.org/multipage/#run-light-dismiss-activities>
+fn run_light_dismiss_activities(
+    cx: &mut JSContext,
+    event_type: &str,
+    target: &EventTarget,
+    mouse_event: &MouseEvent,
+) {
+    // Step 1. Run light dismiss open popovers with event.
+    light_dismiss_open_popovers(cx, event_type, target);
+
+    // Step 2. Run light dismiss open dialogs with event.
+    let client_point = Point2D::new(*mouse_event.ClientX(), *mouse_event.ClientY());
+    light_dismiss_open_dialogs(cx, event_type, target, client_point);
 }

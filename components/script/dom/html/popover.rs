@@ -1153,7 +1153,15 @@ pub(crate) fn topmost_popover_ancestor(
 
     // Step 5. Let popoverAncestorIndex be the index of the last item in combinedPopovers of which
     // newPopoverOrTopLayerElement is a flat tree descendant, otherwise -1.
-    let popover_ancestor_index = last_flat_tree_ancestor_index(new_popover_or_top_layer_element);
+    //
+    // A descendant, not an inclusive one: a dialog that is showing as a popover is not its own
+    // popover ancestor, so showing it as a dialog hides it as a popover.
+    let popover_ancestor_index = combined_popovers.iter().rposition(|popover| {
+        new_popover_or_top_layer_element
+            .inclusive_ancestors_in_flat_tree_unrooted(no_gc)
+            .skip(1)
+            .any(|ancestor| &**ancestor == popover.upcast::<Node>())
+    });
 
     // Step 6. Let sourceAncestorIndex be -1.
     // Step 7. If source is not null, then set sourceAncestorIndex to the index of the last item

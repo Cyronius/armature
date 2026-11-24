@@ -5,6 +5,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use dom_struct::dom_struct;
+use euclid::Point2D;
 use html5ever::{LocalName, Prefix, local_name, ns};
 use js::context::{JSContext, NoGC};
 use js::rust::HandleObject;
@@ -13,6 +14,7 @@ use script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElementMe
 use script_bindings::domstring::TracedDOMString;
 use script_bindings::error::{Error, ErrorResult};
 use script_bindings::root::Dom;
+use style_traits::CSSPixel;
 use stylo_dom::ElementState;
 
 use crate::dom::bindings::codegen::Bindings::HTMLDialogElementBinding::HTMLDialogElementMethods;
@@ -24,6 +26,7 @@ use crate::dom::closewatcher::internalclosewatcher::{
     InternalCloseWatcher, InternalCloseWatcherOwner,
 };
 use crate::dom::document::Document;
+use crate::dom::document::focus::FocusableArea;
 use crate::dom::element::storage::AttrRef;
 use crate::dom::element::{AttributeMutation, Element};
 use crate::dom::event::{Event, EventBubbles, EventCancelable};
@@ -177,9 +180,15 @@ impl HTMLDialogElement {
         // Step 13. Set is modal of subject to true.
         self.upcast::<Element>().set_modal_state(cx.no_gc(), true);
 
-        // TODO: Step 14. Set subject's node document to be blocked by the modal dialog subject.
-
-        // TODO: Step 15. If subject's node document's top layer does not already contain subject, then add an element to the top layer given subject.
+        // Step 14. Set subject's node document to be blocked by the modal dialog subject.
+        // Step 15. If subject's node document's top layer does not already contain subject, then
+        // add an element to the top layer given subject.
+        //
+        // Adding a modal element to the top layer is what makes the rest of the document inert.
+        let document = self.owner_document();
+        if !document.top_layer_contains(subject) {
+            document.add_an_element_to_the_top_layer(cx.no_gc(), subject);
+        }
 
         // Step 16. Set subject's previously focused element to the focused element.
         self.upcast::<HTMLElement>().set_previously_focused_element(
@@ -269,10 +278,15 @@ impl HTMLDialogElement {
         subject.remove_attribute(cx, &ns!(), &local_name!("open"));
         subject.set_open_state(cx.no_gc(), false);
 
-        // TODO: Step 6. If is modal of subject is true, then request an element to be removed from the top layer given subject.
-
+        // Step 6. If is modal of subject is true, then request an element to be removed from the
+        // top layer given subject.
         // Step 7. Let wasModal be the value of subject's is modal flag.
         let was_modal = subject.state().contains(ElementState::MODAL);
+        if was_modal {
+            subject
+                .owner_document()
+                .request_an_element_to_be_removed_from_the_top_layer(cx.no_gc(), subject);
+        }
 
         // Step 8. Set is modal of subject to false.
         self.upcast::<Element>().set_modal_state(cx.no_gc(), false);
@@ -301,12 +315,20 @@ impl HTMLDialogElement {
             // Step 12.3. If subject's node document's focused area of the document's DOM anchor is
             // a shadow-including inclusive descendant of subject, or wasModal is true, then run the
             // focusing steps for element; the viewport should not be scrolled by doing this step.
+            //
+            // Like Gecko, use the flat tree rather than a shadow-including traversal, so that an
+            // element slotted into the dialog counts as inside it (as in other engines, see
+            // https://github.com/web-platform-tests/wpt/pull/39579#issuecomment-2666758496).
             let subject_node = subject.upcast::<Node>();
             let document = subject.owner_document();
-            if subject_node.is_shadow_including_inclusive_ancestor_of(
-                &document.focus_handler().focused_area().dom_anchor(&document),
-            ) || was_modal
-            {
+            let focused_node = document
+                .focus_handler()
+                .focused_area()
+                .dom_anchor(&document);
+            let focus_is_in_dialog = focused_node
+                .inclusive_ancestors_in_flat_tree_unrooted(cx.no_gc())
+                .any(|ancestor| &**ancestor == subject_node);
+            if focus_is_in_dialog || was_modal {
                 element
                     .upcast::<Node>()
                     .run_the_focusing_steps(cx, None, FocusTrigger::Script);
@@ -452,17 +474,38 @@ impl HTMLDialogElement {
 
         // Step 6. Run the focusing steps for control.
         // FIXME: Use the focusing step once they support a focusable area as an argument
-        if control.is_some() {
-            let document = self.owner_document();
-            document
-                .focus_handler()
-                .focus(cx, &control.take().unwrap(), FocusTrigger::Script);
+        //
+        // The focusing steps do nothing for an inert control. When a modal dialog has nothing to
+        // focus, the element focused before is inert now, so clear the focus as Gecko does
+        // (`FocusCandidate`), which leaves the body focused.
+        let document = self.owner_document();
+        let is_modal = self
+            .upcast::<Element>()
+            .state()
+            .contains(ElementState::MODAL);
+        match control.take() {
+            Some(control) if !control.dom_anchor(&document).is_inert() => {
+                document
+                    .focus_handler()
+                    .focus(cx, &control, FocusTrigger::Script);
+            },
+            _ if is_modal => {
+                document
+                    .focus_handler()
+                    .focus(cx, &FocusableArea::Viewport, FocusTrigger::Script);
+            },
+            _ => {},
         }
 
-        // TODO: Step 7. Let topDocument be control's node navigable's top-level traversable's active document.
-        // TODO: Step 8. If control's node document's origin is not the same as the origin of topDocument, then return.
-        // TODO: Step 9. Empty topDocument's autofocus candidates.
-        // TODO: Step 10. Set topDocument's autofocus processed flag to true.
+        // Step 7. Let topDocument be control's node navigable's top-level traversable's active
+        // document.
+        // Step 8. If control's node document's origin is not the same as the origin of
+        // topDocument, then return.
+        // Step 9. Empty topDocument's autofocus candidates.
+        // Step 10. Set topDocument's autofocus processed flag to true.
+        //
+        // Autofocus candidates are tracked per document so far.
+        document.mark_autofocus_processed();
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dialog-setup-steps>
@@ -474,9 +517,13 @@ impl HTMLDialogElement {
         // Step 2. Assert: subject is connected.
         assert!(subject.is_connected());
 
-        // TODO Step 3. Assert: subject's node document's open dialogs list does not contain
-        // subject.
-        // TODO Step 4. Add subject to subject's node document's open dialogs list.
+        // Step 3. Assert: subject's node document's open dialogs list does not contain subject.
+        // Step 4. Add subject to subject's node document's open dialogs list.
+        let document = subject.owner_document();
+        let mut open_dialogs = document.dialog_data().open_dialogs.safe_borrow_mut(no_gc);
+        debug_assert!(!open_dialogs.iter().any(|dialog| &**dialog == self));
+        open_dialogs.push(Dom::from_ref(self));
+        drop(open_dialogs);
 
         // Step 5. Set the dialog close watcher with subject.
         self.set_the_close_watcher(no_gc);
@@ -484,7 +531,12 @@ impl HTMLDialogElement {
 
     /// <https://html.spec.whatwg.org/multipage/#dialog-setup-steps>
     pub(crate) fn dialog_cleanup_steps(&self, no_gc: &NoGC) {
-        // TODO Step 1. Remove subject from subject's node document's open dialogs list.
+        // Step 1. Remove subject from subject's node document's open dialogs list.
+        self.owner_document()
+            .dialog_data()
+            .open_dialogs
+            .safe_borrow_mut(no_gc)
+            .retain(|dialog| &**dialog != self);
 
         // Step 2. If subject's close watcher is not null, then:
         // Step 2.1. Destroy subject's close watcher.
@@ -756,8 +808,12 @@ impl VirtualMethods for HTMLDialogElement {
             self.dialog_cleanup_steps(cx.no_gc());
         }
 
-        // TODO Step 2. If removedNode's node document's top layer contains removedNode, then remove
-        // an element from the top layer immediately given removedNode.
+        // Step 2. If removedNode's node document's top layer contains removedNode, then remove an
+        // element from the top layer immediately given removedNode.
+        let document = removed_node.owner_document();
+        if document.top_layer_contains(removed_node) {
+            document.remove_an_element_from_the_top_layer_immediately(cx.no_gc(), removed_node);
+        }
 
         // Step 3. Set is modal of removedNode to false.
         removed_node.set_modal_state(cx.no_gc(), false)
@@ -783,6 +839,10 @@ impl VirtualMethods for HTMLDialogElement {
             return;
         }
 
+        // The open state follows the open attribute, however it is changed.
+        self.upcast::<Element>()
+            .set_open_state(cx.no_gc(), !mutation.is_removal());
+
         // Step 3. If value is null and oldValue is not null, then run the dialog cleanup steps
         // given element.
         if matches!(mutation, AttributeMutation::Removed) {
@@ -803,10 +863,148 @@ impl VirtualMethods for HTMLDialogElement {
 
         // Step 6. If value is not null and oldValue is null, then run the dialog setup steps given
         // element.
-        if matches!(mutation, AttributeMutation::Set(..)) {
+        if matches!(mutation, AttributeMutation::Set(None)) {
             self.dialog_setup_steps(cx.no_gc());
         }
     }
+}
+
+/// The dialog-related state of a document.
+#[derive(Default, JSTraceable, MallocSizeOf)]
+#[cfg_attr(crown, crown::unrooted_must_root_lint::must_root)]
+pub(crate) struct DocumentDialogData {
+    /// <https://html.spec.whatwg.org/multipage/#open-dialogs-list>
+    open_dialogs: DomRefCell<Vec<Dom<HTMLDialogElement>>>,
+    /// <https://html.spec.whatwg.org/multipage/#dialog-pointerdown-target>
+    pointerdown_target: MutNullableDom<HTMLDialogElement>,
+}
+
+/// <https://html.spec.whatwg.org/multipage/#light-dismiss-open-dialogs>
+///
+/// This is called for a trusted primary pointer press or release, before dispatching that
+/// pointer event. `client_point` is the event's clientX and clientY.
+pub(crate) fn light_dismiss_open_dialogs(
+    cx: &mut JSContext,
+    event_type: &str,
+    target: &EventTarget,
+    client_point: Point2D<f64, CSSPixel>,
+) {
+    // Step 1. Assert: event's isTrusted attribute is true.
+    // Step 2. Let document be event's target's node document.
+    let Some(target) = target.downcast::<Node>() else {
+        return;
+    };
+    let document = target.owner_doc();
+
+    // Step 3. If document's open dialogs list is empty, then return.
+    if document.dialog_data().open_dialogs.borrow().is_empty() {
+        return;
+    }
+
+    // Step 4. Let ancestor be the result of running nearest clicked dialog given event.
+    let ancestor = nearest_clicked_dialog(cx, target, client_point);
+    let dialog_data = document.dialog_data();
+
+    // Step 5. If event's type is "pointerdown", then set document's dialog pointerdown target to
+    // ancestor.
+    if event_type == "pointerdown" {
+        dialog_data.pointerdown_target.set(ancestor.as_deref());
+        return;
+    }
+
+    // Step 6. If event's type is "pointerup", then:
+    if event_type != "pointerup" {
+        return;
+    }
+
+    // Step 6.1. Let sameTarget be true if ancestor is document's dialog pointerdown target.
+    let same_target = ancestor == dialog_data.pointerdown_target.get();
+
+    // Step 6.2. Set document's dialog pointerdown target to null.
+    dialog_data.pointerdown_target.set(None);
+
+    // Step 6.3. If sameTarget is false, then return.
+    if !same_target {
+        return;
+    }
+
+    // Step 6.4. Let topmostDialog be the last element of document's open dialogs list.
+    let Some(topmost_dialog) = dialog_data
+        .open_dialogs
+        .borrow()
+        .last()
+        .map(|dialog| dialog.as_rooted())
+    else {
+        return;
+    };
+
+    // Step 6.5. If ancestor is topmostDialog, then return.
+    if ancestor.as_ref() == Some(&topmost_dialog) {
+        return;
+    }
+
+    // Step 6.6. If topmostDialog's computed closed-by state is not Any, then return.
+    if topmost_dialog.computed_closed_by_state() != ComputedClosedByState::Any {
+        return;
+    }
+
+    // Step 6.7. Assert: topmostDialog's close watcher is not null.
+    // Step 6.8. Request to close topmostDialog's close watcher with false.
+    //
+    // Like Gecko, request to close the dialog itself with a null return value and source, so
+    // that those of an earlier request to close that was canceled are not used.
+    topmost_dialog.request_to_close(cx, None, None);
+}
+
+/// <https://html.spec.whatwg.org/multipage/#nearest-clicked-dialog>
+fn nearest_clicked_dialog(
+    cx: &mut JSContext,
+    target: &Node,
+    client_point: Point2D<f64, CSSPixel>,
+) -> Option<DomRoot<HTMLDialogElement>> {
+    // Step 1. Let target be event's target.
+    // Step 2. If target is a dialog element, target has an open attribute, target's is modal is
+    // true, and event's clientX and clientY are outside the bounds of target, then return null.
+    //
+    // A pointer event that hits the ::backdrop of a dialog targets the dialog element itself.
+    if let Some(dialog) = target.downcast::<HTMLDialogElement>() {
+        let element = dialog.upcast::<Element>();
+        if element.has_attribute(&local_name!("open")) &&
+            element.state().contains(ElementState::MODAL)
+        {
+            let bounds = target.border_box(cx).unwrap_or_default();
+            let left = bounds.origin.x.to_f64_px();
+            let top = bounds.origin.y.to_f64_px();
+            let right = left + bounds.size.width.to_f64_px();
+            let bottom = top + bounds.size.height.to_f64_px();
+            if client_point.x < left ||
+                client_point.x > right ||
+                client_point.y < top ||
+                client_point.y > bottom
+            {
+                return None;
+            }
+        }
+    }
+
+    // Step 3. Let currentNode be target.
+    // Step 4. While currentNode is not null:
+    // Step 4.1. If currentNode is a dialog element and currentNode has an open attribute, then
+    // return currentNode.
+    // Step 4.2. Set currentNode to currentNode's parent in the flat tree.
+    // Step 5. Return null.
+    target
+        .inclusive_ancestors_in_flat_tree_unrooted(cx.no_gc())
+        .filter_map(|ancestor| {
+            ancestor
+                .downcast::<HTMLDialogElement>()
+                .map(DomRoot::from_ref)
+        })
+        .find(|dialog| {
+            dialog
+                .upcast::<Element>()
+                .has_attribute(&local_name!("open"))
+        })
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

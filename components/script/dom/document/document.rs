@@ -89,6 +89,7 @@ use style::stylesheet_set::DocumentStylesheetSet;
 use style::stylesheets::{Origin, OriginSet, Stylesheet};
 use style::stylist::Stylist;
 use stylo_atoms::Atom;
+use stylo_dom::ElementState;
 use time::Duration as TimeDuration;
 use url::{Host, Position};
 
@@ -198,6 +199,7 @@ use crate::dom::html::htmlscriptelement::{HTMLScriptElement, ScriptResult, Trace
 use crate::dom::html::htmltitleelement::HTMLTitleElement;
 use crate::dom::html::popover::DocumentPopoverData;
 use crate::dom::htmldetailselement::DetailsNameGroups;
+use crate::dom::htmldialogelement::DocumentDialogData;
 use crate::dom::intersectionobserver::IntersectionObserver;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::keyboardevent::KeyboardEvent;
@@ -589,10 +591,12 @@ pub(crate) struct Document {
     fullscreen_element: MutNullableDom<Element>,
     /// <https://drafts.csswg.org/css-position-4/#document-top-layer>
     ///
-    /// Only popovers are added to the top layer so far.
+    /// Popovers and modal dialogs are added to the top layer so far.
     top_layer: DomRefCell<Vec<Dom<Element>>>,
     /// The popover-related state of this document.
     popover_data: DocumentPopoverData,
+    /// The dialog-related state of this document.
+    dialog_data: DocumentDialogData,
     /// Map from ID to set of form control elements that have that ID as
     /// their 'form' content attribute. Used to reset form controls
     /// whenever any element with the same ID as the form attribute
@@ -4548,6 +4552,7 @@ impl Document {
             fullscreen_element: MutNullableDom::new(None),
             top_layer: Default::default(),
             popover_data: Default::default(),
+            dialog_data: Default::default(),
             form_id_listener_map: Default::default(),
             interactive_time: DomRefCell::new(interactive_time),
             tti_window: DomRefCell::new(InteractiveWindow::default()),
@@ -5789,6 +5794,13 @@ impl Document {
             .push(Dom::from_ref(element));
     }
 
+    /// Empty the autofocus candidates and set the autofocus processed flag, as the dialog
+    /// focusing steps do.
+    pub(crate) fn mark_autofocus_processed(&self) {
+        self.autofocus_candidates.borrow_mut().clear();
+        self.autofocus_processed.set(true);
+    }
+
     /// <https://html.spec.whatwg.org/multipage/#flush-autofocus-candidates>
     pub(crate) fn flush_autofocus_candidates(&self, cx: &mut JSContext) {
         // Step 1. If topDocument's autofocus processed flag is true, then return.
@@ -6158,6 +6170,10 @@ impl Document {
         &self.popover_data
     }
 
+    pub(crate) fn dialog_data(&self) -> &DocumentDialogData {
+        &self.dialog_data
+    }
+
     /// Returns the elements of the top layer, from bottom to top.
     pub(crate) fn top_layer_elements(&self) -> Vec<DomRoot<Element>> {
         self.top_layer
@@ -6186,9 +6202,44 @@ impl Document {
 
         // Step 3. Append el to doc's top layer.
         top_layer.push(Dom::from_ref(element));
+        drop(top_layer);
+
+        // A modal element at the top of the top layer makes the rest of the document inert, as
+        // in Gecko's `Document::TopLayerPush`: the root element becomes inert, and the topmost
+        // modal element matches `:-moz-topmost-modal`, which removes the inertness again.
+        if element.state().contains(ElementState::MODAL) {
+            self.update_topmost_modal(no_gc);
+        }
 
         // TODO: Step 4. At the UA !important cascade origin, add a rule targeting el containing
         // an overlay: auto declaration.
+    }
+
+    /// Give `TOPMOST_MODAL` to the last modal element of the top layer only, and make the root
+    /// element inert while there is one.
+    /// <https://html.spec.whatwg.org/multipage/#blocked-by-a-modal-dialog>
+    fn update_topmost_modal(&self, no_gc: &NoGC) {
+        let top_layer = self.top_layer_elements();
+        let topmost_modal = top_layer
+            .iter()
+            .rev()
+            .find(|element| element.state().contains(ElementState::MODAL));
+        for element in &top_layer {
+            let is_topmost = topmost_modal.is_some_and(|topmost| topmost == element);
+            if element.state().contains(ElementState::TOPMOST_MODAL) != is_topmost {
+                element.set_state(no_gc, ElementState::TOPMOST_MODAL, is_topmost);
+            }
+        }
+        let Some(root) = self.GetDocumentElement() else {
+            return;
+        };
+        if let Some(topmost_modal) = topmost_modal {
+            if *topmost_modal != root {
+                root.set_state(no_gc, ElementState::INERT, true);
+            }
+        } else if !root.has_attribute(&local_name!("inert")) {
+            root.set_state(no_gc, ElementState::INERT, false);
+        }
     }
 
     /// <https://drafts.csswg.org/css-position-4/#request-an-element-to-be-removed-from-the-top-layer>
@@ -6213,6 +6264,13 @@ impl Document {
         self.top_layer
             .safe_borrow_mut(no_gc)
             .retain(|top_layer_element| &**top_layer_element != element);
+
+        // As in Gecko's `Document::TopLayerPop`, the next modal element down becomes the topmost
+        // one, and the document is no longer inert once no modal element is left.
+        if element.state().contains(ElementState::TOPMOST_MODAL) {
+            element.set_state(no_gc, ElementState::TOPMOST_MODAL, false);
+            self.update_topmost_modal(no_gc);
+        }
 
         // TODO: Step 3. Remove the UA !important overlay: auto rule targeting el, if it exists.
     }

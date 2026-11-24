@@ -67,6 +67,7 @@ use crate::dom::html::form_controls::input_type::InputType;
 use crate::dom::html::htmlbuttonelement::HTMLButtonElement;
 use crate::dom::html::htmlcollection::CollectionFilter;
 use crate::dom::html::htmldatalistelement::HTMLDataListElement;
+use crate::dom::html::htmldialogelement::HTMLDialogElement;
 use crate::dom::html::htmlelement::HTMLElement;
 use crate::dom::html::htmlfieldsetelement::HTMLFieldSetElement;
 use crate::dom::html::htmlformcontrolscollection::HTMLFormControlsCollection;
@@ -848,7 +849,53 @@ impl HTMLFormElement {
         // Step 10. Let method be the submitter element's method.
         let method = submitter.method();
         // Step 11. If method is dialog, then:
-        // TODO
+        if matches!(method, FormMethod::Dialog) {
+            // Step 11.1. If form does not have an ancestor dialog element, return.
+            // Step 11.2. Let subject be form's nearest ancestor dialog element.
+            let Some(subject) = self
+                .upcast::<Node>()
+                .ancestors()
+                .find_map(DomRoot::downcast::<HTMLDialogElement>)
+            else {
+                return;
+            };
+
+            // Step 11.3. Let result be null.
+            // Step 11.4. If submitter is an input element whose type attribute is in the Image
+            // Button state, then:
+            // Step 11.4.1. Let (x, y) be the selected coordinate.
+            // Step 11.4.2. Set result to the concatenation of x, ",", and y.
+            // Step 11.5. Otherwise, if submitter has a value, then set result to that value.
+            //
+            // Without a submitter, Gecko closes the dialog with the empty string rather than
+            // null, which the tests expect too.
+            let result = match submitter {
+                FormSubmitterElement::Form(_) => Some(DOMString::new()),
+                FormSubmitterElement::Input(input) => match *input.input_type() {
+                    InputType::Image(ref image) => {
+                        let coordinate = image.selected_coordinate();
+                        Some(DOMString::from(format!(
+                            "{},{}",
+                            coordinate.x, coordinate.y
+                        )))
+                    },
+                    _ => input
+                        .upcast::<Element>()
+                        .get_attribute_string_value(&local_name!("value"))
+                        .map(DOMString::from),
+                },
+                FormSubmitterElement::Button(button) => button
+                    .upcast::<Element>()
+                    .get_attribute_string_value(&local_name!("value"))
+                    .map(DOMString::from),
+            };
+
+            // Step 11.6. Close the dialog subject with result and null.
+            subject.close_the_dialog(cx, result, None);
+
+            // Step 11.7. Return.
+            return;
+        }
 
         // Step 12. Let action be the submitter element's action.
         let mut action = submitter.action();

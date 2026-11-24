@@ -338,7 +338,7 @@ impl Node {
 
             // > 6.3. Otherwise, if focusTarget is not a dialog and descendant is a focusable area, set
             // >      focusableArea to descendant.
-            if !kind.is_empty() {
+            if !is_dialog_element && !kind.is_empty() {
                 return Some(FocusableArea::Node {
                     node: descendant.as_traced(),
                     kind,
