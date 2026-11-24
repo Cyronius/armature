@@ -17,6 +17,7 @@ use js::jsapi::{
 use js::jsval::{JSVal, PrivateValue, UndefinedValue};
 use js::offthread::CompilationResult;
 use js::panic::maybe_resume_unwind;
+use js::realm::CurrentRealm;
 use js::rust::wrappers2::{
     Compile1, ConvertFrontendErrorsToRuntimeErrors, InstantiateGlobalStencil,
     JS_ClearPendingException, JS_ExecuteScript, JS_GetScriptPrivate, ModuleEvaluate,
@@ -36,6 +37,8 @@ use crate::dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use crate::dom::bindings::error::{Error, ErrorInfo, ErrorResult, report_pending_exception};
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::globalscope::GlobalScope;
+use crate::dom::promise::Promise;
+use crate::dom::promisenativehandler::{Callback, PromiseNativeHandler};
 use crate::dom::window::Window;
 use crate::realms::enter_auto_realm;
 use crate::scripting::fetching_options::{BaseScript, ScriptFetchOptions};
@@ -380,6 +383,26 @@ impl GlobalScope {
             // Step 8. If preventErrorReporting is false, then upon rejection of evaluationPromise
             // with reason, report an exception given by reason for script's settings object's
             // global object.
+            //
+            // A module that uses top-level await is still evaluating here. Its promise is not
+            // settled yet, which `ThrowOnModuleEvaluationFailure` does not handle (it would throw
+            // undefined), so report the reason when the promise is rejected later instead, as
+            // Gecko does with `ReportModuleErrorsAsync`.
+            if !evaluation_promise.is_null() {
+                let promise = Promise::new_with_js_promise(cx, evaluation_promise.handle());
+                if promise.is_pending() {
+                    let global = GlobalScope::from_current_realm(cx);
+                    let handler = PromiseNativeHandler::new(
+                        cx,
+                        &global,
+                        None,
+                        Some(Box::new(ModuleEvaluationRejectionHandler)),
+                    );
+                    promise.append_native_handler(cx, &handler);
+                    return;
+                }
+            }
+
             let throw_result = unsafe {
                 ThrowOnModuleEvaluationFailure(
                     cx,
@@ -463,5 +486,17 @@ pub(crate) fn maybe_associate_with_script(
                 &PrivateValue(Rc::into_raw(module_script_data) as *const _),
             );
         }
+    }
+}
+
+/// Reports the reason that the evaluation promise of a module script using top-level await is
+/// rejected with.
+/// <https://html.spec.whatwg.org/multipage/#run-a-module-script>
+#[derive(JSTraceable, MallocSizeOf)]
+struct ModuleEvaluationRejectionHandler;
+
+impl Callback for ModuleEvaluationRejectionHandler {
+    fn callback(&self, cx: &mut CurrentRealm, reason: HandleValue) {
+        GlobalScope::from_current_realm(cx).report_an_exception(cx, reason);
     }
 }
