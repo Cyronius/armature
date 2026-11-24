@@ -85,6 +85,16 @@ impl<'dom> ServoDangerousStyleDocument<'dom> {
             .map(|element| element.layout_element())
     }
 
+    /// The elements in the top layer of this document, from bottom to top.
+    /// <https://drafts.csswg.org/css-position-4/#document-top-layer>
+    pub fn top_layer_elements(&self) -> Vec<ServoLayoutElement<'dom>> {
+        self.document
+            .top_layer_for_layout()
+            .into_iter()
+            .map(ServoLayoutElement::from)
+            .collect()
+    }
+
     /// Get the shared style lock for author stylesheets for this [`ServoDangerousStyleDocument`].
     pub fn shared_style_locks(&self) -> &SharedRwLocks {
         self.document.shared_style_locks()

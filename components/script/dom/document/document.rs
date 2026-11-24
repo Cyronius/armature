@@ -4340,6 +4340,15 @@ impl<'dom> LayoutDom<'dom, Document> {
         self.unsafe_get().id_map.get_all_for_layout(id)
     }
 
+    /// The elements of the top layer, from bottom to top.
+    #[expect(unsafe_code)]
+    pub(crate) fn top_layer_for_layout(self) -> Vec<LayoutDom<'dom, Element>> {
+        unsafe { self.unsafe_get().top_layer.borrow_for_layout() }
+            .iter()
+            .map(|element| unsafe { element.to_layout() })
+            .collect()
+    }
+
     pub(crate) fn url_for_layout(self) -> ServoUrl {
         self.unsafe_get().url.borrow().clone()
     }
