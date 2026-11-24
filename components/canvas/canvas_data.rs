@@ -714,9 +714,55 @@ fn bound_shape_with_pattern<DrawTarget: GenericDrawTarget, F>(
     ))
     .cast();
     let rect = transform.outer_transformed_rect(&rect);
-    draw_target.push_clip_rect(&rect.cast());
+
+    // The pattern is transparent outside its image. The operations that are not bounded by the
+    // source make the destination transparent wherever the source is transparent, so for them
+    // draw without a clip, which the backend does not blend correctly under, and clear what
+    // lies outside the image afterwards.
+    // <https://html.spec.whatwg.org/multipage/#drawing-model>
+    let is_unbounded = matches!(
+        composition_options.composition_operation,
+        CompositionOrBlending::Composition(
+            CompositionStyle::Copy |
+                CompositionStyle::SourceIn |
+                CompositionStyle::SourceOut |
+                CompositionStyle::DestinationIn |
+                CompositionStyle::DestinationAtop
+        )
+    );
+    if !is_unbounded {
+        draw_target.push_clip_rect(&rect.cast());
+        draw_shape(draw_target, style);
+        draw_target.pop_clip();
+        return;
+    }
+
     draw_shape(draw_target, style);
-    draw_target.pop_clip();
+    let size = draw_target.get_size().to_f32();
+    let rect = rect.cast::<f32>();
+    let (left, top) = (
+        rect.min_x().clamp(0., size.width),
+        rect.min_y().clamp(0., size.height),
+    );
+    let (right, bottom) = (
+        rect.max_x().clamp(left, size.width),
+        rect.max_y().clamp(top, size.height),
+    );
+    let outside = [
+        Rect::new(Point2D::zero(), Size2D::new(size.width, top)),
+        Rect::new(
+            Point2D::new(0., bottom),
+            Size2D::new(size.width, size.height - bottom),
+        ),
+        Rect::new(Point2D::new(0., top), Size2D::new(left, bottom - top)),
+        Rect::new(
+            Point2D::new(right, top),
+            Size2D::new(size.width - right, bottom - top),
+        ),
+    ];
+    for rect in outside.iter().filter(|rect| !rect.is_empty()) {
+        draw_target.clear_rect(rect, Transform2D::identity());
+    }
 }
 
 /// It writes an image to the destination target
