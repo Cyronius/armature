@@ -230,7 +230,7 @@ impl HTMLLabelElement {
 }
 
 /// <https://html.spec.whatwg.org/multipage/#interactive-content-2>
-fn is_interactive_content(element: &Element) -> bool {
+pub(crate) fn is_interactive_content(element: &Element) -> bool {
     if *element.namespace() != ns!(html) {
         return false;
     }

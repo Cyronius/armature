@@ -72,7 +72,7 @@ use crate::dom::html::htmldetailselement::HTMLDetailsElement;
 use crate::dom::html::htmlformelement::{FormControl, HTMLFormElement};
 use crate::dom::html::htmlframesetelement::HTMLFrameSetElement;
 use crate::dom::html::htmlhtmlelement::HTMLHtmlElement;
-use crate::dom::html::htmllabelelement::HTMLLabelElement;
+use crate::dom::html::htmllabelelement::{HTMLLabelElement, is_interactive_content};
 use crate::dom::html::htmltextareaelement::HTMLTextAreaElement;
 use crate::dom::html::internals::elementinternals::ElementInternals;
 use crate::dom::htmlformelement::FormControlElementHelpers;
@@ -2093,8 +2093,20 @@ impl Activatable for HTMLElement {
         &self,
         cx: &mut js::context::JSContext,
         _event: &Event,
-        _target: &EventTarget,
+        target: &EventTarget,
     ) {
+        // Like Gecko (HTMLSummaryElement::PostHandleEvent), a click on interactive content inside
+        // the summary, such as a label or a textarea, does not toggle the details.
+        if let Some(target) = target.downcast::<Node>() {
+            let summary = self.upcast::<Node>();
+            let on_interactive_content = target
+                .inclusive_ancestors(ShadowIncluding::Yes)
+                .take_while(|node| &**node != summary)
+                .any(|node| node.downcast::<Element>().is_some_and(is_interactive_content));
+            if on_interactive_content {
+                return;
+            }
+        }
         self.summary_activation_behavior(cx);
     }
 }
