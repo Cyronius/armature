@@ -35,10 +35,11 @@ use script_bindings::str::DOMString;
 use crate::dom::bindings::conversions::{
     ConversionResult, FromJSValConvertible, root_from_handleobject,
 };
+use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::str::USVString;
 use crate::dom::domexception::{DOMErrorName, DOMException};
 use crate::dom::globalscope::GlobalScope;
-use crate::dom::types::QuotaExceededError;
+use crate::dom::types::{QuotaExceededError, WorkerGlobalScope};
 
 #[cfg(feature = "js_backtrace")]
 thread_local! {
@@ -88,7 +89,14 @@ pub(crate) fn throw_dom_exception(cx: &mut JSContext, global: &GlobalScope, resu
         },
 
         Err(JsEngineError::JSFailed) => {
-            assert!(JS_IsExceptionPending(cx));
+            // Script that a closing worker's interrupt callback terminates fails without a
+            // pending exception.
+            assert!(
+                JS_IsExceptionPending(cx) ||
+                    global
+                        .downcast::<WorkerGlobalScope>()
+                        .is_some_and(WorkerGlobalScope::is_closing)
+            );
         },
     }
 }
