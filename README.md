@@ -30,42 +30,51 @@ delegates `clipboard-write` to the cross-origin frame used to test write cancell
 row uses the 7 November upstream score and the 24 November Armature score. The Total row still
 reflects the earlier full-suite run.
 
-| Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
-|---|--:|--:|--:|--:|--:|
-| CSS | 29,542 | 67.0% | **78.87%** | +11.9 | +23,261 |
-| HTML | 10,253 | 66.7% | 68.1% | +1.4 | +18,030 |
-| WebGL conformance | 2,939 | 40.5% | **82.2%** | +41.7 | — |
-| Referrer Policy | 1,483 | 86.3% | 87.0% | +0.7 | +11 |
-| SVG | 1,411 | 24.9% | 46.7% | +21.8 | +3,658 |
-| Encoding | 1,345 | 98.3% | 98.3% | +0.0 | +9 |
-| Servo-specific tests | 1,229 | 75.6% | 75.6% | -0.0 | +4 |
-| Fetch | 957 | 66.6% | 66.8% | +0.2 | +47 |
-| Content Security Policy | 918 | 79.5% | 80.0% | +0.5 | +10 |
-| Editing | 860 | 49.8% | 51.4% | +1.6 | +8,857 |
-| DOM | 845 | 76.3% | 85.9% | +9.6 | +2,107 |
-| IndexedDB | 820 | 57.4% | 57.4% | +0.0 | +0 |
-| WebSockets | 799 | 68.1% | 68.1% | +0.0 | +0 |
-| MathML | 624 | 45.6% | 46.8% | +1.2 | +40 |
-| WebAssembly | 615 | 65.3% | 68.9% | +3.6 | +449 |
-| XMLHttpRequest | 440 | 92.1% | 93.8% | +1.7 | +88 |
-| Mixed Content | 388 | 87.6% | 87.4% | -0.1 | -1 |
-| Shadow DOM | 366 | 67.3% | 68.2% | +0.9 | +28 |
-| Web Audio | 355 | 58.9% | 62.0% | +3.1 | +126 |
-| Workers | 336 | 91.8% | 92.1% | +0.3 | +1 |
-| Web Crypto | 334 | 97.5% | 99.4% | +1.9 | +2,036 |
-| Streams | 317 | 91.6% | 94.1% | +2.4 | +320 |
-| Trusted Types | 249 | 86.7% | 89.2% | +2.6 | +85 |
-| Web Animations | 204 | 27.6% | 86.7% | +59.1 | +3,479 |
-| Custom Elements | 203 | 76.1% | 79.5% | +3.4 | +156 |
-| Upgrade Insecure Requests | 197 | 73.6% | 73.1% | -0.5 | -6 |
-| DOM Parsing | 94 | 43.5% | 48.8% | +5.2 | +51 |
-| Compression Streams | 78 | 70.2% | 73.7% | +3.5 | +63 |
-| Clipboard | 61 | 25.8% | **100.0%** | +74.2 | — |
-| Focus | 43 | 60.9% | 60.9% | +0.0 | +0 |
-| Scroll-driven Animations | 17 | 21.6% | 100.0% | +78.4 | +372 |
-| WebNN | 598 | — | **89.9%** | — | +12,772 |
-| Everything else | 3,604 | 69.5% | 69.6% | +0.1 | +606 |
-| **Total** | **61,548** | **66.5%** | **69.5%** | **+2.9** | **+63,770** |
+The Firefox column combines the [24 November 2026 public Firefox 160.0.1 run on Ubuntu 22.04][firefox-wpt]
+with a targeted headless Firefox 160.0.1 run on Windows for IDs missing or skipped in the public report.
+Scores average the subtest pass fraction for each matched test ID. Tests without subtests count as a full
+pass or a failure. Parentheses show coverage where some IDs still have no result. Some Servo-specific
+tests depend on private Servo APIs. The [measurement notes](docs/armature/measurement-notes.md#firefox-reference)
+give the run details and describe where the Firefox and Servo test selections differ.
+
+[firefox-wpt]: https://storage.googleapis.com/wptd/056c528ccb5844b01628e0cd667520535dee16cc/firefox-160.0.1-linux-22.04-d60efb357b-summary_v2.json.gz
+
+| Area | Tests | Firefox | Upstream Servo | Armature | Change (points) | Subtests newly passing |
+|---|--:|--:|--:|--:|--:|--:|
+| CSS | 29,542 | 84.0% | 67.0% | **78.87%** | +11.9 | +23,261 |
+| HTML | 10,253 | 81.0% | 66.7% | 68.1% | +1.4 | +18,030 |
+| WebGL conformance | 2,939 | 97.3% (2,539/2,939) | 40.5% | **82.2%** | +41.7 | — |
+| Referrer Policy | 1,483 | 93.5% | 86.3% | 87.0% | +0.7 | +11 |
+| SVG | 1,411 | 89.1% | 24.9% | 46.7% | +21.8 | +3,658 |
+| Encoding | 1,345 | 99.3% | 98.3% | 98.3% | +0.0 | +9 |
+| Servo-specific tests | 1,229 | 63.4% | 75.6% | 75.6% | -0.0 | +4 |
+| Fetch | 957 | 83.4% | 66.6% | 66.8% | +0.2 | +47 |
+| Content Security Policy | 918 | 88.0% | 79.5% | 80.0% | +0.5 | +10 |
+| Editing | 860 | 90.0% | 49.8% | 51.4% | +1.6 | +8,857 |
+| DOM | 845 | 85.8% | 76.3% | 85.9% | +9.6 | +2,107 |
+| IndexedDB | 820 | 99.3% | 57.4% | 57.4% | +0.0 | +0 |
+| WebSockets | 799 | 86.1% | 68.1% | 68.1% | +0.0 | +0 |
+| MathML | 624 | 84.1% | 45.6% | 46.8% | +1.2 | +40 |
+| WebAssembly | 615 | 85.4% (537/615) | 65.3% | 68.9% | +3.6 | +449 |
+| XMLHttpRequest | 440 | 97.5% | 92.1% | 93.8% | +1.7 | +88 |
+| Mixed Content | 388 | 96.1% | 87.6% | 87.4% | -0.1 | -1 |
+| Shadow DOM | 366 | 75.5% | 67.3% | 68.2% | +0.9 | +28 |
+| Web Audio | 355 | 72.6% | 58.9% | 62.0% | +3.1 | +126 |
+| Workers | 336 | 95.4% | 91.8% | 92.1% | +0.3 | +1 |
+| Web Crypto | 334 | 66.9% | 97.5% | 99.4% | +1.9 | +2,036 |
+| Streams | 317 | 93.4% | 91.6% | 94.1% | +2.4 | +320 |
+| Trusted Types | 249 | 99.4% | 86.7% | 89.2% | +2.6 | +85 |
+| Web Animations | 204 | 91.1% | 27.6% | 86.7% | +59.1 | +3,479 |
+| Custom Elements | 203 | 95.0% | 76.1% | 79.5% | +3.4 | +156 |
+| Upgrade Insecure Requests | 197 | 50.7% | 73.6% | 73.1% | -0.5 | -6 |
+| DOM Parsing | 94 | 52.9% | 43.5% | 48.8% | +5.2 | +51 |
+| Compression Streams | 78 | 94.9% | 70.2% | 73.7% | +3.5 | +63 |
+| Clipboard | 61 | 63.7% | 25.8% | **100.0%** | +74.2 | — |
+| Focus | 43 | 90.7% | 60.9% | 60.9% | +0.0 | +0 |
+| Scroll-driven Animations | 17 | 100.0% | 21.6% | 100.0% | +78.4 | +372 |
+| WebNN | 598 | 0.4% | — | **89.9%** | — | +12,772 |
+| Everything else | 3,604 | 79.8% | 69.5% | 69.6% | +0.1 | +606 |
+| **Total** | **61,548** | **84.5%** (61,124/61,602) | **66.5%** | **69.5%** | **+2.9** | **+63,770** |
 
 ## Added features
 

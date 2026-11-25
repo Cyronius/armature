@@ -32,6 +32,23 @@ Notes on the table in the [README](../../README.md).
   and `?npu` variants separately). Upstream Servo has no WebNN and does not run these tests, so it has no upstream
   score, and the row is not included in the Total.
 
+## Firefox reference
+
+The Firefox comparison matches full WPT test IDs, including URL variants. It uses the selected test
+types (`testharness`, `reftest`, `wdspec` and `crashtest`) from the tracked WPT manifests and filters
+them through `tests/wpt/include.ini`. The same ID can refer to different test revisions in the public
+run and Armature's checkout.
+
+- The public Ubuntu run supplies results where available. On 24 November 2026, a headless Firefox
+  160.0.1 run on Windows 11 selected the 4,800 missing or skipped IDs at `a9a59f478` with 12 workers.
+  It recorded 4,322 results in 56 minutes, including 217 timeouts. The WebGL metadata disabled 400
+  tests, and 78 WebAssembly tests require a JavaScript shell. Those 478 skips are excluded from scores.
+- Most rows use the repository's earliest available snapshot, `91ff4d1d6`. The CSS and WebNN rows use
+  `a9a59f478`. The Firefox CSS reference has 29,211 selected IDs and the Servo-specific row has 1,248.
+- The Firefox Total covers 61,124 of the 61,602 IDs selected at `91ff4d1d6`, including 4,311 Windows
+  results. The original 61,548-test Servo run had 35 fewer CSS tests and 19 fewer Servo-specific tests,
+  and its exact list of test IDs is unavailable in the repository.
+
 ## CSS rerun history
 
 A CSS-only rerun on 12 November 2026 at `cd542dc6879` selected 29,199 tests and scored **71.3%** (20,829.7
