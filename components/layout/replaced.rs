@@ -18,7 +18,6 @@ use servo_arc::Arc as ServoArc;
 use servo_base::cross_process_instant::CrossProcessInstant;
 use servo_base::id::{BrowsingContextId, PipelineId};
 use servo_config::pref;
-use servo_svg::document::SvgTree;
 use servo_url::ServoUrl;
 use style::Zero;
 use style::attr::AttrValue;
@@ -181,7 +180,7 @@ pub(crate) enum ReplacedContentKind {
         vector_image: Option<VectorImage>,
         has_viewbox: bool,
     },
-    Svg(#[conditional_malloc_size_of] Option<Arc<SvgTree>>),
+    Svg,
     Audio,
 }
 
@@ -314,11 +313,7 @@ impl ReplacedContents {
         };
 
         if pref!(layout_servo_svg_enabled) {
-            let viewport_width = width.map(|w| w.px()).unwrap_or(300.0);
-            let viewport_height = height.map(|h| h.px()).unwrap_or(150.0);
-            let render_tree =
-                crate::svg::build_svg_tree(node, context, viewport_width, viewport_height);
-            return (ReplacedContentKind::Svg(render_tree), natural_size);
+            return (ReplacedContentKind::Svg, natural_size);
         }
 
         let svg_source = match svg_data.source {
@@ -692,15 +687,25 @@ impl ReplacedContents {
                     selected: self.selected.clone(),
                 }))]
             },
-            ReplacedContentKind::Svg(Some(tree)) => {
+            ReplacedContentKind::Svg => {
+                let Some(node) = self.base_fragment_info.tag.and_then(|tag| {
+                    layout_context.outer_svg_nodes.get(&tag.node).copied()
+                }) else {
+                    return vec![];
+                };
+                let tree = crate::svg::build_svg_tree(
+                    node,
+                    layout_context,
+                    rect.size.width.to_f32_px(),
+                    rect.size.height.to_f32_px(),
+                );
                 vec![Fragment::Svg(Arc::new(SvgFragment {
                     base,
                     style: style.clone().into(),
                     clip,
-                    tree: Some(tree.clone()),
+                    tree,
                 }))]
             },
-            ReplacedContentKind::Svg(None) => vec![],
             ReplacedContentKind::SVGElement {
                 vector_image,
                 has_viewbox,

@@ -134,6 +134,16 @@ Bundled chrome scripts can call `window.armature.tabs()` to get tab IDs, then us
 evaluations must include. Navigation to a new document invalidates the previous ID while that document is inactive.
 WebDriver and remote DevTools are unavailable in this mode.
 
+### Experimental native SVG
+
+Enable `--pref=layout_servo_svg_enabled=true` to try the native inline SVG renderer. It paints basic
+shapes and paths with solid fills, strokes and dashes, and supports transforms, nested viewports and
+group opacity.
+
+On Windows, all 39 `svg/shapes` tests passed with the preference on and off, including 29 reftests
+and 38 scripted assertions. Seven additional stroke and viewport-resize reftests passed with native
+SVG enabled. Broader SVG parity is still in progress. See the [native SVG notes](docs/armature/svg-native.md).
+
 ### WebNN: neural networks in the browser
 
 Armature implements the W3C [Web Neural Network API](https://webmachinelearning.github.io/webnn/) (WebNN), which

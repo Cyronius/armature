@@ -1073,11 +1073,16 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
                 push,
             );
         }
-        // <image> and <foreignObject> have the same geometry attributes.
+        // <image>, <foreignObject> and nested <svg> have the same geometry attributes.
         // https://svgwg.org/svg2-draft/embedded.html#ImageElement
         // https://svgwg.org/svg2-draft/embedded.html#ForeignObjectElement
         if element.downcast::<SVGImageElement>().is_some() ||
-            element.downcast::<SVGForeignObjectElement>().is_some()
+            element.downcast::<SVGForeignObjectElement>().is_some() ||
+            (pref!(layout_servo_svg_enabled) &&
+                element.is::<SVGSVGElement>() &&
+                self.upcast::<Node>()
+                    .parent_node_ref()
+                    .is_some_and(|parent| parent.is::<SVGElement>()))
         {
             self.parse_svg_attribute(&mut parser_context, "x", longhands::x::parse_declared, push);
             self.parse_svg_attribute(&mut parser_context, "y", longhands::y::parse_declared, push);
@@ -1166,6 +1171,20 @@ impl<'dom> LayoutDom<'dom, SVGElement> {
         {
             for declaration in declarations.drain().declarations {
                 push(declaration);
+            }
+        } else if pref!(layout_servo_svg_enabled) &&
+            property_name == "transform" &&
+            !value.trim().is_empty() &&
+            let Ok(svgtypes::Transform { a, b, c, d, e, f }) = value.parse()
+        {
+            // SVG transform attributes also accept space-separated arguments and a
+            // rotation center. Cascade a CSS equivalent so authored CSS can override it.
+            let css = format!("matrix({a},{b},{c},{d},{e},{f})");
+            let mut parser = cssparser::Parser::new(&css);
+            if let Ok(transform) = parser.parse_entirely(|input| {
+                longhands::transform::parse_declared(parser_context, input)
+            }) {
+                push(transform);
             }
         }
     }

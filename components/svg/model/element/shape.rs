@@ -19,6 +19,20 @@ pub enum Shape {
     Path(Path),
 }
 
+impl Shape {
+    pub fn path_length(&self) -> Option<f32> {
+        match self {
+            Self::Rect(shape) => shape.path_length,
+            Self::Circle(shape) => shape.path_length,
+            Self::Ellipse(shape) => shape.path_length,
+            Self::Line(shape) => shape.path_length,
+            Self::Polyline(shape) => shape.path_length,
+            Self::Polygon(shape) => shape.path_length,
+            Self::Path(shape) => shape.path_length,
+        }
+    }
+}
+
 // <rect> element
 #[derive(Debug, MallocSizeOf)]
 pub struct Rectangle {

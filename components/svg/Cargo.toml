@@ -14,10 +14,11 @@ name = "servo_svg"
 path = "lib.rs"
 
 [dependencies]
-log = { workspace = true }
+kurbo = { workspace = true }
 malloc_size_of = { workspace = true }
 malloc_size_of_derive = { workspace = true }
 svgtypes = { workspace = true }
+tiny-skia = "0.12.0"
 
 [lints]
 workspace = true

@@ -11,14 +11,37 @@
 mod builder;
 mod cache;
 mod primitives;
+mod raster_cache;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(crate) use cache::SvgSubtreeCache;
+use layout_api::{LayoutElement, LayoutNode};
+pub(crate) use raster_cache::SvgRasterCache;
 use script::layout_dom::ServoLayoutNode;
 use servo_svg::document::SvgTree;
+use style::dom::OpaqueNode;
+use web_atoms::local_name;
 
 use crate::context::LayoutContext;
+
+pub(crate) fn outer_svg_nodes(
+    root: ServoLayoutNode<'_>,
+) -> HashMap<OpaqueNode, ServoLayoutNode<'_>> {
+    let mut roots = HashMap::new();
+    let mut pending = vec![root];
+    while let Some(node) = pending.pop() {
+        if node.as_element().is_some_and(|element| {
+            element.is_svg_element() && *element.local_name() == local_name!("svg")
+        }) {
+            roots.insert(node.opaque(), node);
+        } else {
+            pending.extend(node.flat_tree_children());
+        }
+    }
+    roots
+}
 
 /// The entry point for building an SvgTree.
 pub(crate) fn build_svg_tree<'dom>(

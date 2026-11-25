@@ -12,17 +12,6 @@ pub(crate) fn get_attr<'a>(element: &'a ServoLayoutElement, attr: &LocalName) ->
     element.attribute_as_str(&ns!(), attr)
 }
 
-/// Parse a presentation-attribute length to pixels.
-pub(crate) fn parse_length(
-    attr: &LocalName,
-    element: &ServoLayoutElement,
-    font_size: f32,
-) -> Result<f32, String> {
-    let value = get_attr(element, attr).ok_or_else(|| format!("missing SVG attribute: {attr}"))?;
-    let len: SvgLength = value.parse().map_err(|e| format!("{attr}: {e}"))?;
-    Ok(to_px(len, font_size))
-}
-
 /// Convert a presentation-attribute length to pixels.
 fn to_px(len: SvgLength, font_size: f32) -> f32 {
     let n = len.number as f32;

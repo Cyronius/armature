@@ -493,6 +493,7 @@ impl<'a, Handler: PaintTraversalHandler> PaintTraversal<'a, Handler> {
         state: &TraversalState,
         box_fragment: &Arc<BoxFragment>,
     ) {
+        let containing_block = PhysicalRect::new(state.origin, box_fragment.content_rect().size);
         for child in &box_fragment.children {
             match child {
                 Fragment::LayoutRoot(layout_root_fragment) => {
@@ -503,13 +504,12 @@ impl<'a, Handler: PaintTraversalHandler> PaintTraversal<'a, Handler> {
                     );
                 },
                 Fragment::Image(image_fragment) => {
-                    let containing_block =
-                        PhysicalRect::new(state.origin, box_fragment.content_rect().size);
                     self.handler
                         .visit_image(state, containing_block, image_fragment);
                 },
                 Fragment::Svg(svg_fragment) => {
-                    self.handler.visit_svg(svg_fragment);
+                    self.handler
+                        .visit_svg(state, containing_block, svg_fragment);
                 },
                 Fragment::IFrame(iframe_fragment) => {
                     self.handler.visit_iframe(state, iframe_fragment);
@@ -557,7 +557,13 @@ pub(crate) trait PaintTraversalHandler {
         _fragment: &Arc<ImageFragment>,
     ) {
     }
-    fn visit_svg(&mut self, _fragment: &Arc<SvgFragment>) {}
+    fn visit_svg(
+        &mut self,
+        _state: &TraversalState,
+        _containing_block: PhysicalRect<Au>,
+        _fragment: &Arc<SvgFragment>,
+    ) {
+    }
     fn visit_text(
         &mut self,
         state: &TraversalState,

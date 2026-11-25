@@ -1,6 +1,7 @@
 # Armature: native SVG design
 
-Status: step 0 of the plan is done (25 November 2026); nothing renders through the new path yet.
+Status: step 0 is complete (25 November 2026). Step 1 paints basic SVG behind
+`layout_servo_svg_enabled`. Full reftest parity remains open.
 
 - **Step 0** ports #46688. With `--pref=layout_servo_svg_enabled`, layout builds a `servo_svg` tree for each outer
   `<svg>` (only `<rect>` so far), caches subtrees by DOM version and computed style, and emits `Fragment::Svg`,
@@ -9,6 +10,22 @@ Status: step 0 of the plan is done (25 November 2026); nothing renders through t
   children, and text-overflow treats the new fragment as an atomic inline like an image. With the pref off,
   `svg/shapes`, `svg/painting` and `svg/types` give the same results as before; with it on, `svg/struct` is added and
   the 391 tests run without a crash.
+
+- **Step 1** builds basic shapes and paths against the laid-out viewport. The renderer supports
+  solid fill and stroke, 2D transforms, nested viewports, `viewBox` and `preserveAspectRatio`,
+  visibility, display and group opacity. A worker rasterizes each outer SVG with tiny-skia. Display
+  list construction waits for the raster, reuses images by tree identity and device scale, and
+  releases images once the next display list no longer references them. The preference is opt-in.
+
+  On Windows, 13 focused shape, solid paint, transform, nested viewport and conditional-processing
+  reftests passed with the preference on and off. In the initial 173-reftest comparison across
+  `svg/shapes`, `svg/painting` and `svg/struct`, the native path passed 101 and the default path
+  passed 122. The losses included markers, masks, non-scaling strokes and `<use>`.
+
+- **Shape coverage** reached 39 of 39 tests with the preference on and off, including all 29
+  reftests and all 38 assertions in the 10 scripted tests. Native stroke dashes now resolve in
+  SVG user units and calibrate their intervals and offset against the computed `pathLength`.
+  Circle and ellipse dashes start at the SVG-defined rightmost point.
 
 This note plans the replacement of Armature's inline-SVG pipeline with SVG that Servo lays out and paints itself.
 It is based on reading how Armature works today, upstream Servo's work in progress, Gecko and Ladybird. The

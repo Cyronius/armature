@@ -4,7 +4,7 @@
 
 use malloc_size_of_derive::MallocSizeOf;
 
-#[derive(Debug, MallocSizeOf)]
+#[derive(Debug, Clone, Copy, MallocSizeOf)]
 pub struct Opacity(f32);
 impl Opacity {
     pub const ONE: Opacity = Opacity(1.0);

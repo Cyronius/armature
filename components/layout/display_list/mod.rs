@@ -71,6 +71,7 @@ use crate::geom::{
 };
 use crate::replaced::NaturalSizes;
 use crate::style_ext::{BorderStyleColor, ComputedValuesExt};
+use crate::svg::SvgRasterCache;
 
 mod background;
 mod clip;
@@ -133,6 +134,7 @@ pub(crate) struct DisplayListBuilder<'a> {
 
     /// An [`ImageResolver`] to use during display list construction.
     image_resolver: Arc<ImageResolver>,
+    svg_rasters: &'a mut SvgRasterCache,
 
     /// The device pixel ratio used for this `Document`'s display list.
     device_pixel_ratio: Scale<f32, StyloCSSPixel, StyloDevicePixel>,
@@ -211,6 +213,7 @@ impl DisplayListBuilder<'_> {
         paint_timing_handler: &mut PaintTimingHandler,
         reflow_statistics: &mut ReflowStatistics,
         frame_focused: bool,
+        svg_rasters: &mut SvgRasterCache,
     ) -> BuiltDisplayList {
         // Build the rest of the display list which inclues all of the WebRender primitives.
         let paint_info = &mut stacking_context_tree.paint_info;
@@ -249,6 +252,7 @@ impl DisplayListBuilder<'_> {
             paint_body_background: true,
             clip_map: Default::default(),
             image_resolver,
+            svg_rasters,
             device_pixel_ratio,
             paint_timing_handler,
             reflow_statistics,
@@ -1260,20 +1264,40 @@ impl PaintTraversalHandler for DisplayListBuilder<'_> {
         }
     }
 
-    fn visit_svg(&mut self, fragment: &Arc<SvgFragment>) {
+    fn visit_svg(
+        &mut self,
+        state: &TraversalState,
+        containing_block: PhysicalRect<Au>,
+        fragment: &Arc<SvgFragment>,
+    ) {
         fragment.base.visit_fragment(self);
-
-        let style = fragment.style.borrow();
-        if style.get_inherited_box().visibility != Visibility::Visible {
-            return;
-        }
 
         let Some(svg_tree) = fragment.tree.as_ref() else {
             return;
         };
-
-        // TODO: pass more parameters.
-        servo_svg::render_svg_tree(svg_tree);
+        let origin = containing_block.origin.to_vector();
+        let style = fragment.style.borrow();
+        let rect = fragment.base.rect().translate(origin).to_webrender();
+        let scale = self.device_pixel_ratio.get();
+        let Some(key) = self.svg_rasters.image_key(svg_tree, rect.width(), rect.height(), scale) else {
+            return;
+        };
+        let clip = fragment.clip.translate(origin).to_webrender();
+        let common = self.common_properties(state, clip, &style);
+        self.wr().push_image(
+            &common,
+            rect,
+            style.get_inherited_box().image_rendering.to_webrender(),
+            wr::AlphaType::PremultipliedAlpha,
+            key,
+            wr::ColorF::WHITE,
+        );
+        if self
+            .paint_timing_handler
+            .check_if_paintable(rect, state.accumulated_opacity)
+        {
+            self.mark_is_contentful();
+        }
     }
 
     fn visit_text(

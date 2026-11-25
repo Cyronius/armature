@@ -21,9 +21,9 @@ struct SvgSubtreeCacheEntry {
     dom_version: u64,
     #[conditional_malloc_size_of]
     computed_style: Option<ServoArc<ComputedValues>>,
+    viewport: (f32, f32),
     #[conditional_malloc_size_of]
     subtree: Arc<SvgNode>,
-    // TODO: Add (viewport, currentColor, cross-ref for <use>).
 }
 
 /// Why a cache lookup missed.
@@ -35,7 +35,8 @@ pub(crate) enum CacheMiss {
     SubtreeDirty,
     /// Node's computed style changed.
     ComputedStyle,
-    // TODO: Add (Viewport, CurrentColor and ReferenceTarget)
+    Viewport,
+    DescendantStyle,
 }
 
 impl SvgSubtreeCache {
@@ -45,6 +46,8 @@ impl SvgSubtreeCache {
         node: OpaqueNode,
         dom_version: u64,
         computed_style: Option<&ServoArc<ComputedValues>>,
+        viewport: (f32, f32),
+        children: &[Arc<SvgNode>],
     ) -> Result<Arc<SvgNode>, CacheMiss> {
         let Some(entry) = self.entries.get(&node) else {
             return Err(CacheMiss::NoEntry);
@@ -55,7 +58,18 @@ impl SvgSubtreeCache {
         if !same_computed_style(&entry.computed_style, computed_style) {
             return Err(CacheMiss::ComputedStyle);
         }
-        // TODO: check (viewport, currentColor, cross-ref for <use>).
+        if entry.viewport != viewport {
+            return Err(CacheMiss::Viewport);
+        }
+        let cached_children = &entry.subtree.children;
+        if cached_children.len() != children.len()
+            || !cached_children
+                .iter()
+                .zip(children)
+                .all(|(old, new)| Arc::ptr_eq(old, new))
+        {
+            return Err(CacheMiss::DescendantStyle);
+        }
         Ok(Arc::clone(&entry.subtree))
     }
 
@@ -65,6 +79,7 @@ impl SvgSubtreeCache {
         node: OpaqueNode,
         dom_version: u64,
         computed_style: Option<ServoArc<ComputedValues>>,
+        viewport: (f32, f32),
         subtree: Arc<SvgNode>,
     ) {
         self.entries.insert(
@@ -72,6 +87,7 @@ impl SvgSubtreeCache {
             SvgSubtreeCacheEntry {
                 dom_version,
                 computed_style,
+                viewport,
                 subtree,
             },
         );

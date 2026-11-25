@@ -56,6 +56,9 @@ pub(crate) struct LayoutContext<'a> {
     /// SVG subtree cache, reused across reflows for incremental SVG build.
     pub svg_subtree_cache: Arc<RwLock<SvgSubtreeCache>>,
 
+    /// Outer SVG nodes available for native SVG tree construction after sizing.
+    pub outer_svg_nodes: HashMap<OpaqueNode, ServoLayoutNode<'a>>,
+
     /// The [`PainterId`] that identifies which `RenderingContext` that this layout targets.
     pub painter_id: PainterId,
 

@@ -10095,10 +10095,11 @@ dependencies = [
 name = "servo-svg"
 version = "0.7.0"
 dependencies = [
- "log",
+ "kurbo",
  "malloc_size_of_derive",
  "servo-malloc-size-of",
  "svgtypes",
+ "tiny-skia 0.12.0",
 ]
 
 [[package]]

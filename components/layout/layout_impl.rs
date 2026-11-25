@@ -113,6 +113,7 @@ static STYLE_THREAD_POOL: Mutex<&LazyLock<style::global_style_data::StyleThreadP
 
 /// A CSS file to style the user agent stylesheet.
 static USER_AGENT_CSS: &[u8] = include_bytes!("./stylesheets/user-agent.css");
+static NATIVE_SVG_CSS: &[u8] = include_bytes!("./stylesheets/svg-native.css");
 
 /// A CSS file to style the user agent stylesheet in HTML documents.
 static HTML_MODE_CSS: &[u8] = include_bytes!("./stylesheets/html-mode.css");
@@ -225,6 +226,7 @@ pub struct LayoutThread {
 
     /// SVG subtree cache, reused across reflows for incremental SVG build.
     svg_subtree_cache: Arc<RwLock<crate::svg::SvgSubtreeCache>>,
+    svg_raster_cache: RefCell<crate::svg::SvgRasterCache>,
 
     /// The executors for paint worklets.
     registered_painters: RegisteredPaintersImpl,
@@ -975,6 +977,10 @@ impl LayoutThread {
             fragment_tree: Default::default(),
             stacking_context_tree: Default::default(),
             top_layer: Default::default(),
+            svg_raster_cache: RefCell::new(crate::svg::SvgRasterCache::new(
+                config.paint_api.clone(),
+                config.webview_id,
+            )),
             paint_api: config.paint_api,
             stylist: Stylist::new(device, QuirksMode::NoQuirks),
             resolved_images_cache: Default::default(),
@@ -1434,6 +1440,11 @@ impl LayoutThread {
             allow_parallel_layout: rayon_pool.is_some(),
             image_resolver: image_resolver.clone(),
             svg_subtree_cache: self.svg_subtree_cache.clone(),
+            outer_svg_nodes: if pref!(layout_servo_svg_enabled) {
+                crate::svg::outer_svg_nodes(root_element.as_node())
+            } else {
+                Default::default()
+            },
             painter_id: self.webview_id.into(),
             parallelism_job_count_minimum: pref!(layout_parallelism_job_count_minimum) as usize,
             parallelism_job_size_minimum: pref!(layout_parallelism_job_size_minimum) as usize,
@@ -1787,6 +1798,7 @@ impl LayoutThread {
             },
         };
 
+        let mut svg_rasters = self.svg_raster_cache.borrow_mut();
         let built_display_list = DisplayListBuilder::build(
             stacking_context_tree,
             fragment_tree,
@@ -1797,6 +1809,7 @@ impl LayoutThread {
             paint_timing_handler,
             reflow_statistics,
             reflow_request.frame_focused,
+            &mut svg_rasters,
         );
 
         stacking_context_tree.paint_info.paint_timing_info = reflow_request.paint_timing_info;
@@ -1827,6 +1840,7 @@ impl LayoutThread {
             &stacking_context_tree.paint_info,
             built_display_list,
         );
+        svg_rasters.finish_display_list();
 
         let (keys, instance_keys) = self
             .font_context
@@ -1933,6 +1947,7 @@ impl LayoutThread {
 
         self.paint_api
             .send_display_list(self.webview_id, &paint_info, empty_display_list);
+        self.svg_raster_cache.borrow_mut().finish_display_list();
         self.last_display_list_was_empty.set(true);
         self.have_ever_generated_display_list.set(true);
 
@@ -2014,6 +2029,13 @@ fn get_ua_stylesheets(shared_lock: &SharedRwLock) -> Rc<UserAgentStylesheets> {
                         PRESENTATIONAL_HINTS_CSS,
                     ),
                 ];
+                if pref!(layout_servo_svg_enabled) {
+                    user_agent_stylesheets.push(parse_ua_stylesheet(
+                        shared_lock,
+                        "svg-native.css",
+                        NATIVE_SVG_CSS,
+                    ));
+                }
                 if pref!(dom_popover_enabled) {
                     user_agent_stylesheets.push(parse_ua_stylesheet(
                         shared_lock,
