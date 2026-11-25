@@ -26,6 +26,14 @@ Detail behind the Other directories row of the [README](../../README.md) conform
   - indirect `clip-path` cycles in SVG
 
   The other tests on the list had stopped crashing earlier.
+- **Service workers in WPT runs**: `dom_serviceworker_enabled` is now one of the experimental prefs that WPT runs turn
+  on. About 450 `.any.serviceworker.html` test variants had failed before any subtest ran because
+  `navigator.serviceWorker` was undefined; they now run, worth about 314 tests, mostly in IndexedDB (+131) and Fetch
+  (+110). Two crashes this exposed are fixed: a service worker has no image cache, so `OffscreenCanvas` 2D contexts
+  and notification icons there no longer panic, and a script stopped by a closing worker no longer trips the
+  pending-exception assertion. `Worker` is no longer exposed in service workers, as the HTML spec requires.
+  About 45 window tests that register a service worker and wait for fetch interception, `clients` or back-forward
+  cache support now time out instead of failing early; they scored zero either way.
 
 ## What has not been done
 

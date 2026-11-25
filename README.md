@@ -52,6 +52,11 @@ delegates `clipboard-write` to the cross-origin frame used to test write cancell
 row uses the 7 November upstream score and the 24 November Armature score. The Total row still
 reflects the earlier full-suite run.
 
+A full run of Armature alone on 25 November 2026, with service workers newly enabled, scored **79.65%** across 62,223
+tests (upstream Servo was not rerun). Enabling service workers lets the `.any.serviceworker.html` variants of about
+450 tests run instead of erroring. Several rows in the table are out of date: in that run SVG scored 88.3%, IndexedDB
+73.4%, Fetch 79.1%, Referrer Policy 92.8% and Workers 96.4%.
+
 The Firefox column combines the [24 November 2026 public Firefox 160.0.1 run on Ubuntu 22.04][firefox-wpt]
 with a targeted headless Firefox 160.0.1 run on Windows for IDs missing or skipped in the public report.
 Scores average the subtest pass fraction for each matched test ID. Tests without subtests count as a full
