@@ -469,17 +469,16 @@ impl DocumentEventHandler {
         &self,
         input_event_outcomes: Vec<InputEventOutcome>,
     ) {
-        // Wait to to notify the embedder that the event was handled until all pending DOM
-        // event processing is finished.
-        let trusted_window = Trusted::new(&*self.window);
-        self.window
-            .as_global_scope()
+        // Wait for pending DOM event processing. The event may have detached its
+        // document, so delivery of the acknowledgement must survive that pipeline.
+        let global = self.window.as_global_scope();
+        let sender = global.script_to_embedder_chan().clone();
+        let webview_id = self.window.webview_id();
+        global
             .task_manager()
             .dom_manipulation_task_source()
-            .queue_unconditionally(task!(notify_webdriver_input_event_completed: move || {
-                let window = trusted_window.root();
-                window.send_to_embedder(
-                    EmbedderMsg::InputEventsHandled(window.webview_id(), input_event_outcomes));
+            .queue_for_event_loop(task!(notify_webdriver_input_event_completed: move || {
+                let _ = sender.send(EmbedderMsg::InputEventsHandled(webview_id, input_event_outcomes));
             }));
     }
 

@@ -149,6 +149,10 @@ pub(crate) struct Navigator {
 }
 
 impl Navigator {
+    pub(crate) fn cached_clipboard(&self) -> Option<DomRoot<Clipboard>> {
+        self.clipboard.get()
+    }
+
     fn new_inherited() -> Navigator {
         Navigator {
             reflector_: Reflector::new(),

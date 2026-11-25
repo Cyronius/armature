@@ -15,6 +15,7 @@ use script::layout_dom::ServoLayoutNode;
 use servo_arc::Arc as ServoArc;
 use servo_base::text::{AssumeUnder4GB, RangeAny, Utf32CodeUnits};
 use smallvec::SmallVec;
+use style::computed_values::white_space_collapse::T as WhiteSpaceCollapse;
 use style::context::SharedStyleContext;
 use style::properties::ComputedValues;
 use style::selector_parser::PseudoElement;
@@ -493,7 +494,11 @@ impl GenericLayoutDataTrait for DOMLayoutData {
             .unwrap_or(false)
     }
 
-    fn rendered_text(&self, range: RangeAny<Utf32CodeUnits>) -> Option<String> {
+    fn rendered_text(
+        &self,
+        range: RangeAny<Utf32CodeUnits>,
+        original_for_clipboard: Option<&str>,
+    ) -> Option<String> {
         let inner = self.0.borrow();
         let self_box = inner.self_box.borrow();
 
@@ -510,7 +515,56 @@ impl GenericLayoutDataTrait for DOMLayoutData {
             (range_in_text_run.start + start_in_ifc).to_utf8_code_units_in(AssumeUnder4GB, string);
         let end =
             (range_in_text_run.end + start_in_ifc).to_utf8_code_units_in(AssumeUnder4GB, string);
-        Some(string[start.0 as usize..end.0 as usize].to_owned())
+        let rendered = &string[start.0 as usize..end.0 as usize];
+        let Some(original) = original_for_clipboard.filter(|text| text.contains('\r')) else {
+            return Some(rendered.to_owned());
+        };
+        if !matches!(
+            text_run
+                .run_data
+                .inline_styles
+                .style
+                .borrow()
+                .slow_clone_white_space_collapse(),
+            WhiteSpaceCollapse::Preserve | WhiteSpaceCollapse::BreakSpaces
+        ) {
+            return Some(rendered.to_owned());
+        }
+
+        // Layout renders carriage returns as spaces. A clipboard copy of preserved
+        // whitespace retains their original form without undoing other transformations.
+        let dom_start = range.start().map_or(0, |offset| offset.0 as usize);
+        let dom_end = range.end().map_or(usize::MAX, |offset| offset.0 as usize);
+        let start_in_ifc = (start_in_ifc + range_in_text_run.start).0;
+        let carriage_returns: Vec<_> = original
+            .chars()
+            .enumerate()
+            .skip(dom_start)
+            .take(dom_end.saturating_sub(dom_start))
+            .filter(|(_, character)| *character == '\r')
+            .filter_map(|(index, _)| {
+                text_run
+                    .run_data
+                    .map_dom_offset_to_transformed_ifc_offset(Utf32CodeUnits(index as u32))
+                    .0
+                    .checked_sub(start_in_ifc)
+            })
+            .collect();
+        Some(
+            rendered
+                .chars()
+                .enumerate()
+                .map(|(index, character)| {
+                    if matches!(character, ' ' | '\u{3000}') &&
+                        carriage_returns.binary_search(&(index as u32)).is_ok()
+                    {
+                        '\r'
+                    } else {
+                        character
+                    }
+                })
+                .collect(),
+        )
     }
 }
 

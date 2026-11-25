@@ -88,6 +88,62 @@ pub(crate) struct Selection {
 }
 
 impl Selection {
+    pub(crate) fn rendered_selection(&self, cx: &mut JSContext, for_clipboard: bool) -> DOMString {
+        // Flush all layout before stringifying so that rendered text is up-to-date.
+        self.document
+            .window()
+            .layout_reflow(cx, QueryMsg::StyleQuery);
+
+        // > The stringification must return the string, which is the concatenation of the
+        // > rendered text if there is a range associated with this.
+        // >
+        // > If the selection is within a textarea or input element, it must return the
+        // > selected substring in its value.
+        //
+        // As in Gecko, this is the text control's own selection while it is focused, taken from
+        // the text as displayed.
+        if let Some(focused) = self.document.focus_handler().focused_area().element() {
+            let text = if let Some(input) = focused.downcast::<HTMLInputElement>() {
+                input
+                    .is_textual_or_password()
+                    .then(|| input.selected_text())
+                    .flatten()
+            } else {
+                focused
+                    .downcast::<HTMLTextAreaElement>()
+                    .and_then(HTMLTextAreaElement::selected_text)
+            };
+            if let Some(text) = text {
+                return DOMString::from(text);
+            }
+        }
+        let Some(visible_selection) =
+            FlatTreeSelection::from_selection_if_renderable(cx.no_gc(), self)
+        else {
+            return DOMString::new();
+        };
+
+        let mut user_select_cache = Default::default();
+        let mut string = DOMString::new();
+        for node in visible_selection.traversal() {
+            let Some(character_data) = node.downcast::<CharacterData>() else {
+                continue;
+            };
+
+            if node.used_user_select(cx.no_gc(), &mut user_select_cache) == UsedUserSelect::None {
+                continue;
+            }
+
+            let range = visible_selection.range_for_character_data(character_data);
+            let Some(text) = character_data.rendered_text(range, for_clipboard) else {
+                continue;
+            };
+            string.push_str(&text);
+        }
+
+        string
+    }
+
     fn new_inherited(document: &Document) -> Selection {
         Selection {
             reflector_: Reflector::new(),
@@ -1415,59 +1471,7 @@ impl SelectionMethods<crate::DomTypeHolder> for Selection {
 
     /// <https://w3c.github.io/selection-api/#dom-selection-stringifier>
     fn Stringifier(&self, cx: &mut JSContext) -> DOMString {
-        // Flush all layout before stringifying so that rendered text is up-to-date.
-        self.document
-            .window()
-            .layout_reflow(cx, QueryMsg::StyleQuery);
-
-        // > The stringification must return the string, which is the concatenation of the
-        // > rendered text if there is a range associated with this.
-        // >
-        // > If the selection is within a textarea or input element, it must return the
-        // > selected substring in its value.
-        //
-        // As in Gecko, this is the text control's own selection while it is focused, taken from
-        // the text as displayed.
-        if let Some(focused) = self.document.focus_handler().focused_area().element() {
-            let text = if let Some(input) = focused.downcast::<HTMLInputElement>() {
-                input
-                    .is_textual_or_password()
-                    .then(|| input.selected_text())
-                    .flatten()
-            } else {
-                focused
-                    .downcast::<HTMLTextAreaElement>()
-                    .and_then(HTMLTextAreaElement::selected_text)
-            };
-            if let Some(text) = text {
-                return DOMString::from(text);
-            }
-        }
-        let Some(visible_selection) =
-            FlatTreeSelection::from_selection_if_renderable(cx.no_gc(), self)
-        else {
-            return DOMString::new();
-        };
-
-        let mut user_select_cache = Default::default();
-        let mut string = DOMString::new();
-        for node in visible_selection.traversal() {
-            let Some(character_data) = node.downcast::<CharacterData>() else {
-                continue;
-            };
-
-            if node.used_user_select(cx.no_gc(), &mut user_select_cache) == UsedUserSelect::None {
-                continue;
-            }
-
-            let range = visible_selection.range_for_character_data(character_data);
-            let Some(text) = character_data.rendered_text(range) else {
-                continue;
-            };
-            string.push_str(&text);
-        }
-
-        string
+        self.rendered_selection(cx, false)
     }
 }
 

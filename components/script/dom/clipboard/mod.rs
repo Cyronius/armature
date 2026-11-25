@@ -5,5 +5,7 @@
 #![expect(clippy::module_inception, reason = "The interface name is Clipboard")]
 pub(crate) use self::clipboard::*;
 pub(crate) mod clipboard;
+mod clipboard_style;
+pub(crate) mod clipboardchangeevent;
 pub(crate) mod clipboardevent;
 pub(crate) mod clipboarditem;

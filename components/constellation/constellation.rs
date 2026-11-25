@@ -993,7 +993,7 @@ where
         // here, because it will be send on an ipc channel,
         // and ipc channels take onership of their data.
         // https://github.com/servo/ipc-channel/issues/138
-        load_data: LoadData,
+        mut load_data: LoadData,
         is_private: bool,
         target_snapshot_params: TargetSnapshotParams,
         name: Option<String>,
@@ -1002,9 +1002,21 @@ where
             return;
         }
 
+        if parent_pipeline_id.is_some() && load_data.clipboard_container_policy.is_none() {
+            load_data.clipboard_container_policy = self
+                .browsing_contexts
+                .get(&browsing_context_id)
+                .and_then(|context| self.pipelines.get(&context.pipeline_id))
+                .and_then(|pipeline| pipeline.load_data.clipboard_container_policy.clone());
+        }
+
         debug!("Creating new pipeline ({new_pipeline_id:?}) in {browsing_context_id}");
         // A browsing context keeps its name when it loads another document.
-        let name = name.or_else(|| self.browsing_context_names.get(&browsing_context_id).cloned());
+        let name = name.or_else(|| {
+            self.browsing_context_names
+                .get(&browsing_context_id)
+                .cloned()
+        });
         let (webview_hidden, webview_state) = {
             let Some(webview) = self.webviews.get(&webview_id) else {
                 warn!("Tried to create Pipeline for unknown WebViewId: {webview_id:?}");
@@ -1381,6 +1393,23 @@ where
             EmbedderToConstellationMessage::NoLongerWaitingOnAsynchronousImageUpdates(
                 pipeline_ids,
             ) => self.handle_no_longer_waiting_on_asynchronous_image_updates(pipeline_ids),
+            EmbedderToConstellationMessage::ClipboardChanged(types) => {
+                let change = embedder_traits::ClipboardChange {
+                    nonce: rand::random(),
+                    types,
+                };
+                for browsing_context in self.browsing_contexts.values() {
+                    let pipeline_id = browsing_context.pipeline_id;
+                    if let Some(pipeline) = self.pipelines.get(&pipeline_id) {
+                        let _ = pipeline
+                            .event_loop
+                            .send(ScriptThreadMessage::ClipboardChanged(
+                                pipeline_id,
+                                change.clone(),
+                            ));
+                    }
+                }
+            },
             EmbedderToConstellationMessage::WebDriverCommand(command) => {
                 self.handle_webdriver_msg(command);
             },
@@ -1804,7 +1833,9 @@ where
                     .get(&browsing_context_id)
                     .map(|browsing_context| browsing_context.pipeline_id)
                 else {
-                    return warn!("{browsing_context_id}: Tried to navigate a closed browsing context");
+                    return warn!(
+                        "{browsing_context_id}: Tried to navigate a closed browsing context"
+                    );
                 };
                 self.schedule_navigation(
                     webview_id,

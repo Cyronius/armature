@@ -109,7 +109,11 @@ pub trait GenericLayoutDataTrait: Any + MallocSizeOfTrait + Send + Sync + 'stati
 
     /// Get the text rendered by this node, if it is a `CharacterData` node and produces
     /// a `TextRun` in the box tree.
-    fn rendered_text(&self, range: RangeAny<Utf32CodeUnits>) -> Option<String>;
+    fn rendered_text(
+        &self,
+        range: RangeAny<Utf32CodeUnits>,
+        original_for_clipboard: Option<&str>,
+    ) -> Option<String>;
 }
 
 pub trait LayoutDataTrait: GenericLayoutDataTrait + Default {}

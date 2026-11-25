@@ -21,6 +21,7 @@ use servo_constellation_traits::{
     RemoteFocusOperation, ScriptToConstellationMessage, SequentialFocusDirection,
 };
 
+use crate::dom::bindings::codegen::Bindings::DocumentBinding::DocumentMethods;
 use crate::dom::bindings::root::MutNullableDom;
 use crate::dom::focusevent::FocusEventType;
 use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
@@ -316,6 +317,8 @@ impl DocumentFocusHandler {
             focus_trigger,
         );
 
+        self.window.Document().fire_pending_clipboard_change(cx);
+
         // Advertise the change in the focus chain.
         // <https://html.spec.whatwg.org/multipage/#focus-chain>
         // <https://html.spec.whatwg.org/multipage/#focusing-steps>
@@ -357,6 +360,33 @@ impl DocumentFocusHandler {
                 sequence,
             ),
         );
+
+        // The local child is already in this document's focus chain. Finish
+        // focusing its viewport before returning to script so focus listeners
+        // run before post-focus work such as the pending clipboard change.
+        if let FocusableArea::IFrameViewport { iframe_element, .. } = new_focus_target &&
+            let Some(child) = iframe_element.GetContentDocument() &&
+            child.HasFocus()
+        {
+            let handler = child.focus_handler();
+            if !handler.has_focus() {
+                let window = child.window();
+                let mut realm = enter_auto_realm(cx, window);
+                let cx = &mut realm.current_realm();
+                rooted!(&in(cx) let target = FocusableArea::Viewport);
+                rooted!(&in(cx) let new_focus_chain = target.focus_chain());
+                rooted!(&in(cx) let old_focus_chain = handler.current_focus_chain());
+                handler.focus_update_steps(
+                    cx,
+                    new_focus_chain,
+                    old_focus_chain,
+                    &target,
+                    false,
+                    focus_trigger,
+                );
+            }
+            child.fire_pending_clipboard_change(cx);
+        }
     }
 
     /// <https://html.spec.whatwg.org/multipage/#focus-update-steps>
@@ -895,6 +925,9 @@ impl DocumentFocusHandler {
             true, /* for_system_focus_change */
             FocusTrigger::Script,
         );
+        if gained_focus {
+            self.window.Document().fire_pending_clipboard_change(cx);
+        }
     }
 }
 

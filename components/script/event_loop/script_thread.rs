@@ -1850,6 +1850,12 @@ impl ScriptThread {
                 self.handle_get_origin_details(pipeline_id, result_sender);
             },
             ScriptThreadMessage::GetTitle(pipeline_id) => self.handle_get_title_msg(pipeline_id),
+            ScriptThreadMessage::ClipboardChanged(pipeline_id, change) => {
+                let document = self.documents.borrow().find_document(pipeline_id);
+                if let Some(document) = document {
+                    document.record_clipboard_change(cx, change);
+                }
+            },
             ScriptThreadMessage::SetDocumentActivity(pipeline_id, activity) => {
                 self.handle_set_document_activity_msg(cx, pipeline_id, activity)
             },
@@ -2707,6 +2713,15 @@ impl ScriptThread {
             WebDriverScriptCommand::GetParentFrameId(reply) => {
                 webdriver_handlers::handle_get_parent_frame_id(&documents, pipeline_id, reply)
             },
+            WebDriverScriptCommand::GetFrameContentOrigin(child, reply) => {
+                webdriver_handlers::handle_get_frame_content_origin(
+                    cx,
+                    &documents,
+                    pipeline_id,
+                    child,
+                    reply,
+                )
+            },
             WebDriverScriptCommand::GetBrowsingContextId(webdriver_frame_id, reply) => {
                 webdriver_handlers::handle_get_browsing_context_id(
                     &documents,
@@ -3022,6 +3037,7 @@ impl ScriptThread {
             FocusTrigger::Script,
         );
 
+        document.fire_pending_clipboard_change(cx);
         document.refresh_focus_rendering();
     }
 
@@ -3768,6 +3784,11 @@ impl ScriptThread {
             .and_then(|h| h.typed_get::<ReferrerPolicyHeader>())
             .into();
         document.set_referrer_policy(referrer_policy);
+        document.set_clipboard_policy(servo_constellation_traits::ClipboardPolicy::from_response(
+            document.origin().immutable(),
+            incomplete.load_data.clipboard_container_policy.as_ref(),
+            metadata.headers.as_ref().map(|headers| &**headers),
+        ));
 
         self.documents
             .borrow_mut()

@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::slice::Iter;
+use std::cell::Ref;
 
 use dom_struct::dom_struct;
 use js::context::{JSContext, NoGC};
+use script_bindings::cell::DomRefCell;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
 use script_bindings::serializable::Serializable;
 use script_bindings::structuredclone::StructuredData;
@@ -22,7 +23,7 @@ use crate::dom::window::Window;
 #[dom_struct]
 pub(crate) struct FileList {
     reflector_: Reflector,
-    list: Vec<Dom<File>>,
+    list: DomRefCell<Vec<Dom<File>>>,
 }
 
 impl FileList {
@@ -30,7 +31,7 @@ impl FileList {
     fn new_inherited(files: Vec<Dom<File>>) -> FileList {
         FileList {
             reflector_: Reflector::new(),
-            list: files,
+            list: DomRefCell::new(files),
         }
     }
 
@@ -62,8 +63,13 @@ impl FileList {
         )
     }
 
-    pub(crate) fn iter_files(&self) -> Iter<'_, Dom<File>> {
-        self.list.iter()
+    pub(crate) fn files(&self) -> Ref<'_, [Dom<File>]> {
+        Ref::map(self.list.borrow(), Vec::as_slice)
+    }
+
+    pub(crate) fn replace_files(&self, no_gc: &NoGC, files: &[DomRoot<File>]) {
+        *self.list.safe_borrow_mut(no_gc) =
+            files.iter().map(|file| Dom::from_ref(&**file)).collect();
     }
 }
 
@@ -74,7 +80,7 @@ impl Serializable<crate::DomTypeHolder> for FileList {
     /// <https://html.spec.whatwg.org/multipage/#serialization-steps>
     fn serialize(&self, no_gc: &NoGC) -> Result<(FileListId, SerializableFileList), ()> {
         let files = self
-            .list
+            .files()
             .iter()
             .map(|file| file.serialized_data(no_gc))
             .collect::<Result<Vec<_>, _>>()?;
@@ -108,16 +114,14 @@ impl Serializable<crate::DomTypeHolder> for FileList {
 impl FileListMethods<crate::DomTypeHolder> for FileList {
     /// <https://w3c.github.io/FileAPI/#dfn-length>
     fn Length(&self) -> u32 {
-        self.list.len() as u32
+        self.files().len() as u32
     }
 
     /// <https://w3c.github.io/FileAPI/#dfn-item>
     fn Item(&self, index: u32) -> Option<DomRoot<File>> {
-        if (index as usize) < self.list.len() {
-            Some(DomRoot::from_ref(&*(self.list[index as usize])))
-        } else {
-            None
-        }
+        self.files()
+            .get(index as usize)
+            .map(|file| file.as_rooted())
     }
 
     // check-tidy: no specs after this line

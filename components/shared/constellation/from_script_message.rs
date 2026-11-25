@@ -47,8 +47,8 @@ use webgpu_traits::{WebGPU, WebGPUAdapterResponse};
 
 use crate::structured_data::{BroadcastChannelMsg, StructuredSerializedData};
 use crate::{
-    LogEntry, MessagePortMsg, PortMessageTask, PortTransferInfo, SessionHistoryTraversalRequest,
-    WindowSizeType,
+    ClipboardContainerPolicy, LogEntry, MessagePortMsg, PortMessageTask, PortTransferInfo,
+    SessionHistoryTraversalRequest, WindowSizeType,
 };
 
 pub type ScriptToConstellationSender =
@@ -179,6 +179,8 @@ pub struct LoadData {
 
     /// If this request is for the initial about:blank document.
     pub is_initial_about_blank: bool,
+    /// Clipboard Permissions Policy inherited from the iframe container, when present.
+    pub clipboard_container_policy: Option<ClipboardContainerPolicy>,
 }
 
 impl LoadData {
@@ -219,6 +221,7 @@ impl LoadData {
             creation_sandboxing_flag_set,
             container_document_encoding: None,
             is_initial_about_blank: false,
+            clipboard_container_policy: None,
         }
     }
 

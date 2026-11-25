@@ -48,7 +48,7 @@ bluetooth = [
     "script_traits/bluetooth",
 ]
 bundled_freetype = ["fonts/bundled_freetype"]
-clipboard = ["dep:arboard", "dep:ohos-pasteboard"]
+clipboard = ["dep:arboard", "dep:clipboard-win", "dep:ohos-pasteboard", "dep:serde_json"]
 crown = ["script/crown"]
 debugmozjs = ["script/debugmozjs"]
 devtools = [
@@ -203,6 +203,8 @@ webxr = { workspace = true, optional = true, features = ["glwindow", "headless"]
 gaol = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+clipboard-win = { version = "5.4.1", optional = true }
+serde_json = { workspace = true, optional = true }
 webxr = { workspace = true, optional = true, features = ["glwindow", "headless", "openxr-api"] }
 
 [target.'cfg(target_env = "ohos")'.dependencies]

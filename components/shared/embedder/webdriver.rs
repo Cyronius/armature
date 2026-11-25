@@ -255,6 +255,10 @@ pub enum WebDriverScriptCommand {
         GenericSender<Result<BrowsingContextId, ErrorStatus>>,
     ),
     GetParentFrameId(GenericSender<Result<BrowsingContextId, ErrorStatus>>),
+    GetFrameContentOrigin(
+        BrowsingContextId,
+        GenericOneshotSender<Result<(f64, f64), ErrorStatus>>,
+    ),
     GetUrl(GenericSender<String>),
     GetPageSource(GenericSender<Result<String, ErrorStatus>>),
     IsEnabled(String, GenericSender<Result<bool, ErrorStatus>>),

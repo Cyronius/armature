@@ -20,8 +20,8 @@ use script_bindings::cell::DomRefCell;
 use script_traits::{NewPipelineInfo, UpdatePipelineIdReason};
 use servo_base::id::{BrowsingContextId, PipelineId, WebViewId};
 use servo_constellation_traits::{
-    IFrameLoadInfo, IFrameLoadInfoWithData, LoadData, LoadOrigin, NavigationHistoryBehavior,
-    ScriptToConstellationMessage, TargetSnapshotParams,
+    ClipboardContainerPolicy, IFrameLoadInfo, IFrameLoadInfoWithData, LoadData, LoadOrigin,
+    NavigationHistoryBehavior, ScriptToConstellationMessage, TargetSnapshotParams,
 };
 use servo_url::ServoUrl;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
@@ -187,6 +187,18 @@ impl HTMLIFrameElement {
         target_snapshot_params: TargetSnapshotParams,
     ) {
         let document = self.owner_document();
+        let parent_origin = document.origin().immutable().clone();
+        let declared_url = ServoUrl::parse(&self.Src().0).unwrap_or_else(|_| load_data.url.clone());
+        let source_origin = match declared_url.as_str() {
+            "about:blank" | "about:srcdoc" => parent_origin.clone(),
+            _ => declared_url.origin(),
+        };
+        load_data.clipboard_container_policy = Some(ClipboardContainerPolicy::new(
+            document.clipboard_policy(),
+            parent_origin,
+            &source_origin,
+            &self.Allow().str(),
+        ));
 
         {
             let load_blocker = &self.load_blocker;
@@ -1158,6 +1170,9 @@ impl HTMLIFrameElementMethods<crate::DomTypeHolder> for HTMLIFrameElement {
     make_setter!(SetReferrerPolicy, "referrerpolicy");
 
     // https://html.spec.whatwg.org/multipage/#attr-iframe-allowfullscreen
+    make_getter!(Allow, "allow");
+    make_setter!(SetAllow, "allow");
+
     make_bool_getter!(AllowFullscreen, "allowfullscreen");
     // https://html.spec.whatwg.org/multipage/#attr-iframe-allowfullscreen
     make_bool_setter!(SetAllowFullscreen, "allowfullscreen");

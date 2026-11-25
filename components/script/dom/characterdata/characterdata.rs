@@ -131,12 +131,18 @@ impl CharacterData {
     }
 
     /// Returns the rendered text for this [`CharacterData`].
-    pub(crate) fn rendered_text(&self, range: RangeAny<Utf32CodeUnits>) -> Option<String> {
+    pub(crate) fn rendered_text(
+        &self,
+        range: RangeAny<Utf32CodeUnits>,
+        for_clipboard: bool,
+    ) -> Option<String> {
+        let original = for_clipboard.then(|| self.data());
+        let original = original.as_ref().map(|text| text.as_str());
         self.upcast::<Node>()
             .layout_data()
             .borrow()
             .as_ref()
-            .and_then(|layout_data| layout_data.rendered_text(range))
+            .and_then(|layout_data| layout_data.rendered_text(range, original))
     }
 }
 

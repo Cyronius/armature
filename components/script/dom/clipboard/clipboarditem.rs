@@ -2,27 +2,37 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+use std::cell::{Cell, RefCell};
 use std::ops::Deref;
 use std::str::FromStr;
 
 use data_url::mime::Mime;
 use dom_struct::dom_struct;
+use embedder_traits::{ClipboardRevision, EmbedderMsg};
 use js::context::JSContext;
 use js::realm::CurrentRealm;
 use js::rust::{HandleObject, HandleValue as SafeHandleValue, MutableHandleValue};
+use rustc_hash::FxHashSet;
 use script_bindings::cell::DomRefCell;
 use script_bindings::record::Record;
 use script_bindings::reflector::{Reflector, reflect_dom_object_with_proto};
+use servo_base::generic_channel::GenericCallback;
 use servo_constellation_traits::BlobImpl;
 
+use super::clipboard::clipboard_permission_state;
 use crate::dom::bindings::codegen::Bindings::ClipboardBinding::{
     ClipboardItemMethods, ClipboardItemOptions, PresentationStyle,
 };
+use crate::dom::bindings::codegen::Bindings::PermissionStatusBinding::{
+    PermissionName, PermissionState,
+};
+use crate::dom::bindings::codegen::Bindings::WindowBinding::Window_Binding::WindowMethods;
 use crate::dom::bindings::conversions::{
     ConversionResult, FromJSValConvertible, StringificationBehavior,
 };
 use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::frozenarray::CachedFrozenArray;
+use crate::dom::bindings::refcounted::{Trusted, TrustedPromise};
 use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::DomRoot;
 use crate::dom::bindings::str::DOMString;
@@ -107,20 +117,147 @@ pub(super) struct Representation {
 
 impl js::gc::Rootable for Representation {}
 
+impl Representation {
+    fn type_string(&self) -> String {
+        if self.is_custom {
+            format!("{CUSTOM_FORMAT_PREFIX}{}", self.mime_type)
+        } else {
+            self.mime_type.to_string()
+        }
+    }
+}
+
 #[dom_struct]
 pub(crate) struct ClipboardItem {
     reflector_: Reflector,
     representations: DomRefCell<Vec<Representation>>,
+    #[no_trace]
+    #[ignore_malloc_size_of = "Contains only scalar values"]
+    clipboard_revision: Cell<Option<ClipboardRevision>>,
+    obtained_types: RefCell<FxHashSet<String>>,
     presentation_style: DomRefCell<PresentationStyle>,
     #[ignore_malloc_size_of = "mozjs"]
     frozen_types: CachedFrozenArray,
 }
 
 impl ClipboardItem {
+    pub(super) fn from_data(
+        cx: &mut JSContext,
+        window: &Window,
+        data: embedder_traits::ClipboardData,
+        revision: ClipboardRevision,
+    ) -> DomRoot<Self> {
+        let item = Self::new(cx, window, None);
+        item.clipboard_revision.set(Some(revision));
+        let global = item.global();
+        for (format, bytes) in data {
+            let (name, is_custom) = format
+                .strip_prefix(CUSTOM_FORMAT_PREFIX)
+                .map_or((format.as_str(), false), |name| (name, true));
+            let Ok(mime_type) = Mime::from_str(name) else {
+                continue;
+            };
+            let blob = Blob::new(cx, &global, BlobImpl::new_from_bytes(bytes, format));
+            let promise = Promise::new_resolved(cx, &global, blob);
+            rooted!(&in(cx) let mut representation = Some(Representation {
+                mime_type,
+                is_custom,
+                data: promise.to_traced(),
+            }));
+            item.representations
+                .safe_borrow_mut(cx.no_gc())
+                .push(representation.take().unwrap());
+        }
+        item
+    }
+
+    pub(super) fn data_promises(
+        &self,
+        realm: &mut CurrentRealm,
+    ) -> Fallible<Vec<(String, RootedPromise)>> {
+        if self.clipboard_revision.get().is_none() {
+            return Ok(self
+                .representations
+                .borrow()
+                .iter()
+                .map(|representation| {
+                    (
+                        representation.type_string(),
+                        representation.data.root(realm),
+                    )
+                })
+                .collect());
+        }
+        let formats: Vec<_> = self
+            .representations
+            .borrow()
+            .iter()
+            .map(Representation::type_string)
+            .collect();
+        formats
+            .into_iter()
+            .map(|format| {
+                self.GetType(realm, DOMString::from(format.as_str()))
+                    .map(|data| (format, data))
+            })
+            .collect()
+    }
+
+    fn resolve_system_representation(
+        &self,
+        expected: ClipboardRevision,
+        format: String,
+        representation: &RootedPromise,
+        result: &RootedPromise,
+    ) {
+        let item = Trusted::new(self);
+        let mut pending = Some((
+            TrustedPromise::from(representation),
+            TrustedPromise::from(result),
+            format,
+        ));
+        let global = self.global();
+        let tasks = global.task_manager().clipboard_task_source().to_sendable();
+        let callback = GenericCallback::<Option<ClipboardRevision>>::new(move |response| {
+            let Some((representation, result, format)) = pending.take() else {
+                return;
+            };
+            let item = item.clone();
+            tasks.queue(task!(clipboard_get_type: move |cx| {
+                let result = result.root(cx);
+                let item = item.root();
+                let global = item.global();
+                let window = global.as_window();
+                if response.ok().flatten() != Some(expected) || !window.Document().is_fully_active() {
+                    result.reject_error(cx, Error::InvalidState(Some("The clipboard item is no longer current.".into())));
+                    return;
+                }
+
+                if !item.obtained_types.borrow().contains(&format) &&
+                    clipboard_permission_state(window, PermissionName::Clipboard_read) == PermissionState::Denied
+                {
+                    result.reject_error(cx, Error::NotAllowed(Some("Clipboard read permission was denied.".into())));
+                    return;
+                }
+
+                item.obtained_types.borrow_mut().insert(format);
+                let representation = representation.root(cx);
+                result.resolve_native(cx, &representation);
+            }));
+        }).expect("Could not create clipboard revision callback");
+        let window = global.as_window();
+        window.send_to_embedder(EmbedderMsg::GetClipboardRevision(
+            window.webview_id(),
+            callback,
+        ));
+    }
+
     fn new_inherited() -> ClipboardItem {
         ClipboardItem {
             reflector_: Reflector::new(),
             representations: Default::default(),
+            clipboard_revision: Default::default(),
+            obtained_types: Default::default(),
             presentation_style: Default::default(),
             frozen_types: CachedFrozenArray::new(),
         }
@@ -223,27 +360,11 @@ impl ClipboardItemMethods<crate::DomTypeHolder> for ClipboardItem {
         self.frozen_types.get_or_init(
             cx,
             || {
-                // Step 5 Let types be a list of DOMString.
-                let mut types = Vec::new();
-
                 self.representations
                     .borrow()
                     .iter()
-                    .for_each(|representation| {
-                        // Step 6.11 Let mimeTypeString be the result of serializing a MIME type with mimeType.
-                        let mime_type_string = representation.mime_type.to_string();
-
-                        // Step 6.12 If isCustom is true, prefix mimeTypeString with `"web "`.
-                        let mime_type_string = if representation.is_custom {
-                            format!("{}{}", CUSTOM_FORMAT_PREFIX, mime_type_string)
-                        } else {
-                            mime_type_string
-                        };
-
-                        // Step 6.13 Add mimeTypeString to types.
-                        types.push(DOMString::from(mime_type_string));
-                    });
-                types
+                    .map(|representation| DOMString::from(representation.type_string()))
+                    .collect::<Vec<_>>()
             },
             retval,
         );
@@ -282,11 +403,20 @@ impl ClipboardItemMethods<crate::DomTypeHolder> for ClipboardItem {
             if representation.mime_type == mime_type && representation.is_custom == is_custom {
                 // Step 8.1.1 Let representationDataPromise be the representation’s data.
                 let representation_data_promise = representation.data.root(realm);
+                if let Some(revision) = self.clipboard_revision.get() {
+                    self.resolve_system_representation(
+                        revision,
+                        representation.type_string(),
+                        &representation_data_promise,
+                        &p,
+                    );
+                    return Ok(p);
+                }
 
                 // Step 8.1.2 React to representationDataPromise:
                 rooted!(&in(realm) let mut fulfillment_handler = Some(RepresentationDataPromiseFulfillmentHandler {
                     promise: p.to_traced(),
-                    type_: representation.mime_type.to_string(),
+                    type_: representation.type_string(),
                 }));
                 rooted!(&in(realm) let mut rejection_handler = Some(RepresentationDataPromiseRejectionHandler {
                     promise: p.to_traced(),
@@ -318,9 +448,15 @@ impl ClipboardItemMethods<crate::DomTypeHolder> for ClipboardItem {
 
     /// <https://w3c.github.io/clipboard-apis/#dom-clipboarditem-supports>
     fn Supports(_: &Window, type_: DOMString) -> bool {
-        // TODO Step 1 If type is in mandatory data types or optional data types, then return true.
-        // Step 2 If not, then return false.
-        // NOTE: We only supports text/plain
-        type_ == "text/plain"
+        is_supported_format(&type_.str())
     }
+}
+
+pub(crate) fn is_supported_format(format: &str) -> bool {
+    matches!(
+        format,
+        "text/plain" | "text/html" | "image/png" | "image/svg+xml" | "text/uri-list"
+    ) || format
+        .strip_prefix("web ")
+        .is_some_and(|mime| !mime.contains(';') && Mime::from_str(mime).is_ok())
 }

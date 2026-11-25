@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use embedder_traits::{
-    ClipboardAction, EditingAction, EditingDirection, EditingMotion, EmbedderMsg, InputEventResult,
-    ModifySelection, MouseButton,
+    ClipboardAction, ClipboardSnapshot, EditingAction, EditingDirection, EditingMotion,
+    EmbedderMsg, InputEventResult, ModifySelection, MouseButton,
 };
 use js::context::{JSContext, NoGC};
 use keyboard_types::{
@@ -25,6 +25,8 @@ use script_bindings::root::DomRoot;
 use script_bindings::str::DOMString;
 use servo_base::generic_channel::GenericCallback;
 
+use crate::dom::clipboard::clipboarditem::is_supported_format;
+use crate::dom::clipboard::sanitize_markup;
 use crate::dom::clipboardevent::ClipboardEventType;
 use crate::dom::event::{EventBubbles, EventCancelable};
 use crate::dom::execcommand::execcommands::DocumentExecCommandSupport;
@@ -119,24 +121,15 @@ impl Document {
             ClipboardAction::Paste => ClipboardEventType::Paste,
         };
 
-        // The script_triggered flag is set if the action runs because of a script, e.g. document.execCommand()
-        let script_triggered = false;
-
-        // The script_may_access_clipboard flag is set
-        // if action is paste and the script thread is allowed to read from clipboard or
-        // if action is copy or cut and the script thread is allowed to modify the clipboard
-        let script_may_access_clipboard = false;
-
-        // Step 1. If the script-triggered flag is set and the script-may-access-clipboard flag is unset
-        if script_triggered && !script_may_access_clipboard {
-            return InputEventResult::empty();
-        }
-
         // Step 2. Fire a clipboard event
         let event_target = editing_context.event_target();
         let clipboard_event = self.fire_clipboard_event(cx, &event_target, clipboard_event_type);
 
         let event = clipboard_event.upcast::<Event>();
+        if !self.is_fully_active() {
+            return event.flags().into();
+        }
+
         if !event.DefaultPrevented() {
             // Step 3. If the event was not canceled, then
             match clipboard_event.clipboard_event_type() {
@@ -150,9 +143,6 @@ impl Document {
                             selection,
                         ));
                     }
-                    // Step 3.2. Fire a clipboard event named clipboardchange
-                    self.fire_clipboard_event(cx, &event_target, ClipboardEventType::Change);
-
                     // This is how `true` is returned from this function.
                     event.mark_as_handled();
                 },
@@ -161,7 +151,7 @@ impl Document {
                         editing_context.cutting_enabled()
                     {
                         let canceled = editing_context.fire_cut_beforeinput_event(cx);
-                        if canceled {
+                        if canceled || !self.is_fully_active() {
                             return InputEventResult::empty();
                         }
 
@@ -179,9 +169,6 @@ impl Document {
                         // and collapse the selection.
                         editing_context.remove_the_contents_of_the_selection(cx);
 
-                        // Step 3.1.3. Fire a clipboard event named clipboardchange
-                        self.fire_clipboard_event(cx, &event_target, ClipboardEventType::Change);
-
                         // Step 3.1.4. Queue tasks to fire any events that should fire due to
                         // the modification, see §5.3 Integration with other scripts and
                         // events for details.
@@ -198,7 +185,7 @@ impl Document {
                     {
                         let canceled =
                             editing_context.fire_paste_beforeinput_event(cx, &text_content);
-                        if canceled {
+                        if canceled || !self.is_fully_active() {
                             return InputEventResult::empty();
                         }
 
@@ -239,9 +226,6 @@ impl Document {
                             clipboard_data.data_store().expect("This shouldn't fail");
                         self.write_content_to_the_clipboard(&drag_data_store);
                     }
-
-                    // Step 4.2 Fire a clipboard event named clipboardchange
-                    self.fire_clipboard_event(cx, &event_target, ClipboardEventType::Change);
                 },
                 // Step 4.1 Return false.
                 ClipboardEventType::Paste => (),
@@ -290,29 +274,33 @@ impl Document {
             },
             ClipboardEventType::Paste => {
                 let (callback, receiver) =
-                    GenericCallback::new_blocking().expect("Could not create callback");
-                self.send_to_embedder(EmbedderMsg::GetClipboardText(self.webview_id(), callback));
-                let text_contents = receiver
-                    .recv()
-                    .map(Result::unwrap_or_default)
-                    .unwrap_or_default();
-
-                // Step 7.1.1
+                    GenericCallback::new_blocking().expect("Could not create clipboard callback");
+                self.send_to_embedder(EmbedderMsg::GetClipboardData(self.webview_id(), callback));
                 drag_data_store.set_mode(Mode::ReadOnly);
-                // Step 7.1.2 If trusted or the implementation gives script-generated events access to the clipboard
-                if trusted {
-                    // Step 7.1.2.1 For each clipboard-part on the OS clipboard:
-
-                    // Step 7.1.2.1.1 If clipboard-part contains plain text, then
-                    let data = DOMString::from(text_contents);
-                    let type_ = DOMString::from_static("text/plain");
-                    let _ = drag_data_store.add(Kind::Text { data, type_ });
-
-                    // Step 7.1.2.1.2 TODO If clipboard-part represents file references, then for each file reference
-                    // Step 7.1.2.1.3 TODO If clipboard-part contains HTML- or XHTML-formatted text then
-
-                    // Step 7.1.3 Update clipboard-event-data’s files to match clipboard-event-data’s items
-                    // Step 7.1.4 Update clipboard-event-data’s types to match clipboard-event-data’s items
+                if let Ok(Ok(ClipboardSnapshot { data, .. })) = receiver.recv() {
+                    for (format, mut bytes) in data {
+                        if !is_supported_format(&format) {
+                            continue;
+                        }
+                        if matches!(format.as_str(), "text/html" | "image/svg+xml") {
+                            let Ok(markup) = sanitize_markup(cx, self.window(), &bytes) else {
+                                continue;
+                            };
+                            bytes = markup;
+                        }
+                        let kind = if format == "image/png" {
+                            Kind::File {
+                                bytes,
+                                name: "image.png".into(),
+                                type_: format,
+                            }
+                        } else {
+                            let type_ = format.strip_prefix("web ").unwrap_or(&format).into();
+                            let data = DOMString::from(String::from_utf8_lossy(&bytes));
+                            Kind::Text { data, type_ }
+                        };
+                        let _ = drag_data_store.add(kind);
+                    }
                 }
             },
             ClipboardEventType::Change | ClipboardEventType::Other(..) => (),
@@ -343,37 +331,43 @@ impl Document {
 
     /// <https://www.w3.org/TR/clipboard-apis/#write-content-to-the-clipboard>
     fn write_content_to_the_clipboard(&self, drag_data_store: &DragDataStore) {
-        // Step 1
-        if drag_data_store.list_len() > 0 {
-            // Step 1.1 Clear the clipboard.
-            self.send_to_embedder(EmbedderMsg::ClearClipboard(self.webview_id()));
-            // Step 1.2
-            for item in drag_data_store.iter_item_list() {
-                match item {
-                    Kind::Text { data, .. } => {
-                        // Step 1.2.1.1 Ensure encoding is correct per OS and locale conventions
-                        // Step 1.2.1.2 Normalize line endings according to platform conventions
-                        // Step 1.2.1.3
-                        self.send_to_embedder(EmbedderMsg::SetClipboardText(
-                            self.webview_id(),
-                            data.to_string(),
-                        ));
-                    },
-                    Kind::File { .. } => {
-                        // Step 1.2.2 If data is of a type listed in the mandatory data types list, then
-                        // Step 1.2.2.1 Place part on clipboard with the appropriate OS clipboard format description
-                        // Step 1.2.3 Else this is left to the implementation
-                    },
-                }
+        let data: embedder_traits::ClipboardData = drag_data_store
+            .iter_item_list()
+            .filter_map(|item| match item {
+                Kind::Text { type_, data } => {
+                    let mut format = type_.to_string();
+                    if !is_supported_format(&format) {
+                        // The event API uses bare MIME names for custom string data.
+                        // Native-only format names, such as DownloadURL-list, are
+                        // intentionally excluded because they are not MIME types.
+                        if format.starts_with("web ") {
+                            return None;
+                        }
+                        format.insert_str(0, "web ");
+                        if !is_supported_format(&format) {
+                            return None;
+                        }
+                    }
+                    Some((format, data.to_string().into_bytes()))
+                },
+                Kind::File { type_, bytes, .. } if type_ == "image/png" => {
+                    Some((type_.to_string(), bytes.clone()))
+                },
+                _ => None,
+            })
+            .collect();
+        if data.is_empty() {
+            if drag_data_store.clear_was_called {
+                self.send_to_embedder(EmbedderMsg::ClearClipboard(self.webview_id()));
             }
         } else {
-            // Step 2.1
-            if drag_data_store.clear_was_called {
-                // Step 2.1.1 If types-to-clear list is empty, clear the clipboard
-                self.send_to_embedder(EmbedderMsg::ClearClipboard(self.webview_id()));
-                // Step 2.1.2 Else remove the types in the list from the clipboard
-                // As of now this can't be done with Arboard, and it's possible that will be removed from the spec
-            }
+            let callback =
+                GenericCallback::new(|_| {}).expect("Could not create clipboard write callback");
+            self.send_to_embedder(EmbedderMsg::SetClipboardData(
+                self.webview_id(),
+                data,
+                callback,
+            ));
         }
     }
 
@@ -601,7 +595,7 @@ impl EditingContext {
                 .selection_content(),
             EditingContext::Document(document) => document
                 .selection()
-                .map(|selection| selection.Stringifier(cx).to_string())
+                .map(|selection| selection.rendered_selection(cx, true).to_string())
                 .filter(|selection| !selection.is_empty()),
         }
     }

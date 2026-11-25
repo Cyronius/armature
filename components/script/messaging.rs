@@ -79,6 +79,7 @@ impl MixedMessage {
                 ScriptThreadMessage::GetDocumentOrigin(id, _) => Some(*id),
                 ScriptThreadMessage::GetDocumentOriginDetails(id, _) => Some(*id),
                 ScriptThreadMessage::SetDocumentActivity(id, ..) => Some(*id),
+                ScriptThreadMessage::ClipboardChanged(id, ..) => Some(*id),
                 ScriptThreadMessage::SetThrottled(id, ..) => Some(*id),
                 ScriptThreadMessage::NavigateIframe(id, ..) => Some(*id),
                 ScriptThreadMessage::PostMessage { target: id, .. } => Some(*id),

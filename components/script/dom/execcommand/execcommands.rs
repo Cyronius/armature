@@ -112,6 +112,9 @@ impl Document {
         command_name: CommandName,
     ) -> Option<DomRoot<Selection>> {
         let selection = self.GetSelection(cx)?;
+        if command_name == CommandName::Copy {
+            return self.can_execute_copy_command().then_some(selection);
+        }
         // > Among commands defined in this specification, those listed in Miscellaneous commands are always enabled,
         // > except for the cut command and the paste command.
         //
@@ -154,6 +157,7 @@ impl Document {
         Some(match_ignore_ascii_case! { &command_id.str(),
             "backcolor" => CommandName::BackColor,
             "bold" => CommandName::Bold,
+            "copy" => CommandName::Copy,
             "createlink" => CommandName::CreateLink,
             "delete" => CommandName::Delete,
             "defaultparagraphseparator" => CommandName::DefaultParagraphSeparator,
@@ -279,6 +283,9 @@ impl DocumentExecCommandSupport for Document {
         command_id: DOMString,
         value: DOMString,
     ) -> bool {
+        if self.command_if_command_is_supported(&command_id) == Some(CommandName::Copy) {
+            return self.execute_copy_command(cx);
+        }
         let window = self.window();
         // Step 3. If command is not supported or not enabled, return false.
         let Some((command, mut selection)) = self.check_support_and_enabled(cx, &command_id) else {

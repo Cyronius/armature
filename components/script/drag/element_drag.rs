@@ -7,6 +7,7 @@
 //! <https://html.spec.whatwg.org/multipage/#drag-and-drop-processing-model>
 
 use euclid::Point2D;
+use html5ever::local_name;
 use js::context::JSContext;
 use script_bindings::cell::DomRefCell;
 use script_traits::ConstellationInputEvent;
@@ -14,10 +15,9 @@ use style_traits::CSSPixel;
 
 use crate::dom::bindings::codegen::Bindings::DataTransferBinding::DataTransferMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::HTMLElementMethods;
-use crate::dom::bindings::str::DOMString;
-use html5ever::local_name;
 use crate::dom::bindings::inheritance::Castable;
 use crate::dom::bindings::root::{Dom, DomRoot};
+use crate::dom::bindings::str::DOMString;
 use crate::dom::datatransfer::DataTransfer;
 use crate::dom::dragevent::DragEvent;
 use crate::dom::element::Element;
@@ -68,12 +68,21 @@ pub(crate) fn draggable_element_for(node: &Node) -> Option<DomRoot<Element>> {
     for ancestor in node.inclusive_ancestors(ShadowIncluding::Yes) {
         // Pressing the pointer on a control that the user edits or picks from selects text or
         // opens it, which is not a drag of the element around it.
-        let is_text_input = ancestor.downcast::<HTMLInputElement>().is_some_and(|input| {
-            !matches!(
-                input.input_type().as_str(),
-                "button" | "submit" | "reset" | "image" | "checkbox" | "radio" | "range" | "color"
-            )
-        });
+        let is_text_input = ancestor
+            .downcast::<HTMLInputElement>()
+            .is_some_and(|input| {
+                !matches!(
+                    input.input_type().as_str(),
+                    "button" |
+                        "submit" |
+                        "reset" |
+                        "image" |
+                        "checkbox" |
+                        "radio" |
+                        "range" |
+                        "color"
+                )
+            });
         if is_text_input ||
             ancestor.is::<HTMLTextAreaElement>() ||
             ancestor.is::<HTMLSelectElement>() ||
@@ -137,24 +146,27 @@ fn default_drop_effect(effect_allowed: &str) -> &'static str {
 /// <https://html.spec.whatwg.org/multipage/#current-drag-operation>
 fn operation_for(effect_allowed: &str, drop_effect: &str) -> &'static str {
     match drop_effect {
-        "copy" if matches!(
-            effect_allowed,
-            "uninitialized" | "copy" | "copyLink" | "copyMove" | "all"
-        ) =>
+        "copy"
+            if matches!(
+                effect_allowed,
+                "uninitialized" | "copy" | "copyLink" | "copyMove" | "all"
+            ) =>
         {
             "copy"
         },
-        "link" if matches!(
-            effect_allowed,
-            "uninitialized" | "link" | "copyLink" | "linkMove" | "all"
-        ) =>
+        "link"
+            if matches!(
+                effect_allowed,
+                "uninitialized" | "link" | "copyLink" | "linkMove" | "all"
+            ) =>
         {
             "link"
         },
-        "move" if matches!(
-            effect_allowed,
-            "uninitialized" | "move" | "copyMove" | "linkMove" | "all"
-        ) =>
+        "move"
+            if matches!(
+                effect_allowed,
+                "uninitialized" | "move" | "copyMove" | "linkMove" | "all"
+            ) =>
         {
             "move"
         },
@@ -220,7 +232,7 @@ pub(crate) fn handle_move(
             if !not_canceled || !source.is_connected() {
                 return false;
             }
-            data_transfer.set_store_mode(Mode::Protected);
+            data_transfer.set_store_mode(cx, Mode::Protected);
             ActiveDrag {
                 source: Dom::from_ref(&source),
                 data_transfer: Dom::from_ref(&data_transfer),
@@ -255,7 +267,10 @@ pub(crate) fn handle_move(
 
     // Step 3. Fire dragenter and dragover at the element under the pointer.
     if let Some(new_target) = target_element_of(hit_test_result) {
-        let previous_target = active.current_target.as_ref().map(|t| DomRoot::from_ref(&**t));
+        let previous_target = active
+            .current_target
+            .as_ref()
+            .map(|t| DomRoot::from_ref(&**t));
         let target_changed = previous_target
             .as_ref()
             .is_none_or(|previous| *previous != new_target);
@@ -346,14 +361,17 @@ fn finish(
 ) {
     let data_transfer = DomRoot::from_ref(&*active.data_transfer);
     let source = DomRoot::from_ref(&*active.source);
-    let target = active.current_target.as_ref().map(|t| DomRoot::from_ref(&**t));
+    let target = active
+        .current_target
+        .as_ref()
+        .map(|t| DomRoot::from_ref(&**t));
 
     match target {
         // Step 1. If the current target element is a DOM element that accepts the drop and the
         // current drag operation is not "none", fire a DND event named drop at it.
         Some(target) if active.target_accepts && active.operation != "none" => {
             data_transfer.set_drop_effect_value(active.operation);
-            data_transfer.set_store_mode(Mode::ReadOnly);
+            data_transfer.set_store_mode(cx, Mode::ReadOnly);
             fire(
                 cx,
                 window,
@@ -383,7 +401,7 @@ fn finish(
     }
 
     // Step 2. Fire a DND event named dragend at the source node.
-    data_transfer.set_store_mode(Mode::Protected);
+    data_transfer.set_store_mode(cx, Mode::Protected);
     data_transfer.set_drop_effect_value(active.operation);
     fire(
         cx,

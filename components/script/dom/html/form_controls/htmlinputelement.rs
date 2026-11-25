@@ -23,8 +23,8 @@ use script_bindings::codegen::GenericBindings::SelectionBinding::SelectionMethod
 use script_bindings::domstring::{TracedDOMString, parse_floating_point_number};
 use servo_base::generic_channel::GenericSender;
 use servo_base::text::{RangeAny, Utf16CodeUnits, Utf32CodeUnits};
-use style::invalidation::element::restyle_hints::RestyleHint;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
+use style::invalidation::element::restyle_hints::RestyleHint;
 use style::str::split_commas;
 use stylo_atoms::Atom;
 use stylo_dom::ElementState;
@@ -42,7 +42,6 @@ use crate::dom::bindings::codegen::Bindings::HTMLInputElementBinding::HTMLInputE
 use crate::dom::bindings::codegen::Bindings::NodeBinding::{GetRootNodeOptions, NodeMethods};
 use crate::dom::bindings::error::{Error, ErrorResult};
 use crate::dom::bindings::inheritance::Castable;
-use crate::dom::htmlbuttonelement::{CommandState, HTMLButtonElement};
 use crate::dom::bindings::refcounted::Trusted;
 use crate::dom::bindings::root::{Dom, DomRoot, LayoutDom, MutNullableDom};
 use crate::dom::bindings::str::{DOMString, USVString};
@@ -70,6 +69,7 @@ use crate::dom::html::popover::{
     get_associated_element, run_the_popover_target_attribute_activation_behavior,
     set_associated_element,
 };
+use crate::dom::htmlbuttonelement::{CommandState, HTMLButtonElement};
 use crate::dom::input_type::radio_input_type::radio_group_iter;
 use crate::dom::iterators::ShadowIncluding;
 use crate::dom::node::virtualmethods::VirtualMethods;
@@ -1950,13 +1950,11 @@ impl HTMLInputElement {
 
                 match self.GetFiles() {
                     // Step 5.8.1: If there are no selected files, then create an entry with name and a new File object with an empty name, application/octet-stream as type, and an empty body, and append it to entry list.
-                    Some(ref fl) if fl.Length() == 0 => {
-                        datums.push(FormDatum {
-                            ty,
-                            name,
-                            value: FormDatumValue::String(DOMString::new()),
-                        })
-                    },
+                    Some(ref fl) if fl.Length() == 0 => datums.push(FormDatum {
+                        ty,
+                        name,
+                        value: FormDatumValue::String(DOMString::new()),
+                    }),
                     None => {
                         datums.push(FormDatum {
                             // XXX(izgzhen): Spec says 'application/octet-stream' as the type,
@@ -1968,7 +1966,7 @@ impl HTMLInputElement {
                     },
                     // Step 5.8.2: Otherwise, for each file in selected files, create an entry with name and a File object representing the file, and append it to entry list.
                     Some(fl) => {
-                        for f in fl.iter_files() {
+                        for f in fl.files().iter() {
                             datums.push(FormDatum {
                                 ty: ty.clone(),
                                 name: name.clone(),
@@ -2557,7 +2555,9 @@ impl VirtualMethods for HTMLInputElement {
                             let document = self.owner_document();
                             for sibling in self.upcast::<Node>().following_siblings() {
                                 if let Some(sibling) = sibling.downcast::<Element>() {
-                                    sibling.upcast::<Node>().dirty(cx.no_gc(), NodeDamage::Style);
+                                    sibling
+                                        .upcast::<Node>()
+                                        .dirty(cx.no_gc(), NodeDamage::Style);
                                     document
                                         .ensure_pending_restyle(sibling)
                                         .hint

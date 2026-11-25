@@ -8,10 +8,15 @@ typedef sequence<ClipboardItem> ClipboardItems;
 
 [SecureContext, Exposed=Window, Pref="dom_async_clipboard_enabled"]
 interface Clipboard : EventTarget {
-  // Promise<ClipboardItems> read();
+  Promise<ClipboardItems> read(optional ClipboardUnsanitizedFormats formats = {});
   Promise<DOMString> readText();
-  // Promise<undefined> write(ClipboardItems data);
+  Promise<undefined> write(ClipboardItems data);
   Promise<undefined> writeText(DOMString data);
+  attribute EventHandler onclipboardchange;
+};
+
+dictionary ClipboardUnsanitizedFormats {
+  sequence<DOMString> unsanitized;
 };
 
 typedef Promise<(DOMString or Blob)> ClipboardItemData;

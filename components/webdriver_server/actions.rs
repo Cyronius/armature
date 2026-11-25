@@ -27,7 +27,7 @@ use webdriver::error::{ErrorStatus, WebDriverError};
 
 use crate::{
     Handler, MAXIMUM_SAFE_INTEGER, VerifyBrowsingContextIsOpen, WebElement,
-    wait_for_oneshot_response,
+    wait_for_ipc_response_flatten, wait_for_oneshot_response,
 };
 
 /// Interval between wheelScroll and pointerMove increments in ms, based on common vsync
@@ -993,7 +993,7 @@ impl Handler {
                 // Steps 1 - 3
                 let (x_element, y_element) = self.get_element_in_view_center_point(web_element)?;
                 // Step 4. Let x equal x element + x offset, and y equal y element + y offset.
-                Ok((x_element as f64 + x_offset, y_element as f64 + y_offset))
+                Ok((x_element + x_offset, y_element + y_offset))
             },
         }
     }
@@ -1002,7 +1002,7 @@ impl Handler {
     fn get_element_in_view_center_point(
         &self,
         web_element: &WebElement,
-    ) -> Result<(i64, i64), ErrorStatus> {
+    ) -> Result<(f64, f64), ErrorStatus> {
         let (sender, receiver) = generic_channel::oneshot().unwrap();
         // Step 1. Let element be the result of trying to run actions options'
         // get element origin steps with origin and browsing context.
@@ -1010,7 +1010,7 @@ impl Handler {
             WebDriverScriptCommand::GetElementInViewCenterPoint(web_element.to_string(), sender),
             VerifyBrowsingContextIsOpen::No,
         )
-        .unwrap();
+        .map_err(|error| error.error)?;
 
         // Step 2. If element is null, return error with error code no such element.
         let response = match wait_for_oneshot_response(receiver) {
@@ -1019,10 +1019,41 @@ impl Handler {
         };
 
         // Step 3. Let x element and y element be the result of calculating the in-view center point of element.
-        match response? {
-            Some(point) => Ok(point),
-            None => Err(ErrorStatus::UnknownError),
+        let (x, y) = response?.ok_or(ErrorStatus::UnknownError)?;
+        self.point_in_top_level_viewport(x as f64, y as f64)
+    }
+
+    /// Input events are dispatched through the top-level WebView, but the
+    /// in-view center is computed in the element's own frame viewport.
+    fn point_in_top_level_viewport(
+        &self,
+        mut x: f64,
+        mut y: f64,
+    ) -> Result<(f64, f64), ErrorStatus> {
+        let mut child = self.browsing_context_id().map_err(|error| error.error)?;
+        let top = BrowsingContextId::from(self.webview_id().map_err(|error| error.error)?);
+        while child != top {
+            let (sender, receiver) = generic_channel::channel().unwrap();
+            self.send_message_to_embedder(WebDriverCommandMsg::ScriptCommand(
+                child,
+                WebDriverScriptCommand::GetParentFrameId(sender),
+            ))
+            .map_err(|error| error.error)?;
+            let parent = wait_for_ipc_response_flatten(receiver).map_err(|error| error.error)?;
+
+            let (sender, receiver) = generic_channel::oneshot().unwrap();
+            self.send_message_to_embedder(WebDriverCommandMsg::ScriptCommand(
+                parent,
+                WebDriverScriptCommand::GetFrameContentOrigin(child, sender),
+            ))
+            .map_err(|error| error.error)?;
+            let (left, top) =
+                wait_for_oneshot_response(receiver).map_err(|error| error.error)??;
+            x += left;
+            y += top;
+            child = parent;
         }
+        Ok((x, y))
     }
 
     /// <https://w3c.github.io/webdriver/#dfn-extract-an-action-sequence>

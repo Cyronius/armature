@@ -26,8 +26,8 @@ use data_url::mime::Mime;
 use devtools_traits::ScriptToDevtoolsControlMsg;
 use dom_struct::dom_struct;
 use embedder_traits::{
-    AllowOrDeny, AnimationState, CustomHandlersAutomationMode, EmbedderMsg, Image, LoadStatus,
-    Theme,
+    AllowOrDeny, AnimationState, ClipboardAction, CustomHandlersAutomationMode, EmbedderMsg, Image,
+    LoadStatus, Theme,
 };
 use encoding_rs::{Encoding, UTF_8};
 use html5ever::{LocalName, QualName, local_name, ns};
@@ -74,7 +74,8 @@ use servo_base::id::{ContainerTimingID, LCPCandidateID, PipelineId, WebViewId};
 use servo_base::{Epoch, generic_channel};
 use servo_config::pref;
 use servo_constellation_traits::{
-    NavigationHistoryBehavior, PaintMetricEvent, ScriptToConstellationMessage,
+    ClipboardFeature, ClipboardPolicy, NavigationHistoryBehavior, PaintMetricEvent,
+    ScriptToConstellationMessage,
 };
 use servo_media::{ClientContextId, ServoMedia};
 use servo_url::{ImmutableOrigin, MutableOrigin, ServoUrl};
@@ -102,16 +103,17 @@ use crate::dom::beforeunloadevent::BeforeUnloadEvent;
 use crate::dom::bindings::callback::{ExceptionHandling, TracedCallback};
 use crate::dom::bindings::codegen::Bindings::AnimationFrameProviderBinding::FrameRequestCallback;
 use crate::dom::bindings::codegen::Bindings::BeforeUnloadEventBinding::BeforeUnloadEvent_Binding::BeforeUnloadEventMethods;
-use crate::dom::bindings::codegen::Bindings::IntersectionObserverBinding::IntersectionObserverMethods;
-use crate::dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
 use crate::dom::bindings::codegen::Bindings::DocumentBinding::{
     DocumentMethods, DocumentReadyState, DocumentVisibilityState, ElementCreationOptions,
     NamedPropertyValue,
 };
-use crate::dom::bindings::codegen::Bindings::ElementBinding::ScrollLogicalPosition;
+use crate::dom::bindings::codegen::Bindings::ElementBinding::{
+    ElementMethods, ScrollLogicalPosition,
+};
 use crate::dom::bindings::codegen::Bindings::EventBinding::Event_Binding::EventMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLElementBinding::HTMLElementMethods;
 use crate::dom::bindings::codegen::Bindings::HTMLIFrameElementBinding::HTMLIFrameElement_Binding::HTMLIFrameElementMethods;
+use crate::dom::bindings::codegen::Bindings::IntersectionObserverBinding::IntersectionObserverMethods;
 #[cfg(any(feature = "webxr", feature = "gamepad"))]
 use crate::dom::bindings::codegen::Bindings::NavigatorBinding::Navigator_Binding::NavigatorMethods;
 use crate::dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
@@ -178,27 +180,25 @@ use crate::dom::execcommand::execcommands::DocumentExecCommandSupport;
 use crate::dom::focusevent::FocusEvent;
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::hashchangeevent::HashChangeEvent;
-use crate::dom::pagerevealevent::PageRevealEvent;
 use crate::dom::history::History;
 use crate::dom::html::htmlanchorelement::HTMLAnchorElement;
-use crate::dom::htmldetailselement::HTMLDetailsElement;
 use crate::dom::html::htmlareaelement::HTMLAreaElement;
 use crate::dom::html::htmlbaseelement::HTMLBaseElement;
 use crate::dom::html::htmlcollection::{CollectionFilter, HTMLCollection};
 use crate::dom::html::htmlelement::HTMLElement;
-use crate::dom::html::htmllinkelement::HTMLLinkElement;
 use crate::dom::html::htmlembedelement::HTMLEmbedElement;
-use crate::dom::html::htmlobjectelement::HTMLObjectElement;
 use crate::dom::html::htmlformelement::{FormControl, FormControlElementHelpers, HTMLFormElement};
 use crate::dom::html::htmlheadelement::HTMLHeadElement;
 use crate::dom::html::htmlhtmlelement::HTMLHtmlElement;
 use crate::dom::html::htmliframeelement::HTMLIFrameElement;
 use crate::dom::html::htmlimageelement::HTMLImageElement;
+use crate::dom::html::htmllinkelement::HTMLLinkElement;
 use crate::dom::html::htmlmediaelement::HTMLMediaElement;
+use crate::dom::html::htmlobjectelement::HTMLObjectElement;
 use crate::dom::html::htmlscriptelement::{HTMLScriptElement, ScriptResult, TracedScriptResult};
 use crate::dom::html::htmltitleelement::HTMLTitleElement;
 use crate::dom::html::popover::DocumentPopoverData;
-use crate::dom::htmldetailselement::DetailsNameGroups;
+use crate::dom::htmldetailselement::{DetailsNameGroups, HTMLDetailsElement};
 use crate::dom::htmldialogelement::DocumentDialogData;
 use crate::dom::intersectionobserver::IntersectionObserver;
 use crate::dom::iterators::ShadowIncluding;
@@ -213,6 +213,7 @@ use crate::dom::node::virtualmethods::vtable_for;
 use crate::dom::node::{Node, NodeDamage, NodeFlags, NodeTraits};
 use crate::dom::nodeiterator::NodeIterator;
 use crate::dom::nodelist::NodeList;
+use crate::dom::pagerevealevent::PageRevealEvent;
 use crate::dom::pagetransitionevent::PageTransitionEvent;
 use crate::dom::performance::performancecontainertiming::PerformanceContainerTiming;
 use crate::dom::performance::performanceentry::PerformanceEntry;
@@ -805,6 +806,12 @@ pub(crate) struct Document {
     /// Reflect the value of that preferences to prevent paying the cost of a RwLock access.
     layout_animations_test_enabled: bool,
 
+    executing_copy_command: Cell<bool>,
+    #[no_trace]
+    clipboard_policy: RefCell<ClipboardPolicy>,
+    #[no_trace]
+    pending_clipboard_change: RefCell<Option<embedder_traits::ClipboardChange>>,
+
     /// <https://w3c.github.io/editing/docs/execCommand/#state-override>
     #[no_trace]
     state_override: DomRefCell<FxHashMap<CommandName, bool>>,
@@ -1173,6 +1180,27 @@ impl Document {
         &self.window
     }
 
+    pub(crate) fn can_execute_copy_command(&self) -> bool {
+        self.is_fully_active() &&
+            self.HasFocus() &&
+            self.window.has_transient_activation() &&
+            !self.executing_copy_command.get()
+    }
+
+    pub(crate) fn execute_copy_command(&self, cx: &mut JSContext) -> bool {
+        if !self.can_execute_copy_command() {
+            return false;
+        }
+
+        let target = self.event_handler().target_for_events_following_focus();
+        let node = target.downcast::<Node>().unwrap_or_else(|| self.upcast());
+        let editing_context = self.editing_context(cx.no_gc(), node);
+        self.executing_copy_command.set(true);
+        let result = self.handle_clipboard_action(cx, &editing_context, ClipboardAction::Copy);
+        self.executing_copy_command.set(false);
+        !result.is_empty()
+    }
+
     #[inline]
     pub(crate) fn is_html_document(&self) -> bool {
         self.is_html_document
@@ -1198,8 +1226,11 @@ impl Document {
         // The first two checks stand in for when the document is not the active session history
         // entry's document, as when that happens they will be false. The session history entry
         // is not really implemented in script in the same way the specification says.
-        self.browsing_context().is_some() &&
-            !self.window_detached() &&
+        self.browsing_context().is_some_and(|proxy| {
+            proxy
+                .frame_element()
+                .is_none_or(|frame| frame.upcast::<Node>().is_connected())
+        }) && !self.window_detached() &&
             self.activity.get() != DocumentActivity::Inactive
     }
 
@@ -1637,7 +1668,11 @@ impl Document {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#ancestor-revealing-algorithm>
-    pub(crate) fn run_the_ancestor_revealing_algorithm(&self, cx: &mut JSContext, target: &Element) {
+    pub(crate) fn run_the_ancestor_revealing_algorithm(
+        &self,
+        cx: &mut JSContext,
+        target: &Element,
+    ) {
         // Step 1. Let ancestorsToReveal be an empty list.
         // Step 2. For each shadow-including inclusive ancestor of target, in the order they are
         // found, that is a hidden until found element or a closed details element, add it to the
@@ -3811,7 +3846,7 @@ impl Document {
     }
 
     /// <https://html.spec.whatwg.org/multipage/#allowed-to-use>
-    pub(crate) fn allowed_to_use_feature(&self, _feature: PermissionName) -> bool {
+    pub(crate) fn allowed_to_use_feature(&self, feature: PermissionName) -> bool {
         // Step 1. If document's browsing context is null, then return false.
         if !self.has_browsing_context {
             return false;
@@ -3825,9 +3860,52 @@ impl Document {
         // Step 3. If the result of running is feature enabled in document for origin on
         // feature, document, and document's origin is "Enabled", then return true.
         // Step 4. Return false.
-        // TODO: All features are currently enabled for `Document`s because we do not
-        // implement the Permissions Policy specification.
-        true
+        let feature = match feature {
+            PermissionName::Clipboard_read => ClipboardFeature::Read,
+            PermissionName::Clipboard_write => ClipboardFeature::Write,
+            _ => return true,
+        };
+        self.clipboard_policy
+            .borrow()
+            .allows(feature, self.origin().immutable())
+    }
+
+    pub(crate) fn record_clipboard_change(
+        &self,
+        cx: &mut JSContext,
+        change: embedder_traits::ClipboardChange,
+    ) {
+        // A document without a Clipboard object cannot be observing clipboard events.
+        if self.window().cached_clipboard().is_none() {
+            return;
+        }
+        self.pending_clipboard_change.replace(Some(change));
+        self.fire_pending_clipboard_change(cx);
+    }
+
+    pub(crate) fn fire_pending_clipboard_change(&self, cx: &mut JSContext) {
+        if self.pending_clipboard_change.borrow().is_none() ||
+            !self.HasFocus() ||
+            matches!(
+                &*self.focus_handler().focused_area(),
+                FocusableArea::IFrameViewport { iframe_element, .. }
+                    if iframe_element.browsing_context_id().is_some()
+            )
+        {
+            return;
+        }
+        let pending = self.pending_clipboard_change.borrow_mut().take();
+        if let (Some(change), Some(clipboard)) = (pending, self.window().cached_clipboard()) {
+            clipboard.dispatch_change(cx, change);
+        }
+    }
+
+    pub(crate) fn set_clipboard_policy(&self, policy: ClipboardPolicy) {
+        self.clipboard_policy.replace(policy);
+    }
+
+    pub(crate) fn clipboard_policy(&self) -> ClipboardPolicy {
+        self.clipboard_policy.borrow().clone()
     }
 
     /// Add an [`IntersectionObserver`] to the [`Document`], to be processed in the [`Document`]'s event loop.
@@ -3860,9 +3938,9 @@ impl Document {
         // Step 2. If doc's lazy load intersection observer is null, set it to a new
         // IntersectionObserver instance, whose callback resumes the loading of the elements that
         // intersect it, and whose root margin is implementation-defined.
-        let observer = self.lazy_load_intersection_observer.or_init(|| {
-            IntersectionObserver::new_for_lazy_loading(cx, self.window())
-        });
+        let observer = self
+            .lazy_load_intersection_observer
+            .or_init(|| IntersectionObserver::new_for_lazy_loading(cx, self.window()));
         // Step 3. Call doc's lazy load intersection observer's observe method with element as the
         // argument.
         observer.Observe(cx.no_gc(), element);
@@ -4627,6 +4705,9 @@ impl Document {
             details_name_groups: Default::default(),
             protocol_handler_automation_mode: Default::default(),
             layout_animations_test_enabled: pref!(layout_animations_test_enabled),
+            executing_copy_command: Cell::new(false),
+            clipboard_policy: Default::default(),
+            pending_clipboard_change: Default::default(),
             state_override: Default::default(),
             value_override: Default::default(),
             default_single_line_container_name: Default::default(),
@@ -5790,8 +5871,10 @@ impl Document {
         for element in &elements {
             element.set_state(no_gc, stylo_dom::ElementState::FOCUS_WITHIN, true);
         }
-        *self.focus_within_elements.borrow_mut() =
-            elements.iter().map(|element| Dom::from_ref(&**element)).collect();
+        *self.focus_within_elements.borrow_mut() = elements
+            .iter()
+            .map(|element| Dom::from_ref(&**element))
+            .collect();
     }
 
     pub(crate) fn add_autofocus_candidate(&self, element: &Element) {
@@ -6627,7 +6710,7 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
         // >
         // > 1. If `target`'s browsing context's top-level browsing context does
         // >    not have system focus, then return false.
-        if !self.window().webview_state().has_system_focus.get() {
+        if !self.is_fully_active() || !self.window().webview_state().has_system_focus.get() {
             return false;
         }
 
@@ -6644,13 +6727,20 @@ impl DocumentMethods<crate::DomTypeHolder> for Document {
         // >         container's nested browsing context.
         // >
         // >    3.3. Otherwise, return false.
-        if self.window().parent_info().is_none() {
-            // 2 → 3 → (3.1 || ⋯ → 3.3)
-            self.is_fully_active()
-        } else {
-            // 2 → 3 → 3.2 → (⋯ → 3.1 || ⋯ → 3.3)
-            self.is_fully_active() && self.focus_handler.has_focus()
-        }
+        let proxy = self.window().window_proxy();
+        let Some(parent) = proxy.parent() else {
+            return true;
+        };
+        let Some(parent_document) = parent.document() else {
+            return self.focus_handler.has_focus();
+        };
+        // A local iframe can become focused synchronously, before the constellation
+        // publishes the updated focus state to the child document.
+        matches!(
+            &*parent_document.focus_handler().focused_area(),
+            FocusableArea::IFrameViewport { iframe_element, .. }
+                if iframe_element.browsing_context_id() == Some(proxy.browsing_context_id())
+        ) && parent_document.HasFocus()
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-document-domain>

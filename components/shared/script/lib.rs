@@ -209,6 +209,8 @@ pub enum ScriptThreadMessage {
     ),
     /// Notifies script thread of a change to one of its document's activity
     SetDocumentActivity(PipelineId, DocumentActivity),
+    /// Report the mandatory formats available after a clipboard change.
+    ClipboardChanged(PipelineId, embedder_traits::ClipboardChange),
     /// Set whether to use less resources by running timers at a heavily limited rate.
     SetThrottled(PipelineId, bool),
     /// Notifies script thread that a url should be loaded in this iframe.

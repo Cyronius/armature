@@ -10,7 +10,7 @@
 <script src="resources/user-activation.js"></script>
 
 <iframe width="50" height="50" id="same" src="resources/page.html"></iframe><br>
-<iframe width="50" height="50" id="cross" src="https://{{hosts[alt][]}}:{{ports[https][1]}}/clipboard-apis/resources/page.html"></iframe><br>
+<iframe width="50" height="50" id="cross" allow="clipboard-write" src="https://{{hosts[alt][]}}:{{ports[https][1]}}/clipboard-apis/resources/page.html"></iframe><br>
 <input value="Test">
 <script>
 "use strict";
@@ -23,14 +23,19 @@ async function getPermissions() {
   await waitForUserActivation();
 }
 
-function waitForMessage(msg) {
-  return new Promise((resolve) => {
+function writeFromFrame(iframe, text) {
+  return new Promise((resolve, reject) => {
     window.addEventListener("message", function handler(e) {
-      if (e.data == msg) {
+      if (e.source === iframe.contentWindow && e.data?.type === "clipboard-write-result") {
         window.removeEventListener("message", handler);
-        resolve();
+        if (e.data.error) {
+          reject(new Error(e.data.error));
+        } else {
+          resolve();
+        }
       }
     });
+    iframe.contentWindow.postMessage(["write", text], "*");
   });
 }
 
@@ -81,15 +86,13 @@ testCancelPendingWrite(async (str) => {
 testCancelPendingWrite(async (str) => {
   // A new write should cancel the prior pending request.
   const iframe = document.getElementById("same");
-  iframe.contentWindow.postMessage(["write", str], "*");
-  await waitForMessage("done");
+  await writeFromFrame(iframe, str);
 }, "clipboard.write() should cancel the prior pending one (same-origin iframe)");
 
 testCancelPendingWrite(async (str) => {
   // A new write should cancel the prior pending request.
   const iframe = document.getElementById("cross");
-  iframe.contentWindow.postMessage(["write", str], "*");
-  await waitForMessage("done");
+  await writeFromFrame(iframe, str);
 }, "clipboard.write() should cancel the prior pending one (cross-origin iframe)");
 
 testCancelPendingWrite(async (str) => {

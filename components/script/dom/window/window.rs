@@ -195,8 +195,8 @@ use crate::dom::types::{FontFace, ImageBitmap, SVGSVGElement, UIEvent};
 use crate::dom::visualviewport::{VisualViewport, VisualViewportChanges};
 #[cfg(feature = "webgpu")]
 use crate::dom::webgpu::identityhub::IdentityHub;
-use crate::dom::window::layout_image::fetch_image_for_layout;
 use crate::dom::window::barprop::BarProp;
+use crate::dom::window::layout_image::fetch_image_for_layout;
 use crate::dom::window::screen::Screen;
 use crate::dom::window::scrolling_box::{ScrollingBox, ScrollingBoxSource};
 use crate::dom::window::useractivation::UserActivationTimestamp;
@@ -531,6 +531,10 @@ pub(crate) struct Window {
 }
 
 impl Window {
+    pub(crate) fn cached_clipboard(&self) -> Option<DomRoot<crate::dom::clipboard::Clipboard>> {
+        self.navigator.get()?.cached_clipboard()
+    }
+
     pub(crate) fn script_thread(&self) -> Rc<ScriptThread> {
         Weak::upgrade(&self.weak_script_thread)
             .expect("Weak reference should always be upgradable when a ScriptThread is running")
@@ -1571,8 +1575,9 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
         // A popup that lost its opener looks closed to it.
         if let Some(proxy) = self.window_proxy.get() &&
             crate::coop::is_severed(proxy.browsing_context_id()) &&
-            GlobalScope::incumbent()
-                .is_some_and(|incumbent| incumbent.pipeline_id() != self.as_global_scope().pipeline_id())
+            GlobalScope::incumbent().is_some_and(|incumbent| {
+                incumbent.pipeline_id() != self.as_global_scope().pipeline_id()
+            })
         {
             return true;
         }

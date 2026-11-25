@@ -795,6 +795,22 @@ fn get_element_in_view_center_point(cx: &mut JSContext, element: &Element) -> Op
     })
 }
 
+pub(crate) fn handle_get_frame_content_origin(
+    cx: &mut JSContext,
+    documents: &DocumentCollection,
+    pipeline: PipelineId,
+    child: BrowsingContextId,
+    reply: GenericOneshotSender<Result<(f64, f64), ErrorStatus>>,
+) {
+    let origin = documents
+        .find_document(pipeline)
+        .and_then(|document| document.iframes().element(child))
+        .and_then(|iframe| iframe.upcast::<Node>().content_box(cx))
+        .map(|rect| (rect.origin.x.to_f64_px(), rect.origin.y.to_f64_px()))
+        .ok_or(ErrorStatus::NoSuchFrame);
+    let _ = reply.send(origin);
+}
+
 pub(crate) fn handle_get_element_in_view_center_point(
     cx: &mut JSContext,
     documents: &DocumentCollection,

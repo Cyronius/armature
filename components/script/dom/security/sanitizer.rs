@@ -52,6 +52,51 @@ pub(crate) struct Sanitizer {
 }
 
 impl Sanitizer {
+    pub(crate) fn clipboard_html_options() -> SetHTMLOptions {
+        let mut configuration = built_in_safe_default_configuration();
+        let elements = configuration.elements.get_or_insert_with(Vec::new);
+        elements.push(
+            SanitizerElementWithAttributes::SanitizerElementNamespaceWithAttributes(
+                SanitizerElementNamespaceWithAttributes {
+                    parent: SanitizerElementNamespace {
+                        name: "img".into(),
+                        namespace: Some(ns!(html).to_string().into()),
+                    },
+                    attributes: Some(
+                        ["src", "alt", "width", "height"]
+                            .into_iter()
+                            .map(|name| SanitizerAttribute::String(name.into()))
+                            .collect(),
+                    ),
+                    removeAttributes: None,
+                },
+            ),
+        );
+        // The clipboard sanitizer inlines safe declarations before serializing
+        // the fragment. These styles are only allowed in the intermediate tree.
+        for namespace in [ns!(html), ns!(svg)] {
+            elements.push(
+                SanitizerElementWithAttributes::SanitizerElementNamespaceWithAttributes(
+                    SanitizerElementNamespaceWithAttributes {
+                        parent: SanitizerElementNamespace {
+                            name: "style".into(),
+                            namespace: Some(namespace.to_string().into()),
+                        },
+                        attributes: None,
+                        removeAttributes: None,
+                    },
+                ),
+            );
+        }
+        configuration
+            .attributes
+            .get_or_insert_with(Vec::new)
+            .extend(["class", "style"].map(|name| SanitizerAttribute::String(name.into())));
+        SetHTMLOptions {
+            sanitizer: SanitizerOrSanitizerConfigOrSanitizerPresets::SanitizerConfig(configuration),
+        }
+    }
+
     fn new_inherited(configuration: SanitizerConfig) -> Sanitizer {
         Sanitizer {
             reflector_: Reflector::new(),

@@ -8,6 +8,7 @@
 //! embedding/rendering layer all the way to script, thus it should have very minimal dependencies
 //! on other parts of Servo.
 
+mod clipboard_policy;
 mod from_script_message;
 mod structured_data;
 
@@ -15,6 +16,7 @@ use std::collections::VecDeque;
 use std::fmt;
 
 use accesskit::ActionRequest;
+pub use clipboard_policy::{ClipboardContainerPolicy, ClipboardFeature, ClipboardPolicy};
 use embedder_traits::user_contents::{
     UserContentManagerId, UserScript, UserScriptId, UserStyleSheet, UserStyleSheetId,
 };
@@ -80,6 +82,8 @@ pub enum EmbedderToConstellationMessage {
     /// asynchronous image uploads for the given `Pipeline`. These are mainly used
     /// by canvas to perform uploads while the display list is being built.
     NoLongerWaitingOnAsynchronousImageUpdates(Vec<PipelineId>),
+    /// Notify documents of a clipboard change with the mandatory formats present.
+    ClipboardChanged(Vec<String>),
     /// Dispatch a webdriver command
     WebDriverCommand(WebDriverCommandMsg),
     /// Reload a top-level browsing context.

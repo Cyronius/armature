@@ -6,6 +6,7 @@ use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::cmp::max;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use accesskit::ActionRequest;
@@ -253,6 +254,12 @@ pub struct PendingHandledInputEvent {
     pub webview_id: WebViewId,
 }
 
+struct PendingClipboardWrite {
+    webview_id: WebViewId,
+    id: ClipboardWriteId,
+    callback: GenericCallback<Result<(), ClipboardWriteError>>,
+}
+
 struct ServoInner {
     delegate: RefCell<Rc<dyn ServoDelegate>>,
     paint: Rc<RefCell<Paint>>,
@@ -262,6 +269,8 @@ struct ServoInner {
     constellation_embedder_receiver: Receiver<ConstellationToEmbedderMsg>,
     network_manager: Rc<RefCell<NetworkManager>>,
     site_data_manager: SiteDataManager,
+    clipboard_generation: Arc<AtomicU64>,
+    pending_clipboard_write: RefCell<Option<PendingClipboardWrite>>,
     /// A struct that tracks ongoing JavaScript evaluations and is responsible for
     /// calling the callback when the evaluation is complete.
     javascript_evaluator: Rc<RefCell<JavaScriptEvaluator>>,
@@ -294,6 +303,47 @@ impl ServoInner {
             .borrow()
             .get(&id)
             .and_then(WebView::from_weak_handle)
+    }
+
+    fn mandatory_clipboard_types(data: &ClipboardData) -> Vec<String> {
+        data.iter()
+            .filter(|(format, _)| {
+                matches!(format.as_str(), "text/plain" | "text/html" | "image/png")
+            })
+            .map(|(format, _)| format.clone())
+            .collect()
+    }
+
+    fn notify_clipboard_change(
+        generation: &AtomicU64,
+        constellation: &ConstellationProxy,
+        types: Vec<String>,
+    ) {
+        generation.fetch_add(1, Ordering::Relaxed);
+        constellation.send(EmbedderToConstellationMessage::ClipboardChanged(types));
+    }
+
+    fn clipboard_revision(&self, webview: &WebView) -> ClipboardRevision {
+        ClipboardRevision {
+            generation: self.clipboard_generation.load(Ordering::Relaxed),
+            native_sequence: webview.clipboard_delegate().change_count(),
+        }
+    }
+
+    fn cancel_clipboard_write(&self) {
+        let pending = self.pending_clipboard_write.borrow_mut().take();
+        if let Some(pending) = pending {
+            let _ = pending.callback.send(Err(ClipboardWriteError::Superseded));
+        }
+    }
+
+    fn take_clipboard_write(&self, id: ClipboardWriteId) -> Option<PendingClipboardWrite> {
+        let mut pending = self.pending_clipboard_write.borrow_mut();
+        if pending.as_ref().is_some_and(|write| write.id == id) {
+            pending.take()
+        } else {
+            None
+        }
     }
 
     /// Forget a geolocation watch, returning whether we were still tracking it.
@@ -623,19 +673,141 @@ impl ServoInner {
             },
             EmbedderMsg::ClearClipboard(webview_id) => {
                 if let Some(webview) = self.get_webview_handle(webview_id) {
+                    self.cancel_clipboard_write();
                     webview.clipboard_delegate().clear(webview);
+                    Self::notify_clipboard_change(
+                        &self.clipboard_generation,
+                        &self.constellation_proxy,
+                        Vec::new(),
+                    );
                 }
             },
             EmbedderMsg::GetClipboardText(webview_id, result_sender) => {
+                let request = StringRequest::from(result_sender);
                 if let Some(webview) = self.get_webview_handle(webview_id) {
-                    webview
-                        .clipboard_delegate()
-                        .get_text(webview, StringRequest::from(result_sender));
+                    webview.clipboard_delegate().get_text(webview, request);
                 }
             },
             EmbedderMsg::SetClipboardText(webview_id, string) => {
                 if let Some(webview) = self.get_webview_handle(webview_id) {
+                    self.cancel_clipboard_write();
                     webview.clipboard_delegate().set_text(webview, string);
+                    Self::notify_clipboard_change(
+                        &self.clipboard_generation,
+                        &self.constellation_proxy,
+                        vec!["text/plain".into()],
+                    );
+                }
+            },
+            EmbedderMsg::GetClipboardData(webview_id, callback) => {
+                let request = crate::ClipboardRequest::from(callback);
+                if let Some(webview) = self.get_webview_handle(webview_id) {
+                    let revision = self.clipboard_revision(&webview);
+                    let mut request = Some(request);
+                    let callback =
+                        GenericCallback::<Result<ClipboardData, String>>::new(move |response| {
+                            if let Some(request) = request.take() {
+                                match response {
+                                    Ok(Ok(data)) => {
+                                        request.success(ClipboardSnapshot { data, revision })
+                                    },
+                                    Ok(Err(message)) => request.failure(message),
+                                    Err(error) => request.failure(error.to_string()),
+                                }
+                            }
+                        })
+                        .expect("Could not create clipboard snapshot callback");
+                    webview
+                        .clipboard_delegate()
+                        .get_data(webview, callback.into());
+                }
+            },
+            EmbedderMsg::GetClipboardRevision(webview_id, callback) => {
+                let revision = self
+                    .get_webview_handle(webview_id)
+                    .map(|webview| self.clipboard_revision(&webview));
+                let _ = callback.send(revision);
+            },
+            EmbedderMsg::BeginClipboardWrite(webview_id, id, callback) => {
+                if self.get_webview_handle(webview_id).is_some() {
+                    self.cancel_clipboard_write();
+                    self.pending_clipboard_write
+                        .replace(Some(PendingClipboardWrite {
+                            webview_id,
+                            id,
+                            callback,
+                        }));
+                } else {
+                    let _ = callback.send(Err(ClipboardWriteError::Platform(
+                        "The webview is closed.".into(),
+                    )));
+                }
+            },
+            EmbedderMsg::AbortClipboardWrite(id) => {
+                self.take_clipboard_write(id);
+            },
+            EmbedderMsg::CommitClipboardWrite(id, data) => {
+                if let Some(pending) = self.take_clipboard_write(id) {
+                    let generation = self.clipboard_generation.clone();
+                    let constellation = self.constellation_proxy.clone();
+                    let mut types = Some(Self::mandatory_clipboard_types(&data));
+                    let result = pending.callback;
+                    let reply = GenericCallback::<Result<(), String>>::new(move |response| {
+                        let response = match response {
+                            Ok(Ok(())) => {
+                                if let Some(types) = types.take() {
+                                    Self::notify_clipboard_change(
+                                        &generation,
+                                        &constellation,
+                                        types,
+                                    );
+                                }
+                                Ok(())
+                            },
+                            Ok(Err(message)) => Err(ClipboardWriteError::Platform(message)),
+                            Err(error) => Err(ClipboardWriteError::Platform(error.to_string())),
+                        };
+                        let _ = result.send(response);
+                    })
+                    .expect("Could not create clipboard write callback");
+                    let request = crate::ClipboardRequest::from(reply);
+                    if let Some(webview) = self.get_webview_handle(pending.webview_id) {
+                        webview
+                            .clipboard_delegate()
+                            .set_data(webview, data, request);
+                    }
+                }
+            },
+            EmbedderMsg::SetClipboardData(webview_id, data, callback) => {
+                let request = crate::ClipboardRequest::from(callback);
+                if let Some(webview) = self.get_webview_handle(webview_id) {
+                    self.cancel_clipboard_write();
+                    let generation = self.clipboard_generation.clone();
+                    let constellation = self.constellation_proxy.clone();
+                    let mut types = Some(Self::mandatory_clipboard_types(&data));
+                    let mut request = Some(request);
+                    let callback = GenericCallback::<Result<(), String>>::new(move |response| {
+                        if let Some(request) = request.take() {
+                            match response {
+                                Ok(Ok(())) => {
+                                    if let Some(types) = types.take() {
+                                        Self::notify_clipboard_change(
+                                            &generation,
+                                            &constellation,
+                                            types,
+                                        );
+                                    }
+                                    request.success(());
+                                },
+                                Ok(Err(message)) => request.failure(message),
+                                Err(error) => request.failure(error.to_string()),
+                            }
+                        }
+                    })
+                    .expect("Could not create clipboard write callback");
+                    webview
+                        .clipboard_delegate()
+                        .set_data_from_copy(webview, data, callback.into());
                 }
             },
             EmbedderMsg::SetCursor(webview_id, cursor) => {
@@ -1122,6 +1294,8 @@ impl Servo {
         Servo(Rc::new(ServoInner {
             delegate: RefCell::new(Rc::new(DefaultServoDelegate)),
             paint,
+            clipboard_generation: Default::default(),
+            pending_clipboard_write: Default::default(),
             network_manager: Rc::new(RefCell::new(NetworkManager::new(
                 public_resource_threads.clone(),
                 private_resource_threads.clone(),

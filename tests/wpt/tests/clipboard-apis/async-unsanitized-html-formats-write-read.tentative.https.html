@@ -11,19 +11,6 @@
 <script>
 'use strict';
 
-// This function removes extra spaces between tags in html. For example, the
-// following html: "<p> Hello </p>   <body> World </body>" would turn into this
-//           html: "<p> Hello </p> <body> World </body>"
-// We remove the extra spaces because in html they are considered equivalent,
-// but when we are comparing for equality the spaces make a difference.
-function reformatHtml(html) {
-  const parser = new DOMParser();
-  const htmlString =
-        parser.parseFromString(html, 'text/html').documentElement.innerHTML;
-  const reformattedString = htmlString.replace(/\>\s*\</g, '> <');
-  return reformattedString;
-}
-
 // Writes a payload with custom content and checks to ensure the correct data
 // was written successfully.
 promise_test(async t => {
@@ -33,7 +20,8 @@ promise_test(async t => {
   // Create and write unsanitized version of standard HTML and custom formats.
   const format1 = 'text/html';
   const format2 = 'web text/html';
-  const textInput = '<style>p {color:blue}</style><p>Hello World</p>';
+  const textInput = '<style>p {color:blue!important;background-image:url(/clipboard-image.png)}</style>' +
+                    '<p style="color:red;position:fixed">Hello World</p>';
   const blobInput1 = new Blob([textInput], {type: format1});
   const blobInput2 = new Blob([textInput], {type: format2});
   const clipboardItemInput = new ClipboardItem(
@@ -52,19 +40,16 @@ promise_test(async t => {
   const blobOutput1 = await clipboardItem.getType(format1);
   assert_equals(blobOutput1.type, format1);
   const data1 = await (new Response(blobOutput1)).text();
-  const outputHtml = reformatHtml(data1);
-  const expectedHtml = '<p style="color: blue; font-size: medium; font-style: normal; ' +
-                       'font-variant-ligatures: normal; font-variant-caps: normal; ' +
-                       'font-weight: 400; letter-spacing: normal; orphans: 2; ' +
-                       'text-align: start; text-indent: 0px; text-transform: none; '+
-                       'widows: 2; word-spacing: 0px; ' +
-                       '-webkit-text-stroke-width: 0px; ' +
-                       'white-space: normal; ' +
-                       'text-decoration-thickness: initial; ' +
-                       'text-decoration-style: initial; text-decoration-color: initial;">' +
-                       'Hello World</p>';
-  const inputHtml = reformatHtml(expectedHtml);
-  assert_equals(outputHtml, inputHtml);
+  const output = new DOMParser().parseFromString(data1, 'text/html');
+  assert_equals(output.body.children.length, 1);
+  const paragraph = output.body.firstElementChild;
+  assert_equals(paragraph.localName, 'p');
+  assert_equals(paragraph.textContent, 'Hello World');
+  assert_equals(output.querySelector('style'), null);
+  assert_equals(paragraph.style.color, 'blue');
+  assert_equals(paragraph.style.getPropertyPriority('color'), 'important');
+  assert_equals(paragraph.style.backgroundImage, '');
+  assert_equals(paragraph.style.position, '');
 
   const blobOutput2 = await clipboardItem.getType(format2);
   assert_equals(blobOutput2.type, format2);

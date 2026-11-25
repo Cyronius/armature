@@ -124,7 +124,9 @@ impl ClipboardEvent {
             .data_store()?
             .iter_item_list()
             .find_map(|item| match item {
-                Kind::Text { data, .. } if !data.is_empty() => Some(data.to_string()),
+                Kind::Text { data, type_ } if type_ == "text/plain" && !data.is_empty() => {
+                    Some(data.to_string())
+                },
                 _ => None,
             })
     }

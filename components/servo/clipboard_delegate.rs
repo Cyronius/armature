@@ -2,18 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+use embedder_traits::ClipboardData;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use servo_base::generic_channel::GenericCallback;
 
 use crate::WebView;
 
-pub struct StringRequest {
-    pub(crate) result_sender: GenericCallback<Result<String, String>>,
+#[cfg(all(feature = "clipboard", target_os = "windows"))]
+#[path = "clipboard_windows.rs"]
+mod windows;
+
+pub type StringRequest = ClipboardRequest<String>;
+
+pub struct ClipboardRequest<T: Serialize + DeserializeOwned + Send + 'static> {
+    pub(crate) result_sender: GenericCallback<Result<T, String>>,
     response_sent: bool,
 }
 
-impl StringRequest {
-    pub fn success(mut self, string: String) {
-        let _ = self.result_sender.send(Ok(string));
+impl<T: Serialize + DeserializeOwned + Send + 'static> ClipboardRequest<T> {
+    pub fn success(mut self, value: T) {
+        let _ = self.result_sender.send(Ok(value));
         self.response_sent = true;
     }
 
@@ -23,8 +32,10 @@ impl StringRequest {
     }
 }
 
-impl From<GenericCallback<Result<String, String>>> for StringRequest {
-    fn from(result_sender: GenericCallback<Result<String, String>>) -> Self {
+impl<T: Serialize + DeserializeOwned + Send + 'static> From<GenericCallback<Result<T, String>>>
+    for ClipboardRequest<T>
+{
+    fn from(result_sender: GenericCallback<Result<T, String>>) -> Self {
         Self {
             result_sender,
             response_sent: false,
@@ -32,7 +43,7 @@ impl From<GenericCallback<Result<String, String>>> for StringRequest {
     }
 }
 
-impl Drop for StringRequest {
+impl<T: Serialize + DeserializeOwned + Send + 'static> Drop for ClipboardRequest<T> {
     fn drop(&mut self) {
         if !self.response_sent {
             let _ = self
@@ -57,11 +68,94 @@ pub trait ClipboardDelegate {
 
     /// A request to set the text contents of the system clipboard to `new_contents`.
     fn set_text(&self, _webview: WebView, _new_contents: String) {}
+
+    /// The current native clipboard sequence, if the platform provides one.
+    fn change_count(&self) -> Option<u64> {
+        None
+    }
+
+    /// A request to retrieve the representations of one item.
+    fn get_data(&self, webview: WebView, request: ClipboardRequest<ClipboardData>) {
+        let mut request = Some(request);
+        let callback = GenericCallback::<Result<String, String>>::new(move |result| {
+            let Some(request) = request.take() else {
+                return;
+            };
+            match result {
+                Ok(Ok(text)) => {
+                    request.success(vec![("text/plain".into(), String::into_bytes(text))])
+                },
+                Ok(Err(message)) => request.failure(message),
+                Err(error) => request.failure(error.to_string()),
+            }
+        })
+        .expect("Could not create clipboard callback");
+        self.get_text(webview, StringRequest::from(callback));
+    }
+
+    /// A request to replace the current item with the supplied representations.
+    fn set_data(&self, webview: WebView, data: ClipboardData, request: ClipboardRequest<()>) {
+        match data.as_slice() {
+            [] => self.clear(webview),
+            [(format, bytes)] if format == "text/plain" => {
+                self.set_text(webview, String::from_utf8_lossy(bytes).into_owned());
+            },
+            _ => {
+                request.failure("The clipboard delegate does not support these formats.".into());
+                return;
+            },
+        }
+        request.success(());
+    }
+
+    /// Write data provided by an input event, which may include platform-native data.
+    fn set_data_from_copy(
+        &self,
+        webview: WebView,
+        data: ClipboardData,
+        request: ClipboardRequest<()>,
+    ) {
+        self.set_data(webview, data, request);
+    }
 }
 
 pub(crate) struct DefaultClipboardDelegate;
 
 impl ClipboardDelegate for DefaultClipboardDelegate {
+    #[cfg(all(feature = "clipboard", target_os = "windows"))]
+    fn change_count(&self) -> Option<u64> {
+        clipboard_win::raw::seq_num().map(|sequence| u64::from(sequence.get()))
+    }
+
+    #[cfg(all(feature = "clipboard", target_os = "windows"))]
+    fn get_data(&self, _webview: WebView, request: ClipboardRequest<ClipboardData>) {
+        match windows::get_data() {
+            Ok(data) => request.success(data),
+            Err(message) => request.failure(message),
+        }
+    }
+
+    #[cfg(all(feature = "clipboard", target_os = "windows"))]
+    fn set_data(&self, _webview: WebView, data: ClipboardData, request: ClipboardRequest<()>) {
+        match windows::set_data(data, true) {
+            Ok(()) => request.success(()),
+            Err(message) => request.failure(message),
+        }
+    }
+
+    #[cfg(all(feature = "clipboard", target_os = "windows"))]
+    fn set_data_from_copy(
+        &self,
+        _webview: WebView,
+        data: ClipboardData,
+        request: ClipboardRequest<()>,
+    ) {
+        match windows::set_data(data, false) {
+            Ok(()) => request.success(()),
+            Err(message) => request.failure(message),
+        }
+    }
+
     fn clear(&self, _webview: WebView) {
         clipboard::clear();
     }
@@ -71,6 +165,8 @@ impl ClipboardDelegate for DefaultClipboardDelegate {
     }
 
     fn set_text(&self, _webview: WebView, new_contents: String) {
+        #[cfg(all(feature = "clipboard", target_os = "windows"))]
+        let new_contents = windows::native_text(new_contents.as_bytes());
         clipboard::set_text(new_contents);
     }
 }

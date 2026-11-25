@@ -495,6 +495,23 @@ pub enum EmbedderMsg {
     GetClipboardText(WebViewId, GenericCallback<Result<String, String>>),
     /// Sets system clipboard contents
     SetClipboardText(WebViewId, String),
+    GetClipboardData(
+        WebViewId,
+        GenericCallback<Result<ClipboardSnapshot, String>>,
+    ),
+    GetClipboardRevision(WebViewId, GenericCallback<Option<ClipboardRevision>>),
+    BeginClipboardWrite(
+        WebViewId,
+        ClipboardWriteId,
+        GenericCallback<Result<(), ClipboardWriteError>>,
+    ),
+    CommitClipboardWrite(ClipboardWriteId, ClipboardData),
+    AbortClipboardWrite(ClipboardWriteId),
+    SetClipboardData(
+        WebViewId,
+        ClipboardData,
+        GenericCallback<Result<(), String>>,
+    ),
     /// Changes the cursor.
     SetCursor(WebViewId, Cursor),
     /// A favicon was detected
@@ -658,6 +675,42 @@ pub enum PermissionFeature {
     PersistentStorage,
     ScreenWakeLock(WakeLockType),
     Gamepad,
+    ClipboardRead,
+    ClipboardWrite,
+}
+
+/// The MIME types and bytes of the representations of one system clipboard item.
+pub type ClipboardData = Vec<(String, Vec<u8>)>;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ClipboardRevision {
+    pub generation: u64,
+    pub native_sequence: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ClipboardSnapshot {
+    pub data: ClipboardData,
+    pub revision: ClipboardRevision,
+}
+
+/// The mandatory representations present after a clipboard update.
+#[derive(Clone, Debug, Deserialize, MallocSizeOf, Serialize)]
+pub struct ClipboardChange {
+    pub nonce: u128,
+    pub types: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ClipboardWriteId {
+    pub pipeline: PipelineId,
+    pub sequence: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum ClipboardWriteError {
+    Superseded,
+    Platform(String),
 }
 
 /// Used to specify the kind of input method editor appropriate to edit a field.

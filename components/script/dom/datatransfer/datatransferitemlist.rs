@@ -6,21 +6,22 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use dom_struct::dom_struct;
-use rustc_hash::FxBuildHasher;
 use js::context::JSContext;
 use js::rust::MutableHandleValue;
+use rustc_hash::FxBuildHasher;
+use script_bindings::cell::DomRefCell;
 use script_bindings::reflector::{Reflector, reflect_dom_object};
 
 use crate::dom::bindings::codegen::Bindings::DataTransferItemListBinding::DataTransferItemListMethods;
 use crate::dom::bindings::error::{Error, Fallible};
 use crate::dom::bindings::frozenarray::CachedFrozenArray;
 use crate::dom::bindings::reflector::DomGlobal;
-use script_bindings::cell::DomRefCell;
-use crate::dom::bindings::root::{Dom, DomRoot};
-use crate::dom::bindings::trace::HashMapTracedValues;
+use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom};
 use crate::dom::bindings::str::DOMString;
+use crate::dom::bindings::trace::HashMapTracedValues;
 use crate::dom::datatransferitem::DataTransferItem;
 use crate::dom::file::File;
+use crate::dom::filelist::FileList;
 use crate::dom::window::Window;
 use crate::drag::drag_data_store::{DragDataStore, Kind, Mode};
 
@@ -36,6 +37,7 @@ pub(crate) struct DataTransferItemList {
     /// object is handed out for an item each time (and the one that was added is handed back),
     /// as Gecko's DataTransfer does.
     files: DomRefCell<HashMapTracedValues<u16, Dom<File>, FxBuildHasher>>,
+    file_list: MutNullableDom<FileList>,
 }
 
 impl DataTransferItemList {
@@ -45,6 +47,7 @@ impl DataTransferItemList {
             frozen_types: CachedFrozenArray::new(),
             data_store,
             files: DomRefCell::new(HashMapTracedValues::new_fx()),
+            file_list: Default::default(),
         }
     }
 
@@ -88,6 +91,31 @@ impl DataTransferItemList {
             },
             retval,
         );
+    }
+
+    fn visible_files(&self, cx: &mut JSContext) -> Vec<DomRoot<File>> {
+        let ids = self
+            .data_store
+            .borrow()
+            .as_ref()
+            .map_or_else(Vec::new, DragDataStore::file_item_ids);
+        ids.into_iter()
+            .filter_map(|id| self.file_for_item(cx, id))
+            .collect()
+    }
+
+    pub(crate) fn file_list(&self, cx: &mut JSContext) -> DomRoot<FileList> {
+        self.file_list.or_init(|| {
+            let files = self.visible_files(cx);
+            FileList::new(cx, self.global().as_window(), files)
+        })
+    }
+
+    pub(crate) fn refresh_file_list(&self, cx: &mut JSContext) {
+        if let Some(list) = self.file_list.get() {
+            let files = self.visible_files(cx);
+            list.replace_files(cx.no_gc(), &files);
+        }
     }
 
     pub(crate) fn invalidate_frozen_types(&self) {
@@ -188,6 +216,7 @@ impl DataTransferItemListMethods<crate::DomTypeHolder> for DataTransferItemList 
             self.files
                 .safe_borrow_mut(cx.no_gc())
                 .insert(id, Dom::from_ref(data));
+            self.refresh_file_list(cx);
         }
         index.map(|id| {
             self.frozen_types.clear();
@@ -204,41 +233,49 @@ impl DataTransferItemListMethods<crate::DomTypeHolder> for DataTransferItemList 
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-datatransferitemlist-remove>
-    fn Remove(&self, index: u32) -> Fallible<()> {
+    fn Remove(&self, cx: &mut JSContext, index: u32) -> Fallible<()> {
         // Step 1 If the DataTransferItemList object is not in the read/write mode,
         // throw an "InvalidStateError" DOMException.
-        let mut option = self.data_store.borrow_mut();
-        let data_store = match option.as_mut() {
-            Some(value) if value.mode() == Mode::ReadWrite => value,
-            _ => return Err(Error::InvalidState(None)),
-        };
-
-        let index = index as usize;
-
-        // Step 2 If the drag data store does not contain an indexth item, then return.
-        if index < data_store.list_len() {
-            // Step 3 Remove the indexth item from the drag data store.
+        let id = {
+            let mut option = self.data_store.borrow_mut();
+            let data_store = match option.as_mut() {
+                Some(store) if store.mode() == Mode::ReadWrite => store,
+                _ => {
+                    return Err(Error::InvalidState(Some(
+                        "The drag data store is not writable.".into(),
+                    )));
+                },
+            };
+            let index = index as usize;
+            let Some((&id, _)) = data_store.get_by_index(index) else {
+                return Ok(());
+            };
             data_store.remove(index);
-            self.frozen_types.clear();
-        }
-
+            id
+        };
+        self.files.safe_borrow_mut(cx.no_gc()).remove(&id);
+        self.frozen_types.clear();
+        self.refresh_file_list(cx);
         Ok(())
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-datatransferitemlist-clear>
-    fn Clear(&self) {
+    fn Clear(&self, cx: &mut JSContext) {
         // If the DataTransferItemList object is in the read/write mode, remove all the items from the drag data store.
         // Otherwise, it must do nothing.
-        let mut option = self.data_store.borrow_mut();
-        let data_store = match option.as_mut() {
-            Some(value) if value.mode() == Mode::ReadWrite => value,
-            _ => return,
-        };
-
-        // If the item list is empty we don't clear it.
-        if data_store.list_len() > 0 {
+        {
+            let mut option = self.data_store.borrow_mut();
+            let data_store = match option.as_mut() {
+                Some(store) if store.mode() == Mode::ReadWrite => store,
+                _ => return,
+            };
+            if data_store.list_len() == 0 {
+                return;
+            }
             data_store.clear_list();
-            self.frozen_types.clear();
         }
+        *self.files.safe_borrow_mut(cx.no_gc()) = HashMapTracedValues::new_fx();
+        self.frozen_types.clear();
+        self.refresh_file_list(cx);
     }
 }

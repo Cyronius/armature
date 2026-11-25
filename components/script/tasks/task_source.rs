@@ -111,6 +111,15 @@ impl TaskSource<'_> {
 
     /// This queues a task that will not be cancelled when its associated global scope gets destroyed.
     pub(crate) fn queue_unconditionally(&self, task: impl TaskOnce + 'static) {
+        self.queue_task(task, Some(self.task_manager.pipeline_id()));
+    }
+
+    /// Queue an event-loop task with no document activity or lifetime dependency.
+    pub(crate) fn queue_for_event_loop(&self, task: impl TaskOnce + 'static) {
+        self.queue_task(task, None);
+    }
+
+    fn queue_task(&self, task: impl TaskOnce + 'static, pipeline_id: Option<PipelineId>) {
         let sender = self.task_manager.sender();
         sender
             .as_ref()
@@ -118,7 +127,7 @@ impl TaskSource<'_> {
             .send(CommonScriptMsg::Task(
                 self.name.into(),
                 Box::new(task),
-                Some(self.task_manager.pipeline_id()),
+                pipeline_id,
                 self.name,
             ))
             .expect("Tried to send a task on a task queue after shutdown.");
