@@ -889,8 +889,12 @@ impl Notification {
     fn fetch_and_show_when_ready(&self, request: RequestBuilder, resource_type: ResourceType) {
         let global: &GlobalScope = &self.global();
         let request_id = request.id;
+        let Some(image_cache) = global.image_cache() else {
+            self.set_resource_and_show_when_ready(request_id, &resource_type, None);
+            return;
+        };
 
-        let cache_result = global.image_cache().get_cached_image_status(
+        let cache_result = image_cache.get_cached_image_status(
             request.url.url(),
             global.origin().immutable(),
             None, // TODO: check which CORS should be used
@@ -909,14 +913,29 @@ impl Notification {
                 _,
                 pending_image_id,
             )) => {
-                self.register_image_cache_callback(request_id, pending_image_id, resource_type);
+                self.register_image_cache_callback(
+                    &image_cache,
+                    request_id,
+                    pending_image_id,
+                    resource_type,
+                );
             },
             ImageCacheResult::Pending(pending_image_id) => {
-                self.register_image_cache_callback(request_id, pending_image_id, resource_type);
+                self.register_image_cache_callback(
+                    &image_cache,
+                    request_id,
+                    pending_image_id,
+                    resource_type,
+                );
             },
             ImageCacheResult::ReadyForRequest(pending_image_id) => {
-                self.register_image_cache_callback(request_id, pending_image_id, resource_type);
-                self.fetch(pending_image_id, request, global);
+                self.register_image_cache_callback(
+                    &image_cache,
+                    request_id,
+                    pending_image_id,
+                    resource_type,
+                );
+                self.fetch(image_cache, pending_image_id, request, global);
             },
             ImageCacheResult::FailedToLoadOrDecode => {
                 self.set_resource_and_show_when_ready(request_id, &resource_type, None);
@@ -926,6 +945,7 @@ impl Notification {
 
     fn register_image_cache_callback(
         &self,
+        image_cache: &Arc<dyn ImageCache>,
         request_id: RequestId,
         pending_image_id: PendingImageId,
         resource_type: ResourceType,
@@ -947,7 +967,7 @@ impl Notification {
             }));
         });
 
-        global.image_cache().add_listener(ImageLoadListener::new(
+        image_cache.add_listener(ImageLoadListener::new(
             callback,
             global.pipeline_id(),
             pending_image_id,
@@ -1010,13 +1030,14 @@ impl Notification {
 
     fn fetch(
         &self,
+        image_cache: Arc<dyn ImageCache>,
         pending_image_id: PendingImageId,
         request: RequestBuilder,
         global: &GlobalScope,
     ) {
         let context = ResourceFetchListener {
             pending_image_id,
-            image_cache: global.image_cache(),
+            image_cache,
             url: request.url.url(),
             status: Ok(()),
         };

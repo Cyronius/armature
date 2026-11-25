@@ -356,7 +356,7 @@ pub(super) struct CanvasState {
     origin_clean: Cell<bool>,
     #[ignore_malloc_size_of = "ImageCache"]
     #[no_trace]
-    image_cache: Arc<dyn ImageCache>,
+    image_cache: Option<Arc<dyn ImageCache>>,
     /// The base URL for resolving CSS image URL values.
     /// Needed because of <https://github.com/servo/servo/issues/17625>
     #[no_trace]
@@ -638,10 +638,10 @@ impl CanvasState {
         url: ServoUrl,
         cors_setting: Option<CorsSettings>,
     ) -> ImageResponse {
-        match self
-            .image_cache
-            .get_image(url.clone(), self.origin.clone(), cors_setting)
-        {
+        let Some(image_cache) = self.image_cache.as_ref() else {
+            return ImageResponse::FailedToLoadOrDecode;
+        };
+        match image_cache.get_image(url.clone(), self.origin.clone(), cors_setting) {
             Some(image) => ImageResponse::Loaded(image, url),
             None => {
                 // Rather annoyingly, we get the same response back from

@@ -231,7 +231,7 @@ impl From<&Window> for WorkletGlobalScopeInit {
             devtools_chan: global_scope.devtools_chan().cloned(),
             script_to_constellation_sender: global_scope.script_to_constellation_chan().sender,
             to_embedder_sender: global_scope.script_to_embedder_chan().clone(),
-            image_cache: global_scope.image_cache(),
+            image_cache: window.image_cache(),
             #[cfg(feature = "webgpu")]
             gpu_id_hub: global_scope.wgpu_id_hub(),
         }

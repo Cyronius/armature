@@ -641,7 +641,9 @@ impl SharedWorkerMethods<crate::DomTypeHolder> for SharedWorker {
             receiver,
             worker_load_origin,
             closing.clone(),
-            global.image_cache(),
+            global
+                .image_cache()
+                .expect("Workers are only created from globals with an image cache"),
             #[cfg(feature = "webgpu")]
             global.wgpu_id_hub(),
             control_receiver,

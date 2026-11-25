@@ -283,7 +283,9 @@ impl WorkerMethods<crate::DomTypeHolder> for Worker {
             worker_options,
             closing.clone(),
             animation_frame_provider_supported.clone(),
-            global.image_cache(),
+            global
+                .image_cache()
+                .expect("Workers are only created from globals with an image cache"),
             browsing_context,
             #[cfg(feature = "webgpu")]
             global.wgpu_id_hub(),

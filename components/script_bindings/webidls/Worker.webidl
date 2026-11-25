@@ -9,7 +9,7 @@ interface mixin AbstractWorker {
 };
 
 // https://html.spec.whatwg.org/multipage/#worker
-[Exposed=(Window,Worker)]
+[Exposed=(Window,DedicatedWorker,SharedWorker)]
 interface Worker : EventTarget {
   [Throws] constructor((TrustedScriptURL or USVString) scriptURL, optional WorkerOptions options = {});
   undefined terminate();

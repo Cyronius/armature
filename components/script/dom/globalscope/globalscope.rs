@@ -2253,20 +2253,22 @@ impl GlobalScope {
         *self.top_level_creation_url.borrow_mut() = Some(url);
     }
 
-    pub(crate) fn image_cache(&self) -> Arc<dyn ImageCache> {
+    /// The image cache of this global's pipeline. Service workers are not tied to a pipeline and
+    /// have none.
+    pub(crate) fn image_cache(&self) -> Option<Arc<dyn ImageCache>> {
         if let Some(window) = self.downcast::<Window>() {
-            return window.image_cache();
+            return Some(window.image_cache());
         }
         if let Some(worker) = self.downcast::<DedicatedWorkerGlobalScope>() {
-            return worker.image_cache();
+            return Some(worker.image_cache());
         }
         if let Some(worker) = self.downcast::<SharedWorkerGlobalScope>() {
-            return worker.image_cache();
+            return Some(worker.image_cache());
         }
         if let Some(worker) = self.downcast::<PaintWorkletGlobalScope>() {
-            return worker.image_cache();
+            return Some(worker.image_cache());
         }
-        unreachable!();
+        None
     }
 
     /// Schedule a [`TimerEventRequest`] on this [`GlobalScope`]'s [`timers::TimerScheduler`].
