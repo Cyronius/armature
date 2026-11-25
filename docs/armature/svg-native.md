@@ -1,6 +1,14 @@
 # Armature: native SVG design
 
-Status: proposal, 25 November 2026. Nothing here is implemented yet.
+Status: step 0 of the plan is done (25 November 2026); nothing renders through the new path yet.
+
+- **Step 0** ports #46688. With `--pref=layout_servo_svg_enabled`, layout builds a `servo_svg` tree for each outer
+  `<svg>` (only `<rect>` so far), caches subtrees by DOM version and computed style, and emits `Fragment::Svg`,
+  which paints nothing. SVG attribute changes bump the DOM version only while the pref is on. Two Armature-specific
+  changes: upstream's UA rule `svg > * { display: inline }` is dropped, because Armature's UA sheets never hide SVG
+  children, and text-overflow treats the new fragment as an atomic inline like an image. With the pref off,
+  `svg/shapes`, `svg/painting` and `svg/types` give the same results as before; with it on, `svg/struct` is added and
+  the 391 tests run without a crash.
 
 This note plans the replacement of Armature's inline-SVG pipeline with SVG that Servo lays out and paints itself.
 It is based on reading how Armature works today, upstream Servo's work in progress, Gecko and Ladybird. The
