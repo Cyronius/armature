@@ -67,9 +67,11 @@ Everything goes through `./mach` (Python, run via `uv`).
   - Many properties are built only for Gecko upstream. Enabling them for Servo is a Stylo change.
 - Inline SVG is not laid out by Servo:
   - The `<svg>` subtree is serialized and rasterized with resvg as a single replaced box.
-  - Elements inside `<svg>` compute `display: none` and may have no style data.
-  - SVG DOM geometry (`getBBox`, `getCTM`, hit testing inside the svg) is therefore computed in script from
-    attributes, in `dom/svg/svggeometry.rs` and `svgtext.rs`.
+  - Elements inside `<svg>` are styled by Stylo, but box construction stops at the replaced `<svg>`, so they have no
+    boxes or fragments. Only a few computed properties are copied into the serialized copy.
+  - SVG DOM geometry (`getBBox`, `getCTM`, hit testing inside the svg) is therefore computed in script, in
+    `dom/svg/svggeometry.rs` and `svgtext.rs`.
+  - A native replacement is planned in `docs/armature/svg-native.md`.
 - Web Animations timing is owned by script: `dom/animations/` and `document/animation_manager.rs`. Script feeds
   animation values to Stylo, which applies them for both script and CSS animations.
 
