@@ -33,6 +33,7 @@ mod replaced;
 mod selection;
 mod sizing;
 mod style_ext;
+pub mod svg;
 pub mod table;
 mod traversal;
 

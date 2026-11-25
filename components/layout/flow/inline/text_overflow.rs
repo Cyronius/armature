@@ -62,6 +62,10 @@ fn content_end(fragments: &[Fragment], offset: Au) -> Au {
                 let rect = image.base.rect();
                 end = end.max(offset + rect.origin.x + rect.size.width);
             },
+            Fragment::Svg(svg) => {
+                let rect = svg.base.rect();
+                end = end.max(offset + rect.origin.x + rect.size.width);
+            },
             _ => {},
         }
     }
@@ -178,7 +182,7 @@ impl Elider {
                     );
                     result.push(Fragment::Box(Arc::new(new_box)));
                 },
-                Fragment::Box(_) | Fragment::Image(_) | Fragment::IFrame(_) => {
+                Fragment::Box(_) | Fragment::Image(_) | Fragment::Svg(_) | Fragment::IFrame(_) => {
                     if self.done {
                         continue;
                     }

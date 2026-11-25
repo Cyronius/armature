@@ -11,6 +11,7 @@ use script_bindings::codegen::GenericBindings::ElementBinding::ScrollLogicalPosi
 use script_bindings::codegen::GenericBindings::WindowBinding::ScrollBehavior;
 use script_bindings::reflector::DomObject;
 use script_bindings::str::DOMString;
+use servo_config::pref;
 use style::attr::AttrValue;
 use stylo_atoms::Atom;
 use style::context::QuirksMode;
@@ -41,7 +42,7 @@ use crate::dom::iterators::ShadowIncluding;
 use crate::dom::navigator::navigatorinfo;
 use crate::dom::node::focus::FocusTrigger;
 use crate::dom::node::virtualmethods::VirtualMethods;
-use crate::dom::node::{ChildrenMutation, Node, NodeTraits};
+use crate::dom::node::{ChildrenMutation, Node, NodeDamage, NodeTraits};
 use crate::dom::svg::svganimatedangle::SVGAnimatedAngle;
 use crate::dom::svg::svganimatedboolean::SVGAnimatedBoolean;
 use crate::dom::svg::svganimatedenumeration::{SVGAnimatedEnumeration, SVGEnumerationKeywords};
@@ -700,6 +701,12 @@ impl VirtualMethods for SVGElement {
             }
         }
         self.invalidate_svg_caches(cx.no_gc(), attr.local_name() == &local_name!("id"));
+
+        // Native SVG keys its subtree cache on the DOM version, so bump it for attribute changes.
+        // Based on servo/servo#46688.
+        if pref!(layout_servo_svg_enabled) {
+            self.upcast::<Node>().dirty(cx.no_gc(), NodeDamage::Other);
+        }
     }
 
     fn children_changed(&self, cx: &mut JSContext, mutation: &ChildrenMutation) {
