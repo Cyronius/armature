@@ -8,6 +8,28 @@ Servo project.
 Servo's [AI usage policy](https://book.servo.org/policy/ai-usage.html) does not accept AI-generated contributions,
 so this work is not intended for, and has not been sent to, upstream Servo.
 
+## Credits
+
+Armature exists because of other people's work. Almost all of its code is theirs, and much of the rest follows their
+designs.
+
+- **[Servo](https://servo.org/)** ([source](https://github.com/servo/servo)): the engine itself, written by the Servo
+  contributors. The project began at Mozilla Research and is now hosted by Linux Foundation Europe. Armature is
+  Servo plus a set of changes, and both are licensed under the [Mozilla Public License 2.0](LICENSE). Stylo,
+  html5ever, xml5ever and markup5ever, vendored under `third_party/`, come from the Servo project too. The vendored
+  resvg and usvg keep their own licenses.
+- **[Firefox](https://www.mozilla.org/firefox/)** (Gecko, [source](https://github.com/mozilla-firefox/firefox)): when
+  the specs leave room for interpretation, or a feature is missing, Armature often ports Gecko's behaviour, for example
+  for modal dialogs, form controls, charset detection, media and canvas text. Gecko is also MPL 2.0. The
+  [per-area notes](docs/armature/README.md) list what was taken from it.
+- **[Ladybird](https://ladybird.org/)** ([source](https://github.com/LadybirdBrowser/ladybird)): Armature uses Ladybird's
+  LibWeb as a reference implementation, and code ported from it keeps the Ladybird copyright notice and BSD 2-Clause
+  license, reproduced in [LICENSE_LADYBIRD](LICENSE_LADYBIRD).
+- **[web-platform-tests](https://web-platform-tests.org/)** and **[wpt.fyi](https://wpt.fyi/)**: the shared test suite
+  that measures Armature's progress, and the published Firefox and Ladybird results used to choose what to work on.
+
+None of these projects is affiliated with or endorses Armature.
+
 ## Conformance
 
 The table uses the 7 November 2026 run of 61,548 selected web-platform-tests as its baseline.

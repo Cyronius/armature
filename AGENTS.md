@@ -95,5 +95,9 @@ Everything goes through `./mach` (Python, run via `uv`).
   - Each changed spot carries a `// Armature (AS-NNN): ...` comment.
   - Servo-side follow-ups go in separate commits, and every commit must build. When a Stylo API changes, land a Servo
     preparation commit first.
+- **Ported code:** credit the source in a comment where the logic was taken, e.g. `// Based on
+  HTMLDialogElement::ShowModal in Gecko` or `// Ported from Ladybird LibWeb/Editing/Commands.cpp (BSD-2-Clause,
+  see LICENSE_LADYBIRD)`. Ladybird's license requires its notice to be kept, so never drop that comment. Record
+  ported behaviour in the per-area notes under `docs/armature/`.
 - **Commit subjects:** use `component: Imperative summary` (`script:`, `layout:`, `tests:`, `stylo:`, `README:`). Put
   expectation updates in their own `tests:` commit.
