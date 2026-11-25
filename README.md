@@ -10,7 +10,7 @@ so this work is not intended for, and has not been sent to, upstream Servo.
 
 ## Conformance
 
-Except for CSS, the table below was measured on 7 November 2026 using the 61,548 web-platform-tests selected then.
+The table uses the 7 November 2026 run of 61,548 selected web-platform-tests as its baseline.
 Two builds ran on the same machine: upstream Servo at the commit Armature forked from
 (`90c3f623175`, 30 October 2026) and Armature at `568f69bdeac`. As on [wpt.fyi](https://wpt.fyi/), each test counts
 once, with partial credit for the share of its subtests that pass; the last column counts individual subtests. The
@@ -22,6 +22,13 @@ control, pseudo-class, history, template and editing-attribute work described in
 behaviour ported from Gecko (form controls, charset detection, media and text tracks) raised it to 80.05%, and modal
 dialogs, the top layer and canvas text and pattern fixes then raised it to 81.11%; the HTML row has not been remeasured
 against upstream Servo yet.
+
+On 24 November 2026, the Windows release build passed all 61 `clipboard-apis/` test cases and all
+247 subtests. The previous Armature build fully passed 13 of 61 test cases and scored 27.4% with
+partial credit. The current suite checks CSS preservation and sanitization in HTML and SVG and
+delegates `clipboard-write` to the cross-origin frame used to test write cancellation. The Clipboard
+row uses the 7 November upstream score and the 24 November Armature score. The Total row still
+reflects the earlier full-suite run.
 
 | Area | Tests | Upstream Servo | Armature | Change (points) | Subtests newly passing |
 |---|--:|--:|--:|--:|--:|
@@ -53,7 +60,7 @@ against upstream Servo yet.
 | Upgrade Insecure Requests | 197 | 73.6% | 73.1% | -0.5 | -6 |
 | DOM Parsing | 94 | 43.5% | 48.8% | +5.2 | +51 |
 | Compression Streams | 78 | 70.2% | 73.7% | +3.5 | +63 |
-| Clipboard | 61 | 25.8% | 27.4% | +1.6 | +1 |
+| Clipboard | 61 | 25.8% | **100.0%** | +74.2 | — |
 | Focus | 43 | 60.9% | 60.9% | +0.0 | +0 |
 | Scroll-driven Animations | 17 | 21.6% | 100.0% | +78.4 | +372 |
 | WebNN | 598 | — | **89.9%** | — | +12,772 |
@@ -63,6 +70,14 @@ against upstream Servo yet.
 ## Added features
 
 Capabilities Armature has that upstream Servo does not, beyond fixes that raise conformance.
+
+### Clipboard
+
+On Windows, the native clipboard carries plain text, HTML, PNG, SVG, URI lists, and web custom formats.
+Async clipboard access checks document focus, permissions, and Permissions Policy, and a `ClipboardItem`
+rejects stale reads after the clipboard changes. Browser writes send `clipboardchange` to eligible
+focused documents. System-wide change notifications and rich native formats on other platforms are
+still pending.
 
 ### Experimental web chrome
 
